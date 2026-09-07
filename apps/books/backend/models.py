@@ -153,9 +153,11 @@ class UserProfile(BaseModel):
 class OAuthLoginRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    provider: Literal['google', 'microsoft', 'zoho', 'github']
+    provider: Optional[Literal['google', 'microsoft', 'zoho', 'github']] = None
+    credential: Optional[str] = None
     code: Optional[str] = None
     access_token: Optional[str] = Field(default=None, alias='accessToken')
+    client_id: Optional[str] = Field(default=None, alias='clientId')
     email: Optional[str] = None
     name: Optional[str] = None
     avatar: Optional[str] = None

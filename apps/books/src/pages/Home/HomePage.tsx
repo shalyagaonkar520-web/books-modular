@@ -51,9 +51,9 @@ export const HomePage: React.FC<HomePageProps> = ({
       {/* Page Header */}
       <div className="zb-page-header zb-flex-between">
         <div>
-          <h1 className="zb-page-title">Dashboard Overview</h1>
-          <p className="zb-page-subtitle">
-            Financial snapshot & inventory health for Zylker Electronics India
+          <h1 className="rf-page-title zb-page-title">Dashboard Overview</h1>
+          <p className="rf-page-subtitle zb-page-subtitle">
+            Financial snapshot & operational health for Rooman Enterprise India
           </p>
         </div>
 

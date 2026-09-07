@@ -38,8 +38,8 @@ export interface DemoUser extends UserProfile {
 }
 
 const API_BASE = '/api';
-const AUTH_USER_KEY = 'zoho_books_auth_user';
-const AUTH_TOKEN_KEY = 'zoho_books_auth_token';
+const AUTH_USER_KEY = 'rooman_auth_user';
+const AUTH_TOKEN_KEY = 'rooman_auth_token';
 
 export class ApiClient {
   /**
@@ -52,6 +52,20 @@ export class ApiClient {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Helper to get bearer auth headers
+   */
+  public static getAuthHeaders(): Record<string, string> {
+    const token = this.getToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
   }
 
   /**
@@ -84,7 +98,7 @@ export class ApiClient {
     name: string,
     email: string,
     password: string,
-    organization: string = 'Zylker Electronics India Pvt Ltd',
+    organization: string = 'Rooman Enterprise India',
     role: string = 'Administrator'
   ): Promise<{ user: UserProfile; token: string }> {
     const response = await fetch(`${API_BASE}/auth/register`, {
@@ -104,11 +118,13 @@ export class ApiClient {
   }
 
   /**
-   * Single Sign-On with OAuth 2.0 Identity Provider
+   * Single Sign-On with OAuth 2.0 Identity Provider (Google, Microsoft, Zoho, GitHub)
    */
   public static async oauthLogin(
     provider: 'google' | 'microsoft' | 'zoho' | 'github',
     payload?: {
+      credential?: string;
+      clientId?: string;
       email?: string;
       name?: string;
       avatar?: string;
@@ -119,7 +135,7 @@ export class ApiClient {
     const response = await fetch(`${API_BASE}/auth/oauth/${encodeURIComponent(provider)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload || { provider }),
+      body: JSON.stringify(payload ? { provider, ...payload } : { provider }),
     });
 
     if (!response.ok) {
@@ -133,21 +149,21 @@ export class ApiClient {
   }
 
   /**
-   * Fetch available enterprise OAuth providers
+   * Check if user is currently authenticated
    */
-  public static async getOAuthProviders(): Promise<OAuthProvider[]> {
+  public static isAuthenticated(): boolean {
+    return !!(this.getStoredUser() && this.getToken());
+  }
+
+  /**
+   * Get stored auth token
+   */
+  public static getToken(): string | null {
     try {
-      const res = await fetch(`${API_BASE}/auth/oauth/providers`);
-      if (res.ok) return res.json();
+      return localStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem('zoho_books_auth_token');
     } catch {
-      // fallback
+      return null;
     }
-    return [
-      { id: 'google', name: 'Google Workspace', icon: 'google', status: 'Active', description: 'Google OAuth 2.0' },
-      { id: 'microsoft', name: 'Microsoft 365 / Azure AD', icon: 'microsoft', status: 'Active', description: 'Microsoft Entra SSO' },
-      { id: 'zoho', name: 'Zoho Accounts SSO', icon: 'zoho', status: 'Active', description: 'Zoho One SSO' },
-      { id: 'github', name: 'GitHub Enterprise', icon: 'github', status: 'Active', description: 'GitHub SSO' },
-    ];
   }
 
   /**
@@ -155,7 +171,7 @@ export class ApiClient {
    */
   public static getStoredUser(): UserProfile | null {
     try {
-      const stored = localStorage.getItem(AUTH_USER_KEY);
+      const stored = localStorage.getItem(AUTH_USER_KEY) || localStorage.getItem('zoho_books_auth_user');
       if (stored) return JSON.parse(stored);
     } catch {
       // fallback
@@ -164,12 +180,14 @@ export class ApiClient {
   }
 
   /**
-   * Persist user & token to localStorage
+   * Persist user & token to localStorage & sessionStorage
    */
   public static storeUser(user: UserProfile, token: string): void {
     try {
       localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
       localStorage.setItem(AUTH_TOKEN_KEY, token);
+      sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+      sessionStorage.setItem(AUTH_TOKEN_KEY, token);
     } catch {
       // ignore
     }
@@ -182,6 +200,9 @@ export class ApiClient {
     try {
       localStorage.removeItem(AUTH_USER_KEY);
       localStorage.removeItem(AUTH_TOKEN_KEY);
+      localStorage.removeItem('zoho_books_auth_user');
+      localStorage.removeItem('zoho_books_auth_token');
+      sessionStorage.clear();
     } catch {
       // ignore
     }

@@ -1,12 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ApiClient, UserProfile } from '../../services/apiClient';
-import { X, Lock, Mail, User, Building, Eye, EyeOff, ShieldCheck, Sparkles, ArrowRight, CheckCircle2, ChevronRight } from 'lucide-react';
+import {
+  X,
+  Lock,
+  Mail,
+  User,
+  Building,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  Sparkles,
+  ArrowRight,
+  ChevronRight,
+  KeyRound,
+  Zap
+} from 'lucide-react';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onLoginSuccess: (user: UserProfile) => void;
   initialMode?: 'login' | 'register';
+}
+
+declare global {
+  interface Window {
+    google?: any;
+  }
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
@@ -16,23 +36,61 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   initialMode = 'login',
 }) => {
   const [mode, setMode] = useState<'login' | 'register'>(initialMode);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('admin@zylkerbooks.com');
+  const [password, setPassword] = useState('password123');
   const [name, setName] = useState('');
-  const [organization, setOrganization] = useState('Zylker Electronics India Pvt Ltd');
+  const [organization, setOrganization] = useState('Rooman Enterprise India');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // OAuth Account Chooser State
-  const [oauthChooserProvider, setOauthChooserProvider] = useState<'google' | 'microsoft' | 'zoho' | 'github' | null>(null);
+  const [oauthChooserProvider, setOauthChooserProvider] = useState<
+    'google' | 'microsoft' | 'zoho' | 'github' | null
+  >(null);
+
+  // Initialize Google Identity Services (GIS) if available
+  useEffect(() => {
+    if (!isOpen) return;
+    try {
+      if (window.google?.accounts?.id) {
+        window.google.accounts.id.initialize({
+          client_id: 'rooman-books-demo.apps.googleusercontent.com',
+          callback: async (response: any) => {
+            if (response.credential) {
+              setLoading(true);
+              try {
+                const res = await ApiClient.oauthLogin('google', {
+                  credential: response.credential,
+                });
+                onLoginSuccess(res.user);
+                onClose();
+              } catch (err: any) {
+                setError(err.message || 'Google OAuth verification failed');
+              } finally {
+                setLoading(false);
+              }
+            }
+          },
+        });
+      }
+    } catch {
+      // Graceful fallback to client-side OAuth flow
+    }
+  }, [isOpen, onLoginSuccess, onClose]);
 
   if (!isOpen) return null;
 
-  // OAuth SSO Login Handler
+  // Google OAuth SSO Login Handler
   const handleOAuthLogin = async (
     provider: 'google' | 'microsoft' | 'zoho' | 'github',
-    account?: { email: string; name: string; avatar: string; role?: string; organization?: string }
+    account?: {
+      email: string;
+      name: string;
+      avatar: string;
+      role?: string;
+      organization?: string;
+    }
   ) => {
     setError(null);
     setLoading(true);
@@ -56,7 +114,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       onLoginSuccess(res.user);
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Demo login failed');
+      setError(err.message || 'Demo sign in failed');
     } finally {
       setLoading(false);
     }
@@ -69,23 +127,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     try {
       if (mode === 'login') {
-        const res = await ApiClient.login(email, password);
+        const loginEmail = email.trim() || 'admin@zylkerbooks.com';
+        const loginPassword = password || 'password123';
+        const res = await ApiClient.login(loginEmail, loginPassword);
         onLoginSuccess(res.user);
       } else {
-        const res = await ApiClient.register(name, email, password, organization);
+        const regName = name.trim() || 'Enterprise Administrator';
+        const regEmail = email.trim() || `user_${Date.now()}@rooman.org`;
+        const regPassword = password || 'password123';
+        const res = await ApiClient.register(regName, regEmail, regPassword, organization);
         onLoginSuccess(res.user);
       }
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Authentication failed. Please check your credentials.');
+      setError(err.message || 'Authentication failed. Please verify credentials.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Google SVG Icon
+  // Google Brand SVG Icon
   const GoogleIcon = () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" className="zb-oauth-icon">
+    <svg width="20" height="20" viewBox="0 0 24 24" className="rf-oauth-brand-icon">
       <path
         fill="#4285F4"
         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -105,9 +168,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     </svg>
   );
 
-  // Microsoft 365 SVG Icon
+  // Microsoft 365 Brand SVG Icon
   const MicrosoftIcon = () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" className="zb-oauth-icon">
+    <svg width="20" height="20" viewBox="0 0 24 24" className="rf-oauth-brand-icon">
       <rect x="1" y="1" width="10" height="10" fill="#F25022" />
       <rect x="13" y="1" width="10" height="10" fill="#7FBA00" />
       <rect x="1" y="13" width="10" height="10" fill="#00A4EF" />
@@ -115,9 +178,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     </svg>
   );
 
-  // Zoho Accounts SVG Icon
+  // Zoho Accounts Brand SVG Icon
   const ZohoIcon = () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" className="zb-oauth-icon">
+    <svg width="20" height="20" viewBox="0 0 24 24" className="rf-oauth-brand-icon">
       <rect x="2" y="2" width="9" height="9" rx="2" fill="#E42528" />
       <rect x="13" y="2" width="9" height="9" rx="2" fill="#226AB2" />
       <rect x="2" y="13" width="9" height="9" rx="2" fill="#009A44" />
@@ -125,9 +188,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     </svg>
   );
 
-  // GitHub SVG Icon
+  // GitHub Brand SVG Icon
   const GithubIcon = () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="zb-oauth-icon">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="rf-oauth-brand-icon">
       <path
         fillRule="evenodd"
         clipRule="evenodd"
@@ -137,58 +200,62 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   );
 
   return (
-    <div className="zb-modal-backdrop" onClick={onClose}>
-      <div className="zb-auth-modal" onClick={e => e.stopPropagation()}>
-        {/* Modal Header */}
-        <div className="zb-auth-header">
-          <div className="zb-auth-brand">
-            <div className="zb-auth-logo">📚</div>
+    <div className="rf-modal-backdrop" onClick={onClose}>
+      <div className="rf-auth-card" onClick={e => e.stopPropagation()}>
+        {/* Header Bar */}
+        <div className="rf-auth-header">
+          <div className="rf-auth-brand-row">
+            <div className="rf-auth-gem">
+              <Sparkles size={20} className="text-indigo" />
+            </div>
             <div>
-              <h3 className="zb-auth-title">Rooman Books</h3>
-              <p className="zb-auth-sub">Enterprise Accounting Platform</p>
+              <h2 className="rf-auth-title">Rooman Books</h2>
+              <p className="rf-auth-subtitle">Apex Financial Operating System</p>
             </div>
           </div>
-          <button className="zb-modal-close" onClick={onClose} title="Close">
+          <button className="rf-icon-button" onClick={onClose} title="Close dialog">
             <X size={18} />
           </button>
         </div>
 
-        {/* Auth Tab Switcher */}
-        <div className="zb-auth-tabs">
+        {/* Tab Switcher */}
+        <div className="rf-auth-pill-tabs">
           <button
-            className={`zb-auth-tab ${mode === 'login' ? 'active' : ''}`}
+            type="button"
+            className={`rf-pill-tab ${mode === 'login' ? 'active' : ''}`}
             onClick={() => {
               setMode('login');
               setError(null);
             }}
           >
-            Sign In
+            Sign In to Workspace
           </button>
           <button
-            className={`zb-auth-tab ${mode === 'register' ? 'active' : ''}`}
+            type="button"
+            className={`rf-pill-tab ${mode === 'register' ? 'active' : ''}`}
             onClick={() => {
               setMode('register');
               setError(null);
             }}
           >
-            Create Account
+            Create New Account
           </button>
         </div>
 
-        {/* OAuth 2.0 Single Sign-On Section */}
-        <div className="zb-oauth-section">
-          <div className="zb-oauth-header-label">
-            <span className="zb-oauth-sso-badge">OAuth 2.0</span>
-            <span>Single Sign-On (SSO)</span>
+        {/* OAuth 2.0 Single Sign-On Showcase */}
+        <div className="rf-oauth-container">
+          <div className="rf-oauth-title-bar">
+            <span className="rf-badge rf-badge-indigo">OAuth 2.0 SSO</span>
+            <span className="rf-oauth-text">Instant Corporate Verification</span>
           </div>
 
-          <div className="zb-oauth-grid">
+          <div className="rf-oauth-buttons-row">
             <button
               type="button"
-              className="zb-oauth-btn google"
+              className="rf-oauth-btn google"
               onClick={() => setOauthChooserProvider('google')}
               disabled={loading}
-              title="Sign in with Google Workspace"
+              title="Authenticate via Google Workspace"
             >
               <GoogleIcon />
               <span>Continue with Google</span>
@@ -196,252 +263,260 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
             <button
               type="button"
-              className="zb-oauth-btn microsoft"
+              className="rf-oauth-btn microsoft"
               onClick={() => setOauthChooserProvider('microsoft')}
               disabled={loading}
-              title="Sign in with Microsoft 365"
+              title="Authenticate via Microsoft Azure AD"
             >
               <MicrosoftIcon />
               <span>Continue with Microsoft 365</span>
             </button>
           </div>
 
-          <div className="zb-oauth-grid secondary">
+          <div className="rf-oauth-secondary-row">
             <button
               type="button"
-              className="zb-oauth-btn zoho"
+              className="rf-oauth-pill-btn"
               onClick={() => handleOAuthLogin('zoho')}
               disabled={loading}
-              title="Sign in with Zoho Accounts"
             >
-              <ZohoIcon />
-              <span>Continue with Zoho</span>
+              <ShieldCheck size={16} className="text-emerald" />
+              <span>Corporate SSO</span>
             </button>
 
             <button
               type="button"
-              className="zb-oauth-btn github"
+              className="rf-oauth-pill-btn"
               onClick={() => handleOAuthLogin('github')}
               disabled={loading}
-              title="Sign in with GitHub Enterprise"
             >
               <GithubIcon />
-              <span>Continue with GitHub</span>
+              <span>GitHub Enterprise</span>
             </button>
           </div>
         </div>
 
-        {/* OAuth Account Chooser Dialog (Interactive SSO Flow) */}
+        {/* Interactive Google / Microsoft Account Chooser Modal */}
         {oauthChooserProvider && (
-          <div className="zb-oauth-chooser-overlay" onClick={() => setOauthChooserProvider(null)}>
-            <div className="zb-oauth-chooser-card" onClick={e => e.stopPropagation()}>
-              <div className="zb-oauth-chooser-header">
-                <div className="zb-flex-align gap-2">
-                  {oauthChooserProvider === 'google' && <GoogleIcon />}
-                  {oauthChooserProvider === 'microsoft' && <MicrosoftIcon />}
+          <div className="rf-oauth-submodal-overlay" onClick={() => setOauthChooserProvider(null)}>
+            <div className="rf-oauth-submodal-card" onClick={e => e.stopPropagation()}>
+              <div className="rf-submodal-header">
+                <div className="rf-flex-align gap-2">
+                  {oauthChooserProvider === 'google' ? <GoogleIcon /> : <MicrosoftIcon />}
                   <h4>
                     Sign in with {oauthChooserProvider === 'google' ? 'Google' : 'Microsoft 365'}
                   </h4>
                 </div>
                 <button
-                  className="zb-modal-close"
+                  className="rf-icon-button small"
                   onClick={() => setOauthChooserProvider(null)}
                 >
                   <X size={16} />
                 </button>
               </div>
 
-              <p className="zb-oauth-chooser-subtitle">
-                Choose an enterprise account to continue to <strong>Rooman Books</strong>
+              <p className="rf-submodal-desc">
+                Select your verified identity to enter <strong>Rooman Books</strong>:
               </p>
 
-              <div className="zb-oauth-account-list">
+              <div className="rf-accounts-list">
                 {oauthChooserProvider === 'google' ? (
                   <>
                     <button
                       type="button"
-                      className="zb-oauth-account-row"
+                      className="rf-account-item"
                       onClick={() =>
                         handleOAuthLogin('google', {
                           name: 'Shalya Gaonkar',
                           email: 'shalya.gaonkar@gmail.com',
                           role: 'Administrator',
-                          organization: 'Zylker Electronics India Pvt Ltd',
+                          organization: 'Rooman Enterprise India',
                           avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&q=80',
                         })
                       }
                     >
-                      <div className="zb-oauth-acc-avatar">SG</div>
-                      <div className="zb-oauth-acc-info">
-                        <span className="zb-oauth-acc-name">Shalya Gaonkar</span>
-                        <span className="zb-oauth-acc-email">shalya.gaonkar@gmail.com</span>
+                      <div className="rf-avatar-badge admin">SG</div>
+                      <div className="rf-account-meta">
+                        <div className="rf-account-name">Shalya Gaonkar</div>
+                        <div className="rf-account-email">shalya.gaonkar@gmail.com</div>
+                        <span className="rf-account-tag">Administrator • All Access</span>
                       </div>
-                      <ChevronRight size={16} className="text-muted" />
+                      <ChevronRight size={18} className="text-muted" />
                     </button>
 
                     <button
                       type="button"
-                      className="zb-oauth-account-row"
+                      className="rf-account-item"
                       onClick={() =>
                         handleOAuthLogin('google', {
-                          name: 'Finance Team',
+                          name: 'Finance & Treasury Team',
                           email: 'finance@rooman.org',
                           role: 'Chief Financial Officer',
-                          organization: 'Rooman Technologies Enterprise',
+                          organization: 'Rooman Enterprise India',
                           avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&q=80',
                         })
                       }
                     >
-                      <div className="zb-oauth-acc-avatar finance">FT</div>
-                      <div className="zb-oauth-acc-info">
-                        <span className="zb-oauth-acc-name">Finance Team</span>
-                        <span className="zb-oauth-acc-email">finance@rooman.org</span>
+                      <div className="rf-avatar-badge finance">FT</div>
+                      <div className="rf-account-meta">
+                        <div className="rf-account-name">Finance & Treasury Team</div>
+                        <div className="rf-account-email">finance@rooman.org</div>
+                        <span className="rf-account-tag">CFO • Banking & Audit</span>
                       </div>
-                      <ChevronRight size={16} className="text-muted" />
+                      <ChevronRight size={18} className="text-muted" />
                     </button>
                   </>
                 ) : (
                   <>
                     <button
                       type="button"
-                      className="zb-oauth-account-row"
+                      className="rf-account-item"
                       onClick={() =>
                         handleOAuthLogin('microsoft', {
-                          name: 'Shalya Gaonkar',
+                          name: 'Shalya Gaonkar (M365)',
                           email: 'shalya@rooman.onmicrosoft.com',
                           role: 'Administrator',
-                          organization: 'Zylker Electronics India Pvt Ltd',
-                          avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&q=80',
+                          organization: 'Rooman Enterprise India',
+                          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&q=80',
                         })
                       }
                     >
-                      <div className="zb-oauth-acc-avatar ms">SG</div>
-                      <div className="zb-oauth-acc-info">
-                        <span className="zb-oauth-acc-name">Shalya Gaonkar (Azure AD)</span>
-                        <span className="zb-oauth-acc-email">shalya@rooman.onmicrosoft.com</span>
+                      <div className="rf-avatar-badge m365">SG</div>
+                      <div className="rf-account-meta">
+                        <div className="rf-account-name">Shalya Gaonkar</div>
+                        <div className="rf-account-email">shalya@rooman.onmicrosoft.com</div>
+                        <span className="rf-account-tag">Azure AD • Global Admin</span>
                       </div>
-                      <ChevronRight size={16} className="text-muted" />
+                      <ChevronRight size={18} className="text-muted" />
                     </button>
 
                     <button
                       type="button"
-                      className="zb-oauth-account-row"
+                      className="rf-account-item"
                       onClick={() =>
                         handleOAuthLogin('microsoft', {
-                          name: 'Priya Sharma',
+                          name: 'Priya Sharma (M365)',
                           email: 'priya.sharma@rooman.com',
                           role: 'Chief Accountant',
-                          organization: 'Zylker Electronics India Pvt Ltd',
+                          organization: 'Rooman Enterprise India',
                           avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&q=80',
                         })
                       }
                     >
-                      <div className="zb-oauth-acc-avatar accountant">PS</div>
-                      <div className="zb-oauth-acc-info">
-                        <span className="zb-oauth-acc-name">Priya Sharma</span>
-                        <span className="zb-oauth-acc-email">priya.sharma@rooman.com</span>
+                      <div className="rf-avatar-badge accountant">PS</div>
+                      <div className="rf-account-meta">
+                        <div className="rf-account-name">Priya Sharma</div>
+                        <div className="rf-account-email">priya.sharma@rooman.com</div>
+                        <span className="rf-account-tag">Chief Accountant • M365</span>
                       </div>
-                      <ChevronRight size={16} className="text-muted" />
+                      <ChevronRight size={18} className="text-muted" />
                     </button>
                   </>
                 )}
-              </div>
-
-              <div className="zb-oauth-security-note">
-                <ShieldCheck size={14} className="text-success" />
-                <span>Verified via OAuth 2.0 OpenID Connect</span>
               </div>
             </div>
           </div>
         )}
 
-        <div className="zb-auth-divider">
-          <span>Or sign in with email credentials</span>
-        </div>
-
-        {/* Demo Fast Login Shortcuts */}
-        <div className="zb-auth-demo-section">
-          <div className="zb-auth-demo-label">
-            <Sparkles size={14} className="text-amber" />
-            <span>Fast Test Demo Accounts</span>
+        {/* 1-Click Fast Demo Credentials Bar */}
+        <div className="rf-demo-access-panel">
+          <div className="rf-demo-access-header">
+            <Zap size={14} className="text-amber" />
+            <span>Instant Demo Access (1-Click)</span>
           </div>
-          <div className="zb-auth-demo-cards">
+          <div className="rf-demo-cards-row">
             <button
               type="button"
-              className="zb-auth-demo-card"
+              className="rf-demo-card"
               onClick={() => handleDemoLogin('admin@zylkerbooks.com', 'password123')}
               disabled={loading}
             >
-              <div className="zb-auth-demo-avatar admin">SG</div>
-              <div className="zb-auth-demo-info">
-                <div className="zb-auth-demo-name">Shalya Gaonkar</div>
-                <div className="zb-auth-demo-role">Administrator & Owner</div>
+              <div className="rf-demo-avatar admin">SG</div>
+              <div className="rf-demo-text">
+                <span className="rf-demo-title">Shalya Gaonkar</span>
+                <span className="rf-demo-role">Administrator</span>
               </div>
-              <ArrowRight size={14} className="zb-auth-demo-arrow" />
+              <ArrowRight size={14} className="rf-demo-arrow" />
             </button>
 
             <button
               type="button"
-              className="zb-auth-demo-card"
+              className="rf-demo-card"
               onClick={() => handleDemoLogin('accountant@rooman.com', 'password123')}
               disabled={loading}
             >
-              <div className="zb-auth-demo-avatar accountant">PS</div>
-              <div className="zb-auth-demo-info">
-                <div className="zb-auth-demo-name">Priya Sharma</div>
-                <div className="zb-auth-demo-role">Chief Accountant</div>
+              <div className="rf-demo-avatar accountant">PS</div>
+              <div className="rf-demo-text">
+                <span className="rf-demo-title">Priya Sharma</span>
+                <span className="rf-demo-role">Chief Accountant</span>
               </div>
-              <ArrowRight size={14} className="zb-auth-demo-arrow" />
+              <ArrowRight size={14} className="rf-demo-arrow" />
             </button>
           </div>
         </div>
 
-        {/* Error Banner */}
-        {error && <div className="zb-auth-error">{error}</div>}
+        {/* Error Alert */}
+        {error && (
+          <div className="rf-alert rf-alert-danger">
+            <span>{error}</span>
+          </div>
+        )}
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="zb-auth-form">
+        <form onSubmit={handleSubmit} className="rf-auth-form">
           {mode === 'register' && (
             <>
-              <div className="zb-form-group">
-                <label className="zb-label">Full Name</label>
-                <div className="zb-input-with-icon">
-                  <User size={16} className="icon" />
+              <div className="rf-form-group">
+                <label className="rf-form-label">Full Name</label>
+                <div className="rf-input-wrapper">
+                  <User size={16} className="rf-input-icon" />
                   <input
                     type="text"
-                    className="zb-input"
-                    placeholder="Enter your name"
+                    className="rf-text-input"
+                    placeholder="e.g. Shalya Gaonkar"
                     value={name}
                     onChange={e => setName(e.target.value)}
-                    required
                   />
                 </div>
               </div>
 
-              <div className="zb-form-group">
-                <label className="zb-label">Organization Name</label>
-                <div className="zb-input-with-icon">
-                  <Building size={16} className="icon" />
+              <div className="rf-form-group">
+                <label className="rf-form-label">Organization Name</label>
+                <div className="rf-input-wrapper">
+                  <Building size={16} className="rf-input-icon" />
                   <input
                     type="text"
-                    className="zb-input"
-                    placeholder="Company or Business name"
+                    className="rf-text-input"
+                    placeholder="e.g. Rooman Technologies Enterprise"
                     value={organization}
                     onChange={e => setOrganization(e.target.value)}
-                    required
                   />
                 </div>
               </div>
             </>
           )}
 
-          <div className="zb-form-group">
-            <label className="zb-label">Work Email</label>
-            <div className="zb-input-with-icon">
-              <Mail size={16} className="icon" />
+          <div className="rf-form-group">
+            <div className="rf-flex-between">
+              <label className="rf-form-label">Work Email</label>
+              {mode === 'login' && (
+                <button
+                  type="button"
+                  className="rf-quick-fill-btn"
+                  onClick={() => {
+                    setEmail('admin@zylkerbooks.com');
+                    setPassword('password123');
+                  }}
+                >
+                  <KeyRound size={12} /> Auto-fill Demo
+                </button>
+              )}
+            </div>
+            <div className="rf-input-wrapper">
+              <Mail size={16} className="rf-input-icon" />
               <input
                 type="email"
-                className="zb-input"
+                className="rf-text-input"
                 placeholder="name@company.com"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
@@ -450,21 +525,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
           </div>
 
-          <div className="zb-form-group">
-            <label className="zb-label">Password</label>
-            <div className="zb-input-with-icon">
-              <Lock size={16} className="icon" />
+          <div className="rf-form-group">
+            <label className="rf-form-label">Password</label>
+            <div className="rf-input-wrapper">
+              <Lock size={16} className="rf-input-icon" />
               <input
                 type={showPassword ? 'text' : 'password'}
-                className="zb-input"
-                placeholder={mode === 'register' ? 'Minimum 6 characters' : 'Enter your password'}
+                className="rf-text-input"
+                placeholder={mode === 'register' ? 'Minimum 6 characters' : 'Enter password'}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required
               />
               <button
                 type="button"
-                className="zb-password-toggle"
+                className="rf-icon-button small"
                 onClick={() => setShowPassword(!showPassword)}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -474,22 +549,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
           <button
             type="submit"
-            className="zb-btn zb-btn-primary zb-btn-block zb-auth-submit-btn"
+            className="rf-btn rf-btn-primary rf-btn-block"
             disabled={loading}
           >
             {loading ? (
-              <span className="zb-spinner-text">Authenticating...</span>
+              <span>Authenticating...</span>
             ) : mode === 'login' ? (
               'Sign In to Dashboard'
             ) : (
-              'Create Account & Get Started'
+              'Create Account & Enter'
             )}
           </button>
         </form>
 
-        <div className="zb-auth-footer">
-          <ShieldCheck size={14} className="text-success" />
-          <span>OAuth 2.0 & Bank-Grade 256-bit Encryption</span>
+        <div className="rf-auth-footer-bar">
+          <ShieldCheck size={14} className="text-emerald" />
+          <span>OAuth 2.0 Verified & Bank-Grade 256-Bit TLS Security</span>
         </div>
       </div>
     </div>
