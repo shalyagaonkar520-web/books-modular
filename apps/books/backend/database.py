@@ -86,6 +86,52 @@ def init_db():
                         auth_provider VARCHAR(50) DEFAULT 'local'
                     );
                 """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS invoices (
+                        id VARCHAR(100) PRIMARY KEY,
+                        client VARCHAR(255) NOT NULL,
+                        client_email VARCHAR(255),
+                        client_gstin VARCHAR(100),
+                        date VARCHAR(100) NOT NULL,
+                        due VARCHAR(100) NOT NULL,
+                        subtotal REAL NOT NULL,
+                        tax_amount REAL NOT NULL,
+                        amount REAL NOT NULL,
+                        status VARCHAR(50) NOT NULL,
+                        items TEXT NOT NULL,
+                        notes TEXT,
+                        created_at VARCHAR(100) NOT NULL
+                    );
+                """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS documents (
+                        id VARCHAR(100) PRIMARY KEY,
+                        title VARCHAR(255) NOT NULL,
+                        category VARCHAR(100) NOT NULL,
+                        uploaded_by VARCHAR(255) NOT NULL,
+                        date VARCHAR(100) NOT NULL,
+                        size VARCHAR(50) NOT NULL,
+                        verified BOOLEAN NOT NULL DEFAULT TRUE,
+                        checksum VARCHAR(100) NOT NULL,
+                        notes TEXT
+                    );
+                """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS payroll_employees (
+                        id VARCHAR(100) PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        designation VARCHAR(255) NOT NULL,
+                        department VARCHAR(100) NOT NULL,
+                        gross REAL NOT NULL,
+                        deductions REAL NOT NULL,
+                        net REAL NOT NULL,
+                        bank_acc VARCHAR(100) NOT NULL,
+                        pan VARCHAR(50) NOT NULL,
+                        uan VARCHAR(50) NOT NULL,
+                        status VARCHAR(50) NOT NULL,
+                        last_pay_date VARCHAR(100) NOT NULL
+                    );
+                """)
                 conn.commit()
 
                 cursor.execute("SELECT COUNT(*) as count FROM items")
@@ -101,6 +147,28 @@ def init_db():
                 if count_u == 0:
                     _seed_users_pg(cursor)
                     conn.commit()
+
+                cursor.execute("SELECT COUNT(*) as count FROM invoices")
+                res_i = cursor.fetchone()
+                count_i = res_i["count"] if isinstance(res_i, dict) else res_i[0]
+                if count_i == 0:
+                    _seed_invoices_pg(cursor)
+                    conn.commit()
+
+                cursor.execute("SELECT COUNT(*) as count FROM documents")
+                res_d = cursor.fetchone()
+                count_d = res_d["count"] if isinstance(res_d, dict) else res_d[0]
+                if count_d == 0:
+                    _seed_documents_pg(cursor)
+                    conn.commit()
+
+                cursor.execute("SELECT COUNT(*) as count FROM payroll_employees")
+                res_p = cursor.fetchone()
+                count_p = res_p["count"] if isinstance(res_p, dict) else res_p[0]
+                if count_p == 0:
+                    _seed_payroll_pg(cursor)
+                    conn.commit()
+
                 cursor.close()
             else:
                 cursor = conn.cursor()
@@ -133,6 +201,52 @@ def init_db():
                         auth_provider TEXT DEFAULT 'local'
                     )
                 """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS invoices (
+                        id TEXT PRIMARY KEY,
+                        client TEXT NOT NULL,
+                        client_email TEXT,
+                        client_gstin TEXT,
+                        date TEXT NOT NULL,
+                        due TEXT NOT NULL,
+                        subtotal REAL NOT NULL,
+                        tax_amount REAL NOT NULL,
+                        amount REAL NOT NULL,
+                        status TEXT NOT NULL,
+                        items TEXT NOT NULL,
+                        notes TEXT,
+                        created_at TEXT NOT NULL
+                    )
+                """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS documents (
+                        id TEXT PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        category TEXT NOT NULL,
+                        uploaded_by TEXT NOT NULL,
+                        date TEXT NOT NULL,
+                        size TEXT NOT NULL,
+                        verified INTEGER NOT NULL DEFAULT 1,
+                        checksum TEXT NOT NULL,
+                        notes TEXT
+                    )
+                """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS payroll_employees (
+                        id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        designation TEXT NOT NULL,
+                        department TEXT NOT NULL,
+                        gross REAL NOT NULL,
+                        deductions REAL NOT NULL,
+                        net REAL NOT NULL,
+                        bank_acc TEXT NOT NULL,
+                        pan TEXT NOT NULL,
+                        uan TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        last_pay_date TEXT NOT NULL
+                    )
+                """)
                 conn.commit()
 
                 # Migrate schema if auth_provider column is missing in SQLite
@@ -151,6 +265,22 @@ def init_db():
                 if cursor.fetchone()[0] == 0:
                     _seed_users_sqlite(cursor)
                     conn.commit()
+
+                cursor.execute("SELECT COUNT(*) FROM invoices")
+                if cursor.fetchone()[0] == 0:
+                    _seed_invoices_sqlite(cursor)
+                    conn.commit()
+
+                cursor.execute("SELECT COUNT(*) FROM documents")
+                if cursor.fetchone()[0] == 0:
+                    _seed_documents_sqlite(cursor)
+                    conn.commit()
+
+                cursor.execute("SELECT COUNT(*) FROM payroll_employees")
+                if cursor.fetchone()[0] == 0:
+                    _seed_payroll_sqlite(cursor)
+                    conn.commit()
+
                 cursor.close()
         finally:
             conn.close()
@@ -229,6 +359,341 @@ def _seed_users_pg(cursor):
                 avatar = EXCLUDED.avatar,
                 auth_provider = EXCLUDED.auth_provider
         """, u)
+
+
+def _get_initial_invoices():
+    now = datetime.utcnow().isoformat() + "Z"
+    return [
+        (
+            "INV-00104",
+            "Infosys BPM Limited",
+            "billing@infosys.com",
+            "29AAACI4567B1Z8",
+            "02 Sep 2026",
+            "16 Sep 2026",
+            156779.66,
+            28220.34,
+            185000.0,
+            "Sent",
+            json.dumps([
+                {
+                    "name": "Cloud Infrastructure Migration & DevOps Consulting",
+                    "description": "Kubernetes migration, auto-scaling policy setup & multi-region configuration",
+                    "hsn": "998313",
+                    "quantity": 1,
+                    "rate": 156779.66,
+                    "discount": 0,
+                    "taxRate": 18,
+                    "amount": 185000.0
+                }
+            ]),
+            "Net 15 days terms. Remit payment to HDFC Bank A/C 50200049281928, IFSC: HDFC0000053.",
+            now
+        ),
+        (
+            "INV-00103",
+            "Tata Consultancy Services",
+            "ap.desk@tcs.com",
+            "27AAACT9876C1Z4",
+            "28 Aug 2026",
+            "11 Sep 2026",
+            289830.51,
+            52169.49,
+            342000.0,
+            "Paid",
+            json.dumps([
+                {
+                    "name": "Enterprise ERP Ledger Security Architecture",
+                    "description": "High-throughput double-entry transactional pipeline security hardening",
+                    "hsn": "998313",
+                    "quantity": 1,
+                    "rate": 289830.51,
+                    "discount": 0,
+                    "taxRate": 18,
+                    "amount": 342000.0
+                }
+            ]),
+            "Invoice settled in full via IMPS transfer on 03 Sep 2026.",
+            now
+        ),
+        (
+            "INV-00102",
+            "Wipro Digital Labs",
+            "accounts@wipro.com",
+            "29AAACW1234D1Z2",
+            "20 Aug 2026",
+            "03 Sep 2026",
+            83474.58,
+            15025.42,
+            98500.0,
+            "Overdue",
+            json.dumps([
+                {
+                    "name": "API Gateway & Microservices Performance Audit",
+                    "description": "Latency profiling, rate limit fine-tuning & load testing",
+                    "hsn": "998313",
+                    "quantity": 1,
+                    "rate": 83474.58,
+                    "discount": 0,
+                    "taxRate": 18,
+                    "amount": 98500.0
+                }
+            ]),
+            "Payment overdue. Automated reminder sent to finance contact.",
+            now
+        ),
+        (
+            "INV-00101",
+            "Razorpay Software Pvt Ltd",
+            "merchant-pay@razorpay.com",
+            "29AABCR8765E1Z6",
+            "15 Aug 2026",
+            "30 Aug 2026",
+            182203.39,
+            32796.61,
+            215000.0,
+            "Paid",
+            json.dumps([
+                {
+                    "name": "Instant Settlement & UPI Webhook Integration",
+                    "description": "Dynamic UPI QR code generator & webhook listener implementation",
+                    "hsn": "998314",
+                    "quantity": 1,
+                    "rate": 182203.39,
+                    "discount": 0,
+                    "taxRate": 18,
+                    "amount": 215000.0
+                }
+            ]),
+            "Settled via UPI Instant payment gateway.",
+            now
+        ),
+        (
+            "INV-00100",
+            "Swiggy Technologies",
+            "vendor-invoices@swiggy.in",
+            "29AALCS5432F1Z8",
+            "08 Aug 2026",
+            "22 Aug 2026",
+            122881.36,
+            22118.64,
+            145000.0,
+            "Paid",
+            json.dumps([
+                {
+                    "name": "Corporate NetBanking Reconciliation Module",
+                    "description": "Direct bank feed synchronization & automated statement parsing",
+                    "hsn": "998313",
+                    "quantity": 1,
+                    "rate": 122881.36,
+                    "discount": 0,
+                    "taxRate": 18,
+                    "amount": 145000.0
+                }
+            ]),
+            "Received in corporate current account.",
+            now
+        ),
+    ]
+
+
+def _get_initial_documents():
+    return [
+        (
+            "DOC-801",
+            "GST_Certificate_2026_27.pdf",
+            "Tax & GST",
+            "Shalya Gaonkar",
+            "02 Sep 2026",
+            "2.4 MB",
+            1,
+            "SHA256:e8f237b5d1a89c32f8149e21",
+            "Central Board of Indirect Taxes & Customs GST Registration Certificate Form GST REG-06"
+        ),
+        (
+            "DOC-802",
+            "HDFC_Bank_Statement_August2026.pdf",
+            "Bank Statements",
+            "Priya Iyer",
+            "01 Sep 2026",
+            "4.8 MB",
+            1,
+            "SHA256:d19a4e8c3b7f11904a5528ea",
+            "Monthly corporate current account transaction reconciliation statement"
+        ),
+        (
+            "DOC-803",
+            "Vendor_Agreement_TechDistro.pdf",
+            "Legal & Contracts",
+            "Rahul Sharma",
+            "28 Aug 2026",
+            "1.8 MB",
+            1,
+            "SHA256:bc39271e0fa239d48b11c993",
+            "Hardware procurement SLA and master service agreement"
+        ),
+        (
+            "DOC-804",
+            "Office_Lease_Rental_Deed.pdf",
+            "Legal & Contracts",
+            "Admin",
+            "15 Aug 2026",
+            "5.1 MB",
+            1,
+            "SHA256:f7a2184c2eb012a97d438901",
+            "Registered commercial lease deed for Bengaluru headquarters"
+        ),
+        (
+            "DOC-805",
+            "Hardware_Procurement_Voucher_8092.pdf",
+            "Invoices & Bills",
+            "Accounts",
+            "10 Aug 2026",
+            "890 KB",
+            0,
+            "SHA256:a2b8490e3cd125f498327ba5",
+            "Dell UltraSharp monitors voucher awaiting signoff"
+        ),
+    ]
+
+
+def _get_initial_payroll():
+    return [
+        (
+            "EMP-101",
+            "Shalya Gaonkar",
+            "Principal Architect",
+            "Engineering",
+            240000.0,
+            28800.0,
+            211200.0,
+            "••••••••1928",
+            "ABCDE1234F",
+            "101294819201",
+            "Paid",
+            "31 Aug 2026"
+        ),
+        (
+            "EMP-102",
+            "Priya Iyer",
+            "Senior Financial Controller",
+            "Finance",
+            185000.0,
+            22200.0,
+            162800.0,
+            "••••••••4029",
+            "BGHYT5678K",
+            "101294819202",
+            "Paid",
+            "31 Aug 2026"
+        ),
+        (
+            "EMP-103",
+            "Rahul Sharma",
+            "Lead Systems Engineer",
+            "Engineering",
+            160000.0,
+            19200.0,
+            140800.0,
+            "••••••••9182",
+            "JKLMN9012L",
+            "101294819203",
+            "Paid",
+            "31 Aug 2026"
+        ),
+        (
+            "EMP-104",
+            "Ananya Deshmukh",
+            "Tax & Compliance Specialist",
+            "Finance",
+            130000.0,
+            15600.0,
+            114400.0,
+            "••••••••3821",
+            "QWERT3456M",
+            "101294819204",
+            "Processing",
+            "31 Jul 2026"
+        ),
+        (
+            "EMP-105",
+            "Vikram Mehta",
+            "Operations Manager",
+            "Operations",
+            115000.0,
+            13800.0,
+            101200.0,
+            "••••••••7741",
+            "ZXCVB7890P",
+            "101294819205",
+            "Processing",
+            "31 Jul 2026"
+        ),
+    ]
+
+
+def _seed_invoices_sqlite(cursor):
+    for inv in _get_initial_invoices():
+        cursor.execute("""
+            INSERT OR REPLACE INTO invoices (
+                id, client, client_email, client_gstin, date, due, subtotal, tax_amount, amount, status, items, notes, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, inv)
+
+
+def _seed_invoices_pg(cursor):
+    for inv in _get_initial_invoices():
+        cursor.execute("""
+            INSERT INTO invoices (
+                id, client, client_email, client_gstin, date, due, subtotal, tax_amount, amount, status, items, notes, created_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (id) DO UPDATE SET
+                client = EXCLUDED.client,
+                amount = EXCLUDED.amount,
+                status = EXCLUDED.status
+        """, inv)
+
+
+def _seed_documents_sqlite(cursor):
+    for doc in _get_initial_documents():
+        cursor.execute("""
+            INSERT OR REPLACE INTO documents (
+                id, title, category, uploaded_by, date, size, verified, checksum, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, doc)
+
+
+def _seed_documents_pg(cursor):
+    for doc in _get_initial_documents():
+        cursor.execute("""
+            INSERT INTO documents (
+                id, title, category, uploaded_by, date, size, verified, checksum, notes
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (id) DO UPDATE SET
+                title = EXCLUDED.title,
+                verified = EXCLUDED.verified
+        """, doc)
+
+
+def _seed_payroll_sqlite(cursor):
+    for emp in _get_initial_payroll():
+        cursor.execute("""
+            INSERT OR REPLACE INTO payroll_employees (
+                id, name, designation, department, gross, deductions, net, bank_acc, pan, uan, status, last_pay_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, emp)
+
+
+def _seed_payroll_pg(cursor):
+    for emp in _get_initial_payroll():
+        cursor.execute("""
+            INSERT INTO payroll_employees (
+                id, name, designation, department, gross, deductions, net, bank_acc, pan, uan, status, last_pay_date
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (id) DO UPDATE SET
+                gross = EXCLUDED.gross,
+                status = EXCLUDED.status
+        """, emp)
 
 
 def _row_to_dict(row: Any) -> Dict[str, Any]:
@@ -785,3 +1250,512 @@ def authenticate_or_create_oauth_user(
             }
         finally:
             conn.close()
+
+
+def number_to_indian_words(n: float) -> str:
+    n = int(round(n))
+    if n == 0:
+        return "Zero Rupees Only"
+    ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+            "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
+            "Seventeen", "Eighteen", "Nineteen"]
+    tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
+
+    def two_digits(num):
+        if num < 20:
+            return ones[num]
+        return tens[num // 10] + (" " + ones[num % 10] if num % 10 != 0 else "")
+
+    def three_digits(num):
+        h = num // 100
+        rem = num % 100
+        res = ""
+        if h > 0:
+            res += ones[h] + " Hundred"
+            if rem > 0:
+                res += " and "
+        if rem > 0:
+            res += two_digits(rem)
+        return res
+
+    parts = []
+    crore = n // 10000000
+    n %= 10000000
+    lakh = n // 100000
+    n %= 100000
+    thousand = n // 1000
+    n %= 1000
+    remainder = n
+
+    if crore > 0:
+        parts.append(two_digits(crore) + " Crore")
+    if lakh > 0:
+        parts.append(two_digits(lakh) + " Lakh")
+    if thousand > 0:
+        parts.append(two_digits(thousand) + " Thousand")
+    if remainder > 0:
+        parts.append(three_digits(remainder))
+
+    return " ".join(parts).strip() + " Rupees Only"
+
+
+# ==================== INVOICE OPERATIONS ====================
+def _invoice_row_to_dict(row: Any) -> Dict[str, Any]:
+    items_raw = row["items"]
+    if isinstance(items_raw, str):
+        try:
+            items = json.loads(items_raw)
+        except Exception:
+            items = []
+    elif isinstance(items_raw, list):
+        items = items_raw
+    else:
+        items = []
+
+    return {
+        "id": row["id"],
+        "client": row["client"],
+        "clientEmail": row.get("client_email") or "",
+        "clientGstin": row.get("client_gstin") or "29AABCU9603R1ZM",
+        "date": row["date"],
+        "due": row["due"],
+        "subtotal": float(row["subtotal"]),
+        "taxAmount": float(row["tax_amount"]),
+        "amount": float(row["amount"]),
+        "status": row["status"],
+        "items": items,
+        "notes": row.get("notes") or "",
+        "createdAt": row["created_at"],
+    }
+
+
+def get_all_invoices() -> List[Dict[str, Any]]:
+    with _lock:
+        conn = get_connection()
+        try:
+            query = _format_query("SELECT * FROM invoices ORDER BY created_at DESC")
+            if IS_POSTGRES:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                cursor.execute(query)
+                rows = cursor.fetchall()
+                cursor.close()
+            else:
+                cursor = conn.cursor()
+                cursor.execute(query)
+                cols = [d[0] for d in cursor.description]
+                rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
+                cursor.close()
+            return [_invoice_row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+
+
+def get_invoice_by_id(invoice_id: str) -> Optional[Dict[str, Any]]:
+    with _lock:
+        conn = get_connection()
+        try:
+            query = _format_query("SELECT * FROM invoices WHERE id = ?")
+            if IS_POSTGRES:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                cursor.execute(query, (invoice_id,))
+                row = cursor.fetchone()
+                cursor.close()
+            else:
+                cursor = conn.cursor()
+                cursor.execute(query, (invoice_id,))
+                res = cursor.fetchone()
+                if not res:
+                    return None
+                cols = [d[0] for d in cursor.description]
+                row = dict(zip(cols, res))
+                cursor.close()
+            return _invoice_row_to_dict(row) if row else None
+        finally:
+            conn.close()
+
+
+def create_invoice(data: Dict[str, Any]) -> Dict[str, Any]:
+    with _lock:
+        conn = get_connection()
+        try:
+            inv_id = data.get("id")
+            if not inv_id:
+                count_q = _format_query("SELECT COUNT(*) as count FROM invoices")
+                if IS_POSTGRES:
+                    c = conn.cursor(cursor_factory=RealDictCursor)
+                    c.execute(count_q)
+                    r = c.fetchone()
+                    total = r["count"] if isinstance(r, dict) else r[0]
+                    c.close()
+                else:
+                    c = conn.cursor()
+                    c.execute(count_q)
+                    total = c.fetchone()[0]
+                    c.close()
+                inv_id = f"INV-{105 + total}"
+
+            now = datetime.utcnow().isoformat() + "Z"
+            items = data.get("items", [])
+            subtotal = sum(float(item.get("rate", 0)) * float(item.get("quantity", 1)) for item in items)
+            tax_amount = sum((float(item.get("rate", 0)) * float(item.get("quantity", 1)) * float(item.get("taxRate", item.get("tax_rate", 18)))) / 100.0 for item in items)
+            total_amount = data.get("amount") or (subtotal + tax_amount)
+            if subtotal == 0 and total_amount > 0:
+                subtotal = round(total_amount / 1.18, 2)
+                tax_amount = round(total_amount - subtotal, 2)
+
+            query = _format_query("""
+                INSERT INTO invoices (
+                    id, client, client_email, client_gstin, date, due, subtotal, tax_amount, amount, status, items, notes, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """)
+            params = (
+                inv_id,
+                data["client"],
+                data.get("clientEmail") or data.get("client_email") or "",
+                data.get("clientGstin") or data.get("client_gstin") or "29AABCU9603R1ZM",
+                data.get("date") or datetime.now().strftime("%d %b %Y"),
+                data.get("due") or "30 Sep 2026",
+                subtotal,
+                tax_amount,
+                total_amount,
+                data.get("status", "Sent"),
+                json.dumps(items),
+                data.get("notes") or "Thank you for your business. Please remit payment via NEFT/RTGS.",
+                now,
+            )
+
+            if IS_POSTGRES:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                cursor.execute(query, params)
+                conn.commit()
+                cursor.close()
+            else:
+                cursor = conn.cursor()
+                cursor.execute(query, params)
+                conn.commit()
+                cursor.close()
+
+            return get_invoice_by_id(inv_id)
+        finally:
+            conn.close()
+
+
+def update_invoice_status(invoice_id: str, status: str) -> Optional[Dict[str, Any]]:
+    with _lock:
+        conn = get_connection()
+        try:
+            query = _format_query("UPDATE invoices SET status = ? WHERE id = ?")
+            if IS_POSTGRES:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                cursor.execute(query, (status, invoice_id))
+                conn.commit()
+                cursor.close()
+            else:
+                cursor = conn.cursor()
+                cursor.execute(query, (status, invoice_id))
+                conn.commit()
+                cursor.close()
+            return get_invoice_by_id(invoice_id)
+        finally:
+            conn.close()
+
+
+# ==================== DOCUMENT OPERATIONS ====================
+def _document_row_to_dict(row: Any) -> Dict[str, Any]:
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "category": row["category"],
+        "uploadedBy": row["uploaded_by"],
+        "date": row["date"],
+        "size": row["size"],
+        "verified": bool(row["verified"]),
+        "checksum": row["checksum"],
+        "notes": row.get("notes") or "",
+    }
+
+
+def get_all_documents() -> List[Dict[str, Any]]:
+    with _lock:
+        conn = get_connection()
+        try:
+            query = _format_query("SELECT * FROM documents ORDER BY id DESC")
+            if IS_POSTGRES:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                cursor.execute(query)
+                rows = cursor.fetchall()
+                cursor.close()
+            else:
+                cursor = conn.cursor()
+                cursor.execute(query)
+                cols = [d[0] for d in cursor.description]
+                rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
+                cursor.close()
+            return [_document_row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+
+
+def get_document_by_id(doc_id: str) -> Optional[Dict[str, Any]]:
+    with _lock:
+        conn = get_connection()
+        try:
+            query = _format_query("SELECT * FROM documents WHERE id = ?")
+            if IS_POSTGRES:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                cursor.execute(query, (doc_id,))
+                row = cursor.fetchone()
+                cursor.close()
+            else:
+                cursor = conn.cursor()
+                cursor.execute(query, (doc_id,))
+                res = cursor.fetchone()
+                if not res:
+                    return None
+                cols = [d[0] for d in cursor.description]
+                row = dict(zip(cols, res))
+                cursor.close()
+            return _document_row_to_dict(row) if row else None
+        finally:
+            conn.close()
+
+
+def create_document(data: Dict[str, Any]) -> Dict[str, Any]:
+    with _lock:
+        conn = get_connection()
+        try:
+            doc_id = data.get("id")
+            if not doc_id:
+                count_q = _format_query("SELECT COUNT(*) as count FROM documents")
+                if IS_POSTGRES:
+                    c = conn.cursor(cursor_factory=RealDictCursor)
+                    c.execute(count_q)
+                    r = c.fetchone()
+                    total = r["count"] if isinstance(r, dict) else r[0]
+                    c.close()
+                else:
+                    c = conn.cursor()
+                    c.execute(count_q)
+                    total = c.fetchone()[0]
+                    c.close()
+                doc_id = f"DOC-{801 + total}"
+
+            import hashlib
+            title = data["title"]
+            checksum = f"SHA256:{hashlib.sha256(title.encode()).hexdigest()[:24]}"
+            query = _format_query("""
+                INSERT INTO documents (
+                    id, title, category, uploaded_by, date, size, verified, checksum, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """)
+            params = (
+                doc_id,
+                title if title.endswith(".pdf") else f"{title}.pdf",
+                data.get("category", "Invoices & Bills"),
+                data.get("uploadedBy") or data.get("uploaded_by") or "Shalya Gaonkar",
+                datetime.now().strftime("%d %b %Y"),
+                data.get("size", "1.4 MB"),
+                1 if data.get("verified", True) else 0,
+                checksum,
+                data.get("notes") or "Document verified & stored in audit vault",
+            )
+
+            if IS_POSTGRES:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                cursor.execute(query, params)
+                conn.commit()
+                cursor.close()
+            else:
+                cursor = conn.cursor()
+                cursor.execute(query, params)
+                conn.commit()
+                cursor.close()
+
+            return get_document_by_id(doc_id)
+        finally:
+            conn.close()
+
+
+# ==================== PAYROLL OPERATIONS ====================
+def _payroll_row_to_dict(row: Any) -> Dict[str, Any]:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "designation": row["designation"],
+        "department": row["department"],
+        "gross": float(row["gross"]),
+        "deductions": float(row["deductions"]),
+        "net": float(row["net"]),
+        "bankAcc": row["bank_acc"],
+        "pan": row["pan"],
+        "uan": row["uan"],
+        "status": row["status"],
+        "lastPayDate": row["last_pay_date"],
+    }
+
+
+def get_all_payroll_employees() -> List[Dict[str, Any]]:
+    with _lock:
+        conn = get_connection()
+        try:
+            query = _format_query("SELECT * FROM payroll_employees ORDER BY id ASC")
+            if IS_POSTGRES:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                cursor.execute(query)
+                rows = cursor.fetchall()
+                cursor.close()
+            else:
+                cursor = conn.cursor()
+                cursor.execute(query)
+                cols = [d[0] for d in cursor.description]
+                rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
+                cursor.close()
+            return [_payroll_row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+
+
+def get_payroll_employee_by_id(emp_id: str) -> Optional[Dict[str, Any]]:
+    with _lock:
+        conn = get_connection()
+        try:
+            query = _format_query("SELECT * FROM payroll_employees WHERE id = ?")
+            if IS_POSTGRES:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                cursor.execute(query, (emp_id,))
+                row = cursor.fetchone()
+                cursor.close()
+            else:
+                cursor = conn.cursor()
+                cursor.execute(query, (emp_id,))
+                res = cursor.fetchone()
+                if not res:
+                    return None
+                cols = [d[0] for d in cursor.description]
+                row = dict(zip(cols, res))
+                cursor.close()
+            return _payroll_row_to_dict(row) if row else None
+        finally:
+            conn.close()
+
+
+def create_payroll_employee(data: Dict[str, Any]) -> Dict[str, Any]:
+    with _lock:
+        conn = get_connection()
+        try:
+            emp_id = data.get("id")
+            if not emp_id:
+                count_q = _format_query("SELECT COUNT(*) as count FROM payroll_employees")
+                if IS_POSTGRES:
+                    c = conn.cursor(cursor_factory=RealDictCursor)
+                    c.execute(count_q)
+                    r = c.fetchone()
+                    total = r["count"] if isinstance(r, dict) else r[0]
+                    c.close()
+                else:
+                    c = conn.cursor()
+                    c.execute(count_q)
+                    total = c.fetchone()[0]
+                    c.close()
+                emp_id = f"EMP-{101 + total}"
+
+            gross = float(data["gross"])
+            deductions = round(gross * 0.12)
+            net = gross - deductions
+
+            query = _format_query("""
+                INSERT INTO payroll_employees (
+                    id, name, designation, department, gross, deductions, net, bank_acc, pan, uan, status, last_pay_date
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """)
+            params = (
+                emp_id,
+                data["name"],
+                data.get("designation") or "Software Specialist",
+                data.get("department") or "Engineering",
+                gross,
+                deductions,
+                net,
+                data.get("bankAcc") or data.get("bank_acc") or "••••••••5812",
+                data.get("pan") or "ABCDE1234F",
+                data.get("uan") or "101294819201",
+                data.get("status", "Processing"),
+                datetime.now().strftime("%d %b %Y"),
+            )
+
+            if IS_POSTGRES:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                cursor.execute(query, params)
+                conn.commit()
+                cursor.close()
+            else:
+                cursor = conn.cursor()
+                cursor.execute(query, params)
+                conn.commit()
+                cursor.close()
+
+            return get_payroll_employee_by_id(emp_id)
+        finally:
+            conn.close()
+
+
+def disburse_all_payroll() -> List[Dict[str, Any]]:
+    with _lock:
+        conn = get_connection()
+        try:
+            today = datetime.now().strftime("%d %b %Y")
+            query = _format_query("UPDATE payroll_employees SET status = 'Paid', last_pay_date = ?")
+            if IS_POSTGRES:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                cursor.execute(query, (today,))
+                conn.commit()
+                cursor.close()
+            else:
+                cursor = conn.cursor()
+                cursor.execute(query, (today,))
+                conn.commit()
+                cursor.close()
+            return get_all_payroll_employees()
+        finally:
+            conn.close()
+
+
+def generate_employee_payslip(emp_id: str, month: str = "August 2026") -> Optional[Dict[str, Any]]:
+    emp = get_payroll_employee_by_id(emp_id)
+    if not emp:
+        return None
+
+    gross = emp["gross"]
+    basic = round(gross * 0.50, 2)
+    hra = round(gross * 0.25, 2)
+    special_allowance = round(gross - basic - hra, 2)
+
+    pf = round(basic * 0.12, 2)
+    pt = 200.0
+    tds = round(gross * 0.05, 2) if gross > 100000 else 0.0
+    total_deductions = round(pf + pt + tds, 2)
+    net = round(gross - total_deductions, 2)
+
+    return {
+        "id": f"PS-{emp_id}-{month.replace(' ', '')}",
+        "employeeId": emp["id"],
+        "name": emp["name"],
+        "designation": emp["designation"],
+        "department": emp["department"],
+        "month": month,
+        "gross": gross,
+        "basic": basic,
+        "hra": hra,
+        "specialAllowance": special_allowance,
+        "pf": pf,
+        "pt": pt,
+        "tds": tds,
+        "totalDeductions": total_deductions,
+        "net": net,
+        "netInWords": number_to_indian_words(net),
+        "bankAcc": emp["bankAcc"],
+        "pan": emp["pan"],
+        "uan": emp["uan"],
+        "status": emp["status"],
+    }
+

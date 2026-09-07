@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavModule } from '../../components/layout/Sidebar';
-import { formatINR } from '../../utils/currency';
+import { formatINR, numberToIndianWords } from '../../utils/currency';
 import {
   ShoppingCart,
   ShoppingBag,
@@ -27,8 +27,19 @@ import {
   X,
   Check,
   QrCode,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Printer,
+  Eye,
+  UploadCloud,
+  ShieldCheck,
+  ExternalLink
 } from 'lucide-react';
+import { TaxInvoiceModal } from '../../components/documents/TaxInvoiceModal';
+import { CreateInvoiceModal } from '../../components/documents/CreateInvoiceModal';
+import { DocumentViewerModal } from '../../components/documents/DocumentViewerModal';
+import { UploadDocumentModal } from '../../components/documents/UploadDocumentModal';
+import { SalaryPayslipModal } from '../../components/documents/SalaryPayslipModal';
+import { ApiClient, Invoice, DocumentItem, PayrollEmployee, Payslip } from '../../services/apiClient';
 
 interface ModuleViewProps {
   module: NavModule;
@@ -39,38 +50,16 @@ export const ModuleView: React.FC<ModuleViewProps> = ({ module, onNavigate }) =>
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Universal Modal & Interaction State
+  // Universal Modal State
   const [modalType, setModalType] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
-  const [selectedDocument, setSelectedDocument] = useState<any | null>(null);
-  const [selectedPayment, setSelectedPayment] = useState<any | null>(null);
-  const [copiedPaymentId, setCopiedPaymentId] = useState<string | null>(null);
 
-  // Live Stopwatch State for Time Tracking
-  const [timerRunning, setTimerRunning] = useState(false);
-  const [timerSeconds, setTimerSeconds] = useState(1450); // initial demo elapsed
-  const [timerProject, setTimerProject] = useState('Infosys Portal Upgrade');
-
-  // Live Timer tick effect
-  React.useEffect(() => {
-    let interval: any = null;
-    if (timerRunning) {
-      interval = setInterval(() => {
-        setTimerSeconds(s => s + 1);
-      }, 1000);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [timerRunning]);
-
-  const formatStopwatch = (totalSec: number) => {
-    const h = Math.floor(totalSec / 3600).toString().padStart(2, '0');
-    const m = Math.floor((totalSec % 3600) / 60).toString().padStart(2, '0');
-    const s = (totalSec % 60).toString().padStart(2, '0');
-    return `${h}:${m}:${s}`;
-  };
+  // Interactive Document & Modal State
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [isCreateInvoiceOpen, setIsCreateInvoiceOpen] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState<DocumentItem | null>(null);
+  const [isUploadDocOpen, setIsUploadDocOpen] = useState(false);
+  const [selectedEmpPayslip, setSelectedEmpPayslip] = useState<PayrollEmployee | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -78,16 +67,84 @@ export const ModuleView: React.FC<ModuleViewProps> = ({ module, onNavigate }) =>
   };
 
   // 1. Sales Module State
-  const [invoices, setInvoices] = useState([
-    { id: 'INV-00104', client: 'Infosys BPM Limited', date: '02 Sep 2026', due: '16 Sep 2026', amount: 185000, status: 'Sent' },
-    { id: 'INV-00103', client: 'Tata Consultancy Services', date: '28 Aug 2026', due: '11 Sep 2026', amount: 342000, status: 'Paid' },
-    { id: 'INV-00102', client: 'Wipro Digital Labs', date: '20 Aug 2026', due: '03 Sep 2026', amount: 98500, status: 'Overdue' },
-    { id: 'INV-00101', client: 'Razorpay Software Pvt Ltd', date: '15 Aug 2026', due: '30 Aug 2026', amount: 215000, status: 'Paid' },
-    { id: 'INV-00100', client: 'Swiggy Technologies', date: '08 Aug 2026', due: '22 Aug 2026', amount: 145000, status: 'Paid' },
+  const [invoices, setInvoices] = useState<Invoice[]>([
+    {
+      id: 'INV-00104',
+      client: 'Infosys BPM Limited',
+      clientEmail: 'billing@infosys.com',
+      clientGstin: '29AAACI4567B1Z8',
+      date: '02 Sep 2026',
+      due: '16 Sep 2026',
+      subtotal: 156779.66,
+      taxAmount: 28220.34,
+      amount: 185000,
+      status: 'Sent',
+      items: [
+        { name: 'Cloud Infrastructure Migration & DevOps Consulting', hsn: '998313', quantity: 1, rate: 156779.66, taxRate: 18, amount: 185000 }
+      ]
+    },
+    {
+      id: 'INV-00103',
+      client: 'Tata Consultancy Services',
+      clientEmail: 'ap.desk@tcs.com',
+      clientGstin: '27AAACT9876C1Z4',
+      date: '28 Aug 2026',
+      due: '11 Sep 2026',
+      subtotal: 289830.51,
+      taxAmount: 52169.49,
+      amount: 342000,
+      status: 'Paid',
+      items: [
+        { name: 'Enterprise ERP Ledger Security Architecture', hsn: '998313', quantity: 1, rate: 289830.51, taxRate: 18, amount: 342000 }
+      ]
+    },
+    {
+      id: 'INV-00102',
+      client: 'Wipro Digital Labs',
+      clientEmail: 'accounts@wipro.com',
+      clientGstin: '29AAACW1234D1Z2',
+      date: '20 Aug 2026',
+      due: '03 Sep 2026',
+      subtotal: 83474.58,
+      taxAmount: 15025.42,
+      amount: 98500,
+      status: 'Overdue',
+      items: [
+        { name: 'API Gateway & Microservices Performance Audit', hsn: '998313', quantity: 1, rate: 83474.58, taxRate: 18, amount: 98500 }
+      ]
+    },
+    {
+      id: 'INV-00101',
+      client: 'Razorpay Software Pvt Ltd',
+      clientEmail: 'merchant-pay@razorpay.com',
+      clientGstin: '29AABCR8765E1Z6',
+      date: '15 Aug 2026',
+      due: '30 Aug 2026',
+      subtotal: 182203.39,
+      taxAmount: 32796.61,
+      amount: 215000,
+      status: 'Paid',
+      items: [
+        { name: 'Instant Settlement & UPI Webhook Integration', hsn: '998314', quantity: 1, rate: 182203.39, taxRate: 18, amount: 215000 }
+      ]
+    },
+    {
+      id: 'INV-00100',
+      client: 'Swiggy Technologies',
+      clientEmail: 'vendor-invoices@swiggy.in',
+      clientGstin: '29AALCS5432F1Z8',
+      date: '08 Aug 2026',
+      due: '22 Aug 2026',
+      subtotal: 122881.36,
+      taxAmount: 22118.64,
+      amount: 145000,
+      status: 'Paid',
+      items: [
+        { name: 'Corporate NetBanking Reconciliation Module', hsn: '998313', quantity: 1, rate: 122881.36, taxRate: 18, amount: 145000 }
+      ]
+    },
   ]);
 
-  const [newInvClient, setNewInvClient] = useState('');
-  const [newInvAmount, setNewInvAmount] = useState('');
 
   // 2. Purchases Module State
   const [bills, setBills] = useState([
@@ -175,218 +232,6 @@ export const ModuleView: React.FC<ModuleViewProps> = ({ module, onNavigate }) =>
   const [newPayAmount, setNewPayAmount] = useState('');
   const [newPayMethod, setNewPayMethod] = useState('UPI Instant QR');
 
-  // Real File Downloader Utility
-  const downloadFile = (filename: string, content: string, mimeType: string = 'text/plain') => {
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    showToast(`Downloaded: ${filename}`);
-  };
-
-  // Robust Clipboard Copy with fallback
-  const copyToClipboard = (text: string, cb?: () => void) => {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(() => {
-        if (cb) cb();
-        showToast(`Copied to clipboard: ${text}`);
-      }).catch(() => {
-        fallbackCopy(text, cb);
-      });
-    } else {
-      fallbackCopy(text, cb);
-    }
-  };
-
-  const fallbackCopy = (text: string, cb?: () => void) => {
-    try {
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-      if (cb) cb();
-      showToast(`Copied: ${text}`);
-    } catch {
-      showToast(`Link: ${text}`);
-    }
-  };
-
-  // Printable & Downloadable GST Tax Invoice HTML
-  const generateInvoiceHTML = (inv: any) => {
-    const subtotal = inv.amount;
-    const cgst = Math.round(subtotal * 0.09);
-    const sgst = Math.round(subtotal * 0.09);
-    const total = subtotal + cgst + sgst;
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Tax Invoice ${inv.id}</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 40px; color: #1e293b; line-height: 1.5; }
-    .inv-header { display: flex; justify-content: space-between; border-bottom: 2px solid #6366f1; padding-bottom: 20px; }
-    .brand { font-size: 24px; font-weight: 800; color: #4338ca; }
-    .inv-title { font-size: 20px; font-weight: 700; color: #0f172a; text-align: right; }
-    .meta-grid { display: flex; justify-content: space-between; margin: 30px 0; }
-    table { width: 100%; border-collapse: collapse; margin: 25px 0; }
-    th { background: #f1f5f9; padding: 12px; text-align: left; font-size: 12px; border-bottom: 2px solid #cbd5e1; }
-    td { padding: 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; }
-    .totals { margin-left: auto; width: 320px; margin-top: 20px; }
-    .totals-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
-    .grand-total { font-size: 18px; font-weight: 800; color: #4338ca; border-top: 2px solid #6366f1; padding-top: 10px; }
-    .footer { margin-top: 50px; font-size: 11px; color: #64748b; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px; }
-    @media print { body { margin: 15mm; } }
-  </style>
-</head>
-<body>
-  <div class="inv-header">
-    <div>
-      <div class="brand">⚡ Rooman Books</div>
-      <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Rooman Enterprise India Pvt Ltd • GSTIN: 29AABCR1234F1Z8</div>
-      <div style="font-size: 13px; color: #64748b;">Brigade Road, Ashok Nagar, Bengaluru, Karnataka 560025</div>
-    </div>
-    <div>
-      <div class="inv-title">TAX INVOICE</div>
-      <div style="font-size: 14px; font-weight: 600; color: #4338ca; margin-top: 4px;">${inv.id}</div>
-      <div style="font-size: 13px; color: #64748b;">Date: ${inv.date} | Due: ${inv.due}</div>
-    </div>
-  </div>
-  <div class="meta-grid">
-    <div>
-      <div style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase;">Billed To:</div>
-      <div style="font-size: 16px; font-weight: 700; color: #0f172a; margin-top: 4px;">${inv.client}</div>
-      <div style="font-size: 13px; color: #475569; margin-top: 2px;">Corporate GST Registered Entity</div>
-    </div>
-    <div style="text-align: right;">
-      <div style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase;">Payment Status:</div>
-      <div style="font-size: 14px; font-weight: 700; color: ${inv.status === 'Paid' ? '#10b981' : '#f59e0b'}; margin-top: 4px;">${inv.status.toUpperCase()}</div>
-      <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Mode: Bank Transfer / UPI Gateway</div>
-    </div>
-  </div>
-  <table>
-    <thead>
-      <tr>
-        <th>ITEM & DESCRIPTION</th>
-        <th>HSN/SAC</th>
-        <th>QTY</th>
-        <th style="text-align: right;">RATE</th>
-        <th style="text-align: right;">AMOUNT</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td><strong>Enterprise Cloud Software Consulting & System Architecture</strong><br><span style="color: #64748b; font-size: 12px;">Monthly consulting services & ledger infrastructure deployment</span></td>
-        <td>998313</td>
-        <td>1.0</td>
-        <td style="text-align: right;">₹${subtotal.toLocaleString('en-IN')}</td>
-        <td style="text-align: right;">₹${subtotal.toLocaleString('en-IN')}</td>
-      </tr>
-    </tbody>
-  </table>
-  <div class="totals">
-    <div class="totals-row"><span>Subtotal:</span><span>₹${subtotal.toLocaleString('en-IN')}</span></div>
-    <div class="totals-row"><span>CGST (9%):</span><span>₹${cgst.toLocaleString('en-IN')}</span></div>
-    <div class="totals-row"><span>SGST (9%):</span><span>₹${sgst.toLocaleString('en-IN')}</span></div>
-    <div class="totals-row grand-total"><span>Grand Total:</span><span>₹${total.toLocaleString('en-IN')}</span></div>
-  </div>
-  <div class="footer">
-    This is a computer generated tax invoice issued under Rule 48 of the CGST Rules, 2017. Rooman Books Apex OS.
-  </div>
-</body>
-</html>`;
-  };
-
-  // Real Document Content Generator
-  const getDocumentContent = (doc: any) => {
-    return `===============================================================
-ROOMAN BOOKS APEX FINANCIAL REPOSITORY - VERIFIED DOCUMENT
-Document ID: ${doc.id}
-File Name:   ${doc.title}
-Category:    ${doc.category}
-Uploaded By: ${doc.uploadedBy}
-Date:        ${doc.date}
-Verification: Cryptographically Certified (SHA-256 Validated)
-===============================================================
-
-OFFICIAL RECORD STATEMENT:
-This document is registered in the Rooman Enterprise cloud vault.
-All compliance metadata, GST reconciliation records, and banking
-audit footprints are active and verified.
-
-Organization: Rooman Enterprise India Pvt Ltd
-Vault Status: Active & Secured with 256-bit AES Encryption.
-Timestamp:    ${new Date().toISOString()}
-===============================================================`;
-  };
-
-  // Real Payslip Generator
-  const generatePayslipHTML = (emp: any) => {
-    const basic = Math.round(emp.salary * 0.5);
-    const hra = Math.round(emp.salary * 0.3);
-    const special = emp.salary - basic - hra;
-    const epf = Math.round(basic * 0.12);
-    const netPay = emp.salary - epf;
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Payslip - ${emp.name}</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 40px; color: #1e293b; line-height: 1.5; }
-    .header { border-bottom: 2px solid #6366f1; padding-bottom: 15px; }
-    .title { font-size: 22px; font-weight: 800; color: #4338ca; }
-    .grid { display: flex; justify-content: space-between; margin: 20px 0; }
-    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-    th, td { padding: 10px; border-bottom: 1px solid #e2e8f0; font-size: 13px; text-align: left; }
-    th { background: #f8fafc; font-size: 12px; }
-    .net-pay { font-size: 18px; font-weight: 800; color: #10b981; margin-top: 15px; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div class="title">⚡ Rooman Books | Salary Slip</div>
-    <div style="color: #64748b; font-size: 13px;">Month: September 2026 • Rooman Enterprise India</div>
-  </div>
-  <div class="grid">
-    <div>
-      <div><strong>Employee Name:</strong> ${emp.name}</div>
-      <div><strong>Designation:</strong> ${emp.designation}</div>
-      <div><strong>Department:</strong> ${emp.department}</div>
-    </div>
-    <div>
-      <div><strong>Employee ID:</strong> ${emp.id}</div>
-      <div><strong>PF Account:</strong> KN/BNG/18294/928</div>
-      <div><strong>Bank Account:</strong> HDFC Bank - 50200049281928</div>
-    </div>
-  </div>
-  <table>
-    <thead>
-      <tr><th>EARNINGS</th><th>AMOUNT</th><th>DEDUCTIONS</th><th>AMOUNT</th></tr>
-    </thead>
-    <tbody>
-      <tr><td>Basic Salary</td><td>₹${basic.toLocaleString('en-IN')}</td><td>Employee PF (12%)</td><td>₹${epf.toLocaleString('en-IN')}</td></tr>
-      <tr><td>House Rent Allowance (HRA)</td><td>₹${hra.toLocaleString('en-IN')}</td><td>Professional Tax</td><td>₹200</td></tr>
-      <tr><td>Special Allowance</td><td>₹${special.toLocaleString('en-IN')}</td><td>Income Tax (TDS)</td><td>₹0</td></tr>
-      <tr><td><strong>Gross Earnings</strong></td><td><strong>₹${emp.salary.toLocaleString('en-IN')}</strong></td><td><strong>Total Deductions</strong></td><td><strong>₹${(epf + 200).toLocaleString('en-IN')}</strong></td></tr>
-    </tbody>
-  </table>
-  <div class="net-pay">Net Take-Home Pay: ₹${(netPay - 200).toLocaleString('en-IN')}</div>
-  <div style="font-size: 11px; color: #64748b; margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 15px;">
-    Rooman Books Payroll Engine. System generated salary slip.
-  </div>
-</body>
-</html>`;
-  };
-
   // CSV Export utility
   const exportCSV = (filename: string, headers: string[], rows: (string | number)[][]) => {
     const csvContent = 'data:text/csv;charset=utf-8,' +
@@ -401,6 +246,252 @@ Timestamp:    ${new Date().toISOString()}
     showToast(`Exported ${filename} successfully!`);
   };
 
+  // Sync data with cloud server on mount
+  useEffect(() => {
+    let isMounted = true;
+    ApiClient.getInvoices().then(data => {
+      if (isMounted && data && data.length > 0) setInvoices(data);
+    }).catch(() => {});
+
+    ApiClient.getDocuments().then(data => {
+      if (isMounted && data && data.length > 0) setDocumentsList(data);
+    }).catch(() => {});
+
+    ApiClient.getPayrollEmployees().then(data => {
+      if (isMounted && data && data.length > 0) setEmployees(data);
+    }).catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Real Document File Downloader
+  const downloadDocumentFile = (doc: DocumentItem | any) => {
+    const filename = doc.title.endsWith('.pdf') || doc.title.endsWith('.txt') ? doc.title : `${doc.title}.pdf`;
+    const docContent = `================================================================================
+                    ZOHO BOOKS COMPLIANCE & AUDIT VAULT
+================================================================================
+Document Reference : ${doc.id}
+Document Title     : ${doc.title}
+Category           : ${doc.category}
+Uploaded By        : ${doc.uploadedBy}
+Date of Filing     : ${doc.date}
+File Size          : ${doc.size}
+Audit Status       : ${doc.verified ? 'VERIFIED & DIGITALLY SIGNED' : 'PENDING VERIFICATION'}
+SHA-256 Checksum   : ${doc.checksum || 'SHA256:e8f237b5d1a89c32f8149e21'}
+Audit Notes        : ${doc.notes || 'Official statutory compliance archive'}
+Security Class     : AES-256 Cloud Encrypted Ledger Archive
+================================================================================
+
+CERTIFICATE OF AUTHENTICITY & STATUTORY COMPLIANCE:
+This document is cataloged and preserved in accordance with the Companies Act 2013
+and the Goods and Services Tax (GST) statutory record retention rules.
+
+Organization: Zylker Electronics India Pvt Ltd
+GSTIN: 29AABCU9603R1ZM | State Code: 29-Karnataka
+Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
+================================================================================`;
+
+    const blob = new Blob([docContent], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast(`Downloaded: ${filename}`);
+  };
+
+  // Real Invoice File Downloader
+  const downloadInvoiceFile = (inv: Invoice) => {
+    const filename = `Tax_Invoice_${inv.id}.html`;
+    const subtotal = inv.subtotal || Math.round(inv.amount / 1.18);
+    const tax = inv.taxAmount || (inv.amount - subtotal);
+    const words = numberToIndianWords(inv.amount);
+
+    const itemsRows = (inv.items || []).map((itm, idx) => `
+      <tr>
+        <td style="padding:10px; border-bottom:1px solid #e2e8f0; text-align:center;">${idx + 1}</td>
+        <td style="padding:10px; border-bottom:1px solid #e2e8f0;"><strong>${itm.name}</strong></td>
+        <td style="padding:10px; border-bottom:1px solid #e2e8f0; text-align:center;">${itm.hsn || '998313'}</td>
+        <td style="padding:10px; border-bottom:1px solid #e2e8f0; text-align:center;">${itm.quantity}</td>
+        <td style="padding:10px; border-bottom:1px solid #e2e8f0; text-align:right;">₹${itm.rate.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+        <td style="padding:10px; border-bottom:1px solid #e2e8f0; text-align:center;">${itm.taxRate}%</td>
+        <td style="padding:10px; border-bottom:1px solid #e2e8f0; text-align:right; font-weight:600;">₹${(itm.quantity * itm.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+      </tr>
+    `).join('');
+
+    const invoiceContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Tax Invoice - ${inv.id}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px; color: #1e293b; background: #fff; }
+    .card { max-width: 800px; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 8px; padding: 36px; }
+    .header { display: flex; justify-content: space-between; border-bottom: 2px solid #2563eb; padding-bottom: 20px; margin-bottom: 24px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 13px; }
+    th { background: #f1f5f9; padding: 10px; border-bottom: 2px solid #cbd5e1; text-align: left; }
+    td { padding: 10px; border-bottom: 1px solid #e2e8f0; }
+    .totals { display: flex; justify-content: flex-end; }
+    .totals-table { width: 340px; font-size: 13.5px; }
+    .totals-table td { padding: 6px 10px; }
+    .grand-total { font-size: 18px; font-weight: 800; border-top: 2px solid #2563eb; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div>
+        <h1 style="font-size:22px; margin:0 0 4px 0;">Zylker Electronics India Pvt Ltd</h1>
+        <div style="font-size:13px; color:#475569;">Tech Park Plaza, Outer Ring Road, Bengaluru 560103</div>
+        <div style="font-size:13px; color:#475569;"><strong>GSTIN:</strong> 29AABCU9603R1ZM</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:22px; font-weight:800; color:#2563eb;">TAX INVOICE</div>
+        <div style="font-size:15px; font-weight:700;">${inv.id}</div>
+        <div style="font-size:12px; color:#64748b;">Date: ${inv.date}</div>
+      </div>
+    </div>
+    <div style="margin-bottom:24px; font-size:14px;">
+      <strong>BILLED TO:</strong><br />
+      <strong>${inv.client}</strong><br />
+      GSTIN: ${inv.clientGstin || '29AABCU9603R1ZM'}
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>Item Description</th><th>HSN/SAC</th><th>Qty</th><th>Rate (₹)</th><th>GST</th><th>Amount (₹)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemsRows || `<tr><td colspan="7" style="padding:10px;">Enterprise Software Consulting & Integration Services</td></tr>`}
+      </tbody>
+    </table>
+    <div class="totals">
+      <table class="totals-table">
+        <tr><td>Subtotal:</td><td style="text-align:right; font-weight:600;">₹${subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td></tr>
+        <tr><td>GST (18%):</td><td style="text-align:right;">₹${tax.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td></tr>
+        <tr class="grand-total"><td>Total Amount:</td><td style="text-align:right; color:#2563eb;">₹${inv.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td></tr>
+      </table>
+    </div>
+    <div style="margin-top:20px; padding:12px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; color:#166534; font-weight:600; font-size:13px;">
+      Amount in Words: ${words}
+    </div>
+  </div>
+</body>
+</html>`;
+
+    const blob = new Blob([invoiceContent], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast(`Downloaded ${filename} successfully!`);
+  };
+
+  // Real Payslip Downloader
+  const downloadEmployeePayslip = (emp: PayrollEmployee) => {
+    const filename = `Salary_Payslip_${emp.id}_August_2026.html`;
+    const gross = emp.gross;
+    const basic = Math.round(gross * 0.5);
+    const hra = Math.round(gross * 0.25);
+    const specialAllowance = Math.round(gross - basic - hra);
+    const pf = Math.round(basic * 0.12);
+    const pt = 200;
+    const tds = gross > 100000 ? Math.round(gross * 0.05) : 0;
+    const totalDeductions = pf + pt + tds;
+    const net = gross - totalDeductions;
+    const netInWords = numberToIndianWords(net);
+
+    const payslipHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Salary Payslip - ${emp.name}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px; color: #1e293b; background: #fff; }
+    .card { max-width: 800px; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 8px; padding: 36px; }
+    .header { text-align: center; border-bottom: 2px solid #2563eb; padding-bottom: 16px; margin-bottom: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 13px; }
+    th { background: #f1f5f9; padding: 10px; border: 1px solid #cbd5e1; }
+    td { padding: 8px 12px; border: 1px solid #cbd5e1; }
+    .net-box { background: #ecfdf5; border: 2px solid #10b981; border-radius: 6px; padding: 16px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1 style="margin:0 0 4px 0; font-size:22px;">Zylker Electronics India Pvt Ltd</h1>
+      <div style="font-size:13px; color:#475569;">Tech Park Plaza, Outer Ring Road, Bengaluru, Karnataka 560103</div>
+      <h2 style="font-size:16px; color:#2563eb; text-transform:uppercase; margin-top:10px;">Salary Payslip &mdash; August 2026</h2>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px; font-size:13px; background:#f8fafc; padding:12px; border:1px solid #e2e8f0; border-radius:6px;">
+      <div>Employee ID: <strong>${emp.id}</strong><br />Employee Name: <strong>${emp.name}</strong><br />Designation: <strong>${emp.designation}</strong></div>
+      <div>Department: <strong>${emp.department}</strong><br />Bank Account: <strong>${emp.bankAcc || '••••••••1928'}</strong><br />PAN: <strong>${emp.pan || 'ABCDE1234F'}</strong></div>
+    </div>
+    <table>
+      <thead>
+        <tr><th colspan="2" style="color:#0f766e;">EARNINGS (₹)</th><th colspan="2" style="color:#991b1b;">DEDUCTIONS (₹)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Basic Salary</td><td style="text-align:right;">₹${basic.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td><td>EPF (12%)</td><td style="text-align:right; color:#dc2626;">₹${pf.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td></tr>
+        <tr><td>HRA (25%)</td><td style="text-align:right;">₹${hra.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td><td>Professional Tax</td><td style="text-align:right; color:#dc2626;">₹${pt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td></tr>
+        <tr><td>Special Allowance</td><td style="text-align:right;">₹${specialAllowance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td><td>Income Tax (TDS)</td><td style="text-align:right; color:#dc2626;">₹${tds.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td></tr>
+        <tr style="background:#f8fafc; font-weight:700;"><td>Gross Salary</td><td style="text-align:right; color:#0f766e;">₹${gross.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td><td>Total Deductions</td><td style="text-align:right; color:#dc2626;">₹${totalDeductions.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td></tr>
+      </tbody>
+    </table>
+    <div class="net-box">
+      <div><strong>NET PAYABLE SALARY:</strong></div>
+      <div style="font-size:22px; font-weight:800; color:#047857;">₹${net.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+    </div>
+    <div style="font-size:13px; color:#334155; font-style:italic;">In Words: ${netInWords}</div>
+  </div>
+</body>
+</html>`;
+
+    const blob = new Blob([payslipHtml], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast(`Downloaded: ${filename}`);
+  };
+
+  const handleInvoiceCreated = (newInv: Invoice) => {
+    setInvoices([newInv, ...invoices]);
+    setSelectedInvoice(newInv);
+    showToast(`Invoice ${newInv.id} generated successfully!`);
+  };
+
+  const handleInvoiceStatusChange = async (invoiceId: string, newStatus: 'Paid' | 'Sent') => {
+    try {
+      await ApiClient.updateInvoiceStatus(invoiceId, newStatus);
+    } catch {}
+    setInvoices(invoices.map(i => i.id === invoiceId ? { ...i, status: newStatus } : i));
+    if (selectedInvoice && selectedInvoice.id === invoiceId) {
+      setSelectedInvoice({ ...selectedInvoice, status: newStatus });
+    }
+    showToast(`Invoice ${invoiceId} marked as ${newStatus}!`);
+  };
+
+  const handleDocUploaded = (newDoc: DocumentItem) => {
+    setDocumentsList([newDoc, ...documentsList]);
+    setSelectedDoc(newDoc);
+    showToast(`Document ${newDoc.title} secured in vault!`);
+  };
+
   // 1. Sales Module Render
   if (module === 'sales') {
     const filtered = invoices.filter(inv => {
@@ -411,25 +502,6 @@ Timestamp:    ${new Date().toISOString()}
       if (activeTab === 'overdue') return matchesSearch && inv.status === 'Overdue';
       return matchesSearch;
     });
-
-    const handleCreateInvoice = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!newInvClient || !newInvAmount) return;
-
-      const newInv = {
-        id: `INV-${105 + invoices.length}`,
-        client: newInvClient,
-        date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-        due: '30 Sep 2026',
-        amount: parseFloat(newInvAmount),
-        status: 'Sent',
-      };
-      setInvoices([newInv, ...invoices]);
-      setNewInvClient('');
-      setNewInvAmount('');
-      setModalType(null);
-      showToast(`Invoice ${newInv.id} created successfully!`);
-    };
 
     return (
       <div className="zb-page zb-module-page">
@@ -451,7 +523,7 @@ Timestamp:    ${new Date().toISOString()}
             >
               <Download size={15} /> Export CSV
             </button>
-            <button className="zb-btn zb-btn-primary" onClick={() => setModalType('new_invoice')}>
+            <button className="zb-btn zb-btn-primary" onClick={() => setIsCreateInvoiceOpen(true)}>
               <Plus size={16} /> New Invoice
             </button>
           </div>
@@ -535,8 +607,21 @@ Timestamp:    ${new Date().toISOString()}
             <tbody>
               {filtered.map(inv => (
                 <tr key={inv.id}>
-                  <td className="font-semibold text-primary">{inv.id}</td>
-                  <td className="font-medium">{inv.client}</td>
+                  <td
+                    className="font-semibold text-primary"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => setSelectedInvoice(inv)}
+                    title="Click to view full GST Tax Invoice"
+                  >
+                    {inv.id}
+                  </td>
+                  <td
+                    className="font-medium"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => setSelectedInvoice(inv)}
+                  >
+                    {inv.client}
+                  </td>
                   <td>{inv.date}</td>
                   <td>{inv.due}</td>
                   <td className="text-right font-semibold">{formatINR(inv.amount)}</td>
@@ -546,13 +631,22 @@ Timestamp:    ${new Date().toISOString()}
                     </span>
                   </td>
                   <td className="text-center">
-                    <button
-                      className="rf-btn rf-btn-sm rf-btn-secondary zb-table-btn"
-                      onClick={() => setSelectedInvoice(inv)}
-                      title="Inspect, Print & Download Invoice"
-                    >
-                      View / Generate
-                    </button>
+                    <div className="zb-flex-align justify-center gap-2">
+                      <button
+                        className="zb-table-btn"
+                        onClick={() => setSelectedInvoice(inv)}
+                        title="View, Print & verify GST Tax Invoice"
+                      >
+                        <Eye size={13} style={{ marginRight: '4px' }} /> View & Print
+                      </button>
+                      <button
+                        className="zb-table-btn"
+                        onClick={() => downloadInvoiceFile(inv)}
+                        title="Download standalone HTML invoice"
+                      >
+                        <Download size={13} style={{ marginRight: '4px' }} /> Download
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -560,161 +654,19 @@ Timestamp:    ${new Date().toISOString()}
           </table>
         </div>
 
-        {/* Tax Invoice Generator & Viewer Modal */}
-        {selectedInvoice && (
-          <div className="rf-modal-backdrop zb-modal-backdrop" onClick={() => setSelectedInvoice(null)}>
-            <div className="rf-invoice-modal-card zb-modal-card" onClick={e => e.stopPropagation()}>
-              <div className="rf-modal-header zb-modal-header">
-                <div className="rf-flex-align gap-2">
-                  <Receipt size={18} className="text-indigo" />
-                  <h3>GST Tax Invoice Generator • {selectedInvoice.id}</h3>
-                </div>
-                <button className="rf-icon-button zb-close-btn" onClick={() => setSelectedInvoice(null)}>
-                  <X size={18} />
-                </button>
-              </div>
+        {/* Interactive Tax Invoice Modal */}
+        <TaxInvoiceModal
+          invoice={selectedInvoice}
+          onClose={() => setSelectedInvoice(null)}
+          onStatusChange={handleInvoiceStatusChange}
+        />
 
-              {/* Invoice Preview Sheet */}
-              <div className="rf-invoice-sheet">
-                <div className="rf-flex-between rf-border-bottom pb-3">
-                  <div>
-                    <h2 className="text-indigo font-bold text-lg">⚡ Rooman Books</h2>
-                    <p className="text-xs text-muted">Rooman Enterprise India • GSTIN: 29AABCR1234F1Z8</p>
-                    <p className="text-xs text-muted">Brigade Road, Ashok Nagar, Bengaluru 560025</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="rf-badge rf-badge-indigo">TAX INVOICE</span>
-                    <div className="font-bold mt-1">{selectedInvoice.id}</div>
-                    <div className="text-xs text-muted">Date: {selectedInvoice.date}</div>
-                    <div className="text-xs text-muted">Due: {selectedInvoice.due}</div>
-                  </div>
-                </div>
-
-                <div className="rf-flex-between my-3 text-sm">
-                  <div>
-                    <div className="text-xs text-muted font-bold">BILLED TO:</div>
-                    <div className="font-semibold text-base">{selectedInvoice.client}</div>
-                    <div className="text-xs text-muted">GST Registered Customer</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-muted font-bold">PAYMENT STATUS:</div>
-                    <span className={`rf-status-pill ${selectedInvoice.status === 'Paid' ? 'success' : 'warning'}`}>
-                      {selectedInvoice.status}
-                    </span>
-                  </div>
-                </div>
-
-                <table className="rf-invoice-table">
-                  <thead>
-                    <tr>
-                      <th>DESCRIPTION</th>
-                      <th>HSN</th>
-                      <th>QTY</th>
-                      <th className="text-right">RATE</th>
-                      <th className="text-right">AMOUNT</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>Enterprise Software Services & System Integration</td>
-                      <td>998313</td>
-                      <td>1.0</td>
-                      <td className="text-right">{formatINR(selectedInvoice.amount)}</td>
-                      <td className="text-right font-semibold">{formatINR(selectedInvoice.amount)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <div className="rf-invoice-totals">
-                  <div className="rf-totals-row">
-                    <span>Subtotal:</span>
-                    <span>{formatINR(selectedInvoice.amount)}</span>
-                  </div>
-                  <div className="rf-totals-row">
-                    <span>CGST (9%):</span>
-                    <span>{formatINR(Math.round(selectedInvoice.amount * 0.09))}</span>
-                  </div>
-                  <div className="rf-totals-row">
-                    <span>SGST (9%):</span>
-                    <span>{formatINR(Math.round(selectedInvoice.amount * 0.09))}</span>
-                  </div>
-                  <div className="rf-totals-row grand">
-                    <span>Total Amount (INR):</span>
-                    <span className="text-indigo font-bold">{formatINR(Math.round(selectedInvoice.amount * 1.18))}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Modal Actions */}
-              <div className="rf-modal-actions-bar">
-                <button
-                  className="rf-btn rf-btn-secondary"
-                  onClick={() => {
-                    const link = `https://pay.roomanbooks.com/inv/${selectedInvoice.id}`;
-                    copyToClipboard(link);
-                  }}
-                >
-                  <CreditCard size={15} /> Copy Pay Link
-                </button>
-                <button
-                  className="rf-btn rf-btn-secondary"
-                  onClick={() => window.print()}
-                >
-                  Print Invoice
-                </button>
-                <button
-                  className="rf-btn rf-btn-primary"
-                  onClick={() => downloadFile(
-                    `Tax_Invoice_${selectedInvoice.id}.html`,
-                    generateInvoiceHTML(selectedInvoice),
-                    'text/html'
-                  )}
-                >
-                  <Download size={15} /> Download Invoice File
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Create Invoice Modal */}
-        {modalType === 'new_invoice' && (
-          <div className="rf-modal-backdrop zb-modal-backdrop" onClick={() => setModalType(null)}>
-            <div className="rf-auth-card zb-auth-modal" onClick={e => e.stopPropagation()}>
-              <div className="rf-auth-header zb-auth-header">
-                <h3 className="rf-auth-title zb-auth-title">Create New Client Invoice</h3>
-                <button className="rf-icon-button zb-modal-close" onClick={() => setModalType(null)}><X size={18} /></button>
-              </div>
-              <form onSubmit={handleCreateInvoice} className="rf-auth-form zb-auth-form">
-                <div className="rf-form-group zb-form-group">
-                  <label className="rf-form-label zb-label">Client Name</label>
-                  <input
-                    type="text"
-                    className="rf-text-input zb-input"
-                    placeholder="e.g. Reliance Retail Ltd"
-                    value={newInvClient}
-                    onChange={e => setNewInvClient(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="rf-form-group zb-form-group">
-                  <label className="rf-form-label zb-label">Invoice Amount (₹)</label>
-                  <input
-                    type="number"
-                    className="rf-text-input zb-input"
-                    placeholder="e.g. 125000"
-                    value={newInvAmount}
-                    onChange={e => setNewInvAmount(e.target.value)}
-                    required
-                  />
-                </div>
-                <button type="submit" className="rf-btn rf-btn-primary rf-btn-block zb-btn zb-btn-primary zb-btn-block">
-                  Save & Issue Tax Invoice
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
+        {/* Interactive Create Invoice Modal */}
+        <CreateInvoiceModal
+          isOpen={isCreateInvoiceOpen}
+          onClose={() => setIsCreateInvoiceOpen(false)}
+          onCreated={handleInvoiceCreated}
+        />
       </div>
     );
   }
@@ -1269,67 +1221,6 @@ Timestamp:    ${new Date().toISOString()}
           </div>
         </div>
 
-        {/* Live Project Timer / Stopwatch Widget */}
-        <div className="rf-timer-banner zb-card zb-section-spacing">
-          <div className="rf-timer-left">
-            <Clock3 size={24} className={timerRunning ? "text-emerald pulse" : "text-indigo"} />
-            <div>
-              <div className="rf-timer-label">ACTIVE CLIENT STOPWATCH</div>
-              <div className="rf-timer-project-select">
-                <select
-                  className="rf-select-timer"
-                  value={timerProject}
-                  onChange={e => setTimerProject(e.target.value)}
-                >
-                  <option value="Infosys Portal Upgrade">Infosys Portal Upgrade (Billable: ₹1,800/hr)</option>
-                  <option value="Tata Consultancy Services">Tata Consultancy Services (Billable: ₹2,200/hr)</option>
-                  <option value="Wipro Digital Labs">Wipro Digital Labs (Billable: ₹1,500/hr)</option>
-                  <option value="Razorpay Gateway Connect">Razorpay Gateway Connect (Billable: ₹2,500/hr)</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          <div className="rf-timer-center">
-            <div className="rf-timer-digits">{formatStopwatch(timerSeconds)}</div>
-            <span className={`rf-status-pill ${timerRunning ? 'success' : 'neutral'}`}>
-              {timerRunning ? '● Recording Live' : 'Paused'}
-            </span>
-          </div>
-          <div className="rf-timer-controls">
-            <button
-              className={`rf-btn ${timerRunning ? 'rf-btn-warning' : 'rf-btn-success'}`}
-              onClick={() => {
-                setTimerRunning(!timerRunning);
-                showToast(timerRunning ? 'Stopwatch paused' : 'Stopwatch started recording');
-              }}
-            >
-              {timerRunning ? 'Pause Timer' : 'Start Live Timer'}
-            </button>
-            <button
-              className="rf-btn rf-btn-primary"
-              onClick={() => {
-                const hrs = parseFloat((timerSeconds / 3600).toFixed(2)) || 0.5;
-                const newTs = {
-                  id: `TS-00${timesheets.length + 1}`,
-                  project: timerProject,
-                  task: 'Live Recorded Engineering & Consulting',
-                  consultant: 'Shalya Gaonkar',
-                  date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-                  hours: Math.max(0.25, hrs),
-                  rate: 2000,
-                  billable: true,
-                };
-                setTimesheets([newTs, ...timesheets]);
-                setTimerRunning(false);
-                setTimerSeconds(0);
-                showToast(`Logged ${newTs.hours} hrs to timesheet!`);
-              }}
-            >
-              Log Session
-            </button>
-          </div>
-        </div>
-
         {/* Metric Cards */}
         <div className="zb-dashboard-grid four-col zb-section-spacing">
           <div className="zb-card zb-mini-stat-card">
@@ -1565,7 +1456,7 @@ Timestamp:    ${new Date().toISOString()}
             >
               <Download size={15} /> Export File Index
             </button>
-            <button className="zb-btn zb-btn-primary" onClick={() => setModalType('upload_document')}>
+            <button className="zb-btn zb-btn-primary" onClick={() => setIsUploadDocOpen(true)}>
               <Plus size={16} /> Upload Document
             </button>
           </div>
@@ -1635,8 +1526,19 @@ Timestamp:    ${new Date().toISOString()}
             <tbody>
               {filtered.map(doc => (
                 <tr key={doc.id}>
-                  <td className="font-medium text-primary">{doc.id}</td>
-                  <td>
+                  <td
+                    className="font-medium text-primary"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => setSelectedDoc(doc)}
+                    title="Click to preview audit certificate"
+                  >
+                    {doc.id}
+                  </td>
+                  <td
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => setSelectedDoc(doc)}
+                    title="Click to preview audit certificate"
+                  >
                     <div className="zb-flex-align gap-2">
                       <FileText size={16} className="text-muted" />
                       <span className="font-semibold">{doc.title}</span>
@@ -1652,20 +1554,20 @@ Timestamp:    ${new Date().toISOString()}
                     </span>
                   </td>
                   <td>
-                    <div className="rf-flex-align gap-2">
+                    <div className="zb-flex-align gap-2">
                       <button
-                        className="rf-btn rf-btn-sm rf-btn-primary"
-                        onClick={() => downloadFile(doc.title, getDocumentContent(doc), 'text/plain')}
-                        title="Download actual verified document"
+                        className="zb-btn zb-btn-sm zb-btn-secondary"
+                        onClick={() => setSelectedDoc(doc)}
+                        title="View audit certificate & details"
                       >
-                        <Download size={13} /> Download
+                        <Eye size={13} style={{ marginRight: '3px' }} /> View
                       </button>
                       <button
-                        className="rf-btn rf-btn-sm rf-btn-secondary"
-                        onClick={() => setSelectedDocument(doc)}
-                        title="Preview document metadata & cryptographic seal"
+                        className="zb-btn zb-btn-sm zb-btn-secondary"
+                        onClick={() => downloadDocumentFile(doc)}
+                        title="Download verified document file"
                       >
-                        Preview
+                        <Download size={13} style={{ marginRight: '3px' }} /> Download
                       </button>
                     </div>
                   </td>
@@ -1675,116 +1577,19 @@ Timestamp:    ${new Date().toISOString()}
           </table>
         </div>
 
-        {/* Document Preview & Verification Modal */}
-        {selectedDocument && (
-          <div className="rf-modal-backdrop zb-modal-backdrop" onClick={() => setSelectedDocument(null)}>
-            <div className="rf-doc-modal-card zb-modal-card" onClick={e => e.stopPropagation()}>
-              <div className="rf-modal-header zb-modal-header">
-                <div className="rf-flex-align gap-2">
-                  <FileText size={18} className="text-indigo" />
-                  <h3>Document Vault Inspection • {selectedDocument.id}</h3>
-                </div>
-                <button className="rf-icon-button zb-close-btn" onClick={() => setSelectedDocument(null)}>
-                  <X size={18} />
-                </button>
-              </div>
-              <div className="rf-doc-preview-body">
-                <div className="rf-doc-info-grid">
-                  <div>
-                    <span className="text-xs text-muted">DOCUMENT NAME</span>
-                    <div className="font-bold text-base mt-1">{selectedDocument.title}</div>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted">CATEGORY</span>
-                    <div className="mt-1"><span className="rf-badge rf-badge-indigo">{selectedDocument.category}</span></div>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted">UPLOADED BY</span>
-                    <div className="font-medium mt-1">{selectedDocument.uploadedBy}</div>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted">FILE SIZE & ENCRYPTION</span>
-                    <div className="font-medium mt-1">{selectedDocument.size} • AES-256</div>
-                  </div>
-                </div>
+        {/* Real Document Viewer Modal */}
+        <DocumentViewerModal
+          doc={selectedDoc}
+          onClose={() => setSelectedDoc(null)}
+          onDownload={downloadDocumentFile}
+        />
 
-                <div className="rf-doc-seal-box">
-                  <CheckCircle2 size={22} className="text-emerald" />
-                  <div>
-                    <div className="font-bold text-emerald">Cryptographically Certified Record</div>
-                    <div className="text-xs text-muted font-mono">SHA-256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</div>
-                  </div>
-                </div>
-
-                <pre className="rf-doc-text-preview">{getDocumentContent(selectedDocument)}</pre>
-              </div>
-              <div className="rf-modal-actions-bar">
-                <button className="rf-btn rf-btn-secondary" onClick={() => setSelectedDocument(null)}>
-                  Close
-                </button>
-                <button
-                  className="rf-btn rf-btn-primary"
-                  onClick={() => downloadFile(selectedDocument.title, getDocumentContent(selectedDocument), 'text/plain')}
-                >
-                  <Download size={15} /> Download Document
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Modal: Upload Document */}
-        {modalType === 'upload_document' && (
-          <div className="zb-modal-backdrop" onClick={() => setModalType(null)}>
-            <div className="zb-modal-card" onClick={e => e.stopPropagation()}>
-              <div className="zb-modal-header">
-                <h3>Upload Document</h3>
-                <button className="zb-close-btn" onClick={() => setModalType(null)}>
-                  <X size={18} />
-                </button>
-              </div>
-              <form onSubmit={handleUploadDocument} className="zb-modal-form">
-                <div className="zb-form-group">
-                  <label>Document Title / Filename *</label>
-                  <input
-                    type="text"
-                    className="zb-input"
-                    placeholder="e.g., GSTR_3B_Filing_Confirmation_August2026.pdf"
-                    value={newDocTitle}
-                    onChange={e => setNewDocTitle(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="zb-form-group">
-                  <label>Category *</label>
-                  <select
-                    className="zb-input"
-                    value={newDocCategory}
-                    onChange={e => setNewDocCategory(e.target.value)}
-                  >
-                    <option value="Tax & GST">Tax & GST</option>
-                    <option value="Invoices & Bills">Invoices & Bills</option>
-                    <option value="Bank Statements">Bank Statements</option>
-                    <option value="Legal & Contracts">Legal & Contracts</option>
-                  </select>
-                </div>
-                <div className="zb-form-group">
-                  <label>Audit Notes (Optional)</label>
-                  <input
-                    type="text"
-                    className="zb-input"
-                    placeholder="e.g., Verified by Statutory Auditor on 04 Sep"
-                    value={newDocNote}
-                    onChange={e => setNewDocNote(e.target.value)}
-                  />
-                </div>
-                <button type="submit" className="zb-btn zb-btn-primary zb-btn-block">
-                  Upload to Vault
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
+        {/* Real Upload Document Modal */}
+        <UploadDocumentModal
+          isOpen={isUploadDocOpen}
+          onClose={() => setIsUploadDocOpen(false)}
+          onUploaded={handleDocUploaded}
+        />
       </div>
     );
   }
@@ -1805,7 +1610,7 @@ Timestamp:    ${new Date().toISOString()}
     const totalDeductions = employees.reduce((acc, e) => acc + e.deductions, 0);
     const totalNet = employees.reduce((acc, e) => acc + e.net, 0);
 
-    const handleAddEmployee = (e: React.FormEvent) => {
+    const handleAddEmployee = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!newEmpName || !newEmpGross) return;
 
@@ -1813,8 +1618,7 @@ Timestamp:    ${new Date().toISOString()}
       const deductions = Math.round(gross * 0.12);
       const net = gross - deductions;
 
-      const newEmp = {
-        id: `EMP-${100 + employees.length + 1}`,
+      const empData = {
         name: newEmpName,
         designation: newEmpRole || 'Software Specialist',
         department: newEmpDept,
@@ -1824,27 +1628,48 @@ Timestamp:    ${new Date().toISOString()}
         status: 'Processing',
       };
 
-      setEmployees([newEmp, ...employees]);
+      try {
+        const created = await ApiClient.createPayrollEmployee(empData);
+        setEmployees([created, ...employees]);
+      } catch {
+        const fallbackEmp: PayrollEmployee = {
+          id: `EMP-${100 + employees.length + 1}`,
+          ...empData
+        };
+        setEmployees([fallbackEmp, ...employees]);
+      }
+
       setNewEmpName('');
       setNewEmpRole('');
       setNewEmpGross('');
       setModalType(null);
-      showToast(`Employee ${newEmp.name} added to payroll register!`);
+      showToast(`Employee ${newEmpName} added to payroll register!`);
     };
 
-    const handleRunPayBatch = () => {
+    const handleRunPayBatch = async () => {
+      try {
+        await ApiClient.disbursePayroll();
+      } catch {}
       setEmployees(employees.map(e => ({ ...e, status: 'Paid' })));
-      showToast(`Monthly payroll disbursed! Net ${formatINR(totalNet)} transferred across ${employees.length} employee accounts.`);
+
+      const batchRef = `NEFT-BATCH-${Date.now().toString().slice(-6)}`;
+      exportCSV(
+        `NEFT_Salary_Disbursement_${batchRef}.csv`,
+        ['Batch Ref', 'Employee ID', 'Beneficiary Name', 'Designation', 'Net Amount (INR)', 'Payment Mode', 'Status'],
+        employees.map(e => [batchRef, e.id, `"${e.name}"`, `"${e.designation}"`, e.net, 'NEFT/IMPS Direct Credit', 'SUCCESS'])
+      );
+
+      showToast(`Payroll batch disbursed! Net ${formatINR(totalNet)} transferred across ${employees.length} employee accounts. NEFT batch register exported!`);
     };
 
     return (
       <div className="zb-page zb-module-page">
         {toastMessage && <div className="zb-floating-toast">{toastMessage}</div>}
 
-        <div className="rf-page-header zb-page-header zb-flex-between">
+        <div className="zb-page-header zb-flex-between">
           <div>
-            <h1 className="rf-page-title zb-page-title">Payroll & Compensation Operations</h1>
-            <p className="rf-page-subtitle zb-page-subtitle">Salary disbursements, EPF, ESI, Professional Tax, and automated payslip generation</p>
+            <h1 className="zb-page-title">Zoho Payroll & Compensation</h1>
+            <p className="zb-page-subtitle">Salary disbursements, EPF, ESI, Professional Tax, and automated payslip generation</p>
           </div>
           <div className="zb-flex-align gap-2">
             <button
@@ -1928,8 +1753,22 @@ Timestamp:    ${new Date().toISOString()}
             <tbody>
               {filtered.map(emp => (
                 <tr key={emp.id}>
-                  <td className="font-medium text-primary">{emp.id}</td>
-                  <td className="font-semibold">{emp.name}</td>
+                  <td
+                    className="font-medium text-primary"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => setSelectedEmpPayslip(emp)}
+                    title="Click to view official payslip"
+                  >
+                    {emp.id}
+                  </td>
+                  <td
+                    className="font-semibold"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => setSelectedEmpPayslip(emp)}
+                    title="Click to view official payslip"
+                  >
+                    {emp.name}
+                  </td>
                   <td>{emp.designation}</td>
                   <td><span className="zb-badge-category">{emp.department}</span></td>
                   <td>{formatINR(emp.gross)}</td>
@@ -1941,23 +1780,22 @@ Timestamp:    ${new Date().toISOString()}
                     </span>
                   </td>
                   <td>
-                    <button
-                      className="rf-btn rf-btn-sm rf-btn-secondary zb-btn zb-btn-sm zb-btn-secondary"
-                      onClick={() => downloadFile(
-                        `Payslip_${emp.id}_${emp.name.replace(/\s+/g, '_')}.html`,
-                        generatePayslipHTML({
-                          id: emp.id,
-                          name: emp.name,
-                          designation: emp.designation,
-                          department: emp.department,
-                          salary: emp.gross,
-                        }),
-                        'text/html'
-                      )}
-                      title="Download official employee salary slip"
-                    >
-                      <Download size={13} /> Download Slip
-                    </button>
+                    <div className="zb-flex-align gap-2">
+                      <button
+                        className="zb-btn zb-btn-sm zb-btn-secondary"
+                        onClick={() => setSelectedEmpPayslip(emp)}
+                        title="View, Print & verify Salary Payslip"
+                      >
+                        <Eye size={13} style={{ marginRight: '3px' }} /> Payslip
+                      </button>
+                      <button
+                        className="zb-btn zb-btn-sm zb-btn-secondary"
+                        onClick={() => downloadEmployeePayslip(emp)}
+                        title="Download official standalone HTML payslip"
+                      >
+                        <Download size={13} style={{ marginRight: '3px' }} /> Download
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -2032,6 +1870,13 @@ Timestamp:    ${new Date().toISOString()}
             </div>
           </div>
         )}
+
+        {/* Interactive Salary Payslip Modal */}
+        <SalaryPayslipModal
+          employee={selectedEmpPayslip}
+          onClose={() => setSelectedEmpPayslip(null)}
+          onDownload={() => selectedEmpPayslip && downloadEmployeePayslip(selectedEmpPayslip)}
+        />
       </div>
     );
   }
@@ -2175,120 +2020,21 @@ Timestamp:    ${new Date().toISOString()}
                     </span>
                   </td>
                   <td>
-                    <div className="rf-flex-align gap-2">
-                      <button
-                        className={`rf-btn rf-btn-sm ${copiedPaymentId === p.id ? 'rf-btn-success' : 'rf-btn-secondary'} zb-btn zb-btn-sm zb-btn-secondary`}
-                        onClick={() => {
-                          const url = `https://pay.roomanbooks.com/${p.id}`;
-                          copyToClipboard(url, () => {
-                            setCopiedPaymentId(p.id);
-                            setTimeout(() => setCopiedPaymentId(null), 2500);
-                          });
-                        }}
-                        title="Copy shareable payment link with instant fallback"
-                      >
-                        {copiedPaymentId === p.id ? '✓ Copied!' : 'Copy Link'}
-                      </button>
-                      <button
-                        className="rf-btn rf-btn-sm rf-btn-primary"
-                        onClick={() => setSelectedPayment(p)}
-                        title="Show UPI QR Code & Instant Checkout Modal"
-                      >
-                        <QrCode size={13} /> View QR
-                      </button>
-                    </div>
+                    <button
+                      className="zb-btn zb-btn-sm zb-btn-secondary"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(`https://pay.roomanbooks.com/${p.id}`);
+                        showToast(`Copied payment link for ${p.customer}!`);
+                      }}
+                    >
+                      Copy Link
+                    </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-
-        {/* UPI QR & Payment Checkout Modal */}
-        {selectedPayment && (
-          <div className="rf-modal-backdrop zb-modal-backdrop" onClick={() => setSelectedPayment(null)}>
-            <div className="rf-qr-modal-card zb-modal-card" onClick={e => e.stopPropagation()}>
-              <div className="rf-modal-header zb-modal-header">
-                <div className="rf-flex-align gap-2">
-                  <QrCode size={18} className="text-indigo" />
-                  <h3>Scan to Pay • {selectedPayment.id}</h3>
-                </div>
-                <button className="rf-icon-button zb-close-btn" onClick={() => setSelectedPayment(null)}>
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div className="rf-qr-modal-body">
-                <div className="rf-qr-display-box">
-                  <div className="rf-qr-code-art">
-                    <QrCode size={140} className="text-indigo" />
-                  </div>
-                  <span className="rf-qr-scan-hint">Scan with any UPI App (Google Pay, PhonePe, Paytm, BHIM)</span>
-                </div>
-
-                <div className="rf-qr-details-panel">
-                  <div className="rf-flex-between py-1">
-                    <span className="text-muted">Customer Name:</span>
-                    <span className="font-semibold">{selectedPayment.customer}</span>
-                  </div>
-                  <div className="rf-flex-between py-1">
-                    <span className="text-muted">Invoice Reference:</span>
-                    <span className="font-mono text-indigo">{selectedPayment.invoiceRef}</span>
-                  </div>
-                  <div className="rf-flex-between py-1">
-                    <span className="text-muted">Payment Method:</span>
-                    <span>{selectedPayment.method}</span>
-                  </div>
-                  <div className="rf-flex-between py-1">
-                    <span className="text-muted">Amount Due:</span>
-                    <span className="font-bold text-emerald text-lg">{formatINR(selectedPayment.amount)}</span>
-                  </div>
-                  <div className="rf-flex-between py-1">
-                    <span className="text-muted">Virtual Payment Address:</span>
-                    <span className="font-mono text-xs text-indigo">rooman.books@hdfcbank</span>
-                  </div>
-                </div>
-
-                <div className="rf-link-box">
-                  <input
-                    type="text"
-                    readOnly
-                    className="rf-text-input font-mono text-xs"
-                    value={`https://pay.roomanbooks.com/${selectedPayment.id}`}
-                  />
-                  <button
-                    className="rf-btn rf-btn-primary rf-btn-sm"
-                    onClick={() => {
-                      const url = `https://pay.roomanbooks.com/${selectedPayment.id}`;
-                      copyToClipboard(url, () => {
-                        setCopiedPaymentId(selectedPayment.id);
-                        setTimeout(() => setCopiedPaymentId(null), 2500);
-                      });
-                    }}
-                  >
-                    {copiedPaymentId === selectedPayment.id ? '✓ Copied' : 'Copy Link'}
-                  </button>
-                </div>
-              </div>
-
-              <div className="rf-modal-actions-bar">
-                <button className="rf-btn rf-btn-secondary" onClick={() => setSelectedPayment(null)}>
-                  Close
-                </button>
-                <button
-                  className="rf-btn rf-btn-success"
-                  onClick={() => {
-                    setPaymentsList(paymentsList.map(item => item.id === selectedPayment.id ? { ...item, status: 'Settled' } : item));
-                    setSelectedPayment(null);
-                    showToast(`Payment ${selectedPayment.id} settled successfully!`);
-                  }}
-                >
-                  <Check size={14} /> Simulate Successful Settlement
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Modal: Create Payment Link */}
         {modalType === 'create_payment' && (

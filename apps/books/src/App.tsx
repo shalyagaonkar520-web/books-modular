@@ -11,32 +11,14 @@ import { ApiClient, UserProfile } from './services/apiClient';
 import { Item } from './types/item';
 
 export const App: React.FC = () => {
-  // Check stored credentials for persistent session
-  const storedUser = ApiClient.getStoredUser();
-  const isAuth = ApiClient.isAuthenticated();
-
-  // Navigation & View Mode (persists into 'app' if user is already authenticated)
-  const [currentView, setCurrentView] = useState<'landing' | 'app'>(() => (isAuth ? 'app' : 'landing'));
+  // Navigation & View Mode
+  const [currentView, setCurrentView] = useState<'landing' | 'app'>('landing');
   const [activeModule, setActiveModule] = useState<NavModule>('home');
 
   // Auth state
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(storedUser);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => ApiClient.getStoredUser());
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-
-  // Route Protection: enforce authentication for workspace access
-  useEffect(() => {
-    if (currentView === 'app' && !currentUser) {
-      const existing = ApiClient.getStoredUser();
-      if (existing) {
-        setCurrentUser(existing);
-      } else {
-        // Unauthenticated access attempt: trigger sign in modal
-        setIsAuthModalOpen(true);
-        setAuthMode('login');
-      }
-    }
-  }, [currentView, currentUser]);
 
   // Data & Repository state
   const [items, setItems] = useState<Item[]>(() => itemRepository.getItems());
@@ -108,7 +90,6 @@ export const App: React.FC = () => {
   const handleLoginSuccess = (user: UserProfile) => {
     setCurrentUser(user);
     setCurrentView('app');
-    setIsAuthModalOpen(false);
   };
 
   const handleSignOut = () => {
@@ -119,16 +100,15 @@ export const App: React.FC = () => {
 
   const handleEnterDemo = () => {
     if (!currentUser) {
-      // Assign primary administrator user for immediate demo session
+      // Auto-assign primary demo admin user for immediate demo experience if not logged in
       const defaultUser: UserProfile = {
         id: 'user-1',
         name: 'Shalya Gaonkar',
         email: 'admin@zylkerbooks.com',
         role: 'Administrator',
-        organization: 'Rooman Enterprise India',
-        authProvider: 'local',
+        organization: 'Zylker Electronics India Pvt Ltd',
       };
-      ApiClient.storeUser(defaultUser, 'demo_token_session');
+      ApiClient.storeUser(defaultUser, 'demo_token');
       setCurrentUser(defaultUser);
     }
     setCurrentView('app');
@@ -156,7 +136,7 @@ export const App: React.FC = () => {
 
   // App Dashboard View (All Modules Unlocked!)
   return (
-    <div className="rf-app-container zb-app-container">
+    <div className="zb-app-container">
       {/* Header Bar */}
       <Header
         serverConnected={serverConnected}

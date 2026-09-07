@@ -38,8 +38,8 @@ export interface DemoUser extends UserProfile {
 }
 
 const API_BASE = '/api';
-const AUTH_USER_KEY = 'rooman_auth_user';
-const AUTH_TOKEN_KEY = 'rooman_auth_token';
+const AUTH_USER_KEY = 'zoho_books_auth_user';
+const AUTH_TOKEN_KEY = 'zoho_books_auth_token';
 
 export class ApiClient {
   /**
@@ -52,20 +52,6 @@ export class ApiClient {
     } catch {
       return false;
     }
-  }
-
-  /**
-   * Helper to get bearer auth headers
-   */
-  public static getAuthHeaders(): Record<string, string> {
-    const token = this.getToken();
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    return headers;
   }
 
   /**
@@ -98,7 +84,7 @@ export class ApiClient {
     name: string,
     email: string,
     password: string,
-    organization: string = 'Rooman Enterprise India',
+    organization: string = 'Zylker Electronics India Pvt Ltd',
     role: string = 'Administrator'
   ): Promise<{ user: UserProfile; token: string }> {
     const response = await fetch(`${API_BASE}/auth/register`, {
@@ -118,13 +104,11 @@ export class ApiClient {
   }
 
   /**
-   * Single Sign-On with OAuth 2.0 Identity Provider (Google, Microsoft, Zoho, GitHub)
+   * Single Sign-On with OAuth 2.0 Identity Provider
    */
   public static async oauthLogin(
     provider: 'google' | 'microsoft' | 'zoho' | 'github',
     payload?: {
-      credential?: string;
-      clientId?: string;
       email?: string;
       name?: string;
       avatar?: string;
@@ -135,7 +119,7 @@ export class ApiClient {
     const response = await fetch(`${API_BASE}/auth/oauth/${encodeURIComponent(provider)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload ? { provider, ...payload } : { provider }),
+      body: JSON.stringify(payload || { provider }),
     });
 
     if (!response.ok) {
@@ -149,21 +133,21 @@ export class ApiClient {
   }
 
   /**
-   * Check if user is currently authenticated
+   * Fetch available enterprise OAuth providers
    */
-  public static isAuthenticated(): boolean {
-    return !!(this.getStoredUser() && this.getToken());
-  }
-
-  /**
-   * Get stored auth token
-   */
-  public static getToken(): string | null {
+  public static async getOAuthProviders(): Promise<OAuthProvider[]> {
     try {
-      return localStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem('zoho_books_auth_token');
+      const res = await fetch(`${API_BASE}/auth/oauth/providers`);
+      if (res.ok) return res.json();
     } catch {
-      return null;
+      // fallback
     }
+    return [
+      { id: 'google', name: 'Google Workspace', icon: 'google', status: 'Active', description: 'Google OAuth 2.0' },
+      { id: 'microsoft', name: 'Microsoft 365 / Azure AD', icon: 'microsoft', status: 'Active', description: 'Microsoft Entra SSO' },
+      { id: 'zoho', name: 'Zoho Accounts SSO', icon: 'zoho', status: 'Active', description: 'Zoho One SSO' },
+      { id: 'github', name: 'GitHub Enterprise', icon: 'github', status: 'Active', description: 'GitHub SSO' },
+    ];
   }
 
   /**
@@ -171,7 +155,7 @@ export class ApiClient {
    */
   public static getStoredUser(): UserProfile | null {
     try {
-      const stored = localStorage.getItem(AUTH_USER_KEY) || localStorage.getItem('zoho_books_auth_user');
+      const stored = localStorage.getItem(AUTH_USER_KEY);
       if (stored) return JSON.parse(stored);
     } catch {
       // fallback
@@ -180,14 +164,12 @@ export class ApiClient {
   }
 
   /**
-   * Persist user & token to localStorage & sessionStorage
+   * Persist user & token to localStorage
    */
   public static storeUser(user: UserProfile, token: string): void {
     try {
       localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
       localStorage.setItem(AUTH_TOKEN_KEY, token);
-      sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
-      sessionStorage.setItem(AUTH_TOKEN_KEY, token);
     } catch {
       // ignore
     }
@@ -200,9 +182,6 @@ export class ApiClient {
     try {
       localStorage.removeItem(AUTH_USER_KEY);
       localStorage.removeItem(AUTH_TOKEN_KEY);
-      localStorage.removeItem('zoho_books_auth_user');
-      localStorage.removeItem('zoho_books_auth_token');
-      sessionStorage.clear();
     } catch {
       // ignore
     }
@@ -371,4 +350,195 @@ export class ApiClient {
     }
     return response.json();
   }
+
+  // ==================== INVOICE OPERATIONS ====================
+  public static async getInvoices(): Promise<Invoice[]> {
+    try {
+      const response = await fetch(`${API_BASE}/invoices`);
+      if (!response.ok) throw new Error('Failed to fetch invoices');
+      return await response.json();
+    } catch (err) {
+      console.warn('Invoices API fallback:', err);
+      return [];
+    }
+  }
+
+  public static async getInvoice(id: string): Promise<Invoice | null> {
+    try {
+      const response = await fetch(`${API_BASE}/invoices/${encodeURIComponent(id)}`);
+      if (!response.ok) return null;
+      return await response.json();
+    } catch {
+      return null;
+    }
+  }
+
+  public static async createInvoice(invoiceData: Partial<Invoice>): Promise<Invoice> {
+    const response = await fetch(`${API_BASE}/invoices`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(invoiceData),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Failed to create invoice' }));
+      throw new Error(err.detail || 'Failed to create invoice');
+    }
+    return response.json();
+  }
+
+  public static async updateInvoiceStatus(id: string, status: string): Promise<Invoice> {
+    const response = await fetch(`${API_BASE}/invoices/${encodeURIComponent(id)}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    if (!response.ok) throw new Error('Failed to update invoice status');
+    return response.json();
+  }
+
+  // ==================== DOCUMENT OPERATIONS ====================
+  public static async getDocuments(): Promise<DocumentItem[]> {
+    try {
+      const response = await fetch(`${API_BASE}/documents`);
+      if (!response.ok) throw new Error('Failed to fetch documents');
+      return await response.json();
+    } catch (err) {
+      console.warn('Documents API fallback:', err);
+      return [];
+    }
+  }
+
+  public static async uploadDocument(docData: Partial<DocumentItem>): Promise<DocumentItem> {
+    const response = await fetch(`${API_BASE}/documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(docData),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Failed to upload document' }));
+      throw new Error(err.detail || 'Failed to upload document');
+    }
+    return response.json();
+  }
+
+  // ==================== PAYROLL OPERATIONS ====================
+  public static async getPayrollEmployees(): Promise<PayrollEmployee[]> {
+    try {
+      const response = await fetch(`${API_BASE}/payroll/employees`);
+      if (!response.ok) throw new Error('Failed to fetch employees');
+      return await response.json();
+    } catch (err) {
+      console.warn('Payroll API fallback:', err);
+      return [];
+    }
+  }
+
+  public static async createPayrollEmployee(empData: Partial<PayrollEmployee>): Promise<PayrollEmployee> {
+    const response = await fetch(`${API_BASE}/payroll/employees`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(empData),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Failed to add employee' }));
+      throw new Error(err.detail || 'Failed to add employee');
+    }
+    return response.json();
+  }
+
+  public static async disbursePayroll(): Promise<PayrollEmployee[]> {
+    const response = await fetch(`${API_BASE}/payroll/disburse`, {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error('Failed to run payroll disbursement');
+    return response.json();
+  }
+
+  public static async getPayslip(empId: string, month: string = 'August 2026'): Promise<Payslip> {
+    const response = await fetch(
+      `${API_BASE}/payroll/payslip/${encodeURIComponent(empId)}?month=${encodeURIComponent(month)}`
+    );
+    if (!response.ok) throw new Error('Failed to generate payslip');
+    return response.json();
+  }
 }
+
+// Export models for Invoices, Documents & Payroll
+export interface InvoiceLineItem {
+  id?: string;
+  name: string;
+  description?: string;
+  hsn: string;
+  quantity: number;
+  rate: number;
+  discount?: number;
+  taxRate: number;
+  amount?: number;
+}
+
+export interface Invoice {
+  id: string;
+  client: string;
+  clientEmail?: string;
+  clientGstin?: string;
+  date: string;
+  due: string;
+  subtotal: number;
+  taxAmount: number;
+  amount: number;
+  status: 'Paid' | 'Sent' | 'Overdue' | 'Draft';
+  items: InvoiceLineItem[];
+  notes?: string;
+  createdAt?: string;
+}
+
+export interface DocumentItem {
+  id: string;
+  title: string;
+  category: string;
+  uploadedBy: string;
+  date: string;
+  size: string;
+  verified: boolean;
+  checksum?: string;
+  notes?: string;
+}
+
+export interface PayrollEmployee {
+  id: string;
+  name: string;
+  designation: string;
+  department: string;
+  gross: number;
+  deductions: number;
+  net: number;
+  bankAcc?: string;
+  pan?: string;
+  uan?: string;
+  status: 'Paid' | 'Processing' | string;
+  lastPayDate?: string;
+}
+
+export interface Payslip {
+  id: string;
+  employeeId: string;
+  name: string;
+  designation: string;
+  department: string;
+  month: string;
+  gross: number;
+  basic: number;
+  hra: number;
+  specialAllowance: number;
+  pf: number;
+  pt: number;
+  tds: number;
+  totalDeductions: number;
+  net: number;
+  netInWords: string;
+  bankAcc: string;
+  pan: string;
+  uan: string;
+  status: string;
+}
+

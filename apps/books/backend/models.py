@@ -153,11 +153,9 @@ class UserProfile(BaseModel):
 class OAuthLoginRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    provider: Optional[Literal['google', 'microsoft', 'zoho', 'github']] = None
-    credential: Optional[str] = None
+    provider: Literal['google', 'microsoft', 'zoho', 'github']
     code: Optional[str] = None
     access_token: Optional[str] = Field(default=None, alias='accessToken')
-    client_id: Optional[str] = Field(default=None, alias='clientId')
     email: Optional[str] = None
     name: Optional[str] = None
     avatar: Optional[str] = None
@@ -177,3 +175,136 @@ class AuthResponse(BaseModel):
     user: UserProfile
     token: str
     message: str
+
+
+# Invoice Models
+class InvoiceLineItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: Optional[str] = None
+    name: str
+    description: Optional[str] = None
+    hsn: str = "8471"
+    quantity: float = 1.0
+    rate: float = 0.0
+    discount: float = 0.0
+    tax_rate: float = Field(default=18.0, alias="taxRate")
+    amount: float = 0.0
+
+
+class InvoiceCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    client: str
+    client_email: Optional[str] = Field(default="", alias="clientEmail")
+    client_gstin: Optional[str] = Field(default="29AABCU9603R1ZM", alias="clientGstin")
+    date: str
+    due: str
+    items: List[InvoiceLineItem] = []
+    amount: Optional[float] = None
+    status: str = "Sent"
+    notes: Optional[str] = "Thank you for your business. Please remit payment via NEFT/RTGS."
+
+
+class InvoiceUpdateStatus(BaseModel):
+    status: Literal['Paid', 'Sent', 'Overdue', 'Draft']
+
+
+class InvoiceResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    client: str
+    client_email: Optional[str] = Field(default="", alias="clientEmail")
+    client_gstin: Optional[str] = Field(default="29AABCU9603R1ZM", alias="clientGstin")
+    date: str
+    due: str
+    subtotal: float
+    tax_amount: float = Field(alias="taxAmount")
+    amount: float
+    status: str
+    items: List[InvoiceLineItem] = []
+    notes: Optional[str] = None
+    created_at: str = Field(alias="createdAt")
+
+
+# Document Models
+class DocumentCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    title: str
+    category: str
+    uploaded_by: Optional[str] = Field(default="Shalya Gaonkar", alias="uploadedBy")
+    size: Optional[str] = "1.2 MB"
+    verified: bool = True
+    notes: Optional[str] = None
+
+
+class DocumentResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    title: str
+    category: str
+    uploaded_by: str = Field(alias="uploadedBy")
+    date: str
+    size: str
+    verified: bool
+    checksum: str
+    notes: Optional[str] = None
+
+
+# Payroll Models
+class PayrollEmployeeCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str
+    designation: str
+    department: str
+    gross: float
+    bank_acc: Optional[str] = Field(default="••••••••5812", alias="bankAcc")
+    pan: Optional[str] = "ABCDE1234F"
+    uan: Optional[str] = "101294819201"
+
+
+class PayrollEmployeeResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    name: str
+    designation: str
+    department: str
+    gross: float
+    deductions: float
+    net: float
+    bank_acc: str = Field(alias="bankAcc")
+    pan: str
+    uan: str
+    status: str
+    last_pay_date: str = Field(alias="lastPayDate")
+
+
+class PayslipResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    employee_id: str = Field(alias="employeeId")
+    name: str
+    designation: str
+    department: str
+    month: str
+    gross: float
+    basic: float
+    hra: float
+    special_allowance: float = Field(alias="specialAllowance")
+    pf: float
+    pt: float
+    tds: float
+    total_deductions: float = Field(alias="totalDeductions")
+    net: float
+    net_in_words: str = Field(alias="netInWords")
+    bank_acc: str = Field(alias="bankAcc")
+    pan: str
+    uan: str
+    status: str
+

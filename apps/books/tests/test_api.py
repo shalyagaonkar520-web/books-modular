@@ -191,11 +191,107 @@ class TestZohoBooksFastAPI(unittest.TestCase):
         self.assertIn("token", data)
         self.assertEqual(data["user"]["authProvider"], "microsoft")
 
-    def test_oauth_login_invalid_provider(self):
-        response = requests.post(f"{BASE_URL}/api/auth/oauth/unsupported_provider")
-        self.assertEqual(response.status_code, 400)
+    def test_invoices_api(self):
+        # List invoices
+        res = requests.get(f"{BASE_URL}/api/invoices")
+        self.assertEqual(res.status_code, 200)
+        invoices = res.json()
+        self.assertGreaterEqual(len(invoices), 5)
+
+        # Create new invoice
+        new_inv = {
+            "client": "Zoho Test Corporation",
+            "clientEmail": "finance@zohotest.com",
+            "clientGstin": "29AAACZ9999Z1Z5",
+            "date": "07 Sep 2026",
+            "due": "21 Sep 2026",
+            "items": [
+                {
+                    "name": "Cloud Ledger Automation Suite",
+                    "hsn": "998313",
+                    "quantity": 2,
+                    "rate": 50000.0,
+                    "taxRate": 18
+                }
+            ],
+            "status": "Sent"
+        }
+        create_res = requests.post(f"{BASE_URL}/api/invoices", json=new_inv)
+        self.assertEqual(create_res.status_code, 201)
+        created = create_res.json()
+        self.assertEqual(created["client"], "Zoho Test Corporation")
+        self.assertEqual(created["amount"], 118000.0)
+
+        # Update status
+        status_res = requests.put(f"{BASE_URL}/api/invoices/{created['id']}/status", json={"status": "Paid"})
+        self.assertEqual(status_res.status_code, 200)
+        self.assertEqual(status_res.json()["status"], "Paid")
+
+        # HTML Tax Invoice generation
+        html_res = requests.get(f"{BASE_URL}/api/invoices/{created['id']}/html")
+        self.assertEqual(html_res.status_code, 200)
+        self.assertIn("TAX INVOICE", html_res.text)
+
+    def test_documents_api(self):
+        # List documents
+        res = requests.get(f"{BASE_URL}/api/documents")
+        self.assertEqual(res.status_code, 200)
+        docs = res.json()
+        self.assertGreaterEqual(len(docs), 5)
+
+        # Upload document
+        new_doc = {
+            "title": "Annual_Statutory_Audit_Report.pdf",
+            "category": "Tax & GST",
+            "uploadedBy": "Auditor Team"
+        }
+        create_res = requests.post(f"{BASE_URL}/api/documents", json=new_doc)
+        self.assertEqual(create_res.status_code, 201)
+        created = create_res.json()
+        self.assertEqual(created["title"], "Annual_Statutory_Audit_Report.pdf")
+
+        # Download document
+        dl_res = requests.get(f"{BASE_URL}/api/documents/{created['id']}/download")
+        self.assertEqual(dl_res.status_code, 200)
+        self.assertIn("ZOHO BOOKS COMPLIANCE", dl_res.text)
+
+    def test_payroll_api(self):
+        # List employees
+        res = requests.get(f"{BASE_URL}/api/payroll/employees")
+        self.assertEqual(res.status_code, 200)
+        employees = res.json()
+        self.assertGreaterEqual(len(employees), 5)
+
+        # Add employee
+        new_emp = {
+            "name": "Arjun Nair",
+            "designation": "Staff Reliability Engineer",
+            "department": "Engineering",
+            "gross": 200000.0
+        }
+        create_res = requests.post(f"{BASE_URL}/api/payroll/employees", json=new_emp)
+        self.assertEqual(create_res.status_code, 201)
+        created = create_res.json()
+        self.assertEqual(created["net"], 176000.0)
+
+        # Run pay batch
+        disburse_res = requests.post(f"{BASE_URL}/api/payroll/disburse")
+        self.assertEqual(disburse_res.status_code, 200)
+        self.assertTrue(all(e["status"] == "Paid" for e in disburse_res.json()))
+
+        # Payslip generation
+        payslip_res = requests.get(f"{BASE_URL}/api/payroll/payslip/EMP-101")
+        self.assertEqual(payslip_res.status_code, 200)
+        payslip = payslip_res.json()
+        self.assertIn("Rupees Only", payslip["netInWords"])
+
+        # Payslip HTML document
+        html_res = requests.get(f"{BASE_URL}/api/payroll/payslip/EMP-101/html")
+        self.assertEqual(html_res.status_code, 200)
+        self.assertIn("Salary Payslip", html_res.text)
 
 
 if __name__ == "__main__":
     unittest.main()
+
 

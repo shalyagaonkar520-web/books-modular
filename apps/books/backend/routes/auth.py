@@ -53,24 +53,6 @@ def get_oauth_providers():
     ]
 
 
-import json
-
-def decode_jwt_payload(jwt_token: str) -> dict:
-    try:
-        parts = jwt_token.strip().split(".")
-        if len(parts) >= 2:
-            payload_b64 = parts[1]
-            # Add base64 padding if needed
-            rem = len(payload_b64) % 4
-            if rem > 0:
-                payload_b64 += "=" * (4 - rem)
-            decoded_bytes = base64.urlsafe_b64decode(payload_b64.encode("utf-8"))
-            return json.loads(decoded_bytes.decode("utf-8"))
-    except Exception:
-        pass
-    return {}
-
-
 @router.post("/oauth/{provider}", response_model=AuthResponse)
 def oauth_login(provider: str, payload: Optional[OAuthLoginRequest] = None):
     valid_providers = {"google", "microsoft", "zoho", "github"}
@@ -87,26 +69,13 @@ def oauth_login(provider: str, payload: Optional[OAuthLoginRequest] = None):
     org = payload.organization if payload else None
     role = payload.role if payload else None
 
-    # Handle Google Identity Services (GIS) / OpenID JWT Credential
-    if payload and payload.credential:
-        claims = decode_jwt_payload(payload.credential)
-        if claims:
-            email = claims.get("email", email)
-            name = claims.get("name", name)
-            avatar = claims.get("picture", avatar)
-
-    # Defaults if still unset
-    if not email and prov_lower == "google":
-        email = "shalya.gaonkar@gmail.com"
-        name = name or "Shalya Gaonkar"
-
     user = database.authenticate_or_create_oauth_user(
         provider=prov_lower,
         email=email,
         name=name,
         avatar=avatar,
-        organization=org or "Rooman Enterprise India",
-        role=role or "Administrator",
+        organization=org,
+        role=role,
     )
 
     token = generate_token(user["id"], user["email"])
