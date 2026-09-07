@@ -31,7 +31,7 @@ export const App: React.FC = () => {
   // Global Quick Add Modal trigger
   const [isGlobalAddModalOpen, setIsGlobalAddModalOpen] = useState(false);
 
-  // Sync with FastAPI server on mount & listen to repository changes
+  // Sync with cloud server on mount & listen to repository changes
   useEffect(() => {
     let isMounted = true;
 
@@ -44,7 +44,7 @@ export const App: React.FC = () => {
           setServerConnected(true);
         }
       } catch (err) {
-        console.warn('FastAPI backend connection note:', err);
+        console.warn('Cloud connection note:', err);
         if (isMounted) setServerConnected(false);
       } finally {
         if (isMounted) setIsLoading(false);
@@ -63,7 +63,7 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // CRUD Operations linked to FastAPI repository
+  // CRUD Operations linked to cloud repository
   const handleSaveItem = async (itemData: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>) => {
     await itemRepository.createItemAsync(itemData);
   };

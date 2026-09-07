@@ -1449,7 +1449,7 @@ body {
 .zb-delete-message { font-size: 14px; margin: 8px 0; }
 .zb-delete-actions { display: flex; gap: 12px; justify-content: center; }
 
-/* FastAPI Backend Connection Badge */
+/* Cloud Connection Badge */
 .zb-server-badge {
   display: inline-flex;
   align-items: center;

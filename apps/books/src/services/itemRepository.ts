@@ -192,7 +192,7 @@ export class LocalStorageItemRepository implements ItemRepository {
   }
 
   /**
-   * Sync cache with items from FastAPI backend
+   * Sync cache with items from cloud server
    */
   public async syncWithServer(): Promise<Item[]> {
     try {
@@ -203,7 +203,7 @@ export class LocalStorageItemRepository implements ItemRepository {
       return serverItems;
     } catch (e) {
       this.isServerHealthy = false;
-      console.warn('Unable to sync with FastAPI backend, using local cache:', e);
+      console.warn('Unable to sync with cloud server, using local cache:', e);
       return this.getItems();
     }
   }

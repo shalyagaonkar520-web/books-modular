@@ -34,7 +34,7 @@ const AUTH_TOKEN_KEY = 'zoho_books_auth_token';
 
 export class ApiClient {
   /**
-   * Health check to test connectivity to the FastAPI server
+   * Health check to test connectivity to the cloud server
    */
   public static async checkHealth(): Promise<boolean> {
     try {
@@ -166,7 +166,7 @@ export class ApiClient {
   }
 
   /**
-   * Retrieve items from the FastAPI backend with search, filters, and sort
+   * Retrieve items from the cloud server with search, filters, and sort
    */
   public static async getItems(
     filterOptions?: ItemFilterOptions,

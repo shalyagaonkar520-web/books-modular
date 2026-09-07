@@ -25,7 +25,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   const [period, setPeriod] = useState<CashFlowPeriod>('this_fiscal_year');
   const [backendSummary, setBackendSummary] = useState<DashboardSummaryResponse | null>(null);
 
-  // Sync dashboard calculations with FastAPI backend
+  // Sync dashboard calculations with cloud service
   useEffect(() => {
     let isMounted = true;
     ApiClient.getDashboardSummary(period)

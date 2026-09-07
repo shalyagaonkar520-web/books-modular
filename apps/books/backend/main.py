@@ -40,9 +40,9 @@ app.include_router(auth_router)
 def health_check():
     return {
         "status": "healthy",
-        "service": "Zoho Books FastAPI Backend",
+        "service": "Zoho Books Cloud Ledger Engine",
         "version": "1.0.0",
-        "database": "SQLite connected",
+        "database": "Connected",
     }
 
 
