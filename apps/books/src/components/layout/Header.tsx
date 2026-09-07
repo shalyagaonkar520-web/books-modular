@@ -225,7 +225,17 @@ export const Header: React.FC<HeaderProps> = ({
                 <div>
                   <div className="zb-user-name">{currentUser?.name || 'Shaly Gaonkar'}</div>
                   <div className="zb-user-email">{currentUser?.email || 'admin@zylkerbooks.com'}</div>
-                  <span className="zb-user-role">{currentUser?.role || 'Administrator'}</span>
+                  <div className="zb-flex-align gap-2">
+                    <span className="zb-user-role">{currentUser?.role || 'Administrator'}</span>
+                    {currentUser?.authProvider && currentUser.authProvider !== 'local' && (
+                      <span className="zb-oauth-tag">
+                        {currentUser.authProvider === 'google' && 'Google SSO'}
+                        {currentUser.authProvider === 'microsoft' && 'Microsoft 365'}
+                        {currentUser.authProvider === 'zoho' && 'Zoho SSO'}
+                        {currentUser.authProvider === 'github' && 'GitHub SSO'}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="zb-dropdown-divider"></div>

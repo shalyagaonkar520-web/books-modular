@@ -119,7 +119,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </button>
             <button className="zb-btn zb-btn-outline-dark zb-btn-lg" onClick={() => onOpenAuth('login')}>
               <ShieldCheck size={18} className="text-primary" />
-              <span>Fast 1-Click Demo Login</span>
+              <span>OAuth 2.0 & Demo Sign In</span>
             </button>
           </div>
 
@@ -317,6 +317,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               State-of-the-art encrypted data storage with ACID-compliant integrity, role-based permissions, and continuous backups.
             </p>
             <ul className="zb-arch-list">
+              <li><CheckCircle2 size={14} className="text-success" /> OAuth 2.0 Single Sign-On (Google, Microsoft 365, Zoho)</li>
               <li><CheckCircle2 size={14} className="text-success" /> End-to-end 256-bit encryption & TLS security</li>
               <li><CheckCircle2 size={14} className="text-success" /> Multi-entity Chart of Accounts & manual journals</li>
               <li><CheckCircle2 size={14} className="text-success" /> Continuous automated ledger backup & disaster recovery</li>
