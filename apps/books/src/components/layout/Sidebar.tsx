@@ -46,17 +46,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
 }) => {
   const navItems: NavItemDef[] = [
-    { id: 'home', label: 'Home', icon: <Home size={18} /> },
-    { id: 'items', label: 'Items', icon: <Package size={18} /> },
-    { id: 'sales', label: 'Sales', icon: <ShoppingCart size={18} /> },
-    { id: 'purchases', label: 'Purchases', icon: <ShoppingBag size={18} /> },
-    { id: 'banking', label: 'Banking', icon: <Landmark size={18} /> },
-    { id: 'time_tracking', label: 'Time Tracking', icon: <Clock size={18} /> },
-    { id: 'accountant', label: 'Accountant', icon: <Calculator size={18} /> },
-    { id: 'reports', label: 'Reports', icon: <BarChart3 size={18} /> },
-    { id: 'documents', label: 'Documents', icon: <FileText size={18} /> },
-    { id: 'payroll', label: 'Payroll', icon: <DollarSign size={18} /> },
-    { id: 'payments', label: 'Payments', icon: <CreditCard size={18} /> },
+    { id: 'home', label: 'Executive Dashboard', icon: <Home size={18} /> },
+    { id: 'items', label: 'Inventory & Catalog', icon: <Package size={18} /> },
+    { id: 'sales', label: 'Billing & Receivables', icon: <ShoppingCart size={18} /> },
+    { id: 'purchases', label: 'Procurement & Payables', icon: <ShoppingBag size={18} /> },
+    { id: 'banking', label: 'Treasury & Cash Flow', icon: <Landmark size={18} /> },
+    { id: 'time_tracking', label: 'Timesheets & Projects', icon: <Clock size={18} /> },
+    { id: 'accountant', label: 'General Ledger & Audit', icon: <Calculator size={18} /> },
+    { id: 'reports', label: 'Financial Intelligence', icon: <BarChart3 size={18} /> },
+    { id: 'documents', label: 'Compliance Vault', icon: <FileText size={18} /> },
+    { id: 'payroll', label: 'Workforce & Payroll', icon: <DollarSign size={18} /> },
+    { id: 'payments', label: 'Settlements & UPI', icon: <CreditCard size={18} /> },
   ];
 
   const handleItemClick = (module: NavModule) => {

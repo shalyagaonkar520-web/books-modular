@@ -94,9 +94,9 @@ export const ItemsPage: React.FC<ItemsPageProps> = ({
       <div className="zb-page-header zb-flex-between">
         <div>
           <div className="zb-breadcrumb">
-            <span>Inventory</span> / <span className="active">Items</span>
+            <span>Inventory</span> / <span className="active">Catalog</span>
           </div>
-          <h1 className="zb-page-title">Items Management</h1>
+          <h1 className="zb-page-title">Inventory & Catalog Management</h1>
         </div>
 
         <div className="zb-flex-align gap-3">

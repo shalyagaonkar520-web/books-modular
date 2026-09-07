@@ -1003,8 +1003,8 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
 
         <div className="zb-page-header zb-flex-between">
           <div>
-            <h1 className="zb-page-title">Sales Management Pipeline</h1>
-            <p className="zb-page-subtitle">End-to-end sales lifecycle: Quotes &rarr; Sales Orders &rarr; Delivery Challans &rarr; Tax Invoices &rarr; Credit Notes</p>
+            <h1 className="zb-page-title">Billing & Receivables Management</h1>
+            <p className="zb-page-subtitle">End-to-end receivables lifecycle: Quotations &rarr; Sales Orders &rarr; Delivery Challans &rarr; Tax Invoices &rarr; Credit Notes</p>
           </div>
           <div className="zb-flex-align gap-3">
             <button
@@ -1627,7 +1627,7 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
 
         <div className="zb-page-header zb-flex-between">
           <div>
-            <h1 className="zb-page-title">Purchases & Procure-to-Pay</h1>
+            <h1 className="zb-page-title">Procurement & Payables Management</h1>
             <p className="zb-page-subtitle">Suppliers &rarr; Purchase Orders (3-Way Match) &rarr; Vendor Bills &rarr; Recurring Expenses &rarr; Vendor Credits</p>
           </div>
           <div className="zb-flex-align gap-3">
@@ -2059,8 +2059,8 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
 
         <div className="zb-page-header zb-flex-between">
           <div>
-            <h1 className="zb-page-title">Banking & Reconciliation</h1>
-            <p className="zb-page-subtitle">Real-time bank feed integrations, automatic statement rules, and 1-click reconciliation</p>
+            <h1 className="zb-page-title">Treasury & Cash Flow Management</h1>
+            <p className="zb-page-subtitle">Real-time bank feed integrations, automatic statement rules, liquidity tracking, and 1-click reconciliation</p>
           </div>
           <div className="zb-flex-align gap-3">
             <button className="zb-btn zb-btn-secondary" onClick={() => setModalType('add_bank')}>
@@ -2171,8 +2171,8 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
 
         <div className="zb-page-header zb-flex-between">
           <div>
-            <h1 className="zb-page-title">Financial Reports & Compliance</h1>
-            <p className="zb-page-subtitle">Accurate, audit-ready financial statements, GST filings and ledger summaries</p>
+            <h1 className="zb-page-title">Financial Intelligence & Analytics</h1>
+            <p className="zb-page-subtitle">Accurate, audit-ready financial statements, GST compliance filings, and multi-dimensional ledger intelligence</p>
           </div>
           <button
             className="zb-btn zb-btn-primary"
@@ -2251,8 +2251,8 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
 
         <div className="zb-page-header zb-flex-between">
           <div>
-            <h1 className="zb-page-title">Accountant & General Ledger</h1>
-            <p className="zb-page-subtitle">Manual journals, multi-tiered chart of accounts, trial balance, and transaction period locking</p>
+            <h1 className="zb-page-title">General Ledger & Statutory Audit</h1>
+            <p className="zb-page-subtitle">Manual journals, multi-tiered chart of accounts, trial balance verification, and fiscal period locking</p>
           </div>
           <div className="zb-flex-align gap-3">
             <button
@@ -2789,8 +2789,8 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
 
         <div className="zb-page-header zb-flex-between">
           <div>
-            <h1 className="zb-page-title">Time Tracking & Projects</h1>
-            <p className="zb-page-subtitle">Track billable client hours, consultants time, and convert logs directly to invoices</p>
+            <h1 className="zb-page-title">Timesheets & Project Hours</h1>
+            <p className="zb-page-subtitle">Track billable client hours, consultant timesheets, and convert logged hours directly to invoices</p>
           </div>
           <div className="zb-flex-align gap-2">
             <button
@@ -3176,8 +3176,8 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
 
         <div className="zb-page-header zb-flex-between">
           <div>
-            <h1 className="zb-page-title">Documents & AutoScan Engine</h1>
-            <p className="zb-page-subtitle">Document evidence storage, AI receipt OCR AutoScan, and compliance audit archive</p>
+            <h1 className="zb-page-title">Compliance Vault & Document Archive</h1>
+            <p className="zb-page-subtitle">Document evidence repository, AI receipt OCR AutoScan engine, and statutory audit archive</p>
           </div>
           <div className="zb-flex-align gap-2">
             <button
@@ -3548,7 +3548,7 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
 
         <div className="zb-page-header zb-flex-between">
           <div>
-            <h1 className="zb-page-title">Zoho Payroll & Compensation</h1>
+            <h1 className="zb-page-title">Workforce & Payroll Administration</h1>
             <p className="zb-page-subtitle">Salary disbursements, EPF, ESI, Professional Tax, and automated payslip generation</p>
           </div>
           <div className="zb-flex-align gap-2">
@@ -3814,8 +3814,8 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
 
         <div className="zb-page-header zb-flex-between">
           <div>
-            <h1 className="zb-page-title">Payments & Gateway Collection</h1>
-            <p className="zb-page-subtitle">Instant UPI QR codes, customer payment links, NetBanking, and automated ledger settlement</p>
+            <h1 className="zb-page-title">Settlements & Payment Gateway</h1>
+            <p className="zb-page-subtitle">Instant UPI dynamic QR codes, customer checkout links, NetBanking, and automated ledger settlement</p>
           </div>
           <div className="zb-flex-align gap-2">
             <button

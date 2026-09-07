@@ -82,7 +82,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       {/* Page Header */}
       <div className="zb-page-header zb-flex-between">
         <div>
-          <h1 className="zb-page-title">Enterprise Dashboard</h1>
+          <h1 className="zb-page-title">Executive Dashboard</h1>
           <p className="zb-page-subtitle">
             Financial control, real-time ledger intelligence & inventory health
           </p>
@@ -263,7 +263,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             className="zb-quick-action-btn"
             onClick={() => {
               if (onNavigateModule) onNavigateModule('sales');
-              showToast('Opened Sales: Click "+ New Invoice" to generate GST invoice');
+              showToast('Opened Billing & Receivables: Click "+ New Invoice" to generate GST invoice');
             }}
           >
             <FileText size={14} className="text-primary" />
@@ -274,7 +274,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             className="zb-quick-action-btn"
             onClick={() => {
               if (onNavigateModule) onNavigateModule('sales');
-              showToast('Opened Sales: Switch to "Quotes & Estimates" to prepare a proposal');
+              showToast('Opened Billing & Receivables: Switch to "Quotes & Estimates" to prepare a proposal');
             }}
           >
             <PlusCircle size={14} className="text-primary" />
@@ -285,7 +285,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             className="zb-quick-action-btn"
             onClick={() => {
               if (onNavigateModule) onNavigateModule('purchases');
-              showToast('Opened Purchases: Record new supplier invoice');
+              showToast('Opened Procurement & Payables: Record new supplier invoice');
             }}
           >
             <ShoppingBag size={14} className="text-success" />
@@ -296,7 +296,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             className="zb-quick-action-btn"
             onClick={() => {
               if (onNavigateModule) onNavigateModule('banking');
-              showToast('Opened Banking: Reconcile payments');
+              showToast('Opened Treasury & Cash Flow: Reconcile payments');
             }}
           >
             <DollarSign size={14} className="text-success" />
@@ -307,7 +307,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             className="zb-quick-action-btn"
             onClick={() => {
               if (onNavigateModule) onNavigateModule('time_tracking');
-              showToast('Opened Time Tracking: Start stopwatch timer or log project hours');
+              showToast('Opened Timesheets & Projects: Start stopwatch timer or log project hours');
             }}
           >
             <Clock size={14} className="text-warning" />
@@ -318,7 +318,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             className="zb-quick-action-btn"
             onClick={() => {
               if (onNavigateModule) onNavigateModule('documents');
-              showToast('Opened Documents: Upload receipt or use AutoScan OCR');
+              showToast('Opened Compliance Vault: Upload receipt or use AutoScan OCR');
             }}
           >
             <Layers size={14} className="text-indigo" />

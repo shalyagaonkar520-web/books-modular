@@ -34,16 +34,16 @@ export const Header: React.FC<HeaderProps> = ({
   onSignOut,
   onNavigateLanding,
 }) => {
-  const [selectedOrg, setSelectedOrg] = useState('Zylker Electronics India Pvt Ltd');
+  const [selectedOrg, setSelectedOrg] = useState('Rooman Technologies Pvt Ltd');
   const [showOrgDropdown, setShowOrgDropdown] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const organizations = [
-    'Zylker Electronics India Pvt Ltd',
-    'Acme Enterprises (GST Registered)',
-    'Global Services & Consulting',
+    'Rooman Technologies Pvt Ltd',
+    'Rooman Enterprise Solutions (GST Registered)',
+    'Global Financial Services',
   ];
 
   return (

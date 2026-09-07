@@ -480,7 +480,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             },
             {
               q: 'Are all modules in the sidebar fully unlocked?',
-              a: 'Yes! All locks have been removed. Every module—including Sales, Purchases, Banking, Time Tracking, Accountant, Reports, Documents, Payroll, and Payments—is 100% active and functional.',
+              a: 'Yes! All locks have been removed. Every module—including Billing & Receivables, Procurement & Payables, Treasury & Cash Flow, Timesheets & Projects, General Ledger & Audit, Financial Intelligence, Compliance Vault, Workforce & Payroll, and Settlements & UPI—is 100% active and functional.',
             },
             {
               q: 'How does user access and authentication work?',
@@ -535,10 +535,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
           <div className="zb-footer-links-col">
             <h4>Modules</h4>
-            <span>Invoicing & Sales</span>
-            <span>Purchases & Bills</span>
-            <span>Banking Reconciliation</span>
-            <span>Inventory Tracking</span>
+            <span>Billing & Receivables</span>
+            <span>Procurement & Payables</span>
+            <span>Treasury & Cash Flow</span>
+            <span>Inventory & Catalog</span>
           </div>
           <div className="zb-footer-links-col">
             <h4>Compliance</h4>
