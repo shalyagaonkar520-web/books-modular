@@ -6,6 +6,19 @@ import {
   CashFlowPeriod,
   InventorySummary
 } from '../types/dashboard';
+import {
+  BusinessEvent,
+  NeedsAttentionItem,
+  AutomationMetrics,
+  AutomationRule,
+  BankReconciliation,
+  AuditLog,
+  AssistantQueryResponse,
+  JournalEntry,
+  TrialBalance
+} from '../types/automation';
+
+export * from '../types/automation';
 
 export interface DashboardSummaryResponse {
   receivables: ReceivablesSummary;
@@ -459,6 +472,106 @@ export class ApiClient {
       `${API_BASE}/payroll/payslip/${encodeURIComponent(empId)}?month=${encodeURIComponent(month)}`
     );
     if (!response.ok) throw new Error('Failed to generate payslip');
+    return response.json();
+  }
+
+  // =========================================================================
+  // Business Automation Engine Methods
+  // =========================================================================
+
+  public static async processBusinessEvent(rawText: string, source: string = 'manual_prompt'): Promise<any> {
+    const response = await fetch(`${API_BASE}/automation/event/process`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rawText, source }),
+    });
+    if (!response.ok) throw new Error('Failed to process business event');
+    return response.json();
+  }
+
+  public static async getAttentionItems(): Promise<NeedsAttentionItem[]> {
+    const response = await fetch(`${API_BASE}/automation/attention`);
+    if (!response.ok) return [];
+    return response.json();
+  }
+
+  public static async takeAttentionAction(itemId: string, action: string = 'dismiss'): Promise<any> {
+    const response = await fetch(`${API_BASE}/automation/attention/${encodeURIComponent(itemId)}/action?action=${encodeURIComponent(action)}`, {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error('Failed to process attention action');
+    return response.json();
+  }
+
+  public static async getAutomationMetrics(): Promise<AutomationMetrics> {
+    const response = await fetch(`${API_BASE}/automation/metrics`);
+    if (!response.ok) {
+      return {
+        automationScore: 94,
+        processedTodayCount: 127,
+        reconciledCount: 14,
+        categorizedCount: 28,
+        alertsCount: 3,
+        activeRulesCount: 5,
+      };
+    }
+    return response.json();
+  }
+
+  public static async getAutomationRules(): Promise<AutomationRule[]> {
+    const response = await fetch(`${API_BASE}/automation/rules`);
+    if (!response.ok) return [];
+    return response.json();
+  }
+
+  public static async toggleAutomationRule(ruleId: string, active: boolean): Promise<AutomationRule> {
+    const response = await fetch(`${API_BASE}/automation/rules/${encodeURIComponent(ruleId)}/toggle?active=${active}`, {
+      method: 'PUT',
+    });
+    if (!response.ok) throw new Error('Failed to toggle rule');
+    return response.json();
+  }
+
+  public static async getBankReconciliations(status?: string): Promise<BankReconciliation[]> {
+    const url = status ? `${API_BASE}/automation/reconciliations?status=${encodeURIComponent(status)}` : `${API_BASE}/automation/reconciliations`;
+    const response = await fetch(url);
+    if (!response.ok) return [];
+    return response.json();
+  }
+
+  public static async confirmBankReconciliation(reconId: string): Promise<BankReconciliation> {
+    const response = await fetch(`${API_BASE}/automation/reconciliations/${encodeURIComponent(reconId)}/confirm`, {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error('Failed to confirm reconciliation');
+    return response.json();
+  }
+
+  public static async getAuditLogs(): Promise<AuditLog[]> {
+    const response = await fetch(`${API_BASE}/automation/audit-trail`);
+    if (!response.ok) return [];
+    return response.json();
+  }
+
+  public static async queryAssistant(query: string): Promise<AssistantQueryResponse> {
+    const response = await fetch(`${API_BASE}/automation/assistant/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    });
+    if (!response.ok) throw new Error('Failed to query assistant');
+    return response.json();
+  }
+
+  public static async getGeneralLedger(): Promise<JournalEntry[]> {
+    const response = await fetch(`${API_BASE}/automation/accountant/ledger`);
+    if (!response.ok) return [];
+    return response.json();
+  }
+
+  public static async getTrialBalance(): Promise<TrialBalance> {
+    const response = await fetch(`${API_BASE}/automation/accountant/trial-balance`);
+    if (!response.ok) throw new Error('Failed to fetch trial balance');
     return response.json();
   }
 }

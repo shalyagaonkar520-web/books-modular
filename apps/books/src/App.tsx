@@ -4,6 +4,8 @@ import { Sidebar, NavModule } from './components/layout/Sidebar';
 import { HomePage } from './pages/Home/HomePage';
 import { ItemsPage } from './pages/Items/ItemsPage';
 import { ModuleView } from './pages/Modules/ModuleViews';
+import { AutomationsView } from './pages/Modules/AutomationsView';
+import { AccountantLedgerView } from './pages/Modules/AccountantLedgerView';
 import { LandingPage } from './pages/Landing/LandingPage';
 import { AuthModal } from './components/auth/AuthModal';
 import { itemRepository } from './services/itemRepository';
@@ -15,6 +17,8 @@ export const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<'landing' | 'app'>('landing');
   const [activeModule, setActiveModule] = useState<NavModule>('home');
   const [activeSubItem, setActiveSubItem] = useState<string | null>(null);
+  const [appMode, setAppMode] = useState<'simple' | 'accountant'>('simple');
+  const [attentionCount, setAttentionCount] = useState<number>(3);
 
   // Auth state
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => ApiClient.getStoredUser());
@@ -145,6 +149,12 @@ export const App: React.FC = () => {
         onSignOut={handleSignOut}
         onNavigateLanding={() => setCurrentView('landing')}
         onToggleSidebar={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+        appMode={appMode}
+        onToggleAppMode={setAppMode}
+        attentionCount={attentionCount}
+        onOpenAttention={() => {
+          setActiveModule('home');
+        }}
         onQuickAddItem={() => {
           setActiveModule('items');
           setIsGlobalAddModalOpen(true);
@@ -176,13 +186,14 @@ export const App: React.FC = () => {
           {activeModule === 'home' && (
             <HomePage
               items={items}
+              appMode={appMode}
               onNavigateItems={() => {
                 setActiveModule('items');
                 setActiveSubItem('items_list');
               }}
-              onNavigateModule={(mod) => {
+              onNavigateModule={(mod, subId) => {
                 setActiveModule(mod);
-                setActiveSubItem(null);
+                setActiveSubItem(subId || null);
               }}
               onQuickAddItem={() => {
                 setActiveModule('items');
@@ -206,18 +217,35 @@ export const App: React.FC = () => {
             />
           )}
 
-          {/* Unlocked views for all other modules */}
-          {activeModule !== 'home' && activeModule !== 'items' && (
-            <ModuleView
-              module={activeModule}
+          {activeModule === 'automations' && (
+            <AutomationsView
               activeSubItem={activeSubItem}
               onSelectSubItem={setActiveSubItem}
-              onNavigate={(mod, subId) => {
-                setActiveModule(mod);
-                setActiveSubItem(subId || null);
-              }}
             />
           )}
+
+          {activeModule === 'accountant' && (
+            <AccountantLedgerView
+              activeSubItem={activeSubItem}
+              onSelectSubItem={setActiveSubItem}
+            />
+          )}
+
+          {/* Unlocked views for all other standard modules */}
+          {activeModule !== 'home' &&
+            activeModule !== 'items' &&
+            activeModule !== 'automations' &&
+            activeModule !== 'accountant' && (
+              <ModuleView
+                module={activeModule}
+                activeSubItem={activeSubItem}
+                onSelectSubItem={setActiveSubItem}
+                onNavigate={(mod, subId) => {
+                  setActiveModule(mod);
+                  setActiveSubItem(subId || null);
+                }}
+              />
+            )}
         </main>
       </div>
 

@@ -8,6 +8,7 @@ from backend.routes.auth import router as auth_router
 from backend.routes.invoices import router as invoices_router
 from backend.routes.documents import router as documents_router
 from backend.routes.payroll import router as payroll_router
+from backend.routes.automation import router as automation_router
 
 
 @asynccontextmanager
@@ -40,6 +41,7 @@ app.include_router(auth_router)
 app.include_router(invoices_router)
 app.include_router(documents_router)
 app.include_router(payroll_router)
+app.include_router(automation_router)
 
 
 @app.get("/api/health", tags=["Health"])

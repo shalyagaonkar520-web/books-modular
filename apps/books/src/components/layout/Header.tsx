@@ -24,6 +24,10 @@ interface HeaderProps {
   currentUser?: UserProfile | null;
   onSignOut?: () => void;
   onNavigateLanding?: () => void;
+  appMode?: 'simple' | 'accountant';
+  onToggleAppMode?: (mode: 'simple' | 'accountant') => void;
+  attentionCount?: number;
+  onOpenAttention?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -33,6 +37,10 @@ export const Header: React.FC<HeaderProps> = ({
   currentUser,
   onSignOut,
   onNavigateLanding,
+  appMode = 'simple',
+  onToggleAppMode,
+  attentionCount = 0,
+  onOpenAttention,
 }) => {
   const [selectedOrg, setSelectedOrg] = useState('Rooman Technologies Pvt Ltd');
   const [showOrgDropdown, setShowOrgDropdown] = useState(false);
@@ -122,8 +130,36 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Right Side: Quick Action + Notifications + Settings + Profile */}
+      {/* Right Side: Mode Switcher + Attention + Quick Action + Notifications + Settings + Profile */}
       <div className="zb-header-right">
+        {/* Simple Mode vs Accountant Mode Switcher */}
+        <div className="zb-mode-switcher-container" title="Switch between Simple Mode (Business Owner) and Accountant Mode (General Ledger & Trial Balance)">
+          <button
+            className={`zb-mode-switch-btn ${appMode === 'simple' ? 'active' : ''}`}
+            onClick={() => onToggleAppMode && onToggleAppMode('simple')}
+          >
+            Simple Mode
+          </button>
+          <button
+            className={`zb-mode-switch-btn ${appMode === 'accountant' ? 'active' : ''}`}
+            onClick={() => onToggleAppMode && onToggleAppMode('accountant')}
+          >
+            Accountant Mode
+          </button>
+        </div>
+
+        {/* Attention Exceptions Alert Button */}
+        {attentionCount > 0 && (
+          <button
+            className="zb-btn-attention-pill"
+            onClick={onOpenAttention}
+            title={`${attentionCount} exceptions require your attention`}
+          >
+            <span className="zb-attention-indicator-dot"></span>
+            <span>{attentionCount} Attention</span>
+          </button>
+        )}
+
         {/* Connection Status Badge */}
         <div
           className={`zb-server-badge ${serverConnected ? 'online' : 'offline'}`}

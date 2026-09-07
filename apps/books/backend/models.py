@@ -1,4 +1,4 @@
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -307,4 +307,164 @@ class PayslipResponse(BaseModel):
     pan: str
     uan: str
     status: str
+
+
+# =========================================================================
+# AUTOMATION ENGINE MODELS
+# =========================================================================
+
+class BusinessEventInput(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    source: str = "manual_prompt"  # manual_prompt, receipt_upload, bank_feed, invoice_upload
+    raw_text: str = Field(default="", alias="rawText")
+    event_type: Optional[str] = Field(default="general", alias="eventType")
+    amount: Optional[float] = 0.0
+    currency: Optional[str] = "INR"
+    extracted_data: Optional[Dict[str, Any]] = Field(default_factory=dict, alias="extractedData")
+
+
+class BusinessEventResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    source: str
+    raw_text: str = Field(alias="rawText")
+    event_type: str = Field(alias="eventType")
+    amount: float
+    currency: str
+    extracted_data: Dict[str, Any] = Field(alias="extractedData")
+    confidence: float
+    status: str
+    review_reason: Optional[str] = Field(default=None, alias="reviewReason")
+    created_at: str = Field(alias="createdAt")
+
+
+class JournalLineModel(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: Optional[str] = None
+    account: str
+    debit: float = 0.0
+    credit: float = 0.0
+    notes: Optional[str] = None
+
+
+class JournalEntryResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    event_id: Optional[str] = Field(default=None, alias="eventId")
+    reference_no: Optional[str] = Field(default=None, alias="referenceNo")
+    date: str
+    description: str
+    source: str
+    total_debit: float = Field(alias="totalDebit")
+    total_credit: float = Field(alias="totalCredit")
+    balanced: bool
+    created_at: str = Field(alias="createdAt")
+    lines: List[JournalLineModel] = []
+
+
+class TrialBalanceAccount(BaseModel):
+    account: str
+    debit: float
+    credit: float
+    net: float
+
+
+class TrialBalanceResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    as_of: str = Field(alias="asOf")
+    total_debit: float = Field(alias="totalDebit")
+    total_credit: float = Field(alias="totalCredit")
+    is_balanced: bool = Field(alias="isBalanced")
+    accounts: List[TrialBalanceAccount]
+
+
+class AutomationRuleModel(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    name: str
+    trigger_event: str = Field(alias="triggerEvent")
+    condition_field: str = Field(alias="conditionField")
+    operator: str
+    condition_value: str = Field(alias="conditionValue")
+    action_type: str = Field(alias="actionType")
+    action_value: str = Field(alias="actionValue")
+    is_active: bool = Field(alias="isActive")
+    execution_count: int = Field(alias="executionCount")
+    created_at: str = Field(alias="createdAt")
+
+
+class BankReconciliationResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    bank_trans_date: str = Field(alias="bankTransDate")
+    bank_description: str = Field(alias="bankDescription")
+    bank_amount: float = Field(alias="bankAmount")
+    trans_type: str = Field(alias="transType")
+    matched_entity_type: Optional[str] = Field(default=None, alias="matchedEntityType")
+    matched_entity_id: Optional[str] = Field(default=None, alias="matchedEntityId")
+    matched_entity_name: Optional[str] = Field(default=None, alias="matchedEntityName")
+    confidence: float
+    status: str
+    reconciled_at: Optional[str] = Field(default=None, alias="reconciledAt")
+
+
+class AuditLogResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    event_id: Optional[str] = Field(default=None, alias="eventId")
+    action: str
+    actor: str
+    rationale: str
+    confidence: float
+    status: str
+    timestamp: str
+
+
+class NeedsAttentionItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    type: str
+    severity: str
+    title: str
+    description: str
+    amount: float
+    target_id: Optional[str] = Field(default=None, alias="targetId")
+    target_module: str = Field(alias="targetModule")
+    actions: List[str]
+
+
+class AutomationMetricsResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    automation_score: int = Field(alias="automationScore")
+    processed_today_count: int = Field(alias="processedTodayCount")
+    reconciled_count: int = Field(alias="reconciledCount")
+    categorized_count: int = Field(alias="categorizedCount")
+    alerts_count: int = Field(alias="alertsCount")
+    active_rules_count: int = Field(alias="activeRulesCount")
+
+
+class AssistantQueryRequest(BaseModel):
+    query: str
+
+
+class AssistantQueryResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    intent: str
+    reply: str
+    data: Optional[Any] = None
+    action_type: Optional[str] = Field(default=None, alias="actionType")
+    action_label: Optional[str] = Field(default=None, alias="actionLabel")
+    action_payload: Optional[Dict[str, Any]] = Field(default=None, alias="actionPayload")
+
 

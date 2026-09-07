@@ -14,7 +14,8 @@ import {
   CreditCard,
   ChevronRight,
   ChevronDown,
-  Plus
+  Plus,
+  Sparkles
 } from 'lucide-react';
 
 export type NavModule =
@@ -29,7 +30,8 @@ export type NavModule =
   | 'reports'
   | 'documents'
   | 'payroll'
-  | 'payments';
+  | 'payments'
+  | 'automations';
 
 export interface SubItemDef {
   id: string;
@@ -74,6 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     documents: false,
     payroll: false,
     payments: false,
+    automations: true,
   });
 
   const navItems: NavItemDef[] = [
@@ -156,10 +159,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Accountant',
       icon: <Calculator size={18} />,
       subItems: [
+        { id: 'general_ledger', label: 'General Ledger' },
+        { id: 'trial_balance', label: 'Trial Balance' },
         { id: 'manual_journals', label: 'Manual Journals', hasQuickAdd: true },
         { id: 'chart_of_accounts', label: 'Chart of Accounts' },
-        { id: 'trial_balance', label: 'Trial Balance' },
         { id: 'lock_period', label: 'Lock Period' },
+      ]
+    },
+    {
+      id: 'automations',
+      label: 'Automations',
+      icon: <Sparkles size={18} />,
+      subItems: [
+        { id: 'rules_engine', label: 'Rules Engine', hasQuickAdd: true },
+        { id: 'recon_hub', label: 'Reconciliation Hub' },
+        { id: 'audit_trail', label: 'Audit Trail & AI Log' },
+        { id: 'learning_memory', label: 'Learning Memory' },
       ]
     },
     {
