@@ -124,13 +124,13 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right Side: Quick Action + Notifications + Settings + Profile */}
       <div className="zb-header-right">
-        {/* FastAPI Status Badge */}
+        {/* Connection Status Badge */}
         <div
           className={`zb-server-badge ${serverConnected ? 'online' : 'offline'}`}
-          title={serverConnected ? 'FastAPI Backend connected via SQLite' : 'FastAPI Backend disconnected - offline mode'}
+          title={serverConnected ? 'Cloud ledger synchronized and active' : 'Offline Mode - working with local storage'}
         >
           <span className="zb-status-dot"></span>
-          <span>{serverConnected ? 'FastAPI & SQLite' : 'Offline Mode'}</span>
+          <span>{serverConnected ? 'Cloud Synced' : 'Offline Mode'}</span>
         </div>
 
         <button

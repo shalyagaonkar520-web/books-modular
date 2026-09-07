@@ -10,8 +10,7 @@ import {
   BarChart3,
   FileText,
   DollarSign,
-  CreditCard,
-  Lock
+  CreditCard
 } from 'lucide-react';
 
 export type NavModule =
