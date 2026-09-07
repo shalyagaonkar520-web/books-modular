@@ -2552,61 +2552,198 @@ body {
 .zb-module-page {
   animation: fade-in 0.2s ease-in;
 }
+
 .zb-dashboard-grid.three-col {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
+  gap: 16px;
 }
+
 .zb-dashboard-grid.four-col {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
 }
-.zb-metric-mini-card {
-  background: white;
+
+/* Metric Mini Cards */
+.zb-metric-mini-card,
+.zb-mini-stat-card {
+  background: #ffffff;
   border: 1px solid var(--zb-border);
   border-radius: 8px;
-  padding: 16px;
-  box-shadow: var(--zb-shadow-xs);
+  padding: 16px 18px;
+  box-shadow: var(--zb-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 102px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-.zb-metric-mini-label {
-  font-size: 12px;
+
+.zb-metric-mini-card:hover,
+.zb-mini-stat-card:hover {
+  box-shadow: var(--zb-shadow-md);
+}
+
+.zb-metric-mini-label,
+.zb-mini-stat-label {
+  font-size: 11.5px;
   color: var(--zb-text-muted);
-  font-weight: 500;
-  margin-bottom: 6px;
-}
-.zb-metric-mini-val {
-  font-size: 22px;
-  font-weight: 700;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.35px;
   margin-bottom: 4px;
 }
-.zb-metric-mini-sub {
+
+.zb-metric-mini-val,
+.zb-mini-stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.25;
+  margin-bottom: 4px;
+  color: var(--zb-text-main);
+}
+
+.zb-metric-mini-sub,
+.zb-mini-stat-sub {
   font-size: 11.5px;
   color: var(--zb-text-muted);
   display: flex;
   align-items: center;
   gap: 4px;
 }
-.zb-tab-chip {
+
+/* Tab Chips & Filter Tabs */
+.zb-tab-chip,
+.zb-tab-btn {
   background: #f1f5f9;
   border: 1px solid transparent;
   color: #475569;
-  padding: 6px 12px;
+  padding: 6px 13px;
   border-radius: 6px;
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
-.zb-tab-chip:hover {
+
+.zb-tab-chip:hover,
+.zb-tab-btn:hover {
   background: #e2e8f0;
+  color: var(--zb-text-main);
 }
-.zb-tab-chip.active {
+
+.zb-tab-chip.active,
+.zb-tab-btn.active {
   background: var(--zb-primary);
-  color: white;
+  color: #ffffff;
+  font-weight: 600;
 }
+
+/* Toolbars */
+.zb-toolbar-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.zb-filter-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.zb-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 260px;
+  flex: 0 1 360px;
+}
+
+.zb-search-box .zb-search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--zb-text-muted);
+  pointer-events: none;
+}
+
+.zb-search-box input {
+  width: 100%;
+  padding: 8px 12px 8px 36px;
+  border: 1px solid var(--zb-border);
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  background: #ffffff;
+  transition: border-color 0.15s ease;
+}
+
+.zb-search-box input:focus {
+  border-color: var(--zb-primary);
+  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.12);
+}
+
+/* Table Containers */
+.zb-table-container,
+.zb-table-card {
+  padding: 0 !important;
+  overflow: hidden;
+  background: var(--zb-bg-card);
+  border: 1px solid var(--zb-border);
+  border-radius: var(--zb-radius);
+  box-shadow: var(--zb-shadow-sm);
+  margin-bottom: 24px;
+}
+
+.zb-table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.zb-table,
+.zb-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  min-width: 800px;
+}
+
+.zb-table th,
+.zb-data-table th {
+  background-color: #f8fafc;
+  padding: 12px 16px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--zb-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.35px;
+  border-bottom: 1px solid var(--zb-border);
+  white-space: nowrap;
+}
+
+.zb-table td,
+.zb-data-table td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--zb-border);
+  vertical-align: middle;
+  font-size: 13px;
+  color: var(--zb-text-main);
+}
+
+.zb-table tbody tr:hover,
+.zb-data-table tbody tr:hover {
+  background-color: #f8fafc;
+}
+
 .zb-table-btn {
-  background: none;
+  background: #ffffff;
   border: 1px solid var(--zb-border);
   color: var(--zb-primary);
   font-size: 12px;
@@ -2614,10 +2751,80 @@ body {
   padding: 4px 10px;
   border-radius: 4px;
   cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
 }
+
 .zb-table-btn:hover {
   background: #eff6ff;
   border-color: var(--zb-primary);
+}
+
+.zb-badge-category {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  background: #f1f5f9;
+  color: #334155;
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-weight: 500;
+  border: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+/* Modal Backdrop Fix - Always Fixed and Centered */
+.zb-modal-backdrop,
+.zb-modal-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  background: rgba(15, 23, 42, 0.65) !important;
+  backdrop-filter: blur(4px) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 1000 !important;
+  padding: 16px !important;
+  overflow-y: auto !important;
+  animation: zbFadeIn 0.2s ease !important;
+}
+
+.zb-modal-card {
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.08) !important;
+  width: 100% !important;
+  max-width: 580px !important;
+  max-height: 90vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  position: relative !important;
+  margin: auto !important;
+  animation: zbSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.zb-modal-header {
+  padding: 18px 24px !important;
+  border-bottom: 1px solid var(--zb-border) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+
+.zb-modal-header h3 {
+  font-size: 17px !important;
+  font-weight: 700 !important;
+  color: var(--zb-text-main) !important;
+  margin: 0 !important;
+}
+
+.zb-modal-form {
+  padding: 24px !important;
+  overflow-y: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;
 }
 
 /* Banking Cards */

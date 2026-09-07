@@ -1223,92 +1223,102 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
 
         {/* Metric Cards */}
         <div className="zb-dashboard-grid four-col zb-section-spacing">
-          <div className="zb-card zb-mini-stat-card">
-            <span className="zb-mini-stat-label">Total Logged Hours</span>
-            <div className="zb-mini-stat-value text-primary">{totalHours} hrs</div>
-            <span className="zb-mini-stat-sub">Across 4 active client projects</span>
+          <div className="zb-metric-mini-card">
+            <div className="zb-metric-mini-label">Total Logged Hours</div>
+            <div className="zb-metric-mini-val text-primary">{totalHours} hrs</div>
+            <div className="zb-metric-mini-sub">Across 4 active client projects</div>
           </div>
-          <div className="zb-card zb-mini-stat-card">
-            <span className="zb-mini-stat-label">Billable Hours</span>
-            <div className="zb-mini-stat-value text-success">{billableHours} hrs</div>
-            <span className="zb-mini-stat-sub">{Math.round((billableHours / (totalHours || 1)) * 100)}% billable efficiency</span>
+          <div className="zb-metric-mini-card">
+            <div className="zb-metric-mini-label">Billable Hours</div>
+            <div className="zb-metric-mini-val text-success">{billableHours} hrs</div>
+            <div className="zb-metric-mini-sub text-success"><TrendingUp size={12} /> {Math.round((billableHours / (totalHours || 1)) * 100)}% efficiency</div>
           </div>
-          <div className="zb-card zb-mini-stat-card">
-            <span className="zb-mini-stat-label">Unbilled Revenue Value</span>
-            <div className="zb-mini-stat-value text-primary">{formatINR(unbilledAmount)}</div>
-            <span className="zb-mini-stat-sub">Ready to convert to client invoice</span>
+          <div className="zb-metric-mini-card">
+            <div className="zb-metric-mini-label">Unbilled Revenue Value</div>
+            <div className="zb-metric-mini-val text-primary">{formatINR(unbilledAmount)}</div>
+            <div className="zb-metric-mini-sub">Ready to convert to client invoice</div>
           </div>
-          <div className="zb-card zb-mini-stat-card">
-            <span className="zb-mini-stat-label">Active Consultants</span>
-            <div className="zb-mini-stat-value">4 Specialists</div>
-            <span className="zb-mini-stat-sub">Tracked in real time</span>
+          <div className="zb-metric-mini-card">
+            <div className="zb-metric-mini-label">Active Consultants</div>
+            <div className="zb-metric-mini-val">4 Specialists</div>
+            <div className="zb-metric-mini-sub">Tracked in real time</div>
           </div>
         </div>
 
-        {/* Search & Tabs */}
-        <div className="zb-toolbar-container zb-flex-between zb-section-spacing">
-          <div className="zb-filter-tabs">
-            <button className={`zb-tab-btn ${activeTab === 'all' ? 'active' : ''}`} onClick={() => setActiveTab('all')}>All Logs</button>
-            <button className={`zb-tab-btn ${activeTab === 'billable' ? 'active' : ''}`} onClick={() => setActiveTab('billable')}>Billable Only</button>
-            <button className={`zb-tab-btn ${activeTab === 'non_billable' ? 'active' : ''}`} onClick={() => setActiveTab('non_billable')}>Non-Billable</button>
-          </div>
-          <div className="zb-search-box">
-            <Search size={15} className="zb-search-icon" />
-            <input
-              type="text"
-              placeholder="Search by project, task, consultant..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
+        {/* Search & Filter Toolbar */}
+        <div className="zb-card zb-toolbar-card">
+          <div className="zb-toolbar-row">
+            <div className="zb-toolbar-search">
+              <Search size={16} className="icon" />
+              <input
+                type="text"
+                placeholder="Search by project, task, consultant..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <div className="zb-flex-align gap-2 flex-wrap">
+              <button className={`zb-tab-chip ${activeTab === 'all' ? 'active' : ''}`} onClick={() => setActiveTab('all')}>
+                All Logs ({timesheets.length})
+              </button>
+              <button className={`zb-tab-chip ${activeTab === 'billable' ? 'active' : ''}`} onClick={() => setActiveTab('billable')}>
+                Billable ({timesheets.filter(t => t.billable).length})
+              </button>
+              <button className={`zb-tab-chip ${activeTab === 'non_billable' ? 'active' : ''}`} onClick={() => setActiveTab('non_billable')}>
+                Non-Billable ({timesheets.filter(t => !t.billable).length})
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Timesheets Table */}
-        <div className="zb-table-card">
-          <table className="zb-data-table">
-            <thead>
-              <tr>
-                <th>LOG ID</th>
-                <th>PROJECT & TASK</th>
-                <th>CONSULTANT</th>
-                <th>DATE</th>
-                <th>HOURS</th>
-                <th>RATE</th>
-                <th>TOTAL AMOUNT</th>
-                <th>STATUS</th>
-                <th>ACTION</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(ts => (
-                <tr key={ts.id}>
-                  <td className="font-medium text-primary">{ts.id}</td>
-                  <td>
-                    <div className="font-semibold">{ts.project}</div>
-                    <div className="text-muted text-xs">{ts.task}</div>
-                  </td>
-                  <td>{ts.consultant}</td>
-                  <td>{ts.date}</td>
-                  <td><span className="font-bold">{ts.hours} hrs</span></td>
-                  <td>{formatINR(ts.rate)}/hr</td>
-                  <td className="font-semibold">{formatINR(ts.hours * ts.rate)}</td>
-                  <td>
-                    <span className={`zb-status-pill ${ts.billable ? 'success' : 'neutral'}`}>
-                      {ts.billable ? 'Billable' : 'Non-Billable'}
-                    </span>
-                  </td>
-                  <td>
-                    <button
-                      className="zb-btn zb-btn-sm zb-btn-secondary"
-                      onClick={() => showToast(`Timesheet ${ts.id} linked to pending invoice draft!`)}
-                    >
-                      Invoice
-                    </button>
-                  </td>
+        <div className="zb-card zb-table-container">
+          <div className="zb-table-responsive">
+            <table className="zb-table">
+              <thead>
+                <tr>
+                  <th>Log ID</th>
+                  <th>Project & Task</th>
+                  <th>Consultant</th>
+                  <th>Date</th>
+                  <th>Hours</th>
+                  <th>Rate</th>
+                  <th className="text-right">Total Amount</th>
+                  <th className="text-center">Status</th>
+                  <th className="text-center">Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.map(ts => (
+                  <tr key={ts.id}>
+                    <td className="font-semibold text-primary">{ts.id}</td>
+                    <td>
+                      <div className="font-semibold">{ts.project}</div>
+                      <div className="text-muted" style={{ fontSize: '12px' }}>{ts.task}</div>
+                    </td>
+                    <td>{ts.consultant}</td>
+                    <td>{ts.date}</td>
+                    <td><span className="font-bold">{ts.hours} hrs</span></td>
+                    <td>{formatINR(ts.rate)}/hr</td>
+                    <td className="text-right font-semibold text-primary">{formatINR(ts.hours * ts.rate)}</td>
+                    <td className="text-center">
+                      <span className={`zb-status-pill ${ts.billable ? 'success' : 'neutral'}`}>
+                        {ts.billable ? 'Billable' : 'Non-Billable'}
+                      </span>
+                    </td>
+                    <td className="text-center">
+                      <button
+                        className="zb-table-btn"
+                        onClick={() => showToast(`Timesheet ${ts.id} linked to pending invoice draft!`)}
+                      >
+                        Create Invoice
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Modal: Log Time Entry */}
@@ -1464,117 +1474,131 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
 
         {/* Metric Cards */}
         <div className="zb-dashboard-grid four-col zb-section-spacing">
-          <div className="zb-card zb-mini-stat-card">
-            <span className="zb-mini-stat-label">Total Vault Files</span>
-            <div className="zb-mini-stat-value text-primary">{documentsList.length} Files</div>
-            <span className="zb-mini-stat-sub">100% cloud encrypted</span>
+          <div className="zb-metric-mini-card">
+            <div className="zb-metric-mini-label">Total Vault Files</div>
+            <div className="zb-metric-mini-val text-primary">{documentsList.length} Files</div>
+            <div className="zb-metric-mini-sub text-success"><ShieldCheck size={12} /> 100% encrypted</div>
           </div>
-          <div className="zb-card zb-mini-stat-card">
-            <span className="zb-mini-stat-label">Audit Verified</span>
-            <div className="zb-mini-stat-value text-success">
+          <div className="zb-metric-mini-card">
+            <div className="zb-metric-mini-label">Audit Verified</div>
+            <div className="zb-metric-mini-val text-success">
               {documentsList.filter(d => d.verified).length} Verified
             </div>
-            <span className="zb-mini-stat-sub">GST auditor ready</span>
+            <div className="zb-metric-mini-sub text-success">GST auditor ready</div>
           </div>
-          <div className="zb-card zb-mini-stat-card">
-            <span className="zb-mini-stat-label">Storage Allocated</span>
-            <div className="zb-mini-stat-value">1.4 GB / 50 GB</div>
-            <span className="zb-mini-stat-sub">High-availability cloud</span>
+          <div className="zb-metric-mini-card">
+            <div className="zb-metric-mini-label">Storage Allocated</div>
+            <div className="zb-metric-mini-val">1.4 GB / 50 GB</div>
+            <div className="zb-metric-mini-sub">High-availability cloud</div>
           </div>
-          <div className="zb-card zb-mini-stat-card">
-            <span className="zb-mini-stat-label">Security Compliance</span>
-            <div className="zb-mini-stat-value text-success">AES-256</div>
-            <span className="zb-mini-stat-sub">ISO 27001 Certified</span>
+          <div className="zb-metric-mini-card">
+            <div className="zb-metric-mini-label">Security Compliance</div>
+            <div className="zb-metric-mini-val text-success">AES-256</div>
+            <div className="zb-metric-mini-sub">ISO 27001 Certified</div>
           </div>
         </div>
 
-        {/* Tabs & Search */}
-        <div className="zb-toolbar-container zb-flex-between zb-section-spacing">
-          <div className="zb-filter-tabs">
-            <button className={`zb-tab-btn ${activeTab === 'all' ? 'active' : ''}`} onClick={() => setActiveTab('all')}>All Documents</button>
-            <button className={`zb-tab-btn ${activeTab === 'tax' ? 'active' : ''}`} onClick={() => setActiveTab('tax')}>Tax & GST</button>
-            <button className={`zb-tab-btn ${activeTab === 'banking' ? 'active' : ''}`} onClick={() => setActiveTab('banking')}>Bank Statements</button>
-            <button className={`zb-tab-btn ${activeTab === 'legal' ? 'active' : ''}`} onClick={() => setActiveTab('legal')}>Contracts</button>
-            <button className={`zb-tab-btn ${activeTab === 'invoices' ? 'active' : ''}`} onClick={() => setActiveTab('invoices')}>Bills & Receipts</button>
-          </div>
-          <div className="zb-search-box">
-            <Search size={15} className="zb-search-icon" />
-            <input
-              type="text"
-              placeholder="Search documents by name or category..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
+        {/* Tabs & Search Toolbar */}
+        <div className="zb-card zb-toolbar-card">
+          <div className="zb-toolbar-row">
+            <div className="zb-toolbar-search">
+              <Search size={16} className="icon" />
+              <input
+                type="text"
+                placeholder="Search documents by name or category..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <div className="zb-flex-align gap-2 flex-wrap">
+              <button className={`zb-tab-chip ${activeTab === 'all' ? 'active' : ''}`} onClick={() => setActiveTab('all')}>
+                All Documents ({documentsList.length})
+              </button>
+              <button className={`zb-tab-chip ${activeTab === 'tax' ? 'active' : ''}`} onClick={() => setActiveTab('tax')}>
+                Tax & GST ({documentsList.filter(d => d.category === 'Tax & GST').length})
+              </button>
+              <button className={`zb-tab-chip ${activeTab === 'banking' ? 'active' : ''}`} onClick={() => setActiveTab('banking')}>
+                Bank Statements ({documentsList.filter(d => d.category === 'Bank Statements').length})
+              </button>
+              <button className={`zb-tab-chip ${activeTab === 'legal' ? 'active' : ''}`} onClick={() => setActiveTab('legal')}>
+                Contracts ({documentsList.filter(d => d.category === 'Legal & Contracts').length})
+              </button>
+              <button className={`zb-tab-chip ${activeTab === 'invoices' ? 'active' : ''}`} onClick={() => setActiveTab('invoices')}>
+                Bills & Receipts ({documentsList.filter(d => d.category === 'Invoices & Bills').length})
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Documents Table */}
-        <div className="zb-table-card">
-          <table className="zb-data-table">
-            <thead>
-              <tr>
-                <th>DOC ID</th>
-                <th>DOCUMENT NAME</th>
-                <th>CATEGORY</th>
-                <th>UPLOADED BY</th>
-                <th>UPLOAD DATE</th>
-                <th>FILE SIZE</th>
-                <th>STATUS</th>
-                <th>ACTIONS</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(doc => (
-                <tr key={doc.id}>
-                  <td
-                    className="font-medium text-primary"
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => setSelectedDoc(doc)}
-                    title="Click to preview audit certificate"
-                  >
-                    {doc.id}
-                  </td>
-                  <td
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => setSelectedDoc(doc)}
-                    title="Click to preview audit certificate"
-                  >
-                    <div className="zb-flex-align gap-2">
-                      <FileText size={16} className="text-muted" />
-                      <span className="font-semibold">{doc.title}</span>
-                    </div>
-                  </td>
-                  <td><span className="zb-badge-category">{doc.category}</span></td>
-                  <td>{doc.uploadedBy}</td>
-                  <td>{doc.date}</td>
-                  <td>{doc.size}</td>
-                  <td>
-                    <span className={`zb-status-pill ${doc.verified ? 'success' : 'warning'}`}>
-                      {doc.verified ? 'Verified' : 'Pending'}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="zb-flex-align gap-2">
-                      <button
-                        className="zb-btn zb-btn-sm zb-btn-secondary"
-                        onClick={() => setSelectedDoc(doc)}
-                        title="View audit certificate & details"
-                      >
-                        <Eye size={13} style={{ marginRight: '3px' }} /> View
-                      </button>
-                      <button
-                        className="zb-btn zb-btn-sm zb-btn-secondary"
-                        onClick={() => downloadDocumentFile(doc)}
-                        title="Download verified document file"
-                      >
-                        <Download size={13} style={{ marginRight: '3px' }} /> Download
-                      </button>
-                    </div>
-                  </td>
+        <div className="zb-card zb-table-container">
+          <div className="zb-table-responsive">
+            <table className="zb-table">
+              <thead>
+                <tr>
+                  <th>Doc ID</th>
+                  <th>Document Name</th>
+                  <th>Category</th>
+                  <th>Uploaded By</th>
+                  <th>Upload Date</th>
+                  <th>File Size</th>
+                  <th className="text-center">Status</th>
+                  <th className="text-center">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.map(doc => (
+                  <tr key={doc.id}>
+                    <td
+                      className="font-semibold text-primary"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setSelectedDoc(doc)}
+                      title="Click to preview audit certificate"
+                    >
+                      {doc.id}
+                    </td>
+                    <td
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setSelectedDoc(doc)}
+                      title="Click to preview audit certificate"
+                    >
+                      <div className="zb-flex-align gap-2">
+                        <FileText size={16} className="text-muted" />
+                        <span className="font-semibold">{doc.title}</span>
+                      </div>
+                    </td>
+                    <td><span className="zb-badge-category">{doc.category}</span></td>
+                    <td>{doc.uploadedBy}</td>
+                    <td>{doc.date}</td>
+                    <td>{doc.size}</td>
+                    <td className="text-center">
+                      <span className={`zb-status-pill ${doc.verified ? 'success' : 'warning'}`}>
+                        {doc.verified ? 'Verified' : 'Pending'}
+                      </span>
+                    </td>
+                    <td className="text-center">
+                      <div className="zb-flex-align justify-center gap-2">
+                        <button
+                          className="zb-table-btn"
+                          onClick={() => setSelectedDoc(doc)}
+                          title="View audit certificate & details"
+                        >
+                          <Eye size={13} style={{ marginRight: '3px' }} /> View
+                        </button>
+                        <button
+                          className="zb-table-btn"
+                          onClick={() => downloadDocumentFile(doc)}
+                          title="Download verified document file"
+                        >
+                          <Download size={13} style={{ marginRight: '3px' }} /> Download
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Real Document Viewer Modal */}
@@ -1693,114 +1717,126 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
 
         {/* Metric Cards */}
         <div className="zb-dashboard-grid four-col zb-section-spacing">
-          <div className="zb-card zb-mini-stat-card">
-            <span className="zb-mini-stat-label">Total Monthly Payroll</span>
-            <div className="zb-mini-stat-value text-primary">{formatINR(totalGross)}</div>
-            <span className="zb-mini-stat-sub">Across {employees.length} team members</span>
+          <div className="zb-metric-mini-card">
+            <div className="zb-metric-mini-label">Total Monthly Payroll</div>
+            <div className="zb-metric-mini-val text-primary">{formatINR(totalGross)}</div>
+            <div className="zb-metric-mini-sub">Across {employees.length} team members</div>
           </div>
-          <div className="zb-card zb-mini-stat-card">
-            <span className="zb-mini-stat-label">Statutory Deductions (EPF/PT)</span>
-            <div className="zb-mini-stat-value text-danger">{formatINR(totalDeductions)}</div>
-            <span className="zb-mini-stat-sub">Challan ready for EPFO portal</span>
+          <div className="zb-metric-mini-card">
+            <div className="zb-metric-mini-label">Statutory Deductions (EPF/PT)</div>
+            <div className="zb-metric-mini-val text-danger">{formatINR(totalDeductions)}</div>
+            <div className="zb-metric-mini-sub text-danger">Challan ready for EPFO portal</div>
           </div>
-          <div className="zb-card zb-mini-stat-card">
-            <span className="zb-mini-stat-label">Net Salary Disbursed</span>
-            <div className="zb-mini-stat-value text-success">{formatINR(totalNet)}</div>
-            <span className="zb-mini-stat-sub">Direct bank transfer via IMPS/NEFT</span>
+          <div className="zb-metric-mini-card">
+            <div className="zb-metric-mini-label">Net Salary Disbursed</div>
+            <div className="zb-metric-mini-val text-success">{formatINR(totalNet)}</div>
+            <div className="zb-metric-mini-sub text-success">Direct bank transfer via IMPS/NEFT</div>
           </div>
-          <div className="zb-card zb-mini-stat-card">
-            <span className="zb-mini-stat-label">Next Pay Cycle</span>
-            <div className="zb-mini-stat-value">30 Sep 2026</div>
-            <span className="zb-mini-stat-sub">Automated direct deposits</span>
+          <div className="zb-metric-mini-card">
+            <div className="zb-metric-mini-label">Next Pay Cycle</div>
+            <div className="zb-metric-mini-val">30 Sep 2026</div>
+            <div className="zb-metric-mini-sub">Automated direct deposits</div>
           </div>
         </div>
 
-        {/* Tabs & Search */}
-        <div className="zb-toolbar-container zb-flex-between zb-section-spacing">
-          <div className="zb-filter-tabs">
-            <button className={`zb-tab-btn ${activeTab === 'all' ? 'active' : ''}`} onClick={() => setActiveTab('all')}>All Departments</button>
-            <button className={`zb-tab-btn ${activeTab === 'engineering' ? 'active' : ''}`} onClick={() => setActiveTab('engineering')}>Engineering</button>
-            <button className={`zb-tab-btn ${activeTab === 'finance' ? 'active' : ''}`} onClick={() => setActiveTab('finance')}>Finance</button>
-            <button className={`zb-tab-btn ${activeTab === 'operations' ? 'active' : ''}`} onClick={() => setActiveTab('operations')}>Operations</button>
-          </div>
-          <div className="zb-search-box">
-            <Search size={15} className="zb-search-icon" />
-            <input
-              type="text"
-              placeholder="Search employee by name, role, department..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
+        {/* Tabs & Search Toolbar */}
+        <div className="zb-card zb-toolbar-card">
+          <div className="zb-toolbar-row">
+            <div className="zb-toolbar-search">
+              <Search size={16} className="icon" />
+              <input
+                type="text"
+                placeholder="Search employee by name, role, department..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <div className="zb-flex-align gap-2 flex-wrap">
+              <button className={`zb-tab-chip ${activeTab === 'all' ? 'active' : ''}`} onClick={() => setActiveTab('all')}>
+                All Departments ({employees.length})
+              </button>
+              <button className={`zb-tab-chip ${activeTab === 'engineering' ? 'active' : ''}`} onClick={() => setActiveTab('engineering')}>
+                Engineering ({employees.filter(e => e.department === 'Engineering').length})
+              </button>
+              <button className={`zb-tab-chip ${activeTab === 'finance' ? 'active' : ''}`} onClick={() => setActiveTab('finance')}>
+                Finance ({employees.filter(e => e.department === 'Finance').length})
+              </button>
+              <button className={`zb-tab-chip ${activeTab === 'operations' ? 'active' : ''}`} onClick={() => setActiveTab('operations')}>
+                Operations ({employees.filter(e => e.department === 'Operations').length})
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Payroll Table */}
-        <div className="zb-table-card">
-          <table className="zb-data-table">
-            <thead>
-              <tr>
-                <th>EMP ID</th>
-                <th>EMPLOYEE NAME</th>
-                <th>ROLE & TITLE</th>
-                <th>DEPARTMENT</th>
-                <th>GROSS SALARY</th>
-                <th>DEDUCTIONS</th>
-                <th>NET SALARY</th>
-                <th>STATUS</th>
-                <th>ACTION</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(emp => (
-                <tr key={emp.id}>
-                  <td
-                    className="font-medium text-primary"
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => setSelectedEmpPayslip(emp)}
-                    title="Click to view official payslip"
-                  >
-                    {emp.id}
-                  </td>
-                  <td
-                    className="font-semibold"
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => setSelectedEmpPayslip(emp)}
-                    title="Click to view official payslip"
-                  >
-                    {emp.name}
-                  </td>
-                  <td>{emp.designation}</td>
-                  <td><span className="zb-badge-category">{emp.department}</span></td>
-                  <td>{formatINR(emp.gross)}</td>
-                  <td className="text-danger font-medium">-{formatINR(emp.deductions)}</td>
-                  <td className="font-bold text-success">{formatINR(emp.net)}</td>
-                  <td>
-                    <span className={`zb-status-pill ${emp.status === 'Paid' ? 'success' : 'warning'}`}>
-                      {emp.status}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="zb-flex-align gap-2">
-                      <button
-                        className="zb-btn zb-btn-sm zb-btn-secondary"
-                        onClick={() => setSelectedEmpPayslip(emp)}
-                        title="View, Print & verify Salary Payslip"
-                      >
-                        <Eye size={13} style={{ marginRight: '3px' }} /> Payslip
-                      </button>
-                      <button
-                        className="zb-btn zb-btn-sm zb-btn-secondary"
-                        onClick={() => downloadEmployeePayslip(emp)}
-                        title="Download official standalone HTML payslip"
-                      >
-                        <Download size={13} style={{ marginRight: '3px' }} /> Download
-                      </button>
-                    </div>
-                  </td>
+        <div className="zb-card zb-table-container">
+          <div className="zb-table-responsive">
+            <table className="zb-table">
+              <thead>
+                <tr>
+                  <th>Emp ID</th>
+                  <th>Employee Name</th>
+                  <th>Role & Title</th>
+                  <th>Department</th>
+                  <th className="text-right">Gross Salary</th>
+                  <th className="text-right">Deductions</th>
+                  <th className="text-right">Net Salary</th>
+                  <th className="text-center">Status</th>
+                  <th className="text-center">Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.map(emp => (
+                  <tr key={emp.id}>
+                    <td
+                      className="font-semibold text-primary"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setSelectedEmpPayslip(emp)}
+                      title="Click to view official payslip"
+                    >
+                      {emp.id}
+                    </td>
+                    <td
+                      className="font-semibold"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setSelectedEmpPayslip(emp)}
+                      title="Click to view official payslip"
+                    >
+                      {emp.name}
+                    </td>
+                    <td>{emp.designation}</td>
+                    <td><span className="zb-badge-category">{emp.department}</span></td>
+                    <td className="text-right font-medium">{formatINR(emp.gross)}</td>
+                    <td className="text-right text-danger font-medium">-{formatINR(emp.deductions)}</td>
+                    <td className="text-right font-bold text-success">{formatINR(emp.net)}</td>
+                    <td className="text-center">
+                      <span className={`zb-status-pill ${emp.status === 'Paid' ? 'success' : 'warning'}`}>
+                        {emp.status}
+                      </span>
+                    </td>
+                    <td className="text-center">
+                      <div className="zb-flex-align justify-center gap-2">
+                        <button
+                          className="zb-table-btn"
+                          onClick={() => setSelectedEmpPayslip(emp)}
+                          title="View, Print & verify Salary Payslip"
+                        >
+                          <Eye size={13} style={{ marginRight: '3px' }} /> Payslip
+                        </button>
+                        <button
+                          className="zb-table-btn"
+                          onClick={() => downloadEmployeePayslip(emp)}
+                          title="Download official standalone HTML payslip"
+                        >
+                          <Download size={13} style={{ marginRight: '3px' }} /> Download
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Modal: Add Employee */}
@@ -1944,96 +1980,108 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
 
         {/* Metric Cards */}
         <div className="zb-dashboard-grid four-col zb-section-spacing">
-          <div className="zb-card zb-mini-stat-card">
-            <span className="zb-mini-stat-label">Total Collections</span>
-            <div className="zb-mini-stat-value text-primary">{formatINR(totalCollected)}</div>
-            <span className="zb-mini-stat-sub">Automated bank reconciliation</span>
+          <div className="zb-metric-mini-card">
+            <div className="zb-metric-mini-label">Total Collections</div>
+            <div className="zb-metric-mini-val text-primary">{formatINR(totalCollected)}</div>
+            <div className="zb-metric-mini-sub text-success"><TrendingUp size={12} /> Automated reconciliation</div>
           </div>
-          <div className="zb-card zb-mini-stat-card">
-            <span className="zb-mini-stat-label">UPI QR Collections</span>
-            <div className="zb-mini-stat-value text-success">₹4,30,000</div>
-            <span className="zb-mini-stat-sub">Zero transaction fee</span>
+          <div className="zb-metric-mini-card">
+            <div className="zb-metric-mini-label">UPI QR Collections</div>
+            <div className="zb-metric-mini-val text-success">₹4,30,000</div>
+            <div className="zb-metric-mini-sub text-success"><QrCode size={12} /> Zero transaction fee</div>
           </div>
-          <div className="zb-card zb-mini-stat-card">
-            <span className="zb-mini-stat-label">Settlement Rate</span>
-            <div className="zb-mini-stat-value text-success">T+0 Instant</div>
-            <span className="zb-mini-stat-sub">Direct into HDFC / ICICI accounts</span>
+          <div className="zb-metric-mini-card">
+            <div className="zb-metric-mini-label">Settlement Rate</div>
+            <div className="zb-metric-mini-val text-success">T+0 Instant</div>
+            <div className="zb-metric-mini-sub">Direct into corporate bank A/C</div>
           </div>
-          <div className="zb-card zb-mini-stat-card">
-            <span className="zb-mini-stat-label">Active Links</span>
-            <div className="zb-mini-stat-value">12 Active Links</div>
-            <span className="zb-mini-stat-sub">Automated WhatsApp & Email dispatch</span>
+          <div className="zb-metric-mini-card">
+            <div className="zb-metric-mini-label">Active Links</div>
+            <div className="zb-metric-mini-val">12 Active Links</div>
+            <div className="zb-metric-mini-sub">WhatsApp & Email dispatch</div>
           </div>
         </div>
 
-        {/* Tabs & Search */}
-        <div className="zb-toolbar-container zb-flex-between zb-section-spacing">
-          <div className="zb-filter-tabs">
-            <button className={`zb-tab-btn ${activeTab === 'all' ? 'active' : ''}`} onClick={() => setActiveTab('all')}>All Transactions</button>
-            <button className={`zb-tab-btn ${activeTab === 'upi' ? 'active' : ''}`} onClick={() => setActiveTab('upi')}>UPI QR</button>
-            <button className={`zb-tab-btn ${activeTab === 'netbanking' ? 'active' : ''}`} onClick={() => setActiveTab('netbanking')}>NetBanking</button>
-            <button className={`zb-tab-btn ${activeTab === 'card' ? 'active' : ''}`} onClick={() => setActiveTab('card')}>Credit / Debit Cards</button>
-          </div>
-          <div className="zb-search-box">
-            <Search size={15} className="zb-search-icon" />
-            <input
-              type="text"
-              placeholder="Search by customer, transaction ref, invoice..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
+        {/* Tabs & Search Toolbar */}
+        <div className="zb-card zb-toolbar-card">
+          <div className="zb-toolbar-row">
+            <div className="zb-toolbar-search">
+              <Search size={16} className="icon" />
+              <input
+                type="text"
+                placeholder="Search by customer, transaction ref, invoice..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <div className="zb-flex-align gap-2 flex-wrap">
+              <button className={`zb-tab-chip ${activeTab === 'all' ? 'active' : ''}`} onClick={() => setActiveTab('all')}>
+                All Transactions ({paymentsList.length})
+              </button>
+              <button className={`zb-tab-chip ${activeTab === 'upi' ? 'active' : ''}`} onClick={() => setActiveTab('upi')}>
+                UPI QR ({paymentsList.filter(p => p.method.includes('UPI')).length})
+              </button>
+              <button className={`zb-tab-chip ${activeTab === 'netbanking' ? 'active' : ''}`} onClick={() => setActiveTab('netbanking')}>
+                NetBanking ({paymentsList.filter(p => p.method.includes('NetBanking')).length})
+              </button>
+              <button className={`zb-tab-chip ${activeTab === 'card' ? 'active' : ''}`} onClick={() => setActiveTab('card')}>
+                Credit / Debit Cards ({paymentsList.filter(p => p.method.includes('Card')).length})
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Payments Table */}
-        <div className="zb-table-card">
-          <table className="zb-data-table">
-            <thead>
-              <tr>
-                <th>TRANSACTION REF</th>
-                <th>CUSTOMER NAME</th>
-                <th>INVOICE REF</th>
-                <th>PAYMENT METHOD</th>
-                <th>DATE</th>
-                <th>AMOUNT</th>
-                <th>STATUS</th>
-                <th>ACTION</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(p => (
-                <tr key={p.id}>
-                  <td className="font-medium text-primary">{p.id}</td>
-                  <td className="font-semibold">{p.customer}</td>
-                  <td><span className="text-muted">{p.invoiceRef}</span></td>
-                  <td>
-                    <div className="zb-flex-align gap-2">
-                      <CreditCard size={15} className="text-primary" />
-                      <span>{p.method}</span>
-                    </div>
-                  </td>
-                  <td>{p.date}</td>
-                  <td className="font-bold text-success">{formatINR(p.amount)}</td>
-                  <td>
-                    <span className={`zb-status-pill ${p.status === 'Settled' ? 'success' : 'warning'}`}>
-                      {p.status}
-                    </span>
-                  </td>
-                  <td>
-                    <button
-                      className="zb-btn zb-btn-sm zb-btn-secondary"
-                      onClick={() => {
-                        navigator.clipboard?.writeText(`https://pay.roomanbooks.com/${p.id}`);
-                        showToast(`Copied payment link for ${p.customer}!`);
-                      }}
-                    >
-                      Copy Link
-                    </button>
-                  </td>
+        <div className="zb-card zb-table-container">
+          <div className="zb-table-responsive">
+            <table className="zb-table">
+              <thead>
+                <tr>
+                  <th>Transaction Ref</th>
+                  <th>Customer Name</th>
+                  <th>Invoice Ref</th>
+                  <th>Payment Method</th>
+                  <th>Date</th>
+                  <th className="text-right">Amount</th>
+                  <th className="text-center">Status</th>
+                  <th className="text-center">Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.map(p => (
+                  <tr key={p.id}>
+                    <td className="font-semibold text-primary">{p.id}</td>
+                    <td className="font-semibold">{p.customer}</td>
+                    <td><span className="text-muted font-medium">{p.invoiceRef}</span></td>
+                    <td>
+                      <div className="zb-flex-align gap-2">
+                        <CreditCard size={15} className="text-primary" />
+                        <span>{p.method}</span>
+                      </div>
+                    </td>
+                    <td>{p.date}</td>
+                    <td className="text-right font-bold text-success">{formatINR(p.amount)}</td>
+                    <td className="text-center">
+                      <span className={`zb-status-pill ${p.status.toLowerCase()}`}>
+                        {p.status}
+                      </span>
+                    </td>
+                    <td className="text-center">
+                      <button
+                        className="zb-table-btn"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(`https://pay.roomanbooks.com/${p.id}`);
+                          showToast(`Payment link for ${p.id} copied to clipboard!`);
+                        }}
+                      >
+                        Copy Link
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Modal: Create Payment Link */}
