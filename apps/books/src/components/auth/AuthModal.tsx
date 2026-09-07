@@ -142,7 +142,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Modal Header */}
         <div className="zb-auth-header">
           <div className="zb-auth-brand">
-            <div className="zb-auth-logo">📚</div>
+            <img src="/rooman-logo.png" alt="Rooman Books" className="zb-auth-logo-img" />
             <div>
               <h3 className="zb-auth-title">Rooman Books</h3>
               <p className="zb-auth-sub">Enterprise Accounting Platform</p>

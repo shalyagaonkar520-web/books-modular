@@ -50,9 +50,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       <header className="zb-landing-nav">
         <div className="zb-landing-nav-inner">
           <div className="zb-landing-brand" onClick={onEnterDemo}>
-            <span className="zb-landing-logo-icon">📚</span>
+            <img src="/rooman-logo.png" alt="Rooman" className="zb-landing-logo-img" />
             <span className="zb-landing-brand-text">
-              Rooman<strong>Books</strong>
+              <strong>Books</strong>
             </span>
             <span className="zb-landing-badge">Enterprise Edition</span>
           </div>
@@ -528,8 +528,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       <footer className="zb-landing-footer">
         <div className="zb-landing-footer-inner">
           <div className="zb-footer-brand">
-            <span className="zb-footer-logo">📚</span>
-            <span className="zb-footer-title">Rooman Books</span>
+            <img src="/rooman-logo.png" alt="Rooman Books" className="zb-footer-logo-img" />
             <p className="zb-footer-text">
               Complete accounting and financial enterprise software for growing businesses.
             </p>

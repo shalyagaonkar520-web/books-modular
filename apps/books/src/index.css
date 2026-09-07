@@ -4049,6 +4049,55 @@ body {
   font-family: monospace;
 }
 
+/* ==========================================================================
+   OFFICIAL ROOMAN LOGO STYLES
+   ========================================================================== */
+.zb-brand-logo-container {
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+  padding: 3px 8px;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.zb-brand-logo-img {
+  height: 25px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+}
+
+.zb-landing-logo-img {
+  height: 40px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+}
+
+.zb-auth-logo-img {
+  height: 44px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+  margin-bottom: 6px;
+  background: #ffffff;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+
+.zb-footer-logo-img {
+  height: 34px;
+  width: auto;
+  object-fit: contain;
+  background: #ffffff;
+  padding: 3px 8px;
+  border-radius: 6px;
+  display: inline-block;
+  margin-bottom: 10px;
+}
+
 
 
 

@@ -59,11 +59,11 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         <div className="zb-brand">
-          <div className="zb-brand-logo">
-            <span className="zb-brand-icon">📚</span>
+          <div className="zb-brand-logo-container">
+            <img src="/rooman-logo.png" alt="Rooman" className="zb-brand-logo-img" />
           </div>
           <div className="zb-brand-info">
-            <span className="zb-brand-title">Zoho Books</span>
+            <span className="zb-brand-title">Books</span>
             <span className="zb-brand-edition">IND Edition</span>
           </div>
         </div>
@@ -174,7 +174,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <div className="zb-notification-item">
                   <div className="zb-notif-title">System Update</div>
                   <div className="zb-notif-body">
-                    Zoho Books Home & Items module synchronized successfully.
+                    Rooman Books Home & Items module synchronized successfully.
                   </div>
                   <div className="zb-notif-time">1 hour ago</div>
                 </div>

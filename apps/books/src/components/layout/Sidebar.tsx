@@ -55,7 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'accountant', label: 'Accountant', icon: <Calculator size={18} /> },
     { id: 'reports', label: 'Reports', icon: <BarChart3 size={18} /> },
     { id: 'documents', label: 'Documents', icon: <FileText size={18} /> },
-    { id: 'payroll', label: 'Zoho Payroll', icon: <DollarSign size={18} /> },
+    { id: 'payroll', label: 'Payroll', icon: <DollarSign size={18} /> },
     { id: 'payments', label: 'Payments', icon: <CreditCard size={18} /> },
   ];
 
