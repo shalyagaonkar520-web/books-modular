@@ -165,6 +165,7 @@ export const App: React.FC = () => {
             <HomePage
               items={items}
               onNavigateItems={() => setActiveModule('items')}
+              onNavigateModule={setActiveModule}
               onQuickAddItem={() => {
                 setActiveModule('items');
                 setIsGlobalAddModalOpen(true);
