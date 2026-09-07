@@ -14,6 +14,7 @@ export const App: React.FC = () => {
   // Navigation & View Mode
   const [currentView, setCurrentView] = useState<'landing' | 'app'>('landing');
   const [activeModule, setActiveModule] = useState<NavModule>('home');
+  const [activeSubItem, setActiveSubItem] = useState<string | null>(null);
 
   // Auth state
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => ApiClient.getStoredUser());
@@ -151,10 +152,21 @@ export const App: React.FC = () => {
       />
 
       <div className="zb-main-body">
-        {/* Navigation Sidebar with ALL MODULES UNLOCKED */}
+        {/* Navigation Sidebar with Collapsible Sub-Items */}
         <Sidebar
           activeModule={activeModule}
-          onSelectModule={setActiveModule}
+          activeSubItem={activeSubItem}
+          onSelectModule={(mod, subId) => {
+            setActiveModule(mod);
+            setActiveSubItem(subId || null);
+          }}
+          onQuickAdd={(mod, subId) => {
+            setActiveModule(mod);
+            setActiveSubItem(subId);
+            if (mod === 'items') {
+              setIsGlobalAddModalOpen(true);
+            }
+          }}
           isOpenMobile={isMobileSidebarOpen}
           onCloseMobile={() => setIsMobileSidebarOpen(false)}
         />
@@ -164,10 +176,17 @@ export const App: React.FC = () => {
           {activeModule === 'home' && (
             <HomePage
               items={items}
-              onNavigateItems={() => setActiveModule('items')}
-              onNavigateModule={setActiveModule}
+              onNavigateItems={() => {
+                setActiveModule('items');
+                setActiveSubItem('items_list');
+              }}
+              onNavigateModule={(mod) => {
+                setActiveModule(mod);
+                setActiveSubItem(null);
+              }}
               onQuickAddItem={() => {
                 setActiveModule('items');
+                setActiveSubItem('items_list');
                 setIsGlobalAddModalOpen(true);
               }}
               onResetSeedData={handleResetSeedData}
@@ -191,7 +210,12 @@ export const App: React.FC = () => {
           {activeModule !== 'home' && activeModule !== 'items' && (
             <ModuleView
               module={activeModule}
-              onNavigate={setActiveModule}
+              activeSubItem={activeSubItem}
+              onSelectSubItem={setActiveSubItem}
+              onNavigate={(mod, subId) => {
+                setActiveModule(mod);
+                setActiveSubItem(subId || null);
+              }}
             />
           )}
         </main>

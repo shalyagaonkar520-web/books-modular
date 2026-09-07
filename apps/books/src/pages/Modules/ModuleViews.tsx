@@ -60,10 +60,17 @@ import { ApiClient, Invoice, DocumentItem, PayrollEmployee, Payslip } from '../.
 
 interface ModuleViewProps {
   module: NavModule;
-  onNavigate: (module: NavModule) => void;
+  activeSubItem?: string | null;
+  onSelectSubItem?: (subItem: string) => void;
+  onNavigate: (module: NavModule, subItem?: string) => void;
 }
 
-export const ModuleView: React.FC<ModuleViewProps> = ({ module, onNavigate }) => {
+export const ModuleView: React.FC<ModuleViewProps> = ({
+  module,
+  activeSubItem,
+  onSelectSubItem,
+  onNavigate
+}) => {
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -250,10 +257,125 @@ export const ModuleView: React.FC<ModuleViewProps> = ({ module, onNavigate }) =>
   const [newPayMethod, setNewPayMethod] = useState('UPI Instant QR');
 
   // Sub-Navigation Tabs across modules
-  const [salesSubTab, setSalesSubTab] = useState<'invoices' | 'quotes' | 'orders' | 'challans' | 'credit_notes'>('invoices');
-  const [purchasesSubTab, setPurchasesSubTab] = useState<'bills' | 'orders' | 'credits' | 'recurring'>('bills');
+  const [salesSubTab, setSalesSubTab] = useState<'invoices' | 'quotes' | 'orders' | 'challans' | 'credit_notes' | 'customers' | 'payments_received' | 'sales_returns'>('invoices');
+  const [purchasesSubTab, setPurchasesSubTab] = useState<'bills' | 'orders' | 'credits' | 'recurring' | 'vendors' | 'receives' | 'payments_made'>('bills');
   const [documentsSubTab, setDocumentsSubTab] = useState<'vault' | 'autoscan'>('vault');
   const [accountantSubTab, setAccountantSubTab] = useState<'journals' | 'accounts' | 'locking' | 'forex'>('journals');
+  const [inventorySubTab, setInventorySubTab] = useState<'adjustments' | 'packages' | 'shipments' | 'move_orders' | 'putaways'>('adjustments');
+
+  // Reports Center State (Photo 1)
+  const [reportCat, setReportCat] = useState<'sales' | 'inventory' | 'valuation' | 'receivables' | 'payments' | 'payables' | 'purchases' | 'activity' | 'automation'>('sales');
+  const [starredReports, setStarredReports] = useState<Record<string, boolean>>({
+    'Sales by Customer': true,
+    'Sales by Item': true,
+    'Order Fulfillment By Item': false,
+    'Sales Return History': false,
+    'Sales by Salesperson': false,
+    'Sales Summary': true,
+    'Profit By Item': true,
+    'Sales Channel Integration': false,
+  });
+  const [selectedReportPreview, setSelectedReportPreview] = useState<string | null>(null);
+
+  // Customers State (Photo 3)
+  const [customersList, setCustomersList] = useState([
+    { id: 'CUST-001', name: 'Tata Consultancy Services Ltd', contact: 'Rajesh Verma', email: 'rajesh.v@tcs.com', phone: '+91 98201 44521', balance: 342000, creditLimit: 1000000, riskGrade: 'A+ Low Risk' },
+    { id: 'CUST-002', name: 'Infosys BPM Limited', contact: 'Pooja Hegde', email: 'pooja.h@infosys.com', phone: '+91 98450 11234', balance: 185000, creditLimit: 500000, riskGrade: 'A Low Risk' },
+    { id: 'CUST-003', name: 'Wipro Digital Labs', contact: 'Karan Sharma', email: 'karan.s@wipro.com', phone: '+91 99001 88762', balance: 98500, creditLimit: 300000, riskGrade: 'A- Moderate' },
+    { id: 'CUST-004', name: 'Larsen & Toubro Ltd', contact: 'Anil Desai', email: 'anil.d@larsentoubro.com', phone: '+91 97654 33210', balance: 450000, creditLimit: 1500000, riskGrade: 'A+ Low Risk' },
+    { id: 'CUST-005', name: 'Titan Company Limited', contact: 'Sneha Nair', email: 'sneha.n@titan.co.in', phone: '+91 94432 99881', balance: 92000, creditLimit: 400000, riskGrade: 'A Low Risk' },
+  ]);
+
+  // Payments Received State (Photo 3)
+  const [paymentsReceivedList, setPaymentsReceivedList] = useState([
+    { id: 'REC-2026-401', customer: 'Tata Consultancy Services Ltd', invoiceRef: 'INV-00101', date: '04 Sep 2026', method: 'UPI Instant QR', amount: 342000, status: 'Cleared' },
+    { id: 'REC-2026-402', customer: 'Infosys BPM Limited', invoiceRef: 'INV-00104', date: '02 Sep 2026', method: 'NEFT / RTGS', amount: 185000, status: 'Cleared' },
+    { id: 'REC-2026-403', customer: 'Titan Company Limited', invoiceRef: 'INV-00105', date: '30 Aug 2026', method: 'NetBanking HDFC', amount: 92000, status: 'Cleared' },
+  ]);
+
+  // Sales Returns State (Photo 3)
+  const [salesReturnsList, setSalesReturnsList] = useState([
+    { id: 'RET-2026-012', customer: 'Wipro Digital Labs', invoiceRef: 'INV-00103', date: '01 Sep 2026', items: 'Fiber Optical Patch Cord 10m (2 units)', reason: 'Specification Mismatch', amount: 4800, status: 'Credit Note Issued' },
+    { id: 'RET-2026-011', customer: 'Infosys BPM Limited', invoiceRef: 'INV-00104', date: '28 Aug 2026', items: 'Server Rack Mount Brackets (1 set)', reason: 'Excess Quantity Ordered', amount: 7500, status: 'Refund Processed' },
+  ]);
+
+  // Vendors State (Photo 2)
+  const [vendorsList, setVendorsList] = useState([
+    { id: 'VEND-001', name: 'Dell Technologies India Pvt Ltd', contact: 'Amit Saxena', gstin: '29AABCD1234E1Z5', category: 'Hardware & Infrastructure', balance: 245000, terms: 'Net 30' },
+    { id: 'VEND-002', name: 'Amazon Web Services India', contact: 'Cloud Billing Ops', gstin: '27AAECW8890C1Z2', category: 'Cloud Infrastructure', balance: 128400, terms: 'Due on Receipt' },
+    { id: 'VEND-003', name: 'Airtel Enterprise Telecommunications', contact: 'Sunil Mehta', gstin: '07AAACA4455Q1Z8', category: 'Connectivity & Leased Line', balance: 64200, terms: 'Net 15' },
+    { id: 'VEND-004', name: 'Steel Authority of India Ltd', contact: 'Procurement Cell', gstin: '19AAACS1122D1Z0', category: 'Raw Materials & Hardware', balance: 310000, terms: 'Net 45' },
+  ]);
+
+  // Purchase Receives State (Photo 2)
+  const [purchaseReceivesList, setPurchaseReceivesList] = useState([
+    { id: 'GRN-2026-104', poRef: 'PO-2026-088', vendor: 'Dell Technologies India Pvt Ltd', receivedDate: '03 Sep 2026', receivedBy: 'Kishore Kumar (Stores)', status: 'Inspected & Passed' },
+    { id: 'GRN-2026-103', poRef: 'PO-2026-087', vendor: 'Steel Authority of India Ltd', receivedDate: '29 Aug 2026', receivedBy: 'Anand Rao (QC Hub)', status: 'Inspected & Passed' },
+  ]);
+
+  // Payments Made State (Photo 2)
+  const [paymentsMadeList, setPaymentsMadeList] = useState([
+    { id: 'PMT-2026-201', vendor: 'Amazon Web Services India', billRef: 'BILL-4091', date: '04 Sep 2026', method: 'Corporate NetBanking', amount: 128400, account: 'HDFC Corporate Current A/C 9901' },
+    { id: 'PMT-2026-202', vendor: 'Airtel Enterprise Telecommunications', billRef: 'BILL-4090', date: '01 Sep 2026', method: 'NEFT Transfer', amount: 64200, account: 'ICICI Current Account 2244' },
+  ]);
+
+  // Inventory Sub-Items State (Photo 4)
+  const [adjustmentsList, setAdjustmentsList] = useState([
+    { id: 'ADJ-2026-051', item: 'Cat6 UTP Gigabit Network Cable (305m)', sku: 'ROO-NET-002', type: 'Quantity', qty: -3, reason: 'Physical Stock Count Variance', date: '04 Sep 2026', user: 'Admin' },
+    { id: 'ADJ-2026-050', item: 'Managed 24-Port Gigabit Switch', sku: 'ROO-NET-001', type: 'Value', qty: 0, reason: 'Market Price Revaluation', date: '01 Sep 2026', user: 'Chief Accountant' },
+    { id: 'ADJ-2026-049', item: 'Dual-Band AC1200 Wi-Fi Router', sku: 'ROO-RTR-004', type: 'Quantity', qty: 15, reason: 'Supplier Goodwill Free Stock', date: '28 Aug 2026', user: 'Admin' },
+  ]);
+  const [packagesList, setPackagesList] = useState([
+    { id: 'PKG-2026-210', orderRef: 'SO-5012', customer: 'Infosys BPM Limited', dimensions: '45x35x25 cm', weight: '4.8 kg', status: 'Packed & Weighed', date: '04 Sep 2026' },
+    { id: 'PKG-2026-209', orderRef: 'SO-5011', customer: 'Tata Consultancy Services', dimensions: '60x40x30 cm', weight: '12.5 kg', status: 'Shipped', date: '27 Aug 2026' },
+  ]);
+  const [shipmentsList, setShipmentsList] = useState([
+    { id: 'SHP-2026-118', carrier: 'BlueDart Express', trackingNo: 'BLU892182736IN', destination: 'Electronic City, Bangalore', shippedDate: '04 Sep 2026', estDelivery: '05 Sep 2026', status: 'In Transit' },
+    { id: 'SHP-2026-117', carrier: 'Delhivery Logistics', trackingNo: 'DEL994821034IN', destination: 'Hinjewadi Phase 2, Pune', shippedDate: '27 Aug 2026', estDelivery: '29 Aug 2026', status: 'Delivered' },
+  ]);
+  const [moveOrdersList, setMoveOrdersList] = useState([
+    { id: 'MVO-2026-033', fromLoc: 'Bangalore Central Hub (WH-01)', toLoc: 'Whitefield Branch Depot (WH-04)', items: 'Managed 24-Port Gigabit Switch (5 units)', date: '03 Sep 2026', status: 'In Transit' },
+    { id: 'MVO-2026-032', fromLoc: 'Chennai Port bonded warehouse', toLoc: 'Bangalore Central Hub (WH-01)', items: 'Cat6 UTP Gigabit Network Cable (40 boxes)', date: '25 Aug 2026', status: 'Completed' },
+  ]);
+  const [putawaysList, setPutawaysList] = useState([
+    { id: 'PTW-2026-077', item: 'Cat6 UTP Gigabit Network Cable (305m)', receivingDock: 'Dock B', targetBin: 'Aisle 3, Rack C, Bin 14', operator: 'Suresh Kumar', status: 'Completed', date: '04 Sep 2026' },
+    { id: 'PTW-2026-076', item: 'Managed 24-Port Gigabit Switch', receivingDock: 'Dock A', targetBin: 'Aisle 1, Rack A, Bin 02', operator: 'Ramesh Patel', status: 'Completed', date: '02 Sep 2026' },
+  ]);
+
+  // Sync activeSubItem prop from Sidebar to internal view tab
+  useEffect(() => {
+    if (!activeSubItem) return;
+    if (module === 'sales') {
+      if (activeSubItem === 'customers') setSalesSubTab('customers');
+      else if (activeSubItem === 'sales_orders') setSalesSubTab('orders');
+      else if (activeSubItem === 'invoices') setSalesSubTab('invoices');
+      else if (activeSubItem === 'delivery_challans') setSalesSubTab('challans');
+      else if (activeSubItem === 'payments_received') setSalesSubTab('payments_received');
+      else if (activeSubItem === 'sales_returns') setSalesSubTab('sales_returns');
+      else if (activeSubItem === 'credit_notes') setSalesSubTab('credit_notes');
+    } else if (module === 'purchases') {
+      if (activeSubItem === 'vendors') setPurchasesSubTab('vendors');
+      else if (activeSubItem === 'expenses') setPurchasesSubTab('recurring');
+      else if (activeSubItem === 'purchase_orders') setPurchasesSubTab('orders');
+      else if (activeSubItem === 'purchase_receives') setPurchasesSubTab('receives');
+      else if (activeSubItem === 'bills') setPurchasesSubTab('bills');
+      else if (activeSubItem === 'payments_made') setPurchasesSubTab('payments_made');
+      else if (activeSubItem === 'vendor_credits') setPurchasesSubTab('credits');
+    } else if (module === 'inventory') {
+      if (activeSubItem === 'inv_adjustments') setInventorySubTab('adjustments');
+      else if (activeSubItem === 'packages') setInventorySubTab('packages');
+      else if (activeSubItem === 'shipments') setInventorySubTab('shipments');
+      else if (activeSubItem === 'move_orders') setInventorySubTab('move_orders');
+      else if (activeSubItem === 'putaways') setInventorySubTab('putaways');
+    } else if (module === 'reports') {
+      if (activeSubItem === 'rep_sales') setReportCat('sales');
+      else if (activeSubItem === 'rep_inventory') setReportCat('inventory');
+      else if (activeSubItem === 'rep_receivables') setReportCat('receivables');
+      else if (activeSubItem === 'rep_payments') setReportCat('payments');
+      else if (activeSubItem === 'rep_payables') setReportCat('payables');
+      else if (activeSubItem === 'rep_purchases') setReportCat('purchases');
+    }
+  }, [activeSubItem, module]);
 
   // Quotes State (Page 6)
   const [quotes, setQuotes] = useState([
@@ -1023,47 +1145,71 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
           </div>
         </div>
 
-        {/* Sub-Navigation Tabs Bar (Document Sections 5, 6, 7, 8, 9, 10, 11) */}
+        {/* Sub-Navigation Tabs Bar (Photo 3 sub-items) */}
         <div className="zb-subnav-bar">
           <button
-            className={`zb-subnav-item ${salesSubTab === 'invoices' ? 'active' : ''}`}
-            onClick={() => setSalesSubTab('invoices')}
+            className={`zb-subnav-item ${salesSubTab === 'customers' ? 'active' : ''}`}
+            onClick={() => { setSalesSubTab('customers'); if (onSelectSubItem) onSelectSubItem('customers'); }}
           >
-            <Receipt size={15} />
-            <span>Tax Invoices</span>
-            <span className="zb-subnav-badge">{invoices.length}</span>
-          </button>
-          <button
-            className={`zb-subnav-item ${salesSubTab === 'quotes' ? 'active' : ''}`}
-            onClick={() => setSalesSubTab('quotes')}
-          >
-            <FileText size={15} />
-            <span>Quotes & Estimates</span>
-            <span className="zb-subnav-badge">{quotes.length}</span>
+            <Users size={15} />
+            <span>Customers</span>
+            <span className="zb-subnav-badge">{customersList.length}</span>
           </button>
           <button
             className={`zb-subnav-item ${salesSubTab === 'orders' ? 'active' : ''}`}
-            onClick={() => setSalesSubTab('orders')}
+            onClick={() => { setSalesSubTab('orders'); if (onSelectSubItem) onSelectSubItem('sales_orders'); }}
           >
             <Package size={15} />
             <span>Sales Orders</span>
             <span className="zb-subnav-badge">{salesOrders.length}</span>
           </button>
           <button
+            className={`zb-subnav-item ${salesSubTab === 'invoices' ? 'active' : ''}`}
+            onClick={() => { setSalesSubTab('invoices'); if (onSelectSubItem) onSelectSubItem('invoices'); }}
+          >
+            <Receipt size={15} />
+            <span>Invoices</span>
+            <span className="zb-subnav-badge">{invoices.length}</span>
+          </button>
+          <button
             className={`zb-subnav-item ${salesSubTab === 'challans' ? 'active' : ''}`}
-            onClick={() => setSalesSubTab('challans')}
+            onClick={() => { setSalesSubTab('challans'); if (onSelectSubItem) onSelectSubItem('delivery_challans'); }}
           >
             <Truck size={15} />
             <span>Delivery Challans</span>
             <span className="zb-subnav-badge">{deliveryChallans.length}</span>
           </button>
           <button
+            className={`zb-subnav-item ${salesSubTab === 'payments_received' ? 'active' : ''}`}
+            onClick={() => { setSalesSubTab('payments_received'); if (onSelectSubItem) onSelectSubItem('payments_received'); }}
+          >
+            <DollarSign size={15} />
+            <span>Payments Received</span>
+            <span className="zb-subnav-badge">{paymentsReceivedList.length}</span>
+          </button>
+          <button
+            className={`zb-subnav-item ${salesSubTab === 'sales_returns' ? 'active' : ''}`}
+            onClick={() => { setSalesSubTab('sales_returns'); if (onSelectSubItem) onSelectSubItem('sales_returns'); }}
+          >
+            <RotateCcw size={15} />
+            <span>Sales Returns</span>
+            <span className="zb-subnav-badge">{salesReturnsList.length}</span>
+          </button>
+          <button
             className={`zb-subnav-item ${salesSubTab === 'credit_notes' ? 'active' : ''}`}
-            onClick={() => setSalesSubTab('credit_notes')}
+            onClick={() => { setSalesSubTab('credit_notes'); if (onSelectSubItem) onSelectSubItem('credit_notes'); }}
           >
             <Receipt size={15} />
             <span>Credit Notes</span>
             <span className="zb-subnav-badge">{creditNotes.length}</span>
+          </button>
+          <button
+            className={`zb-subnav-item ${salesSubTab === 'quotes' ? 'active' : ''}`}
+            onClick={() => setSalesSubTab('quotes')}
+          >
+            <FileText size={15} />
+            <span>Quotes</span>
+            <span className="zb-subnav-badge">{quotes.length}</span>
           </button>
         </div>
 
@@ -1555,6 +1701,218 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
             </div>
           </>
         )}
+        {/* 6. Customers Sub-Module (Photo 3) */}
+        {salesSubTab === 'customers' && (
+          <>
+            <div className="zb-dashboard-grid four-col zb-section-spacing">
+              <div className="zb-metric-mini-card">
+                <div className="zb-metric-mini-label">Active Customers</div>
+                <div className="zb-metric-mini-val text-primary">{customersList.length}</div>
+                <div className="zb-metric-mini-sub text-success"><CheckCircle2 size={12} /> 100% verified KYC</div>
+              </div>
+              <div className="zb-metric-mini-card">
+                <div className="zb-metric-mini-label">Total Receivables</div>
+                <div className="zb-metric-mini-val text-warning">
+                  {formatINR(customersList.reduce((acc, c) => acc + c.balance, 0))}
+                </div>
+                <div className="zb-metric-mini-sub">Outstanding balance</div>
+              </div>
+              <div className="zb-metric-mini-card">
+                <div className="zb-metric-mini-label">Total Credit Limit</div>
+                <div className="zb-metric-mini-val text-success">
+                  {formatINR(customersList.reduce((acc, c) => acc + c.creditLimit, 0))}
+                </div>
+                <div className="zb-metric-mini-sub">Enterprise exposure cap</div>
+              </div>
+              <div className="zb-metric-mini-card">
+                <div className="zb-metric-mini-label">Credit Utilization</div>
+                <div className="zb-metric-mini-val text-primary">
+                  {((customersList.reduce((acc, c) => acc + c.balance, 0) / customersList.reduce((acc, c) => acc + c.creditLimit, 0)) * 100).toFixed(1)}%
+                </div>
+                <div className="zb-metric-mini-sub text-success">Healthy credit buffer</div>
+              </div>
+            </div>
+
+            <div className="zb-card zb-table-container">
+              <div className="zb-table-header-bar zb-flex-between p-3">
+                <div className="font-semibold text-main">Customer Directory & 360° Intelligence</div>
+                <button
+                  className="zb-btn zb-btn-primary zb-btn-sm"
+                  onClick={() => showToast('Customer created: HDFC Financial Services added to Customer Directory.')}
+                >
+                  <Plus size={14} /> Add Customer
+                </button>
+              </div>
+              <table className="zb-table">
+                <thead>
+                  <tr>
+                    <th>Customer Name</th>
+                    <th>Contact Person</th>
+                    <th>Email & Phone</th>
+                    <th className="text-right">Receivables Balance</th>
+                    <th className="text-right">Credit Limit</th>
+                    <th className="text-center">Risk Grade</th>
+                    <th className="text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customersList.map(c => (
+                    <tr key={c.id}>
+                      <td className="font-semibold text-primary">{c.name}</td>
+                      <td>{c.contact}</td>
+                      <td className="text-muted text-xs">{c.email}<br />{c.phone}</td>
+                      <td className="text-right font-bold text-warning">{formatINR(c.balance)}</td>
+                      <td className="text-right text-muted">{formatINR(c.creditLimit)}</td>
+                      <td className="text-center">
+                        <span className="zb-badge-pill bg-success-light text-success font-semibold text-xs">
+                          {c.riskGrade}
+                        </span>
+                      </td>
+                      <td className="text-center">
+                        <div className="zb-flex-align justify-center gap-2">
+                          <button
+                            className="zb-btn zb-btn-secondary zb-btn-xs"
+                            onClick={() => handleOpenCustomer360(c.name)}
+                          >
+                            <Eye size={13} /> 360° View
+                          </button>
+                          <button
+                            className="zb-btn zb-btn-outline-primary zb-btn-xs"
+                            onClick={() => setIsCreateInvoiceOpen(true)}
+                          >
+                            + Invoice
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* 7. Payments Received Sub-Module (Photo 3) */}
+        {salesSubTab === 'payments_received' && (
+          <>
+            <div className="zb-dashboard-grid three-col zb-section-spacing">
+              <div className="zb-metric-mini-card">
+                <div className="zb-metric-mini-label">Total Collections</div>
+                <div className="zb-metric-mini-val text-success">
+                  {formatINR(paymentsReceivedList.reduce((acc, p) => acc + p.amount, 0))}
+                </div>
+                <div className="zb-metric-mini-sub">{paymentsReceivedList.length} customer payments received</div>
+              </div>
+              <div className="zb-metric-mini-card">
+                <div className="zb-metric-mini-label">Instant UPI Collections</div>
+                <div className="zb-metric-mini-val text-primary">
+                  {formatINR(paymentsReceivedList.filter(p => p.method.includes('UPI')).reduce((acc, p) => acc + p.amount, 0))}
+                </div>
+                <div className="zb-metric-mini-sub">Zero gateway fee dynamic QR</div>
+              </div>
+              <div className="zb-metric-mini-card">
+                <div className="zb-metric-mini-label">Direct Bank Transfers</div>
+                <div className="zb-metric-mini-val text-indigo">
+                  {formatINR(paymentsReceivedList.filter(p => !p.method.includes('UPI')).reduce((acc, p) => acc + p.amount, 0))}
+                </div>
+                <div className="zb-metric-mini-sub">RTGS / NEFT / NetBanking</div>
+              </div>
+            </div>
+
+            <div className="zb-card zb-table-container">
+              <div className="zb-table-header-bar zb-flex-between p-3">
+                <div className="font-semibold text-main">Customer Payments Received Register</div>
+                <button
+                  className="zb-btn zb-btn-primary zb-btn-sm"
+                  onClick={() => showToast('Payment receipt recorded for ₹95,000 (UPI QR). Ledger balance settled.')}
+                >
+                  <Plus size={14} /> Record Payment
+                </button>
+              </div>
+              <table className="zb-table">
+                <thead>
+                  <tr>
+                    <th>Payment Receipt #</th>
+                    <th>Customer Name</th>
+                    <th>Invoice Reference</th>
+                    <th>Payment Date</th>
+                    <th>Payment Mode</th>
+                    <th className="text-right">Amount Received</th>
+                    <th className="text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paymentsReceivedList.map(p => (
+                    <tr key={p.id}>
+                      <td className="font-semibold text-primary">{p.id}</td>
+                      <td>{p.customer}</td>
+                      <td><span className="text-primary font-medium">{p.invoiceRef}</span></td>
+                      <td>{p.date}</td>
+                      <td>
+                        <span className="zb-badge-pill bg-info-light text-info text-xs">
+                          {p.method}
+                        </span>
+                      </td>
+                      <td className="text-right font-bold text-success">{formatINR(p.amount)}</td>
+                      <td className="text-center">
+                        <span className="zb-badge-pill bg-success-light text-success text-xs font-semibold">
+                          {p.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* 8. Sales Returns Sub-Module (Photo 3) */}
+        {salesSubTab === 'sales_returns' && (
+          <>
+            <div className="zb-card zb-table-container">
+              <div className="zb-table-header-bar zb-flex-between p-3">
+                <div className="font-semibold text-main">Sales Returns & RMA Notes</div>
+                <button
+                  className="zb-btn zb-btn-primary zb-btn-sm"
+                  onClick={() => showToast('Sales Return processed: RMA-2026-013 logged and Credit Note issued.')}
+                >
+                  <Plus size={14} /> New Sales Return
+                </button>
+              </div>
+              <table className="zb-table">
+                <thead>
+                  <tr>
+                    <th>Return RMA #</th>
+                    <th>Customer</th>
+                    <th>Original Invoice</th>
+                    <th>Items Returned</th>
+                    <th>Return Reason</th>
+                    <th className="text-right">Credit Amount</th>
+                    <th className="text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {salesReturnsList.map(r => (
+                    <tr key={r.id}>
+                      <td className="font-semibold text-danger">{r.id}</td>
+                      <td>{r.customer}</td>
+                      <td><span className="text-primary font-medium">{r.invoiceRef}</span></td>
+                      <td className="text-xs">{r.items}</td>
+                      <td className="text-xs text-muted">{r.reason}</td>
+                      <td className="text-right font-bold text-danger">{formatINR(r.amount)}</td>
+                      <td className="text-center">
+                        <span className="zb-badge-pill bg-warning-light text-warning text-xs font-semibold">
+                          {r.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
 
         {/* Interactive Tax Invoice Modal */}
         <TaxInvoiceModal
@@ -1647,39 +2005,63 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
           </div>
         </div>
 
-        {/* Sub-Navigation Tabs Bar */}
+        {/* Sub-Navigation Tabs Bar (Photo 2 sub-items) */}
         <div className="zb-subnav-bar">
           <button
-            className={`zb-subnav-item ${purchasesSubTab === 'bills' ? 'active' : ''}`}
-            onClick={() => setPurchasesSubTab('bills')}
+            className={`zb-subnav-item ${purchasesSubTab === 'vendors' ? 'active' : ''}`}
+            onClick={() => { setPurchasesSubTab('vendors'); if (onSelectSubItem) onSelectSubItem('vendors'); }}
           >
-            <ShoppingBag size={15} />
-            <span>Vendor Bills</span>
-            <span className="zb-subnav-badge">{bills.length}</span>
+            <Users size={15} />
+            <span>Vendors</span>
+            <span className="zb-subnav-badge">{vendorsList.length}</span>
+          </button>
+          <button
+            className={`zb-subnav-item ${purchasesSubTab === 'recurring' ? 'active' : ''}`}
+            onClick={() => { setPurchasesSubTab('recurring'); if (onSelectSubItem) onSelectSubItem('expenses'); }}
+          >
+            <Clock size={15} />
+            <span>Expenses</span>
+            <span className="zb-subnav-badge">{recurringExpenses.length}</span>
           </button>
           <button
             className={`zb-subnav-item ${purchasesSubTab === 'orders' ? 'active' : ''}`}
-            onClick={() => setPurchasesSubTab('orders')}
+            onClick={() => { setPurchasesSubTab('orders'); if (onSelectSubItem) onSelectSubItem('purchase_orders'); }}
           >
             <Layers size={15} />
-            <span>Purchase Orders & 3-Way Match</span>
+            <span>Purchase Orders</span>
             <span className="zb-subnav-badge">{purchaseOrders.length}</span>
           </button>
           <button
+            className={`zb-subnav-item ${purchasesSubTab === 'receives' ? 'active' : ''}`}
+            onClick={() => { setPurchasesSubTab('receives'); if (onSelectSubItem) onSelectSubItem('purchase_receives'); }}
+          >
+            <Package size={15} />
+            <span>Purchase Receives</span>
+            <span className="zb-subnav-badge">{purchaseReceivesList.length}</span>
+          </button>
+          <button
+            className={`zb-subnav-item ${purchasesSubTab === 'bills' ? 'active' : ''}`}
+            onClick={() => { setPurchasesSubTab('bills'); if (onSelectSubItem) onSelectSubItem('bills'); }}
+          >
+            <ShoppingBag size={15} />
+            <span>Bills</span>
+            <span className="zb-subnav-badge">{bills.length}</span>
+          </button>
+          <button
+            className={`zb-subnav-item ${purchasesSubTab === 'payments_made' ? 'active' : ''}`}
+            onClick={() => { setPurchasesSubTab('payments_made'); if (onSelectSubItem) onSelectSubItem('payments_made'); }}
+          >
+            <DollarSign size={15} />
+            <span>Payments Made</span>
+            <span className="zb-subnav-badge">{paymentsMadeList.length}</span>
+          </button>
+          <button
             className={`zb-subnav-item ${purchasesSubTab === 'credits' ? 'active' : ''}`}
-            onClick={() => setPurchasesSubTab('credits')}
+            onClick={() => { setPurchasesSubTab('credits'); if (onSelectSubItem) onSelectSubItem('vendor_credits'); }}
           >
             <Receipt size={15} />
             <span>Vendor Credits</span>
             <span className="zb-subnav-badge">{vendorCredits.length}</span>
-          </button>
-          <button
-            className={`zb-subnav-item ${purchasesSubTab === 'recurring' ? 'active' : ''}`}
-            onClick={() => setPurchasesSubTab('recurring')}
-          >
-            <Clock size={15} />
-            <span>Recurring Expenses & Bills</span>
-            <span className="zb-subnav-badge">{recurringExpenses.length}</span>
           </button>
         </div>
 
@@ -1970,6 +2352,176 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
             </div>
           </>
         )}
+        {/* 5. Vendors Directory Sub-Module (Photo 2) */}
+        {purchasesSubTab === 'vendors' && (
+          <>
+            <div className="zb-dashboard-grid four-col zb-section-spacing">
+              <div className="zb-metric-mini-card">
+                <div className="zb-metric-mini-label">Active Vendors</div>
+                <div className="zb-metric-mini-val text-primary">{vendorsList.length}</div>
+                <div className="zb-metric-mini-sub text-success"><CheckCircle2 size={12} /> GSTIN verified</div>
+              </div>
+              <div className="zb-metric-mini-card">
+                <div className="zb-metric-mini-label">Total Payables</div>
+                <div className="zb-metric-mini-val text-warning">
+                  {formatINR(vendorsList.reduce((acc, v) => acc + v.balance, 0))}
+                </div>
+                <div className="zb-metric-mini-sub">Outstanding to suppliers</div>
+              </div>
+              <div className="zb-metric-mini-card">
+                <div className="zb-metric-mini-label">Average Terms</div>
+                <div className="zb-metric-mini-val text-main">Net 30</div>
+                <div className="zb-metric-mini-sub">Standard commercial credit</div>
+              </div>
+              <div className="zb-metric-mini-card">
+                <div className="zb-metric-mini-label">Payment Compliance</div>
+                <div className="zb-metric-mini-val text-success">98.2%</div>
+                <div className="zb-metric-mini-sub text-success">On-time clearance</div>
+              </div>
+            </div>
+
+            <div className="zb-card zb-table-container">
+              <div className="zb-table-header-bar zb-flex-between p-3">
+                <div className="font-semibold text-main">Vendor Directory & Procurement Partners</div>
+                <button
+                  className="zb-btn zb-btn-primary zb-btn-sm"
+                  onClick={() => showToast('Vendor added: HP Enterprise Solutions Pvt Ltd added to Vendor Directory.')}
+                >
+                  <Plus size={14} /> Add Vendor
+                </button>
+              </div>
+              <table className="zb-table">
+                <thead>
+                  <tr>
+                    <th>Vendor Name</th>
+                    <th>Contact Person</th>
+                    <th>GSTIN</th>
+                    <th>Category</th>
+                    <th className="text-right">Outstanding Payables</th>
+                    <th className="text-center">Terms</th>
+                    <th className="text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {vendorsList.map(v => (
+                    <tr key={v.id}>
+                      <td className="font-semibold text-primary">{v.name}</td>
+                      <td>{v.contact}</td>
+                      <td className="text-xs font-mono">{v.gstin}</td>
+                      <td>
+                        <span className="zb-badge-pill bg-info-light text-info text-xs">{v.category}</span>
+                      </td>
+                      <td className="text-right font-bold text-warning">{formatINR(v.balance)}</td>
+                      <td className="text-center text-xs font-semibold text-muted">{v.terms}</td>
+                      <td className="text-center">
+                        <button
+                          className="zb-btn zb-btn-outline-primary zb-btn-xs"
+                          onClick={() => {
+                            setNewBillVendor(v.name);
+                            setModalType('new_bill');
+                          }}
+                        >
+                          + Record Bill
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* 6. Purchase Receives Sub-Module (Photo 2) */}
+        {purchasesSubTab === 'receives' && (
+          <>
+            <div className="zb-card zb-table-container">
+              <div className="zb-table-header-bar zb-flex-between p-3">
+                <div className="font-semibold text-main">Purchase Receives & Goods Receipt Notes (GRN)</div>
+                <button
+                  className="zb-btn zb-btn-primary zb-btn-sm"
+                  onClick={() => showToast('New Purchase Receive GRN-2026-105 created. Warehouse stock incremented.')}
+                >
+                  <Plus size={14} /> New Purchase Receive
+                </button>
+              </div>
+              <table className="zb-table">
+                <thead>
+                  <tr>
+                    <th>GRN Receipt #</th>
+                    <th>Purchase Order</th>
+                    <th>Vendor Name</th>
+                    <th>Received Date</th>
+                    <th>Inspected By</th>
+                    <th className="text-center">QC Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {purchaseReceivesList.map(grn => (
+                    <tr key={grn.id}>
+                      <td className="font-semibold text-primary">{grn.id}</td>
+                      <td><span className="text-primary font-medium">{grn.poRef}</span></td>
+                      <td>{grn.vendor}</td>
+                      <td>{grn.receivedDate}</td>
+                      <td className="text-xs text-muted">{grn.receivedBy}</td>
+                      <td className="text-center">
+                        <span className="zb-badge-pill bg-success-light text-success text-xs font-semibold">
+                          <CheckCircle2 size={12} className="inline mr-1" />
+                          {grn.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* 7. Payments Made Sub-Module (Photo 2) */}
+        {purchasesSubTab === 'payments_made' && (
+          <>
+            <div className="zb-card zb-table-container">
+              <div className="zb-table-header-bar zb-flex-between p-3">
+                <div className="font-semibold text-main">Vendor Payments Made & Bank Remittance</div>
+                <button
+                  className="zb-btn zb-btn-primary zb-btn-sm"
+                  onClick={() => showToast('Vendor payment voucher recorded for ₹1,10,000 via NetBanking.')}
+                >
+                  <Plus size={14} /> Make Payment
+                </button>
+              </div>
+              <table className="zb-table">
+                <thead>
+                  <tr>
+                    <th>Payment Voucher #</th>
+                    <th>Vendor</th>
+                    <th>Bill Reference</th>
+                    <th>Payment Date</th>
+                    <th>Payment Method</th>
+                    <th>Debited Bank Account</th>
+                    <th className="text-right">Amount Paid</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paymentsMadeList.map(pmt => (
+                    <tr key={pmt.id}>
+                      <td className="font-semibold text-primary">{pmt.id}</td>
+                      <td>{pmt.vendor}</td>
+                      <td><span className="text-primary font-medium">{pmt.billRef}</span></td>
+                      <td>{pmt.date}</td>
+                      <td>
+                        <span className="zb-badge-pill bg-info-light text-info text-xs">{pmt.method}</span>
+                      </td>
+                      <td className="text-xs text-muted">{pmt.account}</td>
+                      <td className="text-right font-bold text-success">{formatINR(pmt.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
 
         {/* Record Bill Modal */}
         {modalType === 'new_bill' && (
@@ -2021,6 +2573,311 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
                 </button>
               </form>
             </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Inventory Module Render (Photo 4)
+  if (module === 'inventory') {
+    return (
+      <div className="zb-page zb-module-page">
+        {toastMessage && <div className="zb-floating-toast">{toastMessage}</div>}
+
+        <div className="zb-page-header zb-flex-between">
+          <div>
+            <h1 className="zb-page-title">Inventory Operations & Warehousing</h1>
+            <p className="zb-page-subtitle">Stock adjustments, package weighing, carrier dispatches, move orders, and bin putaway</p>
+          </div>
+          <div className="zb-flex-align gap-3">
+            <button
+              className="zb-btn zb-btn-secondary"
+              onClick={() => exportCSV(
+                'inventory_operations.csv',
+                ['Operation', 'ID', 'Item/Ref', 'Location', 'Status', 'Date'],
+                adjustmentsList.map(a => ['Adjustment', a.id, `"${a.item}"`, a.user, a.reason, a.date])
+              )}
+            >
+              <Download size={15} /> Export Operations Log
+            </button>
+            <button
+              className="zb-btn zb-btn-primary"
+              onClick={() => showToast('Stock operation initiated. Inventory levels synchronized with central ERP.')}
+            >
+              <Plus size={16} /> New Inventory Activity
+            </button>
+          </div>
+        </div>
+
+        {/* Sub-Navigation Tabs Bar (Photo 4) */}
+        <div className="zb-subnav-bar">
+          <button
+            className={`zb-subnav-item ${inventorySubTab === 'adjustments' ? 'active' : ''}`}
+            onClick={() => { setInventorySubTab('adjustments'); if (onSelectSubItem) onSelectSubItem('inv_adjustments'); }}
+          >
+            <RefreshCw size={15} />
+            <span>Inventory Adjustments</span>
+            <span className="zb-subnav-badge">{adjustmentsList.length}</span>
+          </button>
+          <button
+            className={`zb-subnav-item ${inventorySubTab === 'packages' ? 'active' : ''}`}
+            onClick={() => { setInventorySubTab('packages'); if (onSelectSubItem) onSelectSubItem('packages'); }}
+          >
+            <Package size={15} />
+            <span>Packages</span>
+            <span className="zb-subnav-badge">{packagesList.length}</span>
+          </button>
+          <button
+            className={`zb-subnav-item ${inventorySubTab === 'shipments' ? 'active' : ''}`}
+            onClick={() => { setInventorySubTab('shipments'); if (onSelectSubItem) onSelectSubItem('shipments'); }}
+          >
+            <Truck size={15} />
+            <span>Shipments</span>
+            <span className="zb-subnav-badge">{shipmentsList.length}</span>
+          </button>
+          <button
+            className={`zb-subnav-item ${inventorySubTab === 'move_orders' ? 'active' : ''}`}
+            onClick={() => { setInventorySubTab('move_orders'); if (onSelectSubItem) onSelectSubItem('move_orders'); }}
+          >
+            <ArrowRight size={15} />
+            <span>Move Orders</span>
+            <span className="zb-subnav-badge">{moveOrdersList.length}</span>
+          </button>
+          <button
+            className={`zb-subnav-item ${inventorySubTab === 'putaways' ? 'active' : ''}`}
+            onClick={() => { setInventorySubTab('putaways'); if (onSelectSubItem) onSelectSubItem('putaways'); }}
+          >
+            <Layers size={15} />
+            <span>Putaways</span>
+            <span className="zb-subnav-badge">{putawaysList.length}</span>
+          </button>
+        </div>
+
+        {/* 1. Inventory Adjustments */}
+        {inventorySubTab === 'adjustments' && (
+          <div className="zb-card zb-table-container">
+            <div className="zb-table-header-bar zb-flex-between p-3">
+              <div className="font-semibold text-main">Physical Inventory Stock Adjustments & Write-Offs</div>
+              <button
+                className="zb-btn zb-btn-primary zb-btn-sm"
+                onClick={() => showToast('New Adjustment created: Physical stock count verified and updated.')}
+              >
+                <Plus size={14} /> New Adjustment
+              </button>
+            </div>
+            <table className="zb-table">
+              <thead>
+                <tr>
+                  <th>Adjustment #</th>
+                  <th>Item Name</th>
+                  <th>SKU Code</th>
+                  <th>Type</th>
+                  <th className="text-right">Quantity Change</th>
+                  <th>Adjustment Reason</th>
+                  <th>Date</th>
+                  <th>Adjusted By</th>
+                </tr>
+              </thead>
+              <tbody>
+                {adjustmentsList.map(adj => (
+                  <tr key={adj.id}>
+                    <td className="font-semibold text-primary">{adj.id}</td>
+                    <td>{adj.item}</td>
+                    <td className="text-xs font-mono">{adj.sku}</td>
+                    <td>
+                      <span className={`zb-badge-pill text-xs ${adj.type === 'Quantity' ? 'bg-info-light text-info' : 'bg-success-light text-success'}`}>
+                        {adj.type}
+                      </span>
+                    </td>
+                    <td className={`text-right font-bold ${adj.qty < 0 ? 'text-danger' : 'text-success'}`}>
+                      {adj.qty > 0 ? `+${adj.qty}` : adj.qty}
+                    </td>
+                    <td className="text-xs text-muted">{adj.reason}</td>
+                    <td>{adj.date}</td>
+                    <td className="text-xs">{adj.user}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* 2. Packages */}
+        {inventorySubTab === 'packages' && (
+          <div className="zb-card zb-table-container">
+            <div className="zb-table-header-bar zb-flex-between p-3">
+              <div className="font-semibold text-main">Customer Order Packing & Parcel Slips</div>
+              <button
+                className="zb-btn zb-btn-primary zb-btn-sm"
+                onClick={() => showToast('New Package slip PKG-2026-211 generated with barcode.')}
+              >
+                <Plus size={14} /> New Package
+              </button>
+            </div>
+            <table className="zb-table">
+              <thead>
+                <tr>
+                  <th>Package #</th>
+                  <th>Sales Order Reference</th>
+                  <th>Customer Name</th>
+                  <th>Parcel Dimensions</th>
+                  <th>Total Weight</th>
+                  <th>Date</th>
+                  <th className="text-center">Packaging Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {packagesList.map(pkg => (
+                  <tr key={pkg.id}>
+                    <td className="font-semibold text-primary">{pkg.id}</td>
+                    <td><span className="text-primary font-medium">{pkg.orderRef}</span></td>
+                    <td>{pkg.customer}</td>
+                    <td className="text-xs font-mono">{pkg.dimensions}</td>
+                    <td className="font-semibold">{pkg.weight}</td>
+                    <td>{pkg.date}</td>
+                    <td className="text-center">
+                      <span className="zb-badge-pill bg-info-light text-info text-xs font-semibold">
+                        {pkg.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* 3. Shipments */}
+        {inventorySubTab === 'shipments' && (
+          <div className="zb-card zb-table-container">
+            <div className="zb-table-header-bar zb-flex-between p-3">
+              <div className="font-semibold text-main">Carrier Shipments & Real-Time Logistics Tracking</div>
+              <button
+                className="zb-btn zb-btn-primary zb-btn-sm"
+                onClick={() => showToast('New Shipment SHP-2026-119 dispatched via BlueDart Express.')}
+              >
+                <Plus size={14} /> Create Shipment
+              </button>
+            </div>
+            <table className="zb-table">
+              <thead>
+                <tr>
+                  <th>Shipment #</th>
+                  <th>Logistics Carrier</th>
+                  <th>Tracking AWB Number</th>
+                  <th>Destination Hub</th>
+                  <th>Shipped Date</th>
+                  <th>Est. Delivery</th>
+                  <th className="text-center">Transit Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shipmentsList.map(shp => (
+                  <tr key={shp.id}>
+                    <td className="font-semibold text-primary">{shp.id}</td>
+                    <td className="font-medium">{shp.carrier}</td>
+                    <td className="font-mono text-xs text-primary">{shp.trackingNo}</td>
+                    <td className="text-xs">{shp.destination}</td>
+                    <td>{shp.shippedDate}</td>
+                    <td>{shp.estDelivery}</td>
+                    <td className="text-center">
+                      <span className={`zb-badge-pill text-xs font-semibold ${shp.status === 'Delivered' ? 'bg-success-light text-success' : 'bg-warning-light text-warning'}`}>
+                        {shp.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* 4. Move Orders */}
+        {inventorySubTab === 'move_orders' && (
+          <div className="zb-card zb-table-container">
+            <div className="zb-table-header-bar zb-flex-between p-3">
+              <div className="font-semibold text-main">Inter-Warehouse Stock Move Orders & Transfers</div>
+              <button
+                className="zb-btn zb-btn-primary zb-btn-sm"
+                onClick={() => showToast('Move Order MVO-2026-034 initiated: Stock transfer dispatched.')}
+              >
+                <Plus size={14} /> New Move Order
+              </button>
+            </div>
+            <table className="zb-table">
+              <thead>
+                <tr>
+                  <th>Move Order #</th>
+                  <th>Source Location</th>
+                  <th>Destination Location</th>
+                  <th>Transferred Line Items</th>
+                  <th>Transfer Date</th>
+                  <th className="text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {moveOrdersList.map(mvo => (
+                  <tr key={mvo.id}>
+                    <td className="font-semibold text-primary">{mvo.id}</td>
+                    <td className="text-xs font-medium text-muted">{mvo.fromLoc}</td>
+                    <td className="text-xs font-medium text-main">{mvo.toLoc}</td>
+                    <td className="text-xs">{mvo.items}</td>
+                    <td>{mvo.date}</td>
+                    <td className="text-center">
+                      <span className={`zb-badge-pill text-xs font-semibold ${mvo.status === 'Completed' ? 'bg-success-light text-success' : 'bg-info-light text-info'}`}>
+                        {mvo.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* 5. Putaways */}
+        {inventorySubTab === 'putaways' && (
+          <div className="zb-card zb-table-container">
+            <div className="zb-table-header-bar zb-flex-between p-3">
+              <div className="font-semibold text-main">Warehouse Inward Putaway & Bin Allocation</div>
+              <button
+                className="zb-btn zb-btn-primary zb-btn-sm"
+                onClick={() => showToast('Putaway PTW-2026-078 logged: Items stocked in Bin Aisle 2.')}
+              >
+                <Plus size={14} /> Log Putaway
+              </button>
+            </div>
+            <table className="zb-table">
+              <thead>
+                <tr>
+                  <th>Putaway #</th>
+                  <th>Stock Item Name</th>
+                  <th>Receiving Dock</th>
+                  <th>Assigned Storage Bin/Rack</th>
+                  <th>Warehouse Operator</th>
+                  <th>Date</th>
+                  <th className="text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {putawaysList.map(ptw => (
+                  <tr key={ptw.id}>
+                    <td className="font-semibold text-primary">{ptw.id}</td>
+                    <td>{ptw.item}</td>
+                    <td className="text-xs font-mono">{ptw.receivingDock}</td>
+                    <td className="text-xs font-bold text-primary">{ptw.targetBin}</td>
+                    <td className="text-xs">{ptw.operator}</td>
+                    <td>{ptw.date}</td>
+                    <td className="text-center">
+                      <span className="zb-badge-pill bg-success-light text-success text-xs font-semibold">
+                        {ptw.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
@@ -2145,25 +3002,111 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
     );
   }
 
-  // 4. Reports Module Render
+  // 4. Reports Module Render (Photo 1 - Reports Center)
   if (module === 'reports') {
-    const reportCategories = [
-      {
-        title: 'Business Overview & P&L',
-        desc: 'Profit and Loss, Balance Sheet, Cash Flow Statement',
-        reports: ['Profit and Loss Statement', 'Balance Sheet (Ind AS)', 'Cash Flow Statement', 'Operating Cash Report'],
+    const reportCategoriesData: Record<string, { label: string; count: number; items: string[] }> = {
+      sales: {
+        label: 'Sales',
+        count: 8,
+        items: [
+          'Sales by Customer',
+          'Sales by Item',
+          'Order Fulfillment By Item',
+          'Sales Return History',
+          'Sales by Salesperson',
+          'Sales Summary',
+          'Profit By Item',
+          'Sales Channel Integration',
+        ],
       },
-      {
-        title: 'Tax & GST Compliance',
-        desc: 'GST Returns, ITC summary, and TDS withholding registers',
-        reports: ['GSTR-1 Sales Report', 'GSTR-3B Monthly Return', 'GSTR-2B ITC Matcher', 'e-Way Bill Register'],
+      inventory: {
+        label: 'Inventory',
+        count: 5,
+        items: [
+          'Inventory Summary',
+          'Item Details Report',
+          'Stock Summary by Warehouse',
+          'Committed Stock Report',
+          'Inventory Aging Summary',
+        ],
       },
-      {
-        title: 'Receivables & Payables',
-        desc: 'Customer aging, vendor payables aging, and bad debt audit',
-        reports: ['Accounts Receivable Aging Summary', 'Accounts Payable Aging Summary', 'Customer Balance Summary', 'Vendor Credit History'],
+      valuation: {
+        label: 'Inventory Valuation',
+        count: 3,
+        items: [
+          'Inventory Valuation Summary (FIFO / Weighted Avg)',
+          'Cost of Goods Sold (COGS) Breakdown',
+          'Stock Revaluation Adjustment Journal',
+        ],
       },
-    ];
+      receivables: {
+        label: 'Receivables',
+        count: 4,
+        items: [
+          'Customer Balances Summary',
+          'Accounts Receivable (AR) Aging Summary',
+          'Accounts Receivable (AR) Aging Details',
+          'Invoice Details & Overdue Tracker',
+        ],
+      },
+      payments: {
+        label: 'Payments Received',
+        count: 3,
+        items: [
+          'Payments Received Register',
+          'UPI Instant Dynamic QR Collection Log',
+          'Customer Refund & Chargeback History',
+        ],
+      },
+      payables: {
+        label: 'Payables',
+        count: 4,
+        items: [
+          'Vendor Balances Summary',
+          'Accounts Payable (AP) Aging Summary',
+          'Accounts Payable (AP) Aging Details',
+          'Vendor Bills & Outstanding Payments Due',
+        ],
+      },
+      purchases: {
+        label: 'Purchases and Expenses',
+        count: 4,
+        items: [
+          'Purchases by Vendor Register',
+          'Purchases by Item Breakdown',
+          'Operating Expense Details Report',
+          'Recurring Expense Schedules Log',
+        ],
+      },
+      activity: {
+        label: 'Activity',
+        count: 3,
+        items: [
+          'System Security Audit Trail',
+          'User Login & Authorization History',
+          'Master Data Transaction Change Log',
+        ],
+      },
+      automation: {
+        label: 'Automation',
+        count: 3,
+        items: [
+          'Workflow Rule Triggers & Execution Log',
+          'Scheduled Payment Reminders Dispatch Log',
+          'AutoScan OCR Batch Processing Summary',
+        ],
+      },
+    };
+
+    const currentCatData = reportCategoriesData[reportCat] || reportCategoriesData.sales;
+
+    const toggleStar = (rep: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      setStarredReports(prev => ({
+        ...prev,
+        [rep]: !prev[rep]
+      }));
+    };
 
     return (
       <div className="zb-page zb-module-page">
@@ -2171,49 +3114,251 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
 
         <div className="zb-page-header zb-flex-between">
           <div>
-            <h1 className="zb-page-title">Financial Intelligence & Analytics</h1>
-            <p className="zb-page-subtitle">Accurate, audit-ready financial statements, GST compliance filings, and multi-dimensional ledger intelligence</p>
+            <h1 className="zb-page-title">Reports Center</h1>
+            <p className="zb-page-subtitle">Centralized intelligence repository for sales, inventory, statutory ledgers, and compliance</p>
           </div>
-          <button
-            className="zb-btn zb-btn-primary"
-            onClick={() => exportCSV(
-              'audit_financial_summary.csv',
-              ['Report Name', 'Period', 'Status', 'Filing Authority'],
-              [
-                ['GSTR-1 Sales Return', 'August 2026', 'Reconciled', 'GSTN India'],
-                ['GSTR-3B Monthly Return', 'August 2026', 'Filed & Paid', 'GSTN India'],
-                ['Profit and Loss Statement', 'Q1-Q2 FY27', 'Audited', 'Internal Audit'],
-                ['Balance Sheet', 'As of Sep 2026', 'Balanced', 'Statutory Board'],
-              ]
-            )}
-          >
-            <Download size={15} /> Export Audit Package
-          </button>
+          <div className="zb-flex-align gap-3">
+            <button
+              className="zb-btn zb-btn-secondary"
+              onClick={() => exportCSV(
+                `${currentCatData.label.toLowerCase().replace(/\s+/g, '_')}_reports_index.csv`,
+                ['Category', 'Report Name', 'Favorite', 'Status'],
+                currentCatData.items.map(i => [currentCatData.label, `"${i}"`, starredReports[i] ? 'Yes' : 'No', 'Ready'])
+              )}
+            >
+              <Download size={15} /> Export Category Index
+            </button>
+            <button
+              className="zb-btn zb-btn-primary"
+              onClick={() => exportCSV(
+                'audit_financial_summary.csv',
+                ['Report Name', 'Period', 'Status', 'Filing Authority'],
+                [
+                  ['GSTR-1 Sales Return', 'August 2026', 'Reconciled', 'GSTN India'],
+                  ['GSTR-3B Monthly Return', 'August 2026', 'Filed & Paid', 'GSTN India'],
+                  ['Profit and Loss Statement', 'Q1-Q2 FY27', 'Audited', 'Internal Audit'],
+                  ['Balance Sheet', 'As of Sep 2026', 'Balanced', 'Statutory Board'],
+                ]
+              )}
+            >
+              <FileCheck size={16} /> Export Audit Package
+            </button>
+          </div>
         </div>
 
-        <div className="zb-dashboard-grid three-col zb-section-spacing">
-          {reportCategories.map((cat, i) => (
-            <div key={i} className="zb-card zb-report-card">
-              <div className="zb-report-header">
-                <BarChart3 size={20} className="text-primary" />
-                <h3 className="zb-report-title">{cat.title}</h3>
-              </div>
-              <p className="zb-report-desc">{cat.desc}</p>
-              <ul className="zb-report-list">
-                {cat.reports.map((rep, idx) => (
-                  <li
-                    key={idx}
-                    className="zb-report-item"
-                    onClick={() => showToast(`Generated report: ${rep}`)}
-                  >
-                    <span>{rep}</span>
-                    <ArrowUpRight size={14} className="zb-report-arrow" />
-                  </li>
-                ))}
-              </ul>
+        {/* Dual-Pane Reports Center (Photo 1) */}
+        <div className="zb-reports-center zb-section-spacing">
+          {/* Left Category Sidebar */}
+          <div className="zb-reports-sidebar">
+            <div className="zb-reports-top-links">
+              <button
+                className="zb-reports-top-item"
+                onClick={() => showToast('Shared reports: 4 organization-wide reports synchronized.')}
+              >
+                <Users size={15} />
+                <span>Shared Reports</span>
+              </button>
+              <button
+                className="zb-reports-top-item"
+                onClick={() => showToast('My Reports: 3 custom customized reports saved.')}
+              >
+                <Eye size={15} />
+                <span>My Reports</span>
+              </button>
+              <button
+                className="zb-reports-top-item"
+                onClick={() => showToast('Scheduled Reports: Weekly P&L and GST summary active.')}
+              >
+                <Clock size={15} />
+                <span>Scheduled Reports</span>
+              </button>
             </div>
-          ))}
+
+            <div className="zb-reports-categories-title">REPORT CATEGORY</div>
+            <div className="zb-reports-cat-list">
+              {(Object.keys(reportCategoriesData) as (keyof typeof reportCategoriesData)[]).map(catKey => {
+                const cat = reportCategoriesData[catKey];
+                const isActive = reportCat === catKey;
+                return (
+                  <button
+                    key={catKey}
+                    className={`zb-reports-cat-item ${isActive ? 'active' : ''}`}
+                    onClick={() => setReportCat(catKey as any)}
+                  >
+                    <FileText size={15} className={isActive ? 'text-primary' : 'text-muted'} />
+                    <span>{cat.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Right Content Pane */}
+          <div className="zb-reports-content-pane">
+            <div className="zb-reports-header-row">
+              <div className="zb-reports-cat-heading">
+                <span>{currentCatData.label}</span>
+                <span className="zb-reports-count-badge">{currentCatData.count}</span>
+              </div>
+              <button
+                className="zb-btn zb-btn-secondary zb-btn-sm"
+                onClick={() => showToast(`All ${currentCatData.count} ${currentCatData.label} reports queued for background export.`)}
+              >
+                <Download size={14} /> Batch Export All ({currentCatData.count})
+              </button>
+            </div>
+
+            <div className="zb-reports-column-header">REPORT NAME</div>
+
+            <div className="zb-reports-items-list">
+              {currentCatData.items.map((rep, idx) => {
+                const isStarred = !!starredReports[rep];
+                return (
+                  <div
+                    key={idx}
+                    className="zb-report-row"
+                    onClick={() => {
+                      setSelectedReportPreview(rep);
+                      showToast(`Generated report: ${rep}`);
+                    }}
+                  >
+                    <div className="zb-report-row-left">
+                      <button
+                        className={`zb-report-star ${isStarred ? 'starred' : ''}`}
+                        onClick={(e) => toggleStar(rep, e)}
+                        title={isStarred ? 'Unfavorite' : 'Mark as favorite'}
+                      >
+                        <Sparkles size={16} fill={isStarred ? '#f59e0b' : 'none'} color={isStarred ? '#f59e0b' : '#94a3b8'} />
+                      </button>
+                      <span className="zb-report-name-link">{rep}</span>
+                    </div>
+
+                    <div className="zb-report-row-actions">
+                      <button
+                        className="zb-btn zb-btn-secondary zb-btn-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          exportCSV(`${rep.toLowerCase().replace(/\s+/g, '_')}.csv`, ['Metric', 'Period', 'Amount (INR)'], [
+                            ['Total Volume', 'August 2026', '12,45,000'],
+                            ['Cleared Transactions', 'August 2026', '11,10,000'],
+                            ['Pending Reconciliation', 'August 2026', '1,35,000'],
+                          ]);
+                        }}
+                      >
+                        <Download size={12} /> CSV
+                      </button>
+                      <ArrowUpRight size={15} className="text-muted" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
+
+        {/* Selected Report Preview Modal */}
+        {selectedReportPreview && (
+          <div className="zb-modal-backdrop" onClick={() => setSelectedReportPreview(null)}>
+            <div className="zb-modal zb-modal-lg" onClick={e => e.stopPropagation()}>
+              <div className="zb-modal-header zb-flex-between">
+                <div>
+                  <h3 className="zb-modal-title">{selectedReportPreview}</h3>
+                  <p className="text-xs text-muted">Organization: Rooman Technologies Pvt Ltd | Generated: Today</p>
+                </div>
+                <button className="zb-modal-close" onClick={() => setSelectedReportPreview(null)}><X size={18} /></button>
+              </div>
+              <div className="zb-modal-body p-4">
+                <div className="zb-dashboard-grid three-col mb-4">
+                  <div className="zb-metric-mini-card">
+                    <div className="zb-metric-mini-label">Period Sample Total</div>
+                    <div className="zb-metric-mini-val text-primary">₹24,85,400</div>
+                    <div className="zb-metric-mini-sub text-success">+14.2% vs previous fiscal period</div>
+                  </div>
+                  <div className="zb-metric-mini-card">
+                    <div className="zb-metric-mini-label">Ledger Integrity</div>
+                    <div className="zb-metric-mini-val text-success">100% Balanced</div>
+                    <div className="zb-metric-mini-sub">Double-entry verified</div>
+                  </div>
+                  <div className="zb-metric-mini-card">
+                    <div className="zb-metric-mini-label">Statutory Status</div>
+                    <div className="zb-metric-mini-val text-main">Audit Ready</div>
+                    <div className="zb-metric-mini-sub">Ind AS compliant</div>
+                  </div>
+                </div>
+
+                <div className="zb-card zb-table-container">
+                  <table className="zb-table">
+                    <thead>
+                      <tr>
+                        <th>Account / Entity</th>
+                        <th>Classification</th>
+                        <th>Reference Transaction</th>
+                        <th className="text-right">Debit (INR)</th>
+                        <th className="text-right">Credit (INR)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="font-semibold text-primary">Tata Consultancy Services Ltd</td>
+                        <td>Accounts Receivable</td>
+                        <td>INV-00101</td>
+                        <td className="text-right">₹3,42,000</td>
+                        <td className="text-right text-muted">-</td>
+                      </tr>
+                      <tr>
+                        <td className="font-semibold text-primary">Infosys BPM Limited</td>
+                        <td>Accounts Receivable</td>
+                        <td>INV-00104</td>
+                        <td className="text-right">₹1,85,000</td>
+                        <td className="text-right text-muted">-</td>
+                      </tr>
+                      <tr>
+                        <td className="font-semibold text-primary">Dell Technologies India</td>
+                        <td>Accounts Payable</td>
+                        <td>BILL-4092</td>
+                        <td className="text-right text-muted">-</td>
+                        <td className="text-right text-warning">₹2,45,000</td>
+                      </tr>
+                      <tr>
+                        <td className="font-semibold text-primary">HDFC Corporate Operating A/C</td>
+                        <td>Bank Asset</td>
+                        <td>BNK-SYNC-881</td>
+                        <td className="text-right text-success">₹14,92,400</td>
+                        <td className="text-right text-muted">-</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="zb-modal-footer zb-flex-between p-3 border-top">
+                <span className="text-xs text-muted font-medium">Digital Watermark: Signed by Chief Financial Officer</span>
+                <div className="zb-flex-align gap-2">
+                  <button
+                    className="zb-btn zb-btn-secondary"
+                    onClick={() => {
+                      exportCSV(`${selectedReportPreview.toLowerCase().replace(/\s+/g, '_')}.csv`, ['Account', 'Classification', 'Reference', 'Debit', 'Credit'], [
+                        ['Tata Consultancy Services Ltd', 'Accounts Receivable', 'INV-00101', '342000', '0'],
+                        ['Infosys BPM Limited', 'Accounts Receivable', 'INV-00104', '185000', '0'],
+                        ['Dell Technologies India', 'Accounts Payable', 'BILL-4092', '0', '245000'],
+                        ['HDFC Corporate Operating A/C', 'Bank Asset', 'BNK-SYNC-881', '1492400', '0'],
+                      ]);
+                    }}
+                  >
+                    <Download size={14} /> Export CSV
+                  </button>
+                  <button
+                    className="zb-btn zb-btn-primary"
+                    onClick={() => {
+                      window.print();
+                    }}
+                  >
+                    <Printer size={14} /> Print Report
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
