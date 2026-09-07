@@ -1,0 +1,17 @@
+node_modules
+dist
+.git
+.github
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+*.db
+*.sqlite3
+.env
+.DS_Store
+Thumbs.db
