@@ -3834,5 +3834,221 @@ body {
   margin-top: 14px;
 }
 
+/* ==========================================================================
+   FEATURE 1: CUSTOMER 360° INTELLIGENCE & AUDIT TIMELINE
+   ========================================================================== */
+.zb-c360-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.zb-c360-modal-container {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 25px 60px -15px rgba(15, 23, 42, 0.3);
+  max-width: 880px;
+  width: 100%;
+  max-height: 92vh;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+}
+.zb-c360-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f8fafc;
+  border-radius: 12px 12px 0 0;
+}
+.zb-c360-body {
+  padding: 24px;
+}
+.zb-c360-credit-meter {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.zb-c360-credit-bar {
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 10px 0;
+}
+.zb-c360-credit-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0066cc, #38bdf8);
+  border-radius: 999px;
+}
+.zb-timeline-pipeline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  position: relative;
+  margin: 24px 0 28px 0;
+  padding: 0 10px;
+}
+.zb-timeline-connector-line {
+  position: absolute;
+  top: 18px;
+  left: 30px;
+  right: 30px;
+  height: 2px;
+  background: #cbd5e1;
+  z-index: 0;
+}
+.zb-timeline-step-item {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 120px;
+}
+.zb-timeline-step-circle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #0066cc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0066cc;
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+.zb-timeline-step-circle.completed {
+  background: #0066cc;
+  color: #ffffff;
+}
+.zb-timeline-step-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f172a;
+}
+.zb-timeline-step-sub {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+/* ==========================================================================
+   FEATURE 2: OFFICIAL GST E-WAY BILL & UPI QR SYSTEM
+   ========================================================================== */
+.zb-ewb-paper {
+  background: #ffffff;
+  border: 2px solid #0f172a;
+  border-radius: 8px;
+  padding: 24px;
+  color: #0f172a;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.zb-ewb-govt-header {
+  border-bottom: 2px solid #0f172a;
+  padding-bottom: 12px;
+  text-align: center;
+  margin-bottom: 16px;
+}
+.zb-ewb-number-box {
+  background: #f1f5f9;
+  border: 1px dashed #0f172a;
+  padding: 10px;
+  text-align: center;
+  margin-bottom: 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+.zb-ewb-part-title {
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 14px 0 8px 0;
+}
+.zb-ewb-info-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  margin-bottom: 12px;
+}
+.zb-ewb-info-table td {
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+}
+.zb-ewb-info-table td.label {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #475569;
+  width: 25%;
+}
+.zb-upi-qr-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+}
+.zb-upi-qr-box {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  padding: 12px;
+  display: inline-block;
+  border-radius: 8px;
+  margin: 10px 0;
+}
+
+/* ==========================================================================
+   FEATURE 3: MULTI-CURRENCY FOREX VALUATION ENGINE
+   ========================================================================== */
+.zb-forex-gain {
+  color: #059669;
+  font-weight: 600;
+  background: #ecfdf5;
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.zb-forex-loss {
+  color: #dc2626;
+  font-weight: 600;
+  background: #fef2f2;
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.zb-currency-pill {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #0066cc;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-family: monospace;
+}
+
+
 
 

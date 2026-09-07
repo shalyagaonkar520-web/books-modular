@@ -45,8 +45,12 @@ import {
   Copy,
   Layers,
   ChevronRight,
-  Package
+  Package,
+  Globe,
+  RefreshCw
 } from 'lucide-react';
+import { Customer360Modal, Customer360Data } from '../../components/features/Customer360Modal';
+import { EWayBillModal, EwbDetails } from '../../components/features/EWayBillModal';
 import { TaxInvoiceModal } from '../../components/documents/TaxInvoiceModal';
 import { CreateInvoiceModal } from '../../components/documents/CreateInvoiceModal';
 import { DocumentViewerModal } from '../../components/documents/DocumentViewerModal';
@@ -249,7 +253,7 @@ export const ModuleView: React.FC<ModuleViewProps> = ({ module, onNavigate }) =>
   const [salesSubTab, setSalesSubTab] = useState<'invoices' | 'quotes' | 'orders' | 'challans' | 'credit_notes'>('invoices');
   const [purchasesSubTab, setPurchasesSubTab] = useState<'bills' | 'orders' | 'credits' | 'recurring'>('bills');
   const [documentsSubTab, setDocumentsSubTab] = useState<'vault' | 'autoscan'>('vault');
-  const [accountantSubTab, setAccountantSubTab] = useState<'journals' | 'accounts' | 'locking'>('journals');
+  const [accountantSubTab, setAccountantSubTab] = useState<'journals' | 'accounts' | 'locking' | 'forex'>('journals');
 
   // Quotes State (Page 6)
   const [quotes, setQuotes] = useState([
@@ -347,6 +351,333 @@ export const ModuleView: React.FC<ModuleViewProps> = ({ module, onNavigate }) =>
   // Transaction Locking State (Page 15)
   const [isPeriodLocked, setIsPeriodLocked] = useState(true);
   const [lockedDate, setLockedDate] = useState('31 Mar 2026');
+
+  // =========================================================================
+  // FEATURE 1: CUSTOMER 360° INTELLIGENCE & VISUAL AUDIT TIMELINE
+  // =========================================================================
+  const [selectedCustomer360, setSelectedCustomer360] = useState<Customer360Data | null>(null);
+  const [isCustomer360Open, setIsCustomer360Open] = useState(false);
+
+  const customerIntelligenceDatabase: Record<string, Customer360Data> = {
+    'Infosys BPM Limited': {
+      name: 'Infosys BPM Limited',
+      gstin: '29AAACI4567B1Z8',
+      pan: 'AAACI4567B',
+      email: 'billing@infosys.com',
+      phone: '+91 80 2852 0261',
+      address: 'Plot 44, Electronics City, Hosur Road, Bengaluru, Karnataka 560100',
+      creditLimit: 1000000,
+      creditUsed: 427000,
+      healthGrade: 'Grade A+ (Prime)',
+      healthScore: 96,
+      avgPaymentDays: 12.4,
+      onTimeRatio: 99.2,
+      totalLifetimeVolume: 4250000,
+      activeOrders: 2,
+      executiveSummary: 'Infosys BPM Limited exhibits flawless payment adherence with zero default history over 36 months. Payment processing velocity exceeds benchmark terms by 15.6 days. Credit exposure is securely contained at 42.7% of approved ceiling. Recommend approving enterprise credit line enhancement to ₹15,00,000 for upcoming Q4 enterprise contracts.',
+      auditTimeline: [
+        { stage: '1. Estimate / Quote', ref: 'QT-2026-001', date: '04 Sep 2026', status: 'completed', detail: 'Quotation approved and electronically accepted by client procurement committee.' },
+        { stage: '2. Sales Order', ref: 'SO-5012', date: '04 Sep 2026', status: 'completed', detail: 'Firm sales order booked and staged for deployment.' },
+        { stage: '3. Delivery Challan', ref: 'DC-1049', date: '05 Sep 2026', status: 'in_progress', detail: 'Logistics dispatched under Driver Ramesh Kumar (KA-01-MJ-4412).' },
+        { stage: '4. Tax Invoice', ref: 'INV-00104', date: '02 Sep 2026', status: 'completed', detail: 'Official GST Tax Invoice issued with IRN & QR validation (₹1,85,000).' },
+        { stage: '5. Remittance Settlement', ref: 'PAY-9038', date: '04 Sep 2026', status: 'in_progress', detail: 'Corporate NetBanking payment gateway processing reconciliation.' }
+      ]
+    },
+    'Tata Consultancy Services': {
+      name: 'Tata Consultancy Services',
+      gstin: '27AAACT9876C1Z4',
+      pan: 'AAACT9876C',
+      email: 'ap.desk@tcs.com',
+      phone: '+91 22 6778 9999',
+      address: 'TCS House, Raveline Street, Fort, Mumbai, Maharashtra 400001',
+      creditLimit: 1500000,
+      creditUsed: 342000,
+      healthGrade: 'Grade A+ (Zero Risk)',
+      healthScore: 98,
+      avgPaymentDays: 10.1,
+      onTimeRatio: 100,
+      totalLifetimeVolume: 6820000,
+      activeOrders: 3,
+      executiveSummary: 'Premier strategic partner account. Zero past-due balances recorded across all quarterly cycles. Accounts payable executes IMPS remittances within 48 hours of invoice acceptance. Pre-cleared tier-one status.',
+      auditTimeline: [
+        { stage: '1. Estimate / Quote', ref: 'QT-2026-018', date: '25 Aug 2026', status: 'completed', detail: 'Enterprise master framework contract quotation accepted.' },
+        { stage: '2. Sales Order', ref: 'SO-5011', date: '27 Aug 2026', status: 'completed', detail: 'Direct purchase order confirmed by finance controller.' },
+        { stage: '3. Delivery Challan', ref: 'DC-1048', date: '28 Aug 2026', status: 'completed', detail: 'Delivered & stamped by security gate (Suresh Patil KA-03-AB-9821).' },
+        { stage: '4. Tax Invoice', ref: 'INV-00103', date: '28 Aug 2026', status: 'completed', detail: 'GST compliant invoice generated and approved for ₹3,42,000.' },
+        { stage: '5. Remittance Settlement', ref: 'PAY-9041', date: '03 Sep 2026', status: 'completed', detail: 'Direct IMPS settlement reconciled to HDFC Bank Corporate A/C.' }
+      ]
+    },
+    'Wipro Digital Labs': {
+      name: 'Wipro Digital Labs',
+      gstin: '29AAACW1234D1Z2',
+      pan: 'AAACW1234D',
+      email: 'accounts@wipro.com',
+      phone: '+91 80 2844 0011',
+      address: 'Doddakannelli, Sarjapur Road, Bengaluru, Karnataka 560035',
+      creditLimit: 800000,
+      creditUsed: 315000,
+      healthGrade: 'Grade B+ (Moderate)',
+      healthScore: 88,
+      avgPaymentDays: 24.5,
+      onTimeRatio: 94.0,
+      totalLifetimeVolume: 2890000,
+      activeOrders: 1,
+      executiveSummary: 'Consistent operational account. Average settlement takes 24 days against standard 30-day net terms. Minor overdue balance under routine coordination with accounts payable desk. Low exposure risk.',
+      auditTimeline: [
+        { stage: '1. Estimate / Quote', ref: 'QT-2026-012', date: '15 Aug 2026', status: 'completed', detail: 'Consulting statement of work accepted.' },
+        { stage: '2. Sales Order', ref: 'SO-5010', date: '18 Aug 2026', status: 'completed', detail: 'Sales order active and verified.' },
+        { stage: '3. Delivery Challan', ref: 'DC-1044', date: '19 Aug 2026', status: 'completed', detail: 'Service sign-off certificate issued.' },
+        { stage: '4. Tax Invoice', ref: 'INV-00102', date: '20 Aug 2026', status: 'completed', detail: 'Invoice INV-00102 pending settlement follow-up (₹98,500).' },
+        { stage: '5. Remittance Settlement', ref: 'PENDING', date: 'Awaiting Remittance', status: 'pending', detail: 'Payment reminder dispatched to client accounts desk.' }
+      ]
+    },
+    'Razorpay Software Pvt Ltd': {
+      name: 'Razorpay Software Pvt Ltd',
+      gstin: '29AABCR8765E1Z6',
+      pan: 'AABCR8765E',
+      email: 'merchant-pay@razorpay.com',
+      phone: '+91 80 6828 3838',
+      address: 'SJR Cyber, 22 Laskar Hosur Road, Adugodi, Bengaluru, Karnataka 560030',
+      creditLimit: 1200000,
+      creditUsed: 215000,
+      healthGrade: 'Grade A+ (Instant Clear)',
+      healthScore: 97,
+      avgPaymentDays: 7.2,
+      onTimeRatio: 99.8,
+      totalLifetimeVolume: 5400000,
+      activeOrders: 2,
+      executiveSummary: 'Fintech tier partner with automated settlement pipelines. Average payment clearance is 7.2 days via direct UPI webhook integration. Excellent credit profile.',
+      auditTimeline: [
+        { stage: '1. Estimate / Quote', ref: 'QT-2026-009', date: '10 Aug 2026', status: 'completed', detail: 'API integration scope verified.' },
+        { stage: '2. Sales Order', ref: 'SO-5008', date: '12 Aug 2026', status: 'completed', detail: 'Sales order confirmed.' },
+        { stage: '3. Delivery Challan', ref: 'DC-1041', date: '14 Aug 2026', status: 'completed', detail: 'Electronic delivery report verified.' },
+        { stage: '4. Tax Invoice', ref: 'INV-00101', date: '15 Aug 2026', status: 'completed', detail: 'Tax invoice generated (₹2,15,000).' },
+        { stage: '5. Remittance Settlement', ref: 'PAY-9040', date: '30 Aug 2026', status: 'completed', detail: 'Instant UPI Settlement reconciled.' }
+      ]
+    }
+  };
+
+  const handleOpenCustomer360 = (clientName: string) => {
+    const existing = customerIntelligenceDatabase[clientName];
+    if (existing) {
+      setSelectedCustomer360(existing);
+    } else {
+      setSelectedCustomer360({
+        name: clientName,
+        gstin: '29AAACZ9921B1Z2',
+        pan: 'AAACZ9921B',
+        email: `accounts@${clientName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'client'}.com`,
+        phone: '+91 80 4122 8800',
+        address: 'Enterprise Business District, Outer Ring Road, Bengaluru, Karnataka 560103',
+        creditLimit: 750000,
+        creditUsed: 185000,
+        healthGrade: 'Grade A (Reliable)',
+        healthScore: 92,
+        avgPaymentDays: 16.0,
+        onTimeRatio: 97.5,
+        totalLifetimeVolume: 1850000,
+        activeOrders: 1,
+        executiveSummary: `${clientName} maintains a reliable commercial credit rating with regular compliance adherence. Accounts receivable turnaround consistently aligns with statutory guidelines.`,
+        auditTimeline: [
+          { stage: '1. Estimate / Quote', ref: 'QT-EST-2026', date: '01 Sep 2026', status: 'completed', detail: 'Initial estimate approved by commercial manager.' },
+          { stage: '2. Sales Order', ref: 'SO-ACTIVE', date: '02 Sep 2026', status: 'completed', detail: 'Order confirmed and registered in production.' },
+          { stage: '3. Delivery Challan', ref: 'DC-DISPATCH', date: '03 Sep 2026', status: 'completed', detail: 'Goods dispatched with vehicle transit slip.' },
+          { stage: '4. Tax Invoice', ref: 'INV-ACTIVE', date: '04 Sep 2026', status: 'completed', detail: 'Statutory GST Tax Invoice issued.' },
+          { stage: '5. Remittance Settlement', ref: 'PAY-REC', date: '05 Sep 2026', status: 'in_progress', detail: 'Payment settlement verification in progress.' }
+        ]
+      });
+    }
+    setIsCustomer360Open(true);
+  };
+
+  // =========================================================================
+  // FEATURE 2: OFFICIAL GST E-WAY BILL & DYNAMIC UPI QR SYSTEM
+  // =========================================================================
+  const [selectedEwb, setSelectedEwb] = useState<EwbDetails | null>(null);
+  const [isEwbOpen, setIsEwbOpen] = useState(false);
+
+  const handleOpenEwbForInvoice = (inv: Invoice) => {
+    setSelectedEwb({
+      ewbNo: `2810 4492 ${8800 + parseInt(inv.id.replace(/\D/g, '') || '104')}`,
+      generatedDate: `${inv.date} 09:30 AM`,
+      validUntil: '08 Sep 2026 11:59 PM',
+      docNo: inv.id,
+      docDate: inv.date,
+      docType: 'Tax Invoice',
+      supplierGstin: '29AABCU9603R1ZM',
+      supplierName: 'Zylker Electronics India Pvt Ltd',
+      dispatchFrom: 'Tech Park Plaza, Outer Ring Road, Bengaluru, KA 560103',
+      recipientGstin: inv.clientGstin || '29AAACI4567B1Z8',
+      recipientName: inv.client,
+      shipTo: 'Electronics City, Phase 1, Hosur Road, Bengaluru, KA 560100',
+      itemDescription: inv.items?.[0]?.name || 'Cloud Systems & Engineering Services',
+      hsnCode: inv.items?.[0]?.hsn || '998313',
+      taxableValue: inv.subtotal,
+      cgst: inv.taxAmount / 2,
+      sgst: inv.taxAmount / 2,
+      totalValue: inv.amount,
+      mode: 'Road',
+      vehicleNo: 'KA-01-MJ-4412',
+      transporterName: 'SafeExpress Logistics India Ltd',
+      transporterId: '29AAACS8812L1Z3',
+      distanceKm: 280,
+      upiVpa: 'zylker.books@hdfcbank',
+      isPaid: inv.status === 'Paid'
+    });
+    setIsEwbOpen(true);
+  };
+
+  const handleOpenEwbForChallan = (dc: any) => {
+    setSelectedEwb({
+      ewbNo: `2810 4492 ${7700 + parseInt(dc.id.replace(/\D/g, '') || '1049')}`,
+      generatedDate: `${dc.date} 10:15 AM`,
+      validUntil: '09 Sep 2026 11:59 PM',
+      docNo: dc.id,
+      docDate: dc.date,
+      docType: 'Delivery Challan',
+      supplierGstin: '29AABCU9603R1ZM',
+      supplierName: 'Zylker Electronics India Pvt Ltd',
+      dispatchFrom: 'Tech Park Plaza, Outer Ring Road, Bengaluru, KA 560103',
+      recipientGstin: '29AAACI4567B1Z8',
+      recipientName: dc.client,
+      shipTo: 'Client Delivery Facility, Outer Ring Road, Bengaluru, KA 560100',
+      itemDescription: 'Network Infrastructure Hardware & Enterprise Components',
+      hsnCode: '847130',
+      taxableValue: 156779.66,
+      cgst: 14110.17,
+      sgst: 14110.17,
+      totalValue: 185000,
+      mode: 'Road',
+      vehicleNo: dc.driver && dc.driver.includes('(') ? dc.driver.split('(')[1].replace(')', '') : 'KA-01-MJ-4412',
+      transporterName: 'Express Cargo Transit India Ltd',
+      transporterId: '29AAACE9912K1Z9',
+      distanceKm: 240,
+      upiVpa: 'zylker.books@hdfcbank',
+      isPaid: false
+    });
+    setIsEwbOpen(true);
+  };
+
+  const handleSimulateUpiPayment = (docNo: string, amount: number) => {
+    setInvoices(prev =>
+      prev.map(inv => (inv.id === docNo ? { ...inv, status: 'Paid' } : inv))
+    );
+    const newPayment = {
+      id: `PAY-${9042 + paymentsList.length}`,
+      customer: selectedEwb?.recipientName || 'Client Remittance',
+      invoiceRef: docNo,
+      method: 'UPI Instant QR',
+      amount: amount,
+      date: '07 Sep 2026',
+      status: 'Settled'
+    };
+    setPaymentsList(prev => [newPayment, ...prev]);
+    showToast(`Instant UPI Payment of ${formatINR(amount)} received for ${docNo} via NPCI Gateway!`);
+  };
+
+  // =========================================================================
+  // FEATURE 3: MULTI-CURRENCY & REAL-TIME FOREX VALUATION ENGINE
+  // =========================================================================
+  const [forexContracts, setForexContracts] = useState([
+    {
+      id: 'FC-USD-101',
+      client: 'Acme Global Corp (USA)',
+      currency: 'USD',
+      symbol: '$',
+      foreignAmount: 24500,
+      bookingRate: 83.20,
+      spotRate: 84.15,
+      type: 'Export Receivable'
+    },
+    {
+      id: 'FC-EUR-204',
+      client: 'EuroTech Systems GmbH (Germany)',
+      currency: 'EUR',
+      symbol: '€',
+      foreignAmount: 15000,
+      bookingRate: 91.10,
+      spotRate: 91.90,
+      type: 'Export Receivable'
+    },
+    {
+      id: 'FC-GBP-302',
+      client: 'Britannica Analytics Ltd (UK)',
+      currency: 'GBP',
+      symbol: '£',
+      foreignAmount: 8000,
+      bookingRate: 109.50,
+      spotRate: 108.95,
+      type: 'Export Receivable'
+    },
+    {
+      id: 'FC-AED-405',
+      client: 'Al-Mansoor Trading LLC (Dubai)',
+      currency: 'AED',
+      symbol: 'د.إ',
+      foreignAmount: 35000,
+      bookingRate: 22.65,
+      spotRate: 22.89,
+      type: 'Export Receivable'
+    }
+  ]);
+
+  const totalForexValuation = forexContracts.reduce(
+    (acc, c) => acc + c.foreignAmount * c.spotRate,
+    0
+  );
+  const totalBookValuation = forexContracts.reduce(
+    (acc, c) => acc + c.foreignAmount * c.bookingRate,
+    0
+  );
+  const netForexGainLoss = totalForexValuation - totalBookValuation;
+
+  const handleUpdateForexSpotRate = (id: string, newRate: number) => {
+    setForexContracts(prev =>
+      prev.map(c => (c.id === id ? { ...c, spotRate: newRate } : c))
+    );
+  };
+
+  const handleRefreshRbiRates = () => {
+    setForexContracts(prev =>
+      prev.map(c => {
+        const delta = Math.random() * 0.2 - 0.08;
+        return { ...c, spotRate: Number((c.spotRate + delta).toFixed(2)) };
+      })
+    );
+    showToast('Updated live exchange rates from Reserve Bank of India (RBI) reference feed.');
+  };
+
+  const handlePostForexJournal = () => {
+    const netGain = Math.round(netForexGainLoss);
+    const newJournal = {
+      id: `JRN-2026-FX0${journals.length + 1}`,
+      date: '07 Sep 2026',
+      notes: 'Period-end Forex Revaluation adjustment (USD, EUR, GBP, AED spot rates delta)',
+      debit: 'Unrealized Forex Gain / Loss Account (A/C 704)',
+      credit: 'Foreign Accounts Receivable Adjustments (A/C 114)',
+      amount: Math.abs(netGain),
+      status: 'Posted'
+    };
+    setJournals(prev => [newJournal, ...prev]);
+    showToast(`Forex Revaluation Journal ${newJournal.id} posted to General Ledger for ${formatINR(Math.abs(netGain))}!`);
+    setAccountantSubTab('journals');
+  };
+
+  const renderSharedModals = () => (
+    <>
+      <Customer360Modal
+        customer={selectedCustomer360}
+        isOpen={isCustomer360Open}
+        onClose={() => setIsCustomer360Open(false)}
+      />
+      <EWayBillModal
+        ewb={selectedEwb}
+        isOpen={isEwbOpen}
+        onClose={() => setIsEwbOpen(false)}
+        onSimulateUpiPayment={handleSimulateUpiPayment}
+      />
+    </>
+  );
 
   // CSV Export utility
   const exportCSV = (filename: string, headers: string[], rows: (string | number)[][]) => {
@@ -822,12 +1153,27 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
                       >
                         {inv.id}
                       </td>
-                      <td
-                        className="font-medium"
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => setSelectedInvoice(inv)}
-                      >
-                        {inv.client}
+                      <td>
+                        <div className="zb-flex-align gap-2">
+                          <span
+                            className="font-medium text-dark"
+                            style={{ cursor: 'pointer' }}
+                            onClick={() => setSelectedInvoice(inv)}
+                          >
+                            {inv.client}
+                          </span>
+                          <button
+                            className="zb-table-btn"
+                            style={{ padding: '2px 7px', fontSize: '11px', color: '#0066cc', borderColor: '#bfdbfe', background: '#eff6ff' }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenCustomer360(inv.client);
+                            }}
+                            title="Open Customer 360° Intelligence & Audit Timeline"
+                          >
+                            <Users size={11} style={{ marginRight: '3px' }} /> 360°
+                          </button>
+                        </div>
                       </td>
                       <td>{inv.date}</td>
                       <td>{inv.due}</td>
@@ -845,6 +1191,14 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
                             title="View, Print & verify GST Tax Invoice"
                           >
                             <Eye size={13} style={{ marginRight: '4px' }} /> View & Print
+                          </button>
+                          <button
+                            className="zb-table-btn"
+                            style={{ color: '#059669', borderColor: '#a7f3d0' }}
+                            onClick={() => handleOpenEwbForInvoice(inv)}
+                            title="Official GST e-Way Bill & Dynamic UPI QR"
+                          >
+                            <QrCode size={13} style={{ marginRight: '4px' }} /> e-Way &amp; QR
                           </button>
                           <button
                             className="zb-table-btn"
@@ -1062,7 +1416,19 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
                     <tr key={dc.id}>
                       <td className="font-semibold text-primary">{dc.id}</td>
                       <td><span className="text-muted text-xs font-mono">{dc.orderRef}</span></td>
-                      <td className="font-medium">{dc.client}</td>
+                      <td>
+                        <div className="zb-flex-align gap-2">
+                          <span className="font-medium">{dc.client}</span>
+                          <button
+                            className="zb-table-btn"
+                            style={{ padding: '2px 7px', fontSize: '11px', color: '#0066cc', borderColor: '#bfdbfe', background: '#eff6ff' }}
+                            onClick={() => handleOpenCustomer360(dc.client)}
+                            title="Open Customer 360° Intelligence"
+                          >
+                            <Users size={11} style={{ marginRight: '3px' }} /> 360°
+                          </button>
+                        </div>
+                      </td>
                       <td>{dc.date}</td>
                       <td><span className="text-xs">{dc.driver}</span></td>
                       <td><span className="text-xs text-muted">{dc.pod}</span></td>
@@ -1073,6 +1439,14 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
                       </td>
                       <td className="text-center">
                         <div className="zb-flex-align justify-center gap-2">
+                          <button
+                            className="zb-table-btn"
+                            style={{ color: '#059669', borderColor: '#a7f3d0' }}
+                            onClick={() => handleOpenEwbForChallan(dc)}
+                            title="Generate Official GST e-Way Bill & Dynamic UPI QR"
+                          >
+                            <QrCode size={13} style={{ marginRight: '4px' }} /> e-Way Bill
+                          </button>
                           {dc.status === 'Staged' && (
                             <button
                               className="zb-table-btn"
@@ -1195,6 +1569,8 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
           onClose={() => setIsCreateInvoiceOpen(false)}
           onCreated={handleInvoiceCreated}
         />
+
+        {renderSharedModals()}
       </div>
     );
   }
@@ -1917,6 +2293,14 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
             <span>Transaction Locking</span>
             <span className="zb-subnav-badge">{isPeriodLocked ? 'Locked' : 'Open'}</span>
           </button>
+          <button
+            className={`zb-subnav-item ${accountantSubTab === 'forex' ? 'active' : ''}`}
+            onClick={() => setAccountantSubTab('forex')}
+          >
+            <Globe size={15} />
+            <span>Forex &amp; Currency Valuation</span>
+            <span className="zb-subnav-badge">{forexContracts.length} Contracts</span>
+          </button>
         </div>
 
         {/* 1. Manual Journals Tab */}
@@ -2166,6 +2550,199 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
             </div>
           </div>
         )}
+
+        {/* 4. Multi-Currency & Real-Time Forex Valuation Engine */}
+        {accountantSubTab === 'forex' && (
+          <>
+            {/* 4 Metric Cards */}
+            <div className="zb-dashboard-grid four-col zb-section-spacing">
+              <div className="zb-metric-mini-card">
+                <div className="zb-metric-mini-label">Total Foreign Portfolio</div>
+                <div className="zb-metric-mini-val text-primary">
+                  {formatINR(totalForexValuation)}
+                </div>
+                <div className="zb-metric-mini-sub">{forexContracts.length} active global contracts</div>
+              </div>
+
+              <div className="zb-metric-mini-card">
+                <div className="zb-metric-mini-label">Booked Value at Inception</div>
+                <div className="zb-metric-mini-val text-dark">
+                  {formatINR(totalBookValuation)}
+                </div>
+                <div className="zb-metric-mini-sub">Historical contract baseline</div>
+              </div>
+
+              <div className="zb-metric-mini-card">
+                <div className="zb-metric-mini-label">Net Unrealized Forex Gain</div>
+                <div className={`zb-metric-mini-val ${netForexGainLoss >= 0 ? 'text-success' : 'text-danger'}`}>
+                  {netForexGainLoss >= 0 ? `+${formatINR(netForexGainLoss)}` : formatINR(netForexGainLoss)}
+                </div>
+                <div className={`zb-metric-mini-sub ${netForexGainLoss >= 0 ? 'text-success' : 'text-danger'}`}>
+                  {netForexGainLoss >= 0 ? 'Favorable exchange variance' : 'Adverse exchange variance'}
+                </div>
+              </div>
+
+              <div className="zb-metric-mini-card">
+                <div className="zb-metric-mini-label">Treasury Hedge Ratio</div>
+                <div className="zb-metric-mini-val" style={{ color: '#0284c7' }}>
+                  78.2%
+                </div>
+                <div className="zb-metric-mini-sub">RBI benchmark reference live</div>
+              </div>
+            </div>
+
+            {/* Action Bar with 1-Click GL Post and Live Rate Refresh */}
+            <div className="zb-card zb-toolbar-card" style={{ marginBottom: '16px' }}>
+              <div className="zb-flex-between" style={{ flexWrap: 'wrap', gap: '12px' }}>
+                <div className="zb-flex-align gap-2">
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>
+                    Reference Exchange Feed:
+                  </span>
+                  <span className="zb-currency-pill">RBI Daily Reference Rates (Live 07 Sep 2026)</span>
+                </div>
+
+                <div className="zb-flex-align gap-2">
+                  <button
+                    className="zb-btn zb-btn-secondary"
+                    style={{ fontSize: '12px', padding: '7px 12px' }}
+                    onClick={handleRefreshRbiRates}
+                    title="Simulate RBI live exchange feed update"
+                  >
+                    <RefreshCw size={13} style={{ marginRight: '5px' }} /> Refresh Exchange Rates
+                  </button>
+
+                  <button
+                    className="zb-btn zb-btn-primary"
+                    style={{ fontSize: '12px', padding: '7px 14px' }}
+                    onClick={handlePostForexJournal}
+                    title="Post balanced double-entry manual journal into General Ledger"
+                  >
+                    <Sparkles size={14} style={{ marginRight: '6px' }} /> Post Forex Revaluation Journal to General Ledger
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Contracts Portfolio Table */}
+            <div className="zb-card zb-table-container">
+              <div className="zb-table-header-bar zb-flex-between p-3">
+                <div>
+                  <h3 className="font-semibold text-dark">Multi-Currency Exposure Register</h3>
+                  <p className="text-muted text-xs" style={{ margin: '2px 0 0 0' }}>
+                    Real-time mark-to-market revaluation under Accounting Standard AS-11 &amp; Ind AS 21
+                  </p>
+                </div>
+                <span className="zb-status-pill paid" style={{ fontSize: '11px' }}>
+                  Mark-to-Market Active
+                </span>
+              </div>
+
+              <table className="zb-table">
+                <thead>
+                  <tr>
+                    <th>Contract ID</th>
+                    <th>Foreign Client</th>
+                    <th>Currency</th>
+                    <th className="text-right">Foreign Amount</th>
+                    <th className="text-right">Booking Rate (₹)</th>
+                    <th className="text-right">Live Spot Rate (₹)</th>
+                    <th className="text-right">Book Value</th>
+                    <th className="text-right">Current Valuation</th>
+                    <th className="text-center">Unrealized Gain / Loss</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {forexContracts.map(c => {
+                    const bookVal = c.foreignAmount * c.bookingRate;
+                    const curVal = c.foreignAmount * c.spotRate;
+                    const delta = curVal - bookVal;
+                    const isGain = delta >= 0;
+
+                    return (
+                      <tr key={c.id}>
+                        <td className="font-mono font-semibold text-primary">{c.id}</td>
+                        <td className="font-medium text-dark">{c.client}</td>
+                        <td>
+                          <span className="zb-currency-pill">{c.currency} ({c.symbol})</span>
+                        </td>
+                        <td className="text-right font-mono font-medium">
+                          {c.symbol} {c.foreignAmount.toLocaleString('en-US')}
+                        </td>
+                        <td className="text-right font-mono text-muted">
+                          ₹{c.bookingRate.toFixed(2)}
+                        </td>
+                        <td className="text-right">
+                          <input
+                            type="number"
+                            step="0.05"
+                            className="zb-input font-mono text-right"
+                            style={{ width: '90px', padding: '3px 6px', fontSize: '12.5px', display: 'inline-block' }}
+                            value={c.spotRate}
+                            onChange={(e) => handleUpdateForexSpotRate(c.id, parseFloat(e.target.value) || c.spotRate)}
+                            title="Interactive Spot Rate: modify to re-calculate gain/loss"
+                          />
+                        </td>
+                        <td className="text-right font-mono text-muted">
+                          {formatINR(bookVal)}
+                        </td>
+                        <td className="text-right font-mono font-semibold text-dark">
+                          {formatINR(curVal)}
+                        </td>
+                        <td className="text-center">
+                          <span className={isGain ? 'zb-forex-gain' : 'zb-forex-loss'}>
+                            {isGain ? <TrendingUp size={12} /> : <AlertCircle size={12} />}
+                            {isGain ? `+${formatINR(delta)}` : formatINR(delta)}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
+                    <td colSpan={6} className="text-right">
+                      Portfolio Aggregate Totals:
+                    </td>
+                    <td className="text-right font-mono text-muted">
+                      {formatINR(totalBookValuation)}
+                    </td>
+                    <td className="text-right font-mono text-primary font-bold">
+                      {formatINR(totalForexValuation)}
+                    </td>
+                    <td className="text-center font-mono">
+                      <span className={netForexGainLoss >= 0 ? 'zb-forex-gain' : 'zb-forex-loss'} style={{ fontSize: '13px' }}>
+                        {netForexGainLoss >= 0 ? `+${formatINR(netForexGainLoss)}` : formatINR(netForexGainLoss)}
+                      </span>
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            {/* Regulatory & Ind AS 21 Accounting Disclosure */}
+            <div
+              style={{
+                marginTop: '16px',
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '14px 18px',
+                fontSize: '12px',
+                color: '#475569',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px'
+              }}
+            >
+              <ShieldCheck size={18} className="text-primary" style={{ marginTop: '2px', flexShrink: 0 }} />
+              <div>
+                <strong>Accounting Standards Compliance (AS-11 &amp; Ind AS 21):</strong> Foreign currency monetary assets and liabilities are reported using the closing rate at each balance sheet reporting date. Any resultant exchange difference is recognized as unrealized gain or loss in the Statement of Profit and Loss and accumulated in the General Ledger.
+              </div>
+            </div>
+          </>
+        )}
+
+        {renderSharedModals()}
       </div>
     );
   }
@@ -3330,7 +3907,19 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
                 {filtered.map(p => (
                   <tr key={p.id}>
                     <td className="font-semibold text-primary">{p.id}</td>
-                    <td className="font-semibold">{p.customer}</td>
+                    <td>
+                      <div className="zb-flex-align gap-2">
+                        <span className="font-semibold">{p.customer}</span>
+                        <button
+                          className="zb-table-btn"
+                          style={{ padding: '2px 7px', fontSize: '11px', color: '#0066cc', borderColor: '#bfdbfe', background: '#eff6ff' }}
+                          onClick={() => handleOpenCustomer360(p.customer)}
+                          title="Open Customer 360° Intelligence & Audit Timeline"
+                        >
+                          <Users size={11} style={{ marginRight: '3px' }} /> 360°
+                        </button>
+                      </div>
+                    </td>
                     <td><span className="text-muted font-medium">{p.invoiceRef}</span></td>
                     <td>
                       <div className="zb-flex-align gap-2">
@@ -3393,6 +3982,7 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
                       className="zb-input"
                       value={newPayInvoiceRef}
                       onChange={e => setNewPayInvoiceRef(e.target.value)}
+                      required
                     />
                   </div>
                   <div className="zb-form-group">
@@ -3428,6 +4018,7 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
             </div>
           </div>
         )}
+        {renderSharedModals()}
       </div>
     );
   }
@@ -3446,6 +4037,7 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
           <button className="zb-btn zb-btn-primary" onClick={() => onNavigate('home')}>Go to Dashboard Overview</button>
         </div>
       </div>
+      {renderSharedModals()}
     </div>
   );
 };
