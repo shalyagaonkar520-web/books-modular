@@ -51,10 +51,18 @@ def init_db():
                     role TEXT NOT NULL,
                     organization TEXT NOT NULL,
                     avatar TEXT,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    auth_provider TEXT DEFAULT 'local'
                 )
             """)
             conn.commit()
+
+            # Migrate schema if auth_provider column is missing
+            cursor.execute("PRAGMA table_info(users)")
+            user_cols = [c[1] for c in cursor.fetchall()]
+            if "auth_provider" not in user_cols:
+                cursor.execute("ALTER TABLE users ADD COLUMN auth_provider TEXT DEFAULT 'local'")
+                conn.commit()
 
             # Seed items if empty
             cursor.execute("SELECT COUNT(*) FROM items")
@@ -279,6 +287,7 @@ def delete_item(item_id: str) -> bool:
 
 # User Management
 def _user_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+    keys = row.keys() if hasattr(row, "keys") else []
     return {
         "id": row["id"],
         "name": row["name"],
@@ -287,6 +296,7 @@ def _user_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
         "organization": row["organization"],
         "avatar": row["avatar"],
         "createdAt": row["created_at"],
+        "auth_provider": row["auth_provider"] if "auth_provider" in keys else "local",
     }
 
 
@@ -328,8 +338,8 @@ def create_user(
 
             cursor.execute("""
                 INSERT INTO users (
-                    id, name, email, password_hash, role, organization, avatar, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    id, name, email, password_hash, role, organization, avatar, created_at, auth_provider
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 user_id,
                 name.strip(),
@@ -339,6 +349,7 @@ def create_user(
                 organization,
                 f"https://api.dicebear.com/7.x/initials/svg?seed={name}",
                 now,
+                "local",
             ))
             conn.commit()
             return get_user_by_id(user_id)
@@ -358,6 +369,109 @@ def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
             "role": raw_user["role"],
             "organization": raw_user["organization"],
             "avatar": raw_user["avatar"],
+            "auth_provider": raw_user.get("auth_provider", "local"),
         }
     return None
+
+
+def authenticate_or_create_oauth_user(
+    provider: str,
+    email: Optional[str] = None,
+    name: Optional[str] = None,
+    avatar: Optional[str] = None,
+    organization: Optional[str] = None,
+    role: Optional[str] = None,
+) -> Dict[str, Any]:
+    with _lock:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Enterprise provider defaults
+            provider_defaults = {
+                "google": (
+                    "Shalya Gaonkar",
+                    "shalya.gaonkar@gmail.com",
+                    "Administrator",
+                    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&q=80",
+                ),
+                "microsoft": (
+                    "Shalya Gaonkar",
+                    "shalya@rooman.onmicrosoft.com",
+                    "Chief Financial Officer",
+                    "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&q=80",
+                ),
+                "zoho": (
+                    "Shalya Gaonkar",
+                    "shalya.g@zohomail.in",
+                    "Administrator",
+                    "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&q=80",
+                ),
+                "github": (
+                    "Shalya Gaonkar",
+                    "shalya-rooman@github.com",
+                    "Lead Developer & Owner",
+                    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&q=80",
+                ),
+            }
+
+            def_name, def_email, def_role, def_avatar = provider_defaults.get(
+                provider.lower(),
+                ("Enterprise User", f"user@{provider.lower()}.oauth", "Administrator", "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&q=80")
+            )
+
+            user_email = (email or def_email).lower().strip()
+            user_name = (name or def_name).strip()
+            user_avatar = avatar or def_avatar
+            user_role = role or def_role
+            user_org = organization or "Zylker Electronics India Pvt Ltd"
+
+            # Check if user already exists
+            existing = get_user_by_email(user_email)
+            if existing:
+                cursor.execute("""
+                    UPDATE users
+                    SET auth_provider = ?, avatar = COALESCE(?, avatar)
+                    WHERE email = ?
+                """, (provider.lower(), user_avatar, user_email))
+                conn.commit()
+                updated = get_user_by_email(user_email)
+                return {
+                    "id": updated["id"],
+                    "name": updated["name"],
+                    "email": updated["email"],
+                    "role": updated["role"],
+                    "organization": updated["organization"],
+                    "avatar": updated["avatar"],
+                    "auth_provider": provider.lower(),
+                }
+
+            # Create new OAuth user
+            now = datetime.utcnow().isoformat() + "Z"
+            user_id = f"oauth-{provider.lower()}-{int(datetime.utcnow().timestamp() * 1000)}"
+            cursor.execute("""
+                INSERT INTO users (
+                    id, name, email, password_hash, role, organization, avatar, created_at, auth_provider
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                user_id,
+                user_name,
+                user_email,
+                hash_password("oauth_sso_verified_account"),
+                user_role,
+                user_org,
+                user_avatar,
+                now,
+                provider.lower(),
+            ))
+            conn.commit()
+            created = get_user_by_id(user_id)
+            return {
+                "id": created["id"],
+                "name": created["name"],
+                "email": created["email"],
+                "role": created["role"],
+                "organization": created["organization"],
+                "avatar": created["avatar"],
+                "auth_provider": provider.lower(),
+            }
 

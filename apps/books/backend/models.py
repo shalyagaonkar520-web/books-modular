@@ -139,12 +139,36 @@ class UserRegisterRequest(BaseModel):
 
 
 class UserProfile(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     id: str
     name: str
     email: str
     role: str
     organization: str
     avatar: Optional[str] = None
+    auth_provider: Optional[str] = Field(default="local", alias="authProvider")
+
+
+class OAuthLoginRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    provider: Literal['google', 'microsoft', 'zoho', 'github']
+    code: Optional[str] = None
+    access_token: Optional[str] = Field(default=None, alias='accessToken')
+    email: Optional[str] = None
+    name: Optional[str] = None
+    avatar: Optional[str] = None
+    organization: Optional[str] = "Zylker Electronics India Pvt Ltd"
+    role: Optional[str] = "Administrator"
+
+
+class OAuthProviderInfo(BaseModel):
+    id: str
+    name: str
+    icon: str
+    status: str = "Active"
+    description: str
 
 
 class AuthResponse(BaseModel):

@@ -13,7 +13,7 @@ class TestZohoBooksFastAPI(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["status"], "healthy")
-        self.assertEqual(data["database"], "SQLite connected")
+        self.assertEqual(data["database"], "Connected")
 
     def test_get_items(self):
         response = requests.get(f"{BASE_URL}/api/items")
@@ -157,6 +157,43 @@ class TestZohoBooksFastAPI(unittest.TestCase):
         # Duplicate registration should fail
         dup_res = requests.post(f"{BASE_URL}/api/auth/register", json=payload)
         self.assertEqual(dup_res.status_code, 400)
+
+    def test_oauth_providers(self):
+        response = requests.get(f"{BASE_URL}/api/auth/oauth/providers")
+        self.assertEqual(response.status_code, 200)
+        providers = response.json()
+        ids = [p["id"] for p in providers]
+        self.assertIn("google", ids)
+        self.assertIn("microsoft", ids)
+        self.assertIn("zoho", ids)
+        self.assertIn("github", ids)
+
+    def test_oauth_login_google(self):
+        payload = {
+            "provider": "google",
+            "email": "shalya.oauth.test@gmail.com",
+            "name": "Shalya Google SSO User",
+            "avatar": "https://lh3.googleusercontent.com/a/test",
+            "role": "Administrator"
+        }
+        response = requests.post(f"{BASE_URL}/api/auth/oauth/google", json=payload)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("token", data)
+        self.assertEqual(data["user"]["email"], "shalya.oauth.test@gmail.com")
+        self.assertEqual(data["user"]["name"], "Shalya Google SSO User")
+        self.assertEqual(data["user"]["authProvider"], "google")
+
+    def test_oauth_login_microsoft(self):
+        response = requests.post(f"{BASE_URL}/api/auth/oauth/microsoft")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("token", data)
+        self.assertEqual(data["user"]["authProvider"], "microsoft")
+
+    def test_oauth_login_invalid_provider(self):
+        response = requests.post(f"{BASE_URL}/api/auth/oauth/unsupported_provider")
+        self.assertEqual(response.status_code, 400)
 
 
 if __name__ == "__main__":

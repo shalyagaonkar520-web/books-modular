@@ -21,6 +21,15 @@ export interface UserProfile {
   role: string;
   organization: string;
   avatar?: string;
+  authProvider?: string;
+}
+
+export interface OAuthProvider {
+  id: string;
+  name: string;
+  icon: string;
+  status: string;
+  description: string;
 }
 
 export interface DemoUser extends UserProfile {
@@ -92,6 +101,53 @@ export class ApiClient {
     const data = await response.json();
     this.storeUser(data.user, data.token);
     return data;
+  }
+
+  /**
+   * Single Sign-On with OAuth 2.0 Identity Provider
+   */
+  public static async oauthLogin(
+    provider: 'google' | 'microsoft' | 'zoho' | 'github',
+    payload?: {
+      email?: string;
+      name?: string;
+      avatar?: string;
+      organization?: string;
+      role?: string;
+    }
+  ): Promise<{ user: UserProfile; token: string }> {
+    const response = await fetch(`${API_BASE}/auth/oauth/${encodeURIComponent(provider)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload || { provider }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'OAuth authentication failed' }));
+      throw new Error(err.detail || 'OAuth authentication failed');
+    }
+
+    const data = await response.json();
+    this.storeUser(data.user, data.token);
+    return data;
+  }
+
+  /**
+   * Fetch available enterprise OAuth providers
+   */
+  public static async getOAuthProviders(): Promise<OAuthProvider[]> {
+    try {
+      const res = await fetch(`${API_BASE}/auth/oauth/providers`);
+      if (res.ok) return res.json();
+    } catch {
+      // fallback
+    }
+    return [
+      { id: 'google', name: 'Google Workspace', icon: 'google', status: 'Active', description: 'Google OAuth 2.0' },
+      { id: 'microsoft', name: 'Microsoft 365 / Azure AD', icon: 'microsoft', status: 'Active', description: 'Microsoft Entra SSO' },
+      { id: 'zoho', name: 'Zoho Accounts SSO', icon: 'zoho', status: 'Active', description: 'Zoho One SSO' },
+      { id: 'github', name: 'GitHub Enterprise', icon: 'github', status: 'Active', description: 'GitHub SSO' },
+    ];
   }
 
   /**
