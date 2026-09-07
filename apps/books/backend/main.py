@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.database import init_db
 from backend.routes.items import router as items_router
 from backend.routes.dashboard import router as dashboard_router
+from backend.routes.auth import router as auth_router
 
 
 @asynccontextmanager
@@ -32,6 +33,7 @@ app.add_middleware(
 # Include API Routers
 app.include_router(items_router)
 app.include_router(dashboard_router)
+app.include_router(auth_router)
 
 
 @app.get("/api/health", tags=["Health"])

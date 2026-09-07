@@ -117,6 +117,48 @@ class TestZohoBooksFastAPI(unittest.TestCase):
             self.assertGreater(data["receivables"]["totalReceivables"], 0)
             self.assertGreater(data["inventory"]["totalInventoryValuation"], 0)
 
+    def test_auth_login_success(self):
+        payload = {"email": "admin@zylkerbooks.com", "password": "password123"}
+        response = requests.post(f"{BASE_URL}/api/auth/login", json=payload)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("token", data)
+        self.assertEqual(data["user"]["email"], "admin@zylkerbooks.com")
+        self.assertEqual(data["user"]["role"], "Administrator")
+
+    def test_auth_login_invalid(self):
+        payload = {"email": "admin@zylkerbooks.com", "password": "wrongpassword"}
+        response = requests.post(f"{BASE_URL}/api/auth/login", json=payload)
+        self.assertEqual(response.status_code, 401)
+
+    def test_auth_demo_users(self):
+        response = requests.get(f"{BASE_URL}/api/auth/demo-users")
+        self.assertEqual(response.status_code, 200)
+        users = response.json()
+        self.assertGreaterEqual(len(users), 2)
+        roles = [u["role"] for u in users]
+        self.assertIn("Administrator", roles)
+        self.assertIn("Chief Accountant", roles)
+
+    def test_auth_register(self):
+        import time
+        unique_email = f"testuser_{int(time.time())}@example.com"
+        payload = {
+            "name": "Integration Test User",
+            "email": unique_email,
+            "password": "securepassword123",
+            "organization": "Test Corp"
+        }
+        response = requests.post(f"{BASE_URL}/api/auth/register", json=payload)
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["user"]["email"], unique_email)
+
+        # Duplicate registration should fail
+        dup_res = requests.post(f"{BASE_URL}/api/auth/register", json=payload)
+        self.assertEqual(dup_res.status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -14,7 +14,23 @@ export interface DashboardSummaryResponse {
   inventory: InventorySummary;
 }
 
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  organization: string;
+  avatar?: string;
+}
+
+export interface DemoUser extends UserProfile {
+  password: string;
+  description: string;
+}
+
 const API_BASE = '/api';
+const AUTH_USER_KEY = 'zoho_books_auth_user';
+const AUTH_TOKEN_KEY = 'zoho_books_auth_token';
 
 export class ApiClient {
   /**
@@ -27,6 +43,126 @@ export class ApiClient {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Log in user with email and password
+   */
+  public static async login(
+    email: string,
+    password: string
+  ): Promise<{ user: UserProfile; token: string }> {
+    const response = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Invalid credentials' }));
+      throw new Error(err.detail || 'Login failed');
+    }
+
+    const data = await response.json();
+    this.storeUser(data.user, data.token);
+    return data;
+  }
+
+  /**
+   * Register new user
+   */
+  public static async register(
+    name: string,
+    email: string,
+    password: string,
+    organization: string = 'Zylker Electronics India Pvt Ltd',
+    role: string = 'Administrator'
+  ): Promise<{ user: UserProfile; token: string }> {
+    const response = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password, organization, role }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Registration failed' }));
+      throw new Error(err.detail || 'Registration failed');
+    }
+
+    const data = await response.json();
+    this.storeUser(data.user, data.token);
+    return data;
+  }
+
+  /**
+   * Get cached logged-in user
+   */
+  public static getStoredUser(): UserProfile | null {
+    try {
+      const stored = localStorage.getItem(AUTH_USER_KEY);
+      if (stored) return JSON.parse(stored);
+    } catch {
+      // fallback
+    }
+    return null;
+  }
+
+  /**
+   * Persist user & token to localStorage
+   */
+  public static storeUser(user: UserProfile, token: string): void {
+    try {
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+      localStorage.setItem(AUTH_TOKEN_KEY, token);
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
+   * Clear user session
+   */
+  public static logout(): void {
+    try {
+      localStorage.removeItem(AUTH_USER_KEY);
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
+   * Fetch demo users for instant 1-click test login
+   */
+  public static async getDemoUsers(): Promise<DemoUser[]> {
+    try {
+      const res = await fetch(`${API_BASE}/auth/demo-users`);
+      if (res.ok) return res.json();
+    } catch {
+      // fallback
+    }
+    return [
+      {
+        id: 'user-1',
+        name: 'Shalya Gaonkar',
+        email: 'admin@zylkerbooks.com',
+        password: 'password123',
+        role: 'Administrator',
+        organization: 'Zylker Electronics India Pvt Ltd',
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&q=80',
+        description: 'Full access to items, sales, inventory & banking',
+      },
+      {
+        id: 'user-2',
+        name: 'Priya Sharma',
+        email: 'accountant@rooman.com',
+        password: 'password123',
+        role: 'Chief Accountant',
+        organization: 'Zylker Electronics India Pvt Ltd',
+        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&q=80',
+        description: 'Audit, tax filing, journals, balance sheet & payroll access',
+      },
+    ];
   }
 
   /**

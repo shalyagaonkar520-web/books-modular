@@ -16,6 +16,11 @@ def get_connection():
     return conn
 
 
+def hash_password(password: str) -> str:
+    import hashlib
+    return hashlib.sha256((password + "zoho_salt_secure").encode()).hexdigest()
+
+
 def init_db():
     with _lock:
         with get_connection() as conn:
@@ -36,14 +41,63 @@ def init_db():
                     updated_at TEXT NOT NULL
                 )
             """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    organization TEXT NOT NULL,
+                    avatar TEXT,
+                    created_at TEXT NOT NULL
+                )
+            """)
             conn.commit()
 
-            # Seed if empty
+            # Seed items if empty
             cursor.execute("SELECT COUNT(*) FROM items")
-            count = cursor.fetchone()[0]
-            if count == 0:
+            if cursor.fetchone()[0] == 0:
                 _seed_items(cursor, get_initial_seed_items())
                 conn.commit()
+
+            # Seed demo users if empty
+            cursor.execute("SELECT COUNT(*) FROM users")
+            if cursor.fetchone()[0] == 0:
+                _seed_users(cursor)
+                conn.commit()
+
+
+def _seed_users(cursor: sqlite3.Cursor):
+    now = datetime.utcnow().isoformat() + "Z"
+    demo_users = [
+        (
+            "user-1",
+            "Shalya Gaonkar",
+            "admin@zylkerbooks.com",
+            hash_password("password123"),
+            "Administrator",
+            "Zylker Electronics India Pvt Ltd",
+            "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&q=80",
+            now,
+        ),
+        (
+            "user-2",
+            "Priya Sharma",
+            "accountant@rooman.com",
+            hash_password("password123"),
+            "Chief Accountant",
+            "Zylker Electronics India Pvt Ltd",
+            "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&q=80",
+            now,
+        ),
+    ]
+    cursor.executemany("""
+        INSERT OR REPLACE INTO users (
+            id, name, email, password_hash, role, organization, avatar, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, demo_users)
 
 
 def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
@@ -221,3 +275,89 @@ def delete_item(item_id: str) -> bool:
             cursor.execute("DELETE FROM items WHERE id = ?", (item_id,))
             conn.commit()
             return cursor.rowcount > 0
+
+
+# User Management
+def _user_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "email": row["email"],
+        "role": row["role"],
+        "organization": row["organization"],
+        "avatar": row["avatar"],
+        "createdAt": row["created_at"],
+    }
+
+
+def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
+    with _lock:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM users WHERE LOWER(email) = ?", (email.lower().strip(),))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+
+
+def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+    with _lock:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+            row = cursor.fetchone()
+            if row:
+                return _user_row_to_dict(row)
+            return None
+
+
+def create_user(
+    name: str,
+    email: str,
+    password: str,
+    organization: str = "Zylker Electronics India Pvt Ltd",
+    role: str = "Administrator"
+) -> Dict[str, Any]:
+    with _lock:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            now = datetime.utcnow().isoformat() + "Z"
+            user_id = f"user-{int(datetime.utcnow().timestamp() * 1000)}"
+            pw_hash = hash_password(password)
+
+            cursor.execute("""
+                INSERT INTO users (
+                    id, name, email, password_hash, role, organization, avatar, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                user_id,
+                name.strip(),
+                email.lower().strip(),
+                pw_hash,
+                role,
+                organization,
+                f"https://api.dicebear.com/7.x/initials/svg?seed={name}",
+                now,
+            ))
+            conn.commit()
+            return get_user_by_id(user_id)
+
+
+def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
+    raw_user = get_user_by_email(email)
+    if not raw_user:
+        return None
+
+    expected_hash = hash_password(password)
+    if raw_user["password_hash"] == expected_hash:
+        return {
+            "id": raw_user["id"],
+            "name": raw_user["name"],
+            "email": raw_user["email"],
+            "role": raw_user["role"],
+            "organization": raw_user["organization"],
+            "avatar": raw_user["avatar"],
+        }
+    return None
+

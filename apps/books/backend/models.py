@@ -122,3 +122,32 @@ class DashboardSummaryResponse(BaseModel):
     payables: PayablesSummary
     cash_flow: CashFlowSummary = Field(alias='cashFlow')
     inventory: InventorySummary
+
+
+# Authentication Models
+class UserLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class UserRegisterRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=100)
+    email: str
+    password: str = Field(..., min_length=6)
+    organization: Optional[str] = "Zylker Electronics India Pvt Ltd"
+    role: Optional[str] = "Administrator"
+
+
+class UserProfile(BaseModel):
+    id: str
+    name: str
+    email: str
+    role: str
+    organization: str
+    avatar: Optional[str] = None
+
+
+class AuthResponse(BaseModel):
+    user: UserProfile
+    token: str
+    message: str

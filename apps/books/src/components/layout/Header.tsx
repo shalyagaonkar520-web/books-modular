@@ -12,16 +12,27 @@ import {
   X
 } from 'lucide-react';
 
+import { UserProfile } from '../../services/apiClient';
+import {
+  Globe
+} from 'lucide-react';
+
 interface HeaderProps {
   onToggleSidebar: () => void;
   onQuickAddItem: () => void;
   serverConnected?: boolean;
+  currentUser?: UserProfile | null;
+  onSignOut?: () => void;
+  onNavigateLanding?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onToggleSidebar,
   onQuickAddItem,
   serverConnected = true,
+  currentUser,
+  onSignOut,
+  onNavigateLanding,
 }) => {
   const [selectedOrg, setSelectedOrg] = useState('Zylker Electronics India Pvt Ltd');
   const [showOrgDropdown, setShowOrgDropdown] = useState(false);
@@ -172,6 +183,18 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
+        {/* Landing Page Button */}
+        {onNavigateLanding && (
+          <button
+            className="zb-landing-switch-btn"
+            onClick={onNavigateLanding}
+            title="Return to Landing Page"
+          >
+            <Globe size={15} />
+            <span>Landing Page</span>
+          </button>
+        )}
+
         {/* Settings Button */}
         <button className="zb-icon-btn" title="Organization Settings">
           <Settings size={18} />
@@ -188,7 +211,7 @@ export const Header: React.FC<HeaderProps> = ({
             }}
           >
             <div className="zb-avatar">
-              <span>SU</span>
+              <span>{currentUser?.name ? currentUser.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'SG'}</span>
             </div>
             <ChevronDown size={14} className="zb-avatar-chevron" />
           </button>
@@ -196,14 +219,27 @@ export const Header: React.FC<HeaderProps> = ({
           {showProfileDropdown && (
             <div className="zb-dropdown-menu zb-profile-dropdown">
               <div className="zb-profile-header">
-                <div className="zb-avatar large">SU</div>
+                <div className="zb-avatar large">
+                  {currentUser?.name ? currentUser.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'SG'}
+                </div>
                 <div>
-                  <div className="zb-user-name">Shaly User</div>
-                  <div className="zb-user-email">admin@zylkerbooks.com</div>
-                  <span className="zb-user-role">Administrator</span>
+                  <div className="zb-user-name">{currentUser?.name || 'Shaly Gaonkar'}</div>
+                  <div className="zb-user-email">{currentUser?.email || 'admin@zylkerbooks.com'}</div>
+                  <span className="zb-user-role">{currentUser?.role || 'Administrator'}</span>
                 </div>
               </div>
               <div className="zb-dropdown-divider"></div>
+              {onNavigateLanding && (
+                <button
+                  className="zb-dropdown-item"
+                  onClick={() => {
+                    setShowProfileDropdown(false);
+                    onNavigateLanding();
+                  }}
+                >
+                  <Globe size={14} /> Back to Landing Page
+                </button>
+              )}
               <button className="zb-dropdown-item">
                 <User size={14} /> My Profile & Preferences
               </button>
@@ -211,7 +247,15 @@ export const Header: React.FC<HeaderProps> = ({
                 <Settings size={14} /> Organization Setup
               </button>
               <div className="zb-dropdown-divider"></div>
-              <button className="zb-dropdown-item text-danger">Sign Out</button>
+              <button
+                className="zb-dropdown-item text-danger"
+                onClick={() => {
+                  setShowProfileDropdown(false);
+                  if (onSignOut) onSignOut();
+                }}
+              >
+                Sign Out
+              </button>
             </div>
           )}
         </div>
