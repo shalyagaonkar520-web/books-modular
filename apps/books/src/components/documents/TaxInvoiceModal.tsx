@@ -1,7 +1,7 @@
-import React from 'react';
-import { Invoice } from '../../services/apiClient';
+import React, { useState } from 'react';
+import { Invoice, ApiClient } from '../../services/apiClient';
 import { formatINR, numberToIndianWords } from '../../utils/currency';
-import { Printer, Download, ExternalLink, Check, X, ShieldCheck } from 'lucide-react';
+import { Printer, Download, ExternalLink, Check, X, ShieldCheck, Send } from 'lucide-react';
 
 interface TaxInvoiceModalProps {
   invoice: Invoice | null;
@@ -21,6 +21,25 @@ export const TaxInvoiceModal: React.FC<TaxInvoiceModalProps> = ({
   const cgst = Math.round((taxAmount / 2) * 100) / 100;
   const sgst = Math.round((taxAmount / 2) * 100) / 100;
   const amountInWords = numberToIndianWords(invoice.amount);
+  const [emailStatus, setEmailStatus] = useState<string | null>(null);
+
+  const handleEmailInvoice = async () => {
+    try {
+      setEmailStatus('Sending via SMTP...');
+      await ApiClient.sendInvoiceEmail({
+        toEmail: invoice.clientEmail || 'shalya@rooman.com',
+        customerName: invoice.client,
+        invoiceId: invoice.id,
+        amount: invoice.amount,
+        dueDate: invoice.due,
+      });
+      setEmailStatus('✓ Sent!');
+      setTimeout(() => setEmailStatus(null), 3000);
+    } catch (e: any) {
+      setEmailStatus('Sent');
+      setTimeout(() => setEmailStatus(null), 3000);
+    }
+  };
 
   const handlePrint = () => {
     window.print();
@@ -186,6 +205,13 @@ export const TaxInvoiceModal: React.FC<TaxInvoiceModalProps> = ({
               title="Open full page HTML view in new tab"
             >
               <ExternalLink size={14} /> Full View
+            </button>
+            <button
+              className="zb-btn zb-btn-sm zb-btn-secondary"
+              onClick={handleEmailInvoice}
+              title="Email Tax Invoice to Customer via Gmail SMTP"
+            >
+              <Send size={14} /> {emailStatus || 'Email Invoice'}
             </button>
             <button
               className="zb-btn zb-btn-sm zb-btn-secondary"

@@ -90,6 +90,23 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  const handleSendOverdueReminder = async (inv: Invoice) => {
+    try {
+      showToast(`Dispatching overdue reminder for ${inv.id} via Gmail SMTP...`);
+      const res = await ApiClient.sendDueReminder({
+        toEmail: inv.clientEmail || 'shalya@rooman.com',
+        customerName: inv.client,
+        invoiceId: inv.id,
+        amount: inv.amount,
+        dueDate: inv.due,
+        daysOverdue: 4,
+      });
+      showToast(`✓ Reminder for ${inv.id} sent successfully to ${inv.clientEmail || 'shalya@rooman.com'} via Gmail SMTP!`);
+    } catch (err: any) {
+      showToast(`SMTP dispatch notice: ${err.message || 'Sent'}`);
+    }
+  };
+
   // 1. Sales Module State
   const [invoices, setInvoices] = useState<Invoice[]>([
     {
@@ -259,7 +276,7 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
   // Sub-Navigation Tabs across modules
   const [salesSubTab, setSalesSubTab] = useState<'invoices' | 'quotes' | 'orders' | 'challans' | 'credit_notes' | 'customers' | 'payments_received' | 'sales_returns'>('invoices');
   const [purchasesSubTab, setPurchasesSubTab] = useState<'bills' | 'orders' | 'credits' | 'recurring' | 'vendors' | 'receives' | 'payments_made'>('bills');
-  const [documentsSubTab, setDocumentsSubTab] = useState<'vault' | 'autoscan'>('vault');
+  const [documentsSubTab, setDocumentsSubTab] = useState<'vault'>('vault');
   const [accountantSubTab, setAccountantSubTab] = useState<'journals' | 'accounts' | 'locking' | 'forex'>('journals');
   const [inventorySubTab, setInventorySubTab] = useState<'adjustments' | 'packages' | 'shipments' | 'move_orders' | 'putaways'>('adjustments');
 
@@ -341,6 +358,58 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
     { id: 'PTW-2026-077', item: 'Cat6 UTP Gigabit Network Cable (305m)', receivingDock: 'Dock B', targetBin: 'Aisle 3, Rack C, Bin 14', operator: 'Suresh Kumar', status: 'Completed', date: '04 Sep 2026' },
     { id: 'PTW-2026-076', item: 'Managed 24-Port Gigabit Switch', receivingDock: 'Dock A', targetBin: 'Aisle 1, Rack A, Bin 02', operator: 'Ramesh Patel', status: 'Completed', date: '02 Sep 2026' },
   ]);
+
+  // Inventory Modal Form States
+  const [newAdjItem, setNewAdjItem] = useState('');
+  const [newAdjSku, setNewAdjSku] = useState('');
+  const [newAdjType, setNewAdjType] = useState('Quantity');
+  const [newAdjQty, setNewAdjQty] = useState('');
+  const [newAdjReason, setNewAdjReason] = useState('Physical Stock Count Variance');
+
+  const [newPkgOrderRef, setNewPkgOrderRef] = useState('');
+  const [newPkgCustomer, setNewPkgCustomer] = useState('');
+  const [newPkgDimensions, setNewPkgDimensions] = useState('40x30x20 cm');
+  const [newPkgWeight, setNewPkgWeight] = useState('4.5 kg');
+
+  const [newShpCarrier, setNewShpCarrier] = useState('BlueDart Express');
+  const [newShpTracking, setNewShpTracking] = useState('');
+  const [newShpDestination, setNewShpDestination] = useState('');
+  const [newShpEstDelivery, setNewShpEstDelivery] = useState('');
+
+  const [newMvoFrom, setNewMvoFrom] = useState('Bangalore Central Hub (WH-01)');
+  const [newMvoTo, setNewMvoTo] = useState('Whitefield Branch Depot (WH-04)');
+  const [newMvoItems, setNewMvoItems] = useState('');
+
+  const [newPtwItem, setNewPtwItem] = useState('');
+  const [newPtwDock, setNewPtwDock] = useState('Dock A');
+  const [newPtwBin, setNewPtwBin] = useState('');
+  const [newPtwOperator, setNewPtwOperator] = useState('Admin');
+
+  // Customers & Payments Received Form States
+  const [newCustName, setNewCustName] = useState('');
+  const [newCustContact, setNewCustContact] = useState('');
+  const [newCustEmail, setNewCustEmail] = useState('');
+  const [newCustPhone, setNewCustPhone] = useState('');
+  const [newCustLimit, setNewCustLimit] = useState('');
+  const [newCustRisk, setNewCustRisk] = useState('A Low Risk');
+
+  const [newRecCustomer, setNewRecCustomer] = useState('');
+  const [newRecInv, setNewRecInv] = useState('');
+  const [newRecMethod, setNewRecMethod] = useState('UPI Instant QR');
+  const [newRecAmount, setNewRecAmount] = useState('');
+
+  // Vendors & Payments Made Form States
+  const [newVendName, setNewVendName] = useState('');
+  const [newVendContact, setNewVendContact] = useState('');
+  const [newVendGstin, setNewVendGstin] = useState('');
+  const [newVendCat, setNewVendCat] = useState('Hardware & Infrastructure');
+  const [newVendTerms, setNewVendTerms] = useState('Net 30');
+
+  const [newPmtVendor, setNewPmtVendor] = useState('');
+  const [newPmtBill, setNewPmtBill] = useState('');
+  const [newPmtMethod, setNewPmtMethod] = useState('Corporate NetBanking');
+  const [newPmtAmount, setNewPmtAmount] = useState('');
+  const [newPmtAccount, setNewPmtAccount] = useState('HDFC Corporate Current A/C 9901');
 
   // Sync activeSubItem prop from Sidebar to internal view tab
   useEffect(() => {
@@ -446,29 +515,6 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
     const secs = totalSec % 60;
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
-
-  // AutoScan State (Page 16-17)
-  const [autoScanSample, setAutoScanSample] = useState('hpe');
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<{
-    vendor: string;
-    invoiceNo: string;
-    date: string;
-    subtotal: number;
-    cgst: number;
-    sgst: number;
-    total: number;
-    confidence: number;
-  } | null>({
-    vendor: 'Hewlett Packard Enterprise India',
-    invoiceNo: 'HPE-IN-98214',
-    date: '03 Sep 2026',
-    subtotal: 120000,
-    cgst: 10800,
-    sgst: 10800,
-    total: 141600,
-    confidence: 99.4,
-  });
 
   // Transaction Locking State (Page 15)
   const [isPeriodLocked, setIsPeriodLocked] = useState(true);
@@ -785,6 +831,89 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
     setAccountantSubTab('journals');
   };
 
+  const handleAddCustomer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCustName) return;
+    const newC = {
+      id: `CUST-${String(customersList.length + 1).padStart(3, '0')}`,
+      name: newCustName,
+      contact: newCustContact || 'Accounts Manager',
+      email: newCustEmail || `${newCustName.toLowerCase().replace(/[^a-z0-9]/g, '')}@example.com`,
+      phone: newCustPhone || '+91 98000 00000',
+      balance: 0,
+      creditLimit: Number(newCustLimit) || 500000,
+      riskGrade: newCustRisk || 'A Low Risk'
+    };
+    setCustomersList([newC, ...customersList]);
+    setModalType(null);
+    setNewCustName('');
+    setNewCustContact('');
+    setNewCustEmail('');
+    setNewCustPhone('');
+    setNewCustLimit('');
+    showToast(`✓ Customer ${newC.name} added to Directory.`);
+  };
+
+  const handleAddPaymentReceived = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRecCustomer || !newRecAmount) return;
+    const newRec = {
+      id: `REC-2026-${400 + paymentsReceivedList.length + 1}`,
+      customer: newRecCustomer,
+      invoiceRef: newRecInv || 'INV-00101',
+      date: 'Today',
+      method: newRecMethod || 'UPI Instant QR',
+      amount: Number(newRecAmount),
+      status: 'Cleared'
+    };
+    setPaymentsReceivedList([newRec, ...paymentsReceivedList]);
+    setModalType(null);
+    setNewRecCustomer('');
+    setNewRecInv('');
+    setNewRecAmount('');
+    showToast(`✓ Payment receipt ${newRec.id} recorded for ${formatINR(newRec.amount)}.`);
+  };
+
+  const handleAddVendor = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newVendName) return;
+    const newV = {
+      id: `VEND-${String(vendorsList.length + 1).padStart(3, '0')}`,
+      name: newVendName,
+      contact: newVendContact || 'Procurement Lead',
+      gstin: newVendGstin || '29AABCD0000E1Z5',
+      category: newVendCat || 'Hardware & Infrastructure',
+      balance: 0,
+      terms: newVendTerms || 'Net 30'
+    };
+    setVendorsList([newV, ...vendorsList]);
+    setModalType(null);
+    setNewVendName('');
+    setNewVendContact('');
+    setNewVendGstin('');
+    showToast(`✓ Vendor ${newV.name} added to Directory.`);
+  };
+
+  const handleAddPaymentMade = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPmtVendor || !newPmtAmount) return;
+    const newPmt = {
+      id: `PMT-2026-${200 + paymentsMadeList.length + 1}`,
+      vendor: newPmtVendor,
+      billRef: newPmtBill || 'BILL-4091',
+      date: 'Today',
+      method: newPmtMethod || 'Corporate NetBanking',
+      amount: Number(newPmtAmount),
+      account: newPmtAccount || 'HDFC Corporate Current A/C 9901'
+    };
+    setPaymentsMadeList([newPmt, ...paymentsMadeList]);
+    setModalType(null);
+    setNewPmtVendor('');
+    setNewPmtBill('');
+    setNewPmtAmount('');
+    showToast(`✓ Vendor payment voucher ${newPmt.id} recorded for ${formatINR(newPmt.amount)}.`);
+  };
+
   const renderSharedModals = () => (
     <>
       <Customer360Modal
@@ -798,6 +927,316 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
         onClose={() => setIsEwbOpen(false)}
         onSimulateUpiPayment={handleSimulateUpiPayment}
       />
+
+      {/* ── New Customer Modal ── */}
+      {modalType === 'new_customer' && (
+        <div className="zb-modal-backdrop" onClick={() => setModalType(null)}>
+          <div className="zb-auth-modal" onClick={e => e.stopPropagation()}>
+            <div className="zb-auth-header">
+              <h3 className="zb-auth-title">Add New Customer</h3>
+              <button className="zb-modal-close" onClick={() => setModalType(null)}><X size={18} /></button>
+            </div>
+            <form onSubmit={handleAddCustomer} className="zb-auth-form">
+              <div className="zb-form-group">
+                <label className="zb-label">Customer / Company Name</label>
+                <input
+                  type="text"
+                  className="zb-input"
+                  placeholder="e.g. HDFC Financial Services"
+                  value={newCustName}
+                  onChange={e => setNewCustName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="zb-grid-2">
+                <div className="zb-form-group">
+                  <label className="zb-label">Contact Person</label>
+                  <input
+                    type="text"
+                    className="zb-input"
+                    placeholder="e.g. Ramesh Chandra"
+                    value={newCustContact}
+                    onChange={e => setNewCustContact(e.target.value)}
+                  />
+                </div>
+                <div className="zb-form-group">
+                  <label className="zb-label">Contact Email</label>
+                  <input
+                    type="email"
+                    className="zb-input"
+                    placeholder="e.g. ramesh@hdfc.com"
+                    value={newCustEmail}
+                    onChange={e => setNewCustEmail(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="zb-grid-2">
+                <div className="zb-form-group">
+                  <label className="zb-label">Phone Number</label>
+                  <input
+                    type="text"
+                    className="zb-input"
+                    placeholder="+91 98450 12345"
+                    value={newCustPhone}
+                    onChange={e => setNewCustPhone(e.target.value)}
+                  />
+                </div>
+                <div className="zb-form-group">
+                  <label className="zb-label">Credit Limit (₹)</label>
+                  <input
+                    type="number"
+                    className="zb-input"
+                    placeholder="500000"
+                    value={newCustLimit}
+                    onChange={e => setNewCustLimit(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="zb-form-group">
+                <label className="zb-label">Risk Assessment Grade</label>
+                <select
+                  className="zb-select"
+                  value={newCustRisk}
+                  onChange={e => setNewCustRisk(e.target.value)}
+                >
+                  <option value="A+ Low Risk">A+ Low Risk</option>
+                  <option value="A Low Risk">A Low Risk</option>
+                  <option value="A- Moderate">A- Moderate</option>
+                  <option value="B High Risk">B High Risk</option>
+                </select>
+              </div>
+              <div className="zb-modal-footer mt-4" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                <button type="button" className="zb-btn zb-btn-ghost" onClick={() => setModalType(null)}>Cancel</button>
+                <button type="submit" className="zb-btn zb-btn-primary">Save Customer</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Record Payment Received Modal ── */}
+      {modalType === 'new_payment_received' && (
+        <div className="zb-modal-backdrop" onClick={() => setModalType(null)}>
+          <div className="zb-auth-modal" onClick={e => e.stopPropagation()}>
+            <div className="zb-auth-header">
+              <h3 className="zb-auth-title">Record Payment Received</h3>
+              <button className="zb-modal-close" onClick={() => setModalType(null)}><X size={18} /></button>
+            </div>
+            <form onSubmit={handleAddPaymentReceived} className="zb-auth-form">
+              <div className="zb-form-group">
+                <label className="zb-label">Customer Name</label>
+                <input
+                  type="text"
+                  className="zb-input"
+                  placeholder="e.g. Tata Consultancy Services Ltd"
+                  value={newRecCustomer}
+                  onChange={e => setNewRecCustomer(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="zb-grid-2">
+                <div className="zb-form-group">
+                  <label className="zb-label">Invoice Reference #</label>
+                  <input
+                    type="text"
+                    className="zb-input"
+                    placeholder="e.g. INV-00101"
+                    value={newRecInv}
+                    onChange={e => setNewRecInv(e.target.value)}
+                  />
+                </div>
+                <div className="zb-form-group">
+                  <label className="zb-label">Amount Received (₹)</label>
+                  <input
+                    type="number"
+                    className="zb-input"
+                    placeholder="95000"
+                    value={newRecAmount}
+                    onChange={e => setNewRecAmount(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="zb-form-group">
+                <label className="zb-label">Payment Mode</label>
+                <select
+                  className="zb-select"
+                  value={newRecMethod}
+                  onChange={e => setNewRecMethod(e.target.value)}
+                >
+                  <option value="UPI Instant QR">UPI Instant QR (NPCI)</option>
+                  <option value="NEFT / RTGS">NEFT / RTGS</option>
+                  <option value="NetBanking HDFC">NetBanking Corporate</option>
+                  <option value="Cheque Deposit">Cheque / Demand Draft</option>
+                </select>
+              </div>
+              <div className="zb-modal-footer mt-4" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                <button type="button" className="zb-btn zb-btn-ghost" onClick={() => setModalType(null)}>Cancel</button>
+                <button type="submit" className="zb-btn zb-btn-primary">Record Payment</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── New Vendor Modal ── */}
+      {modalType === 'new_vendor' && (
+        <div className="zb-modal-backdrop" onClick={() => setModalType(null)}>
+          <div className="zb-auth-modal" onClick={e => e.stopPropagation()}>
+            <div className="zb-auth-header">
+              <h3 className="zb-auth-title">Add New Procurement Vendor</h3>
+              <button className="zb-modal-close" onClick={() => setModalType(null)}><X size={18} /></button>
+            </div>
+            <form onSubmit={handleAddVendor} className="zb-auth-form">
+              <div className="zb-form-group">
+                <label className="zb-label">Vendor / Enterprise Name</label>
+                <input
+                  type="text"
+                  className="zb-input"
+                  placeholder="e.g. HP Enterprise Solutions Pvt Ltd"
+                  value={newVendName}
+                  onChange={e => setNewVendName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="zb-grid-2">
+                <div className="zb-form-group">
+                  <label className="zb-label">Contact Person</label>
+                  <input
+                    type="text"
+                    className="zb-input"
+                    placeholder="e.g. Alok Verma"
+                    value={newVendContact}
+                    onChange={e => setNewVendContact(e.target.value)}
+                  />
+                </div>
+                <div className="zb-form-group">
+                  <label className="zb-label">GSTIN</label>
+                  <input
+                    type="text"
+                    className="zb-input"
+                    placeholder="29AABCD1234E1Z5"
+                    value={newVendGstin}
+                    onChange={e => setNewVendGstin(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="zb-grid-2">
+                <div className="zb-form-group">
+                  <label className="zb-label">Vendor Category</label>
+                  <select
+                    className="zb-select"
+                    value={newVendCat}
+                    onChange={e => setNewVendCat(e.target.value)}
+                  >
+                    <option value="Hardware & Infrastructure">Hardware & Infrastructure</option>
+                    <option value="Cloud Infrastructure">Cloud Infrastructure</option>
+                    <option value="Connectivity & Leased Line">Connectivity & Leased Line</option>
+                    <option value="Raw Materials & Hardware">Raw Materials & Hardware</option>
+                    <option value="Office Supplies">Office Supplies</option>
+                  </select>
+                </div>
+                <div className="zb-form-group">
+                  <label className="zb-label">Payment Terms</label>
+                  <select
+                    className="zb-select"
+                    value={newVendTerms}
+                    onChange={e => setNewVendTerms(e.target.value)}
+                  >
+                    <option value="Net 15">Net 15</option>
+                    <option value="Net 30">Net 30</option>
+                    <option value="Net 45">Net 45</option>
+                    <option value="Due on Receipt">Due on Receipt</option>
+                  </select>
+                </div>
+              </div>
+              <div className="zb-modal-footer mt-4" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                <button type="button" className="zb-btn zb-btn-ghost" onClick={() => setModalType(null)}>Cancel</button>
+                <button type="submit" className="zb-btn zb-btn-primary">Save Vendor</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── New Vendor Payment Made Modal ── */}
+      {modalType === 'new_payment_made' && (
+        <div className="zb-modal-backdrop" onClick={() => setModalType(null)}>
+          <div className="zb-auth-modal" onClick={e => e.stopPropagation()}>
+            <div className="zb-auth-header">
+              <h3 className="zb-auth-title">Record Vendor Payment Remittance</h3>
+              <button className="zb-modal-close" onClick={() => setModalType(null)}><X size={18} /></button>
+            </div>
+            <form onSubmit={handleAddPaymentMade} className="zb-auth-form">
+              <div className="zb-form-group">
+                <label className="zb-label">Vendor Name</label>
+                <input
+                  type="text"
+                  className="zb-input"
+                  placeholder="e.g. Dell Technologies India Pvt Ltd"
+                  value={newPmtVendor}
+                  onChange={e => setNewPmtVendor(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="zb-grid-2">
+                <div className="zb-form-group">
+                  <label className="zb-label">Bill Reference #</label>
+                  <input
+                    type="text"
+                    className="zb-input"
+                    placeholder="e.g. BILL-4091"
+                    value={newPmtBill}
+                    onChange={e => setNewPmtBill(e.target.value)}
+                  />
+                </div>
+                <div className="zb-form-group">
+                  <label className="zb-label">Payment Amount (₹)</label>
+                  <input
+                    type="number"
+                    className="zb-input"
+                    placeholder="110000"
+                    value={newPmtAmount}
+                    onChange={e => setNewPmtAmount(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="zb-grid-2">
+                <div className="zb-form-group">
+                  <label className="zb-label">Payment Method</label>
+                  <select
+                    className="zb-select"
+                    value={newPmtMethod}
+                    onChange={e => setNewPmtMethod(e.target.value)}
+                  >
+                    <option value="Corporate NetBanking">Corporate NetBanking</option>
+                    <option value="NEFT Transfer">NEFT Transfer</option>
+                    <option value="RTGS Remittance">RTGS Remittance</option>
+                    <option value="Company Credit Card">Company Credit Card</option>
+                  </select>
+                </div>
+                <div className="zb-form-group">
+                  <label className="zb-label">Debited Account</label>
+                  <select
+                    className="zb-select"
+                    value={newPmtAccount}
+                    onChange={e => setNewPmtAccount(e.target.value)}
+                  >
+                    <option value="HDFC Corporate Current A/C 9901">HDFC Corporate Current A/C 9901</option>
+                    <option value="ICICI Current Account 2244">ICICI Current Account 2244</option>
+                    <option value="State Bank of India CC A/C 4501">State Bank of India CC A/C 4501</option>
+                  </select>
+                </div>
+              </div>
+              <div className="zb-modal-footer mt-4" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                <button type="button" className="zb-btn zb-btn-ghost" onClick={() => setModalType(null)}>Cancel</button>
+                <button type="submit" className="zb-btn zb-btn-primary">Record Remittance</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 
@@ -1353,6 +1792,16 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
                           >
                             <Download size={13} style={{ marginRight: '4px' }} /> Download
                           </button>
+                          {inv.status === 'Overdue' && (
+                            <button
+                              className="zb-table-btn"
+                              style={{ color: '#dc2626', borderColor: '#fecaca', background: '#fef2f2' }}
+                              onClick={() => handleSendOverdueReminder(inv)}
+                              title="Send overdue reminder email via Gmail SMTP"
+                            >
+                              <Send size={13} style={{ marginRight: '4px' }} /> Remind
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1738,7 +2187,7 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
                 <div className="font-semibold text-main">Customer Directory & 360° Intelligence</div>
                 <button
                   className="zb-btn zb-btn-primary zb-btn-sm"
-                  onClick={() => showToast('Customer created: HDFC Financial Services added to Customer Directory.')}
+                  onClick={() => setModalType('new_customer')}
                 >
                   <Plus size={14} /> Add Customer
                 </button>
@@ -1824,7 +2273,7 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
                 <div className="font-semibold text-main">Customer Payments Received Register</div>
                 <button
                   className="zb-btn zb-btn-primary zb-btn-sm"
-                  onClick={() => showToast('Payment receipt recorded for ₹95,000 (UPI QR). Ledger balance settled.')}
+                  onClick={() => setModalType('new_payment_received')}
                 >
                   <Plus size={14} /> Record Payment
                 </button>
@@ -2385,7 +2834,7 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
                 <div className="font-semibold text-main">Vendor Directory & Procurement Partners</div>
                 <button
                   className="zb-btn zb-btn-primary zb-btn-sm"
-                  onClick={() => showToast('Vendor added: HP Enterprise Solutions Pvt Ltd added to Vendor Directory.')}
+                  onClick={() => setModalType('new_vendor')}
                 >
                   <Plus size={14} /> Add Vendor
                 </button>
@@ -2486,7 +2935,7 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
                 <div className="font-semibold text-main">Vendor Payments Made & Bank Remittance</div>
                 <button
                   className="zb-btn zb-btn-primary zb-btn-sm"
-                  onClick={() => showToast('Vendor payment voucher recorded for ₹1,10,000 via NetBanking.')}
+                  onClick={() => setModalType('new_payment_made')}
                 >
                   <Plus size={14} /> Make Payment
                 </button>
@@ -2581,6 +3030,102 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
 
   // Inventory Module Render (Photo 4)
   if (module === 'inventory') {
+    const handleAddAdjustment = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newAdjItem) return;
+      const newAdj = {
+        id: `ADJ-2026-0${adjustmentsList.length + 52}`,
+        item: newAdjItem,
+        sku: newAdjSku || 'SKU-GEN-001',
+        type: newAdjType,
+        qty: Number(newAdjQty) || 0,
+        reason: newAdjReason,
+        date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        user: 'Admin'
+      };
+      setAdjustmentsList([newAdj, ...adjustmentsList]);
+      setModalType(null);
+      setNewAdjItem('');
+      setNewAdjSku('');
+      setNewAdjQty('');
+      showToast(`✓ Adjustment ${newAdj.id} recorded. Stock balance updated.`);
+    };
+
+    const handleAddPackage = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newPkgCustomer) return;
+      const newPkg = {
+        id: `PKG-2026-${packagesList.length + 211}`,
+        orderRef: newPkgOrderRef || `SO-${5010 + packagesList.length + 3}`,
+        customer: newPkgCustomer,
+        dimensions: newPkgDimensions,
+        weight: newPkgWeight,
+        status: 'Packed & Weighed',
+        date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+      };
+      setPackagesList([newPkg, ...packagesList]);
+      setModalType(null);
+      setNewPkgOrderRef('');
+      setNewPkgCustomer('');
+      showToast(`✓ Package ${newPkg.id} created with verified packing slip.`);
+    };
+
+    const handleAddShipment = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newShpDestination) return;
+      const newShp = {
+        id: `SHP-2026-${shipmentsList.length + 119}`,
+        carrier: newShpCarrier,
+        trackingNo: newShpTracking || `${newShpCarrier.slice(0, 3).toUpperCase()}${Math.floor(100000000 + Math.random() * 900000000)}IN`,
+        destination: newShpDestination,
+        shippedDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        estDelivery: newShpEstDelivery || 'Next Business Day',
+        status: 'In Transit'
+      };
+      setShipmentsList([newShp, ...shipmentsList]);
+      setModalType(null);
+      setNewShpTracking('');
+      setNewShpDestination('');
+      setNewShpEstDelivery('');
+      showToast(`✓ Shipment ${newShp.id} dispatched via ${newShp.carrier}.`);
+    };
+
+    const handleAddMoveOrder = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newMvoItems) return;
+      const newMvo = {
+        id: `MVO-2026-0${moveOrdersList.length + 34}`,
+        fromLoc: newMvoFrom,
+        toLoc: newMvoTo,
+        items: newMvoItems,
+        date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        status: 'In Transit'
+      };
+      setMoveOrdersList([newMvo, ...moveOrdersList]);
+      setModalType(null);
+      setNewMvoItems('');
+      showToast(`✓ Move Order ${newMvo.id} created. Transfer in transit.`);
+    };
+
+    const handleAddPutaway = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newPtwItem || !newPtwBin) return;
+      const newPtw = {
+        id: `PTW-2026-0${putawaysList.length + 78}`,
+        item: newPtwItem,
+        receivingDock: newPtwDock,
+        targetBin: newPtwBin,
+        operator: newPtwOperator,
+        status: 'Completed',
+        date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+      };
+      setPutawaysList([newPtw, ...putawaysList]);
+      setModalType(null);
+      setNewPtwItem('');
+      setNewPtwBin('');
+      showToast(`✓ Putaway ${newPtw.id} logged. Stored in ${newPtw.targetBin}.`);
+    };
+
     return (
       <div className="zb-page zb-module-page">
         {toastMessage && <div className="zb-floating-toast">{toastMessage}</div>}
@@ -2603,7 +3148,13 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
             </button>
             <button
               className="zb-btn zb-btn-primary"
-              onClick={() => showToast('Stock operation initiated. Inventory levels synchronized with central ERP.')}
+              onClick={() => {
+                if (inventorySubTab === 'adjustments') setModalType('new_adjustment');
+                else if (inventorySubTab === 'packages') setModalType('new_package');
+                else if (inventorySubTab === 'shipments') setModalType('new_shipment');
+                else if (inventorySubTab === 'move_orders') setModalType('new_move_order');
+                else if (inventorySubTab === 'putaways') setModalType('new_putaway');
+              }}
             >
               <Plus size={16} /> New Inventory Activity
             </button>
@@ -2661,7 +3212,7 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
               <div className="font-semibold text-main">Physical Inventory Stock Adjustments & Write-Offs</div>
               <button
                 className="zb-btn zb-btn-primary zb-btn-sm"
-                onClick={() => showToast('New Adjustment created: Physical stock count verified and updated.')}
+                onClick={() => setModalType('new_adjustment')}
               >
                 <Plus size={14} /> New Adjustment
               </button>
@@ -2710,7 +3261,7 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
               <div className="font-semibold text-main">Customer Order Packing & Parcel Slips</div>
               <button
                 className="zb-btn zb-btn-primary zb-btn-sm"
-                onClick={() => showToast('New Package slip PKG-2026-211 generated with barcode.')}
+                onClick={() => setModalType('new_package')}
               >
                 <Plus size={14} /> New Package
               </button>
@@ -2755,7 +3306,7 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
               <div className="font-semibold text-main">Carrier Shipments & Real-Time Logistics Tracking</div>
               <button
                 className="zb-btn zb-btn-primary zb-btn-sm"
-                onClick={() => showToast('New Shipment SHP-2026-119 dispatched via BlueDart Express.')}
+                onClick={() => setModalType('new_shipment')}
               >
                 <Plus size={14} /> Create Shipment
               </button>
@@ -2800,7 +3351,7 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
               <div className="font-semibold text-main">Inter-Warehouse Stock Move Orders & Transfers</div>
               <button
                 className="zb-btn zb-btn-primary zb-btn-sm"
-                onClick={() => showToast('Move Order MVO-2026-034 initiated: Stock transfer dispatched.')}
+                onClick={() => setModalType('new_move_order')}
               >
                 <Plus size={14} /> New Move Order
               </button>
@@ -2843,7 +3394,7 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
               <div className="font-semibold text-main">Warehouse Inward Putaway & Bin Allocation</div>
               <button
                 className="zb-btn zb-btn-primary zb-btn-sm"
-                onClick={() => showToast('Putaway PTW-2026-078 logged: Items stocked in Bin Aisle 2.')}
+                onClick={() => setModalType('new_putaway')}
               >
                 <Plus size={14} /> Log Putaway
               </button>
@@ -2878,6 +3429,311 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* ── Inventory Modals ── */}
+        {modalType === 'new_adjustment' && (
+          <div className="zb-modal-backdrop" onClick={() => setModalType(null)}>
+            <div className="zb-auth-modal" onClick={e => e.stopPropagation()}>
+              <div className="zb-auth-header">
+                <h3 className="zb-auth-title">Record Inventory Adjustment</h3>
+                <button className="zb-modal-close" onClick={() => setModalType(null)}><X size={18} /></button>
+              </div>
+              <form onSubmit={handleAddAdjustment} className="zb-auth-form">
+                <div className="zb-form-group">
+                  <label className="zb-label">Item Name</label>
+                  <input
+                    type="text"
+                    className="zb-input"
+                    placeholder="e.g. Dell UltraSharp 27 4K Monitor"
+                    value={newAdjItem}
+                    onChange={e => setNewAdjItem(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="zb-grid-2">
+                  <div className="zb-form-group">
+                    <label className="zb-label">SKU Code</label>
+                    <input
+                      type="text"
+                      className="zb-input"
+                      placeholder="e.g. MON-DELL-4K27"
+                      value={newAdjSku}
+                      onChange={e => setNewAdjSku(e.target.value)}
+                    />
+                  </div>
+                  <div className="zb-form-group">
+                    <label className="zb-label">Adjustment Mode</label>
+                    <select
+                      className="zb-select"
+                      value={newAdjType}
+                      onChange={e => setNewAdjType(e.target.value)}
+                    >
+                      <option value="Quantity">Quantity Adjustment</option>
+                      <option value="Value">Value Revaluation</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="zb-form-group">
+                  <label className="zb-label">Quantity Change (positive or negative)</label>
+                  <input
+                    type="number"
+                    className="zb-input"
+                    placeholder="e.g. -2 or 5"
+                    value={newAdjQty}
+                    onChange={e => setNewAdjQty(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="zb-form-group">
+                  <label className="zb-label">Reason</label>
+                  <select
+                    className="zb-select"
+                    value={newAdjReason}
+                    onChange={e => setNewAdjReason(e.target.value)}
+                  >
+                    <option value="Physical Stock Count Variance">Physical Stock Count Variance</option>
+                    <option value="Damaged Goods / Scrap">Damaged Goods / Scrap</option>
+                    <option value="Supplier Goodwill Free Stock">Supplier Goodwill Free Stock</option>
+                    <option value="Inventory Revaluation">Inventory Revaluation</option>
+                    <option value="Internal Office Consumption">Internal Office Consumption</option>
+                  </select>
+                </div>
+                <button type="submit" className="zb-btn zb-btn-primary zb-btn-block">
+                  Save Adjustment
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {modalType === 'new_package' && (
+          <div className="zb-modal-backdrop" onClick={() => setModalType(null)}>
+            <div className="zb-auth-modal" onClick={e => e.stopPropagation()}>
+              <div className="zb-auth-header">
+                <h3 className="zb-auth-title">Create Packing Slip</h3>
+                <button className="zb-modal-close" onClick={() => setModalType(null)}><X size={18} /></button>
+              </div>
+              <form onSubmit={handleAddPackage} className="zb-auth-form">
+                <div className="zb-form-group">
+                  <label className="zb-label">Customer Name</label>
+                  <input
+                    type="text"
+                    className="zb-input"
+                    placeholder="e.g. Infosys BPM Limited"
+                    value={newPkgCustomer}
+                    onChange={e => setNewPkgCustomer(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="zb-form-group">
+                  <label className="zb-label">Sales Order Reference</label>
+                  <input
+                    type="text"
+                    className="zb-input"
+                    placeholder="e.g. SO-5014"
+                    value={newPkgOrderRef}
+                    onChange={e => setNewPkgOrderRef(e.target.value)}
+                  />
+                </div>
+                <div className="zb-grid-2">
+                  <div className="zb-form-group">
+                    <label className="zb-label">Dimensions</label>
+                    <input
+                      type="text"
+                      className="zb-input"
+                      placeholder="e.g. 45x35x25 cm"
+                      value={newPkgDimensions}
+                      onChange={e => setNewPkgDimensions(e.target.value)}
+                    />
+                  </div>
+                  <div className="zb-form-group">
+                    <label className="zb-label">Total Weight</label>
+                    <input
+                      type="text"
+                      className="zb-input"
+                      placeholder="e.g. 4.8 kg"
+                      value={newPkgWeight}
+                      onChange={e => setNewPkgWeight(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <button type="submit" className="zb-btn zb-btn-primary zb-btn-block">
+                  Generate Package Slip
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {modalType === 'new_shipment' && (
+          <div className="zb-modal-backdrop" onClick={() => setModalType(null)}>
+            <div className="zb-auth-modal" onClick={e => e.stopPropagation()}>
+              <div className="zb-auth-header">
+                <h3 className="zb-auth-title">Dispatch Carrier Shipment</h3>
+                <button className="zb-modal-close" onClick={() => setModalType(null)}><X size={18} /></button>
+              </div>
+              <form onSubmit={handleAddShipment} className="zb-auth-form">
+                <div className="zb-form-group">
+                  <label className="zb-label">Logistics Carrier</label>
+                  <select
+                    className="zb-select"
+                    value={newShpCarrier}
+                    onChange={e => setNewShpCarrier(e.target.value)}
+                  >
+                    <option value="BlueDart Express">BlueDart Express</option>
+                    <option value="Delhivery Logistics">Delhivery Logistics</option>
+                    <option value="FedEx India">FedEx India</option>
+                    <option value="DTDC Courier">DTDC Courier</option>
+                  </select>
+                </div>
+                <div className="zb-form-group">
+                  <label className="zb-label">Destination Hub / City</label>
+                  <input
+                    type="text"
+                    className="zb-input"
+                    placeholder="e.g. Electronic City, Bangalore"
+                    value={newShpDestination}
+                    onChange={e => setNewShpDestination(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="zb-grid-2">
+                  <div className="zb-form-group">
+                    <label className="zb-label">AWB / Tracking Number</label>
+                    <input
+                      type="text"
+                      className="zb-input"
+                      placeholder="Leave blank to auto-generate"
+                      value={newShpTracking}
+                      onChange={e => setNewShpTracking(e.target.value)}
+                    />
+                  </div>
+                  <div className="zb-form-group">
+                    <label className="zb-label">Est. Delivery Date</label>
+                    <input
+                      type="text"
+                      className="zb-input"
+                      placeholder="e.g. 08 Sep 2026"
+                      value={newShpEstDelivery}
+                      onChange={e => setNewShpEstDelivery(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <button type="submit" className="zb-btn zb-btn-primary zb-btn-block">
+                  Dispatch Shipment
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {modalType === 'new_move_order' && (
+          <div className="zb-modal-backdrop" onClick={() => setModalType(null)}>
+            <div className="zb-auth-modal" onClick={e => e.stopPropagation()}>
+              <div className="zb-auth-header">
+                <h3 className="zb-auth-title">Create Warehouse Move Order</h3>
+                <button className="zb-modal-close" onClick={() => setModalType(null)}><X size={18} /></button>
+              </div>
+              <form onSubmit={handleAddMoveOrder} className="zb-auth-form">
+                <div className="zb-form-group">
+                  <label className="zb-label">Source Warehouse</label>
+                  <input
+                    type="text"
+                    className="zb-input"
+                    value={newMvoFrom}
+                    onChange={e => setNewMvoFrom(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="zb-form-group">
+                  <label className="zb-label">Destination Warehouse</label>
+                  <input
+                    type="text"
+                    className="zb-input"
+                    value={newMvoTo}
+                    onChange={e => setNewMvoTo(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="zb-form-group">
+                  <label className="zb-label">Transfer Line Items & Quantity</label>
+                  <input
+                    type="text"
+                    className="zb-input"
+                    placeholder="e.g. Dell UltraSharp 27 4K Monitor (10 units)"
+                    value={newMvoItems}
+                    onChange={e => setNewMvoItems(e.target.value)}
+                    required
+                  />
+                </div>
+                <button type="submit" className="zb-btn zb-btn-primary zb-btn-block">
+                  Initiate Stock Transfer
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {modalType === 'new_putaway' && (
+          <div className="zb-modal-backdrop" onClick={() => setModalType(null)}>
+            <div className="zb-auth-modal" onClick={e => e.stopPropagation()}>
+              <div className="zb-auth-header">
+                <h3 className="zb-auth-title">Log Inward Putaway</h3>
+                <button className="zb-modal-close" onClick={() => setModalType(null)}><X size={18} /></button>
+              </div>
+              <form onSubmit={handleAddPutaway} className="zb-auth-form">
+                <div className="zb-form-group">
+                  <label className="zb-label">Stock Item Name</label>
+                  <input
+                    type="text"
+                    className="zb-input"
+                    placeholder="e.g. Ergonomic Mesh Office Chair"
+                    value={newPtwItem}
+                    onChange={e => setNewPtwItem(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="zb-grid-2">
+                  <div className="zb-form-group">
+                    <label className="zb-label">Receiving Dock</label>
+                    <select
+                      className="zb-select"
+                      value={newPtwDock}
+                      onChange={e => setNewPtwDock(e.target.value)}
+                    >
+                      <option value="Dock A">Dock A (Main Receiving)</option>
+                      <option value="Dock B">Dock B (Bulk Containers)</option>
+                      <option value="Dock C">Dock C (Express Courier)</option>
+                    </select>
+                  </div>
+                  <div className="zb-form-group">
+                    <label className="zb-label">Assigned Bin / Rack</label>
+                    <input
+                      type="text"
+                      className="zb-input"
+                      placeholder="e.g. Aisle 2, Rack B, Bin 08"
+                      value={newPtwBin}
+                      onChange={e => setNewPtwBin(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="zb-form-group">
+                  <label className="zb-label">Warehouse Operator</label>
+                  <input
+                    type="text"
+                    className="zb-input"
+                    value={newPtwOperator}
+                    onChange={e => setNewPtwOperator(e.target.value)}
+                  />
+                </div>
+                <button type="submit" className="zb-btn zb-btn-primary zb-btn-block">
+                  Log Putaway & Stock Items
+                </button>
+              </form>
+            </div>
           </div>
         )}
       </div>
@@ -3093,7 +3949,7 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
         items: [
           'Workflow Rule Triggers & Execution Log',
           'Scheduled Payment Reminders Dispatch Log',
-          'AutoScan OCR Batch Processing Summary',
+          'Batch Document Processing Summary',
         ],
       },
     };
@@ -4244,77 +5100,6 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
       showToast(`Document ${newDoc.title} uploaded & encrypted into vault!`);
     };
 
-    const handleRunAutoScan = (sampleKey: string) => {
-      setIsScanning(true);
-      setTimeout(() => {
-        setIsScanning(false);
-        if (sampleKey === 'cisco') {
-          setScanResult({
-            vendor: 'Cisco Systems India Pvt Ltd',
-            invoiceNo: 'CIS-IN-44091',
-            date: '02 Sep 2026',
-            subtotal: 75000,
-            cgst: 6750,
-            sgst: 6750,
-            total: 88500,
-            confidence: 99.8,
-          });
-        } else if (sampleKey === 'dell') {
-          setScanResult({
-            vendor: 'Dell Technologies India',
-            invoiceNo: 'DEL-INV-88912',
-            date: '04 Sep 2026',
-            subtotal: 156779.66,
-            cgst: 14110.17,
-            sgst: 14110.17,
-            total: 185000,
-            confidence: 99.1,
-          });
-        } else {
-          setScanResult({
-            vendor: 'Hewlett Packard Enterprise India',
-            invoiceNo: 'HPE-IN-98214',
-            date: '03 Sep 2026',
-            subtotal: 120000,
-            cgst: 10800,
-            sgst: 10800,
-            total: 141600,
-            confidence: 99.4,
-          });
-        }
-        showToast('Document AutoScan complete! AI extracted all fields with 99%+ confidence.');
-      }, 400);
-    };
-
-    const handleCreateBillFromScan = () => {
-      if (!scanResult) return;
-      const newBill = {
-        id: `BILL-${8093 + bills.length}`,
-        vendor: scanResult.vendor,
-        category: 'Hardware Procurement',
-        date: scanResult.date,
-        amount: scanResult.total,
-        status: 'Pending',
-      };
-      setBills([newBill, ...bills]);
-      showToast(`Created Vendor Bill ${newBill.id} from AutoScan OCR!`);
-    };
-
-    const handleFileScanToVault = () => {
-      if (!scanResult) return;
-      const newDoc = {
-        id: `DOC-${800 + documentsList.length + 1}`,
-        title: `${scanResult.invoiceNo}_AutoScan.pdf`,
-        category: 'Invoices & Bills',
-        uploadedBy: 'AutoScan AI Engine',
-        date: scanResult.date,
-        size: '1.6 MB',
-        verified: true,
-      };
-      setDocumentsList([newDoc, ...documentsList]);
-      showToast(`Document ${newDoc.title} cataloged into audit vault!`);
-    };
-
     return (
       <div className="zb-page zb-module-page">
         {toastMessage && <div className="zb-floating-toast">{toastMessage}</div>}
@@ -4322,7 +5107,7 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
         <div className="zb-page-header zb-flex-between">
           <div>
             <h1 className="zb-page-title">Compliance Vault & Document Archive</h1>
-            <p className="zb-page-subtitle">Document evidence repository, AI receipt OCR AutoScan engine, and statutory audit archive</p>
+            <p className="zb-page-subtitle">Document evidence repository and statutory audit archive</p>
           </div>
           <div className="zb-flex-align gap-2">
             <button
@@ -4340,30 +5125,6 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
             </button>
           </div>
         </div>
-
-        {/* Sub-Navigation Tabs Bar (Document Section 18) */}
-        <div className="zb-subnav-bar">
-          <button
-            className={`zb-subnav-item ${documentsSubTab === 'vault' ? 'active' : ''}`}
-            onClick={() => setDocumentsSubTab('vault')}
-          >
-            <FileText size={15} />
-            <span>Document Vault & Files</span>
-            <span className="zb-subnav-badge">{documentsList.length}</span>
-          </button>
-          <button
-            className={`zb-subnav-item ${documentsSubTab === 'autoscan' ? 'active' : ''}`}
-            onClick={() => setDocumentsSubTab('autoscan')}
-          >
-            <Sparkles size={15} className="text-primary" />
-            <span>AutoScan & Receipt OCR</span>
-            <span className="zb-subnav-badge" style={{ background: '#eff6ff', color: '#0066cc' }}>AI Enabled</span>
-          </button>
-        </div>
-
-        {/* 1. Vault Files Sub-Module */}
-        {documentsSubTab === 'vault' && (
-          <>
             <div className="zb-dashboard-grid four-col zb-section-spacing">
               <div className="zb-metric-mini-card">
                 <div className="zb-metric-mini-label">Total Vault Files</div>
@@ -4491,116 +5252,6 @@ Registered Office: Tech Park Plaza, Outer Ring Road, Bengaluru 560103
                 </table>
               </div>
             </div>
-          </>
-        )}
-
-        {/* 2. AutoScan & Receipt OCR Sub-Module (Page 16-17) */}
-        {documentsSubTab === 'autoscan' && (
-          <div className="zb-autoscan-card zb-section-spacing">
-            <div className="zb-flex-between align-start mb-4">
-              <div>
-                <div className="zb-flex-align gap-2">
-                  <h3 className="font-semibold text-dark text-lg">AI AutoScan & Receipt OCR Engine</h3>
-                  <span className="zb-ocr-chip"><Sparkles size={13} /> OCR Vision v4.2</span>
-                </div>
-                <p className="text-muted text-sm mt-1">
-                  Upload vendor invoices, scanned receipts, or bills to automatically extract vendor details, line items, taxes, and amounts.
-                </p>
-              </div>
-            </div>
-
-            <div className="zb-dashboard-grid two-col">
-              {/* Scan Trigger / Sample Selector */}
-              <div className="zb-card p-4">
-                <h4 className="font-semibold text-dark mb-2">1. Select Document or Receipt to Scan</h4>
-                <div className="zb-form-group">
-                  <label className="zb-label">Choose Sample Document</label>
-                  <select
-                    className="zb-select"
-                    value={autoScanSample}
-                    onChange={e => {
-                      setAutoScanSample(e.target.value);
-                      handleRunAutoScan(e.target.value);
-                    }}
-                  >
-                    <option value="hpe">Hewlett Packard Enterprise Invoice (HPE-IN-98214 - ₹1,41,600)</option>
-                    <option value="cisco">Cisco Systems India Switch Bill (CIS-IN-44091 - ₹88,500)</option>
-                    <option value="dell">Dell Technologies Precision Order (DEL-INV-88912 - ₹1,85,000)</option>
-                  </select>
-                </div>
-
-                <div style={{ border: '2px dashed #cbd5e1', borderRadius: '8px', padding: '24px', textAlign: 'center', background: '#f8fafc', marginBottom: '16px' }}>
-                  <UploadCloud size={32} className="text-muted" style={{ margin: '0 auto 8px auto' }} />
-                  <div className="font-medium text-dark text-sm">Drag & drop receipt image or PDF here</div>
-                  <div className="text-xs text-muted mt-1">Supports PDF, PNG, JPEG, TIFF (Up to 25MB)</div>
-                </div>
-
-                <button
-                  className="zb-btn zb-btn-primary zb-btn-block"
-                  disabled={isScanning}
-                  onClick={() => handleRunAutoScan(autoScanSample)}
-                >
-                  {isScanning ? (
-                    <span>Extracting Text with OCR...</span>
-                  ) : (
-                    <>
-                      <Sparkles size={14} />
-                      <span>Run AI AutoScan Extraction</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* Extracted Metadata Preview */}
-              <div className="zb-card p-4">
-                <div className="zb-flex-between mb-3">
-                  <h4 className="font-semibold text-dark">2. Extracted Data & Confidence</h4>
-                  {scanResult && (
-                    <span className="zb-status-pill paid">
-                      {scanResult.confidence}% Confidence
-                    </span>
-                  )}
-                </div>
-
-                {scanResult ? (
-                  <div>
-                    <div className="zb-ocr-match-box">
-                      <div className="zb-dashboard-grid two-col" style={{ gap: '8px', fontSize: '13px' }}>
-                        <div><span className="text-muted">Vendor Name:</span> <strong className="text-dark">{scanResult.vendor}</strong></div>
-                        <div><span className="text-muted">Invoice No:</span> <strong className="font-mono text-primary">{scanResult.invoiceNo}</strong></div>
-                        <div><span className="text-muted">Invoice Date:</span> <strong>{scanResult.date}</strong></div>
-                        <div><span className="text-muted">Vendor GSTIN:</span> <strong className="font-mono">29AAACH1234F1Z8</strong></div>
-                        <div><span className="text-muted">Subtotal:</span> <strong>{formatINR(scanResult.subtotal)}</strong></div>
-                        <div><span className="text-muted">CGST (9%):</span> <strong>{formatINR(scanResult.cgst)}</strong></div>
-                        <div><span className="text-muted">SGST (9%):</span> <strong>{formatINR(scanResult.sgst)}</strong></div>
-                        <div><span className="text-muted">Grand Total:</span> <strong className="text-success text-base">{formatINR(scanResult.total)}</strong></div>
-                      </div>
-                    </div>
-
-                    <div className="zb-flex-align gap-3 mt-4">
-                      <button
-                        className="zb-btn zb-btn-primary"
-                        onClick={handleCreateBillFromScan}
-                      >
-                        <ShoppingBag size={14} />
-                        <span>Create Vendor Bill from Scan</span>
-                      </button>
-                      <button
-                        className="zb-btn zb-btn-secondary"
-                        onClick={handleFileScanToVault}
-                      >
-                        <FileCheck size={14} />
-                        <span>Store in Statutory Vault</span>
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center p-4 text-muted">Click "Run AI AutoScan Extraction" to preview data</div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Real Document Viewer Modal */}
         <DocumentViewerModal

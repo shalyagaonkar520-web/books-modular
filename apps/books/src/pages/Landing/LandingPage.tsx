@@ -4,7 +4,6 @@ import {
   ArrowRight,
   CheckCircle2,
   TrendingUp,
-  ShieldCheck,
   Zap,
   Building2,
   Receipt,
@@ -77,13 +76,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   className="zb-landing-btn-text"
                   onClick={() => onOpenAuth('login')}
                 >
-                  Sign In
+                  Log In
                 </button>
                 <button
                   className="zb-btn zb-btn-primary zb-btn-glow"
-                  onClick={onEnterDemo}
+                  onClick={() => onOpenAuth('register')}
                 >
-                  <span>Get Started Free</span>
+                  <span>Sign Up</span>
                   <ArrowRight size={16} />
                 </button>
               </>
@@ -113,13 +112,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </p>
 
           <div className="zb-hero-cta-group">
-            <button className="zb-btn zb-btn-primary zb-btn-lg zb-btn-glow" onClick={onEnterDemo}>
-              <span>Launch Live Interactive App</span>
+            <button className="zb-btn zb-btn-primary zb-btn-lg zb-btn-glow" onClick={() => onOpenAuth('register')}>
+              <span>Sign Up</span>
               <ArrowRight size={18} />
             </button>
             <button className="zb-btn zb-btn-outline-dark zb-btn-lg" onClick={() => onOpenAuth('login')}>
-              <ShieldCheck size={18} className="text-primary" />
-              <span>OAuth 2.0 & Demo Sign In</span>
+              <span>Log In</span>
             </button>
           </div>
 
@@ -514,11 +512,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             Join thousands of modern enterprises running their finances on Rooman Books.
           </p>
           <div className="zb-flex-align justify-center gap-3">
-            <button className="zb-btn zb-btn-primary zb-btn-lg zb-btn-glow" onClick={onEnterDemo}>
-              Open Live Application Now
+            <button className="zb-btn zb-btn-primary zb-btn-lg zb-btn-glow" onClick={() => onOpenAuth('register')}>
+              Sign Up Free
             </button>
             <button className="zb-btn zb-btn-secondary zb-btn-lg" onClick={() => onOpenAuth('login')}>
-              Sign In to Account
+              Log In
             </button>
           </div>
         </div>

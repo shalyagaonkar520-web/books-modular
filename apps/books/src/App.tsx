@@ -9,10 +9,11 @@ import { AuthModal } from './components/auth/AuthModal';
 import { itemRepository } from './services/itemRepository';
 import { ApiClient, UserProfile } from './services/apiClient';
 import { Item } from './types/item';
+import { LoginPage } from './pages/Auth/LoginPage';
 
 export const App: React.FC = () => {
   // Navigation & View Mode
-  const [currentView, setCurrentView] = useState<'landing' | 'app'>('landing');
+  const [currentView, setCurrentView] = useState<'landing' | 'login' | 'app'>('landing');
   const [activeModule, setActiveModule] = useState<NavModule>('home');
   const [activeSubItem, setActiveSubItem] = useState<string | null>(null);
 
@@ -85,7 +86,7 @@ export const App: React.FC = () => {
   // Authentication Handlers
   const handleOpenAuth = (mode: 'login' | 'register') => {
     setAuthMode(mode);
-    setIsAuthModalOpen(true);
+    setCurrentView('login');
   };
 
   const handleLoginSuccess = (user: UserProfile) => {
@@ -114,6 +115,17 @@ export const App: React.FC = () => {
     }
     setCurrentView('app');
   };
+
+  // If in Login Page view:
+  if (currentView === 'login') {
+    return (
+      <LoginPage
+        onLoginSuccess={handleLoginSuccess}
+        onBackToLanding={() => setCurrentView('landing')}
+        initialMode={authMode === 'register' ? 'signup' : 'signin'}
+      />
+    );
+  }
 
   // If in Landing Page view:
   if (currentView === 'landing') {
@@ -180,9 +192,9 @@ export const App: React.FC = () => {
                 setActiveModule('items');
                 setActiveSubItem('items_list');
               }}
-              onNavigateModule={(mod) => {
+              onNavigateModule={(mod, subId) => {
                 setActiveModule(mod);
-                setActiveSubItem(null);
+                setActiveSubItem(subId || null);
               }}
               onQuickAddItem={() => {
                 setActiveModule('items');

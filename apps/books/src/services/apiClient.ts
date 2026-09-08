@@ -461,6 +461,60 @@ export class ApiClient {
     if (!response.ok) throw new Error('Failed to generate payslip');
     return response.json();
   }
+
+  public static async sendDueReminder(params: {
+    toEmail: string;
+    customerName: string;
+    invoiceId: string;
+    amount: number;
+    dueDate: string;
+    daysOverdue?: number;
+  }): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${API_BASE}/email/send-due-reminder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to_email: params.toEmail,
+        customer_name: params.customerName,
+        invoice_id: params.invoiceId,
+        amount: params.amount,
+        due_date: params.dueDate,
+        days_overdue: params.daysOverdue || 4,
+      }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Failed to send overdue reminder' }));
+      throw new Error(err.detail || 'Failed to dispatch email');
+    }
+    return response.json();
+  }
+
+  public static async sendInvoiceEmail(params: {
+    toEmail: string;
+    customerName: string;
+    invoiceId: string;
+    amount: number;
+    dueDate: string;
+    itemsSummary?: string;
+  }): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${API_BASE}/email/send-invoice`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to_email: params.toEmail,
+        customer_name: params.customerName,
+        invoice_id: params.invoiceId,
+        amount: params.amount,
+        due_date: params.dueDate,
+        items_summary: params.itemsSummary,
+      }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Failed to email invoice' }));
+      throw new Error(err.detail || 'Failed to dispatch invoice email');
+    }
+    return response.json();
+  }
 }
 
 // Export models for Invoices, Documents & Payroll

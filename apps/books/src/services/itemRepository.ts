@@ -143,6 +143,8 @@ const DEFAULT_SEED_ITEMS: Item[] = [
 ];
 
 import { ApiClient } from './apiClient';
+import { db } from './firebase';
+import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
 
 export class LocalStorageItemRepository implements ItemRepository {
   private listeners: (() => void)[] = [];
@@ -192,14 +194,43 @@ export class LocalStorageItemRepository implements ItemRepository {
   }
 
   /**
-   * Sync cache with items from cloud server
+   * Sync cache with items from Firebase Firestore & cloud server
    */
   public async syncWithServer(): Promise<Item[]> {
+    // 1. Try Firebase Firestore
+    try {
+      const colRef = collection(db, 'items');
+      const snapshot = await getDocs(colRef);
+      if (!snapshot.empty) {
+        const firestoreItems: Item[] = [];
+        snapshot.forEach(docSnap => {
+          firestoreItems.push(docSnap.data() as Item);
+        });
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(firestoreItems));
+        this.isServerHealthy = true;
+        this.notify();
+        return firestoreItems;
+      }
+    } catch (firebaseErr) {
+      console.warn('Firebase Firestore read note:', firebaseErr);
+    }
+
+    // 2. Fallback to FastAPI server or seed
     try {
       const serverItems = await ApiClient.getItems();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(serverItems));
       this.isServerHealthy = true;
       this.notify();
+
+      // Seed initial items to Firebase Firestore in background
+      try {
+        for (const item of serverItems) {
+          setDoc(doc(db, 'items', item.id), item).catch(() => {});
+        }
+      } catch (seedErr) {
+        console.warn('Firebase initial seed note:', seedErr);
+      }
+
       return serverItems;
     } catch (e) {
       this.isServerHealthy = false;
@@ -216,10 +247,22 @@ export class LocalStorageItemRepository implements ItemRepository {
       const items = [created, ...this.getItems().filter(i => i.id !== created.id)];
       localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
       this.notify();
+
+      // Save to Firebase Firestore
+      try {
+        await setDoc(doc(db, 'items', created.id), created);
+      } catch (fErr) {
+        console.warn('Firebase save note:', fErr);
+      }
+
       return created;
     } catch (e) {
       console.warn('Backend item creation failed, saving locally:', e);
-      return this.createItem(itemData);
+      const created = this.createItem(itemData);
+      try {
+        setDoc(doc(db, 'items', created.id), created).catch(() => {});
+      } catch {}
+      return created;
     }
   }
 
@@ -259,10 +302,24 @@ export class LocalStorageItemRepository implements ItemRepository {
       const items = this.getItems().map(item => (item.id === id ? updated : item));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
       this.notify();
+
+      // Sync with Firebase Firestore
+      try {
+        await setDoc(doc(db, 'items', id), updated, { merge: true });
+      } catch (fErr) {
+        console.warn('Firebase update note:', fErr);
+      }
+
       return updated;
     } catch (e) {
       console.warn('Backend item update failed, updating locally:', e);
-      return this.updateItem(id, updates);
+      const updated = this.updateItem(id, updates);
+      if (updated) {
+        try {
+          setDoc(doc(db, 'items', id), updated, { merge: true }).catch(() => {});
+        } catch {}
+      }
+      return updated;
     }
   }
 
@@ -299,9 +356,20 @@ export class LocalStorageItemRepository implements ItemRepository {
       const items = this.getItems().filter(item => item.id !== id);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
       this.notify();
+
+      // Delete from Firebase Firestore
+      try {
+        await deleteDoc(doc(db, 'items', id));
+      } catch (fErr) {
+        console.warn('Firebase delete note:', fErr);
+      }
+
       return true;
     } catch (e) {
       console.warn('Backend delete failed, deleting locally:', e);
+      try {
+        deleteDoc(doc(db, 'items', id)).catch(() => {});
+      } catch {}
       return this.deleteItem(id);
     }
   }

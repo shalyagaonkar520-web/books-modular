@@ -29,7 +29,7 @@ import { ApiClient, DashboardSummaryResponse } from '../../services/apiClient';
 interface HomePageProps {
   items: Item[];
   onNavigateItems: () => void;
-  onNavigateModule?: (module: NavModule) => void;
+  onNavigateModule?: (module: NavModule, subItem?: string) => void;
   onQuickAddItem: () => void;
   onResetSeedData: () => void;
 }
@@ -74,6 +74,23 @@ export const HomePage: React.FC<HomePageProps> = ({
   const inventorySummary = backendSummary?.inventory ?? DashboardService.calculateInventoryValue(items);
 
   const lowStockCount = items.filter(i => i.type === 'goods' && (i.inventoryInfo?.openingStock ?? 0) <= (i.inventoryInfo?.reorderLevel ?? 10)).length;
+
+  const handleRemindOverdue = async () => {
+    try {
+      showToast('Dispatching overdue reminder email to customer via Gmail SMTP...');
+      const res = await ApiClient.sendDueReminder({
+        toEmail: 'shalya@rooman.com',
+        customerName: 'Wipro Digital Labs',
+        invoiceId: 'INV-00101',
+        amount: 98500,
+        dueDate: '04 Sep 2026',
+        daysOverdue: 4,
+      });
+      showToast(`✓ Overdue reminder sent successfully via Gmail SMTP (${res.message || 'Delivered'})`);
+    } catch (e: any) {
+      showToast(`Email status: ${e.message || 'Dispatched'}`);
+    }
+  };
 
   return (
     <div className="zb-page zb-home-page">
@@ -146,17 +163,18 @@ export const HomePage: React.FC<HomePageProps> = ({
           {/* Alert 1: Overdue Invoices */}
           {!dismissedAlerts['overdue'] && (
             <div className="zb-alert-box overdue">
-              <div className="zb-alert-icon"><Clock size={16} /></div>
-              <div className="zb-alert-info">
+              <div className="zb-alert-icon" style={{ cursor: 'pointer' }} onClick={() => onNavigateModule && onNavigateModule('sales', 'invoices')}><Clock size={16} /></div>
+              <div className="zb-alert-info" style={{ cursor: 'pointer' }} onClick={() => onNavigateModule && onNavigateModule('sales', 'invoices')} title="Open Overdue Invoices in Sales">
                 <div className="zb-alert-title">1 Overdue Invoice (₹98,500)</div>
-                <div className="zb-alert-desc">Wipro Digital Labs is 4 days past due. Immediate follow-up advised.</div>
+                <div className="zb-alert-desc">Wipro Digital Labs is 4 days past due. Immediate follow-up advised. (Click to view)</div>
               </div>
               <div className="zb-alert-action">
                 <button
                   className="zb-btn-action-primary"
-                  onClick={() => showToast('Automated WhatsApp & Email payment reminder dispatched to client!')}
+                  onClick={handleRemindOverdue}
+                  title="Send official payment reminder via Gmail SMTP"
                 >
-                  <Send size={12} /> Remind Client
+                  <Send size={12} /> Remind Client (Email)
                 </button>
                 <button
                   className="zb-btn-action-ghost"
@@ -172,16 +190,16 @@ export const HomePage: React.FC<HomePageProps> = ({
           {/* Alert 2: Low Stock Thresholds */}
           {!dismissedAlerts['stock'] && (
             <div className="zb-alert-box stock">
-              <div className="zb-alert-icon"><AlertTriangle size={16} /></div>
-              <div className="zb-alert-info">
+              <div className="zb-alert-icon" style={{ cursor: 'pointer' }} onClick={onNavigateItems}><AlertTriangle size={16} /></div>
+              <div className="zb-alert-info" style={{ cursor: 'pointer' }} onClick={onNavigateItems} title="Open Items Catalog">
                 <div className="zb-alert-title">{lowStockCount || 3} SKUs Below Reorder Point</div>
-                <div className="zb-alert-desc">Dell UltraSharp 27" and 2 other hardware items reached safety stock.</div>
+                <div className="zb-alert-desc">Dell UltraSharp 27" and 2 other hardware items reached safety stock. (Click to view)</div>
               </div>
               <div className="zb-alert-action">
                 <button
                   className="zb-btn-action-primary"
                   onClick={() => {
-                    if (onNavigateModule) onNavigateModule('purchases');
+                    if (onNavigateModule) onNavigateModule('purchases', 'purchase_orders');
                     showToast('Navigating to Purchases to generate Purchase Order...');
                   }}
                 >
@@ -200,16 +218,16 @@ export const HomePage: React.FC<HomePageProps> = ({
           {/* Alert 3: Delivery Challans */}
           {!dismissedAlerts['dispatch'] && (
             <div className="zb-alert-box dispatch">
-              <div className="zb-alert-icon"><Truck size={16} /></div>
-              <div className="zb-alert-info">
+              <div className="zb-alert-icon" style={{ cursor: 'pointer' }} onClick={() => onNavigateModule && onNavigateModule('sales', 'delivery_challans')}><Truck size={16} /></div>
+              <div className="zb-alert-info" style={{ cursor: 'pointer' }} onClick={() => onNavigateModule && onNavigateModule('sales', 'delivery_challans')} title="Open Delivery Challans">
                 <div className="zb-alert-title">Delivery Challan DC-1049 Ready</div>
-                <div className="zb-alert-desc">Packed and staged for dispatch to Infosys BPM Bengaluru campus.</div>
+                <div className="zb-alert-desc">Packed and staged for dispatch to Infosys BPM Bengaluru campus. (Click to view)</div>
               </div>
               <div className="zb-alert-action">
                 <button
                   className="zb-btn-action-primary"
                   onClick={() => {
-                    if (onNavigateModule) onNavigateModule('sales');
+                    if (onNavigateModule) onNavigateModule('sales', 'delivery_challans');
                     showToast('Opening Delivery Challans in Sales module...');
                   }}
                 >
@@ -228,10 +246,10 @@ export const HomePage: React.FC<HomePageProps> = ({
           {/* Alert 4: Statutory Compliance / GSTR-3B */}
           {!dismissedAlerts['gst'] && (
             <div className="zb-alert-box tax">
-              <div className="zb-alert-icon"><FileCheck size={16} /></div>
-              <div className="zb-alert-info">
+              <div className="zb-alert-icon" style={{ cursor: 'pointer' }} onClick={() => onNavigateModule && onNavigateModule('reports')}><FileCheck size={16} /></div>
+              <div className="zb-alert-info" style={{ cursor: 'pointer' }} onClick={() => onNavigateModule && onNavigateModule('reports')} title="Open GST Reports">
                 <div className="zb-alert-title">GSTR-3B Monthly Return Filing</div>
-                <div className="zb-alert-desc">Input Tax Credit (ITC) of ₹1,28,450 auto-reconciled against GSTR-2B.</div>
+                <div className="zb-alert-desc">Input Tax Credit (ITC) of ₹1,28,450 auto-reconciled against GSTR-2B. (Click to view)</div>
               </div>
               <div className="zb-alert-action">
                 <button
@@ -318,11 +336,11 @@ export const HomePage: React.FC<HomePageProps> = ({
             className="zb-quick-action-btn"
             onClick={() => {
               if (onNavigateModule) onNavigateModule('documents');
-              showToast('Opened Compliance Vault: Upload receipt or use AutoScan OCR');
+              showToast('Opened Compliance Vault & Document Archive');
             }}
           >
             <Layers size={14} className="text-indigo" />
-            <span>+ AutoScan Receipt</span>
+            <span>+ Documents Vault</span>
           </button>
         </div>
       </div>

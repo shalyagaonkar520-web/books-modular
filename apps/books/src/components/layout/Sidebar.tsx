@@ -61,20 +61,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpenMobile,
   onCloseMobile,
 }) => {
-  // Track open state of accordion modules
-  const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({
-    items: true,
-    inventory: true,
-    sales: true,
-    purchases: true,
-    banking: false,
-    time_tracking: false,
-    accountant: false,
-    reports: true,
-    documents: false,
-    payroll: false,
-    payments: false,
-  });
+  // Track open state of accordion modules (collapsed by default, expand on click)
+  const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({});
 
   const navItems: NavItemDef[] = [
     {
@@ -85,12 +73,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       id: 'items',
       label: 'Items',
-      icon: <Package size={18} />,
-      subItems: [
-        { id: 'items_list', label: 'Items', hasQuickAdd: true },
-        { id: 'item_groups', label: 'Item Groups', hasQuickAdd: true },
-        { id: 'price_lists', label: 'Price Lists' },
-      ]
+      icon: <Package size={18} />
     },
     {
       id: 'inventory',
@@ -178,12 +161,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       id: 'documents',
       label: 'Documents',
-      icon: <FileText size={18} />,
-      subItems: [
-        { id: 'all_documents', label: 'All Documents', hasQuickAdd: true },
-        { id: 'autoscan_ocr', label: 'AutoScan OCR' },
-        { id: 'receipts_bills', label: 'Receipts & Bills' },
-      ]
+      icon: <FileText size={18} />
     },
     {
       id: 'payroll',
@@ -217,10 +195,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleParentClick = (item: NavItemDef) => {
     if (item.subItems && item.subItems.length > 0) {
-      // Auto-expand if collapsed
+      // Toggle expand on click
       setExpandedModules(prev => ({
         ...prev,
-        [item.id]: true
+        [item.id]: !prev[item.id]
       }));
       onSelectModule(item.id, item.subItems[0].id);
     } else {
