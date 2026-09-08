@@ -1,7 +1,6 @@
-/** Sales > Invoices: searchable, filterable list with inline status and payment actions. */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Ban, Eye, FileText, IndianRupee, Pencil, Plus, Send, Trash2 } from 'lucide-react';
+import { Ban, BellRing, CreditCard, Eye, FileDown, FileSpreadsheet, FileText, IndianRupee, Mail, Pencil, Plus, Send, Trash2 } from 'lucide-react';
 
 import { contactsApi, invoicesApi } from '@/api/endpoints';
 import type { Invoice, InvoiceListItem, Message } from '@/api/types';
@@ -11,7 +10,8 @@ import { Button } from '@/components/ui/Button';
 import { StatTile } from '@/components/ui/Card';
 import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, SkeletonRows } from '@/components/ui/Feedback';
-import { ConfirmDialog } from '@/components/ui/Modal';
+import { TextAreaField, TextField } from '@/components/ui/Field';
+import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, SearchInput, Tabs, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
@@ -22,6 +22,7 @@ import { daysBetween, formatCurrency, formatDate, todayIso } from '@/utils/forma
 import { statusLabel, statusTone } from '@/utils/status';
 
 import { RecordPaymentModal, type PaymentInvoiceContext } from './RecordPaymentModal';
+import { PayOnlineModal } from './PayOnlineModal';
 
 const PAGE_SIZE = 25;
 
@@ -59,6 +60,9 @@ export function InvoicesPage() {
   const [page, setPage] = useState(1);
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [paymentFor, setPaymentFor] = useState<PaymentInvoiceContext | null>(null);
+  const [mailInvoice, setMailInvoice] = useState<InvoiceListItem | null>(null);
+  const [payOnlineInvoice, setPayOnlineInvoice] = useState<InvoiceListItem | null>(null);
+  const [autoReminding, setAutoReminding] = useState(false);
   const debouncedSearch = useDebounced(search);
 
   const customers = useAsync((signal) => contactsApi.list({ type: 'customer', page_size: 200 }, signal), []);
@@ -83,6 +87,23 @@ export function InvoicesPage() {
   const refresh = () => {
     invoices.reload();
     stats.reload();
+  };
+
+  const handleAutoRemindOverdue = async () => {
+    try {
+      setAutoReminding(true);
+      const res = await invoicesApi.autoRemindOverdue();
+      if (res.reminders_sent > 0) {
+        toast.success(`Successfully dispatched ${res.reminders_sent} overdue reminders via Gmail SMTP!`);
+      } else {
+        toast.notify(res.total_overdue > 0 ? 'Overdue invoices found, but no client emails on file.' : 'No overdue invoices found.', 'info');
+      }
+      refresh();
+    } catch (err: unknown) {
+      toast.error((err as Error).message || 'Failed to trigger overdue reminders');
+    } finally {
+      setAutoReminding(false);
+    }
   };
 
   const customerOptions = useMemo(
@@ -165,6 +186,48 @@ export function InvoicesPage() {
           </button>
           <IfCanWrite>
             <>
+              {row.balanceDue > 0 && row.status !== 'void' ? (
+                <button
+                  type="button"
+                  className="action-btn"
+                  style={{ color: '#16a34a' }}
+                  aria-label={`Pay invoice ${row.invoiceNumber} online via Razorpay`}
+                  title="Pay Online via Razorpay"
+                  onClick={() => setPayOnlineInvoice(row)}
+                >
+                  <CreditCard size={15} />
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="action-btn"
+                style={{ color: '#ea4335' }}
+                aria-label={`Send invoice ${row.invoiceNumber} via Gmail`}
+                title="Send invoice via Gmail"
+                onClick={() => setMailInvoice(row)}
+              >
+                <Mail size={15} />
+              </button>
+              <button
+                type="button"
+                className="action-btn"
+                style={{ color: '#dc2626' }}
+                aria-label={`Download PDF for invoice ${row.invoiceNumber}`}
+                title="Full PDF Extract"
+                onClick={() => invoicesApi.downloadPdf(row.id, row.invoiceNumber)}
+              >
+                <FileDown size={15} />
+              </button>
+              <button
+                type="button"
+                className="action-btn"
+                style={{ color: '#15803d' }}
+                aria-label={`Download Excel for invoice ${row.invoiceNumber}`}
+                title="Excel Extract"
+                onClick={() => invoicesApi.downloadExcel(row.id, row.invoiceNumber)}
+              >
+                <FileSpreadsheet size={15} />
+              </button>
               {canEdit(row) ? (
                 <button
                   type="button"
@@ -242,11 +305,41 @@ export function InvoicesPage() {
         title="Invoices"
         subtitle="Everything you have billed your customers."
         actions={
-          <IfCanWrite>
-            <Button variant="primary" icon={<Plus size={15} />} onClick={() => navigate('/invoices/new')}>
-              New invoice
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <Button
+              variant="secondary"
+              icon={<FileDown size={15} />}
+              onClick={() =>
+                invoicesApi.exportPdf({
+                  status: status === 'all' ? undefined : status,
+                  customer_id: customerId || undefined,
+                  start_date: startDate || undefined,
+                  end_date: endDate || undefined,
+                })
+              }
+            >
+              Extract PDF
             </Button>
-          </IfCanWrite>
+            <Button
+              variant="secondary"
+              icon={<FileSpreadsheet size={15} />}
+              onClick={() =>
+                invoicesApi.exportExcel({
+                  status: status === 'all' ? undefined : status,
+                  customer_id: customerId || undefined,
+                  start_date: startDate || undefined,
+                  end_date: endDate || undefined,
+                })
+              }
+            >
+              Extract Excel
+            </Button>
+            <IfCanWrite>
+              <Button variant="primary" icon={<Plus size={15} />} onClick={() => navigate('/invoices/new')}>
+                New invoice
+              </Button>
+            </IfCanWrite>
+          </div>
         }
       />
 
@@ -269,6 +362,41 @@ export function InvoicesPage() {
           setPage(1);
         }}
       />
+
+      {status === 'overdue' ? (
+        <div
+          style={{
+            backgroundColor: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: '8px',
+            padding: '12px 18px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '16px',
+            flexWrap: 'wrap',
+            gap: '12px',
+          }}
+        >
+          <div>
+            <div style={{ color: '#991b1b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
+              <BellRing size={16} /> Automated Overdue Reminders via Gmail SMTP
+            </div>
+            <div style={{ color: '#7f1d1d', fontSize: '13px', marginTop: '2px' }}>
+              Scan and immediately send official overdue payment notices with attached PDF invoices to all customers with past-due balances.
+            </div>
+          </div>
+          <Button
+            variant="primary"
+            loading={autoReminding}
+            icon={<Mail size={15} />}
+            style={{ backgroundColor: '#dc2626', borderColor: '#dc2626', color: '#ffffff' }}
+            onClick={handleAutoRemindOverdue}
+          >
+            Auto-Send Overdue Reminders
+          </Button>
+        </div>
+      ) : null}
 
       <Toolbar>
         <SearchInput
@@ -348,6 +476,36 @@ export function InvoicesPage() {
         onSaved={refresh}
       />
 
+      {mailInvoice ? (
+        <SendInvoiceModal
+          invoice={mailInvoice}
+          onClose={() => setMailInvoice(null)}
+          onSent={(message) => {
+            toast.success(message);
+            setMailInvoice(null);
+            refresh();
+          }}
+        />
+      ) : null}
+
+      {payOnlineInvoice ? (
+        <PayOnlineModal
+          open
+          invoice={{
+            id: payOnlineInvoice.id,
+            invoiceNumber: payOnlineInvoice.invoiceNumber,
+            customerName: payOnlineInvoice.customerName,
+            total: payOnlineInvoice.total,
+            balanceDue: payOnlineInvoice.balanceDue,
+          }}
+          onClose={() => setPayOnlineInvoice(null)}
+          onPaymentSuccess={() => {
+            setPayOnlineInvoice(null);
+            refresh();
+          }}
+        />
+      ) : null}
+
       <ConfirmDialog
         open={!!pending}
         title={pending?.kind === 'delete' ? 'Delete invoice' : pending?.kind === 'send' ? 'Mark invoice as sent' : 'Void invoice'}
@@ -376,5 +534,179 @@ export function InvoicesPage() {
         }
       />
     </>
+  );
+}
+
+interface SendInvoiceModalProps {
+  invoice: InvoiceListItem;
+  onClose: () => void;
+  onSent: (message: string) => void;
+}
+
+function SendInvoiceModal({ invoice, onClose, onSent }: SendInvoiceModalProps) {
+  const [email, setEmail] = useState('');
+  const [loadingContact, setLoadingContact] = useState(true);
+  const [sendAsOverdue, setSendAsOverdue] = useState(invoice.status === 'overdue');
+  const [attachPdf, setAttachPdf] = useState(true);
+  const [customNotes, setCustomNotes] = useState('');
+  const { submitting, error, run } = useSubmit();
+
+  useEffect(() => {
+    let active = true;
+    contactsApi
+      .get(invoice.customerId)
+      .then((c) => {
+        if (active && c.email) setEmail(c.email);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setLoadingContact(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [invoice.customerId]);
+
+  async function handleSend() {
+    if (!email.trim()) return;
+    const result = await run(() =>
+      invoicesApi.sendGmail(invoice.id, {
+        to_email: email.trim(),
+        send_as_overdue: sendAsOverdue,
+        attach_pdf: attachPdf,
+        custom_notes: customNotes.trim() || undefined,
+      })
+    );
+    if (result) {
+      onSent(
+        sendAsOverdue
+          ? `Overdue Payment Reminder for ${invoice.invoiceNumber} sent to ${email.trim()} via Gmail SMTP`
+          : `Tax Invoice ${invoice.invoiceNumber} sent to ${email.trim()} via Gmail SMTP`
+      );
+    }
+  }
+
+  const gmailWebUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}&su=${encodeURIComponent(
+    sendAsOverdue
+      ? `Payment Reminder: Invoice ${invoice.invoiceNumber} is Overdue - Rooman Technologies`
+      : `Tax Invoice ${invoice.invoiceNumber} from Rooman Technologies`
+  )}&body=${encodeURIComponent(
+    `Dear ${invoice.customerName},\n\n${
+      sendAsOverdue
+        ? `This is an urgent reminder regarding overdue invoice ${invoice.invoiceNumber}. Outstanding balance: ${formatCurrency(invoice.balanceDue)}.`
+        : `Please find details of Tax Invoice ${invoice.invoiceNumber}.\nAmount: ${formatCurrency(invoice.total)}\nDue Date: ${formatDate(invoice.dueDate)}.`
+    }\n\nWarm regards,\nRooman Technologies Accounts Desk`
+  )}`;
+
+  return (
+    <Modal
+      open
+      size="md"
+      title={`Gmail Send Options: ${invoice.invoiceNumber}`}
+      subtitle={`Customer: ${invoice.customerName} · Total: ${formatCurrency(invoice.total)}`}
+      onClose={onClose}
+      footer={
+        <>
+          <a
+            href={gmailWebUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-secondary btn-md"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <Send size={14} />
+            <span>Open in Gmail Web</span>
+          </a>
+          <Button onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            loading={submitting}
+            disabled={!email.trim()}
+            icon={<Mail size={15} />}
+            style={sendAsOverdue ? { backgroundColor: '#dc2626', borderColor: '#dc2626', color: '#ffffff' } : undefined}
+            onClick={handleSend}
+          >
+            {sendAsOverdue ? 'Send Overdue Reminder' : 'Send Tax Invoice'}
+          </Button>
+        </>
+      }
+    >
+      <FormError message={error} />
+      <div className="stack" style={{ gap: '14px' }}>
+        <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+          <label style={{ fontSize: '13px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '8px' }}>
+            Email Mode:
+          </label>
+          <div style={{ display: 'flex', gap: '16px' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13.5px', cursor: 'pointer' }}>
+              <input
+                type="radio"
+                name="emailMode"
+                checked={!sendAsOverdue}
+                onChange={() => setSendAsOverdue(false)}
+              />
+              <span>Standard Tax Invoice Dispatch</span>
+            </label>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13.5px', cursor: 'pointer', color: '#b91c1c', fontWeight: 600 }}>
+              <input
+                type="radio"
+                name="emailMode"
+                checked={sendAsOverdue}
+                onChange={() => setSendAsOverdue(true)}
+              />
+              <span>Overdue Payment Reminder</span>
+            </label>
+          </div>
+        </div>
+
+        <div className="form-grid">
+          <TextField
+            label="Customer"
+            value={invoice.customerName}
+            disabled
+          />
+          <TextField
+            label="Recipient Email (Gmail)"
+            type="email"
+            required
+            placeholder={loadingContact ? 'Loading contact email…' : 'e.g. customer@example.com'}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <TextField
+            label="Invoice Total"
+            value={formatCurrency(invoice.total)}
+            disabled
+          />
+          <TextField
+            label={sendAsOverdue ? 'Balance Due (Overdue)' : 'Due Date'}
+            value={sendAsOverdue ? formatCurrency(invoice.balanceDue) : formatDate(invoice.dueDate)}
+            disabled
+          />
+        </div>
+
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '13.5px', cursor: 'pointer', padding: '4px 0' }}>
+          <input
+            type="checkbox"
+            checked={attachPdf}
+            onChange={(e) => setAttachPdf(e.target.checked)}
+          />
+          <span style={{ fontWeight: 500 }}>Attach generated official GST Tax Invoice PDF to email</span>
+        </label>
+
+        <TextAreaField
+          label="Custom Note / Remittance Instructions (Optional)"
+          value={customNotes}
+          placeholder="e.g. Kindly share transaction UTR once processed..."
+          rows={2}
+          onChange={(e) => setCustomNotes(e.target.value)}
+        />
+      </div>
+      <p className="small text-muted" style={{ marginTop: '12px' }}>
+        Dispatched automatically via authenticated Gmail SMTP server (shalya@rooman.com).
+      </p>
+    </Modal>
   );
 }

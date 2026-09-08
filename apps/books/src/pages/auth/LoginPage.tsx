@@ -26,7 +26,7 @@ export function LoginPage() {
     });
     if (result) {
       const from = (location.state as { from?: string } | null)?.from;
-      navigate(from && from !== '/login' ? from : '/', { replace: true });
+      navigate(from && from !== '/login' ? from : '/dashboard', { replace: true });
     }
   };
 

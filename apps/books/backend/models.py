@@ -423,6 +423,10 @@ class Expense(TimestampMixin, OrgScopedMixin, Base):
     tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"), nullable=False)
     tax_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
     total: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    category: Mapped[str] = mapped_column(String(60), default="Other", nullable=False)
+    payment_method: Mapped[str] = mapped_column(String(40), default="bank_transfer", nullable=False)
+    receipt_url: Mapped[Optional[str]] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(20), default="paid", nullable=False)
     reference: Mapped[Optional[str]] = mapped_column(String(120))
     notes: Mapped[Optional[str]] = mapped_column(Text)
     is_billable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -607,3 +611,172 @@ class Payslip(Base):
 
 Index("ix_invoices_org_status_due", Invoice.organization_id, Invoice.status, Invoice.due_date)
 Index("ix_bills_org_status_due", Bill.organization_id, Bill.status, Bill.due_date)
+
+
+# --------------------------------------------------------------------------- #
+# Razorpay, Refunds, Settlements & Financial Ledger
+# --------------------------------------------------------------------------- #
+class PaymentRecord(TimestampMixin, OrgScopedMixin, Base):
+    """Razorpay payments record linked to internal payments and invoices."""
+    __tablename__ = "payments"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    razorpay_order_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    razorpay_payment_id: Mapped[str] = mapped_column(String(64), index=True)
+    razorpay_signature: Mapped[Optional[str]] = mapped_column(String(255))
+    customer_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("contacts.id"), index=True)
+    sales_order_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    invoice_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("invoices.id"), index=True)
+    customer_payment_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("customer_payments.id"), index=True)
+    amount: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="INR", nullable=False)
+    payment_method: Mapped[str] = mapped_column(String(40), default="card", nullable=False)  # upi | card | netbanking | wallet | emi | other
+    payment_status: Mapped[str] = mapped_column(String(30), default="captured", nullable=False, index=True)  # created | authorized | captured | failed | refunded | partially_refunded
+    mode: Mapped[str] = mapped_column(String(10), default="test", nullable=False)  # test | live
+    captured_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    refund_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    razorpay_fee: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    tax_on_fee: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    net_settlement: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    settlement_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    error_code: Mapped[Optional[str]] = mapped_column(String(100))
+    error_description: Mapped[Optional[str]] = mapped_column(Text)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_by: Mapped[Optional[str]] = mapped_column(String(32))
+
+    customer: Mapped[Optional[Contact]] = relationship()
+    invoice: Mapped[Optional[Invoice]] = relationship()
+    customer_payment: Mapped[Optional[CustomerPayment]] = relationship()
+    refunds: Mapped[List[PaymentRefund]] = relationship(back_populates="payment", cascade="all, delete-orphan")
+
+
+class PaymentEvent(TimestampMixin, Base):
+    """Webhook event log ensuring idempotency and full auditability."""
+    __tablename__ = "payment_events"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    organization_id: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    event_id: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(80), index=True, nullable=False)
+    entity_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="processed", nullable=False)  # processed | ignored | failed
+    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class PaymentRefund(TimestampMixin, OrgScopedMixin, Base):
+    """Refund tracking for payments."""
+    __tablename__ = "refunds"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    payment_id: Mapped[str] = mapped_column(String(32), ForeignKey("payments.id", ondelete="CASCADE"), index=True, nullable=False)
+    razorpay_payment_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    razorpay_refund_id: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    invoice_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("invoices.id"), index=True)
+    amount: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="INR", nullable=False)
+    refund_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    reason: Mapped[str] = mapped_column(String(255), default="Customer return / refund", nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="processed", nullable=False)  # pending | processed | failed
+    speed: Mapped[str] = mapped_column(String(20), default="normal", nullable=False)  # normal | optimum
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_by: Mapped[Optional[str]] = mapped_column(String(32))
+
+    payment: Mapped[PaymentRecord] = relationship(back_populates="refunds")
+    invoice: Mapped[Optional[Invoice]] = relationship()
+
+
+class SettlementRecord(TimestampMixin, OrgScopedMixin, Base):
+    """Razorpay settlements for bank payouts."""
+    __tablename__ = "settlements"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    settlement_id: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    settlement_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    gross_amount: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    fee_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    tax_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    adjustments: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    refunds: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    net_amount: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="INR", nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="processed", nullable=False)  # created | processed | failed
+    bank_reference: Mapped[Optional[str]] = mapped_column(String(100))  # UTR
+    reconciled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    reconciled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class ReconciliationRecord(TimestampMixin, OrgScopedMixin, Base):
+    """Three-way reconciliation between Internal Payments, Razorpay Payments, and Settlements."""
+    __tablename__ = "reconciliation_records"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    reconciliation_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    settlement_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    internal_payment_id: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    razorpay_payment_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)  # matched | mismatch | missing_settlement | duplicate
+    discrepancy_note: Mapped[Optional[str]] = mapped_column(Text)
+    amount_expected: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    amount_actual: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    difference: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    resolved_by: Mapped[Optional[str]] = mapped_column(String(32))
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class FinancialTransactionRecord(TimestampMixin, OrgScopedMixin, Base):
+    """Granular transaction ledger table for reporting, analytics and audit."""
+    __tablename__ = "financial_transactions"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    transaction_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    transaction_type: Mapped[str] = mapped_column(String(40), index=True, nullable=False)  # customer_payment | refund | gateway_fee | purchase | expense | settlement | manual
+    reference_type: Mapped[str] = mapped_column(String(40), nullable=False)  # invoice | payment | refund | bill | expense | settlement
+    reference_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    debit: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    credit: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    account: Mapped[str] = mapped_column(String(120), nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="posted", nullable=False)  # posted | reversed | pending
+    created_by: Mapped[Optional[str]] = mapped_column(String(32))
+
+
+class ExternalPayment(TimestampMixin, OrgScopedMixin, Base):
+    """External payment received from any outside platform (UPI, Stripe, Razorpay, PhonePe, Bank, etc.)
+    awaiting or confirmed via Gmail SMTP YES/NO confirmation flow.
+    """
+    __tablename__ = "external_payments"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    platform: Mapped[str] = mapped_column(String(50), default="external", nullable=False, index=True)
+    external_transaction_id: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="INR", nullable=False)
+    payer_name: Mapped[Optional[str]] = mapped_column(String(120))
+    payer_email: Mapped[Optional[str]] = mapped_column(String(120))
+    payer_phone: Mapped[Optional[str]] = mapped_column(String(40))
+    invoice_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("invoices.id"), index=True)
+    customer_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("contacts.id"), index=True)
+    bank_account_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("bank_accounts.id"))
+    status: Mapped[str] = mapped_column(String(30), default="pending_confirmation", nullable=False, index=True)  # pending_confirmation | approved | rejected
+    approval_token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    approval_notes: Mapped[Optional[str]] = mapped_column(Text)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    approved_by: Mapped[Optional[str]] = mapped_column(String(120))
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
+    customer_payment_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("customer_payments.id"), index=True)
+    raw_payload: Mapped[Optional[str]] = mapped_column(Text)
+    confirmation_email_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    confirmation_email_recipient: Mapped[Optional[str]] = mapped_column(String(120))
+
+    invoice: Mapped[Optional[Invoice]] = relationship()
+    customer: Mapped[Optional[Contact]] = relationship()
+    customer_payment: Mapped[Optional[CustomerPayment]] = relationship()
+    bank_account: Mapped[Optional[BankAccount]] = relationship()
+

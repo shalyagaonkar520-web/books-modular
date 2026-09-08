@@ -5,20 +5,30 @@ from datetime import date
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
-from backend.models import Bill, Contact, Invoice, User
+from backend.models import Bill, Contact, Invoice, Organization, User
 from backend.schemas.common import Message, Page
 from backend.schemas.contacts import ContactCreate, ContactOut, ContactSummary, ContactUpdate
-from backend.services import audit
+from backend.services import audit, export_service
+from backend.services.email_service import send_custom_message_email
 from backend.services.money import money
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
 router = APIRouter(prefix="/api/contacts", tags=["Contacts"])
+
+
+class SendContactEmailRequest(BaseModel):
+    to_email: Optional[str] = None
+    subject: str
+    message: str
+
 
 OPEN_INVOICE = ("sent", "partially_paid")
 OPEN_BILL = ("open", "partially_paid")
@@ -77,6 +87,50 @@ def list_contacts(
     vendors = _outstanding_map(db, user.organization_id, "vendor") if type in (None, "vendor") else {}
     items = [to_out(c, (customers if c.type == "customer" else vendors).get(c.id)) for c in rows]
     return Page(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.get("/export/pdf")
+def export_contacts_pdf(
+    type: Optional[str] = Query(None, pattern="^(customer|vendor)$"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Export Contacts / Customers directory to PDF."""
+    stmt = select(Contact).where(Contact.organization_id == user.organization_id, Contact.is_active.is_(True))
+    if type:
+        stmt = stmt.where(Contact.type == type)
+    stmt = stmt.order_by(Contact.display_name)
+    contacts = db.execute(stmt).scalars().all()
+    org = db.get(Organization, user.organization_id)
+    pdf_bytes = export_service.generate_contacts_list_pdf(contacts, type or "customer", org)
+    label = "customers" if type == "customer" else ("vendors" if type == "vendor" else "contacts")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{label}_directory.pdf"'},
+    )
+
+
+@router.get("/export/excel")
+def export_contacts_excel(
+    type: Optional[str] = Query(None, pattern="^(customer|vendor)$"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Export Contacts / Customers directory to Excel."""
+    stmt = select(Contact).where(Contact.organization_id == user.organization_id, Contact.is_active.is_(True))
+    if type:
+        stmt = stmt.where(Contact.type == type)
+    stmt = stmt.order_by(Contact.display_name)
+    contacts = db.execute(stmt).scalars().all()
+    org = db.get(Organization, user.organization_id)
+    excel_bytes = export_service.generate_contacts_list_excel(contacts, type or "customer", org)
+    label = "customers" if type == "customer" else ("vendors" if type == "vendor" else "contacts")
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{label}_master.xlsx"'},
+    )
 
 
 @router.get("/{contact_id}", response_model=ContactOut)
@@ -146,3 +200,30 @@ def delete_contact(contact_id: str, user: User = Depends(require_write), db: Ses
     audit.record(db, user, "delete", "contact", contact.id, f"Deleted {contact.display_name}")
     db.commit()
     return Message(message="Contact deleted")
+
+
+@router.post("/{contact_id}/send-gmail")
+def send_contact_email(
+    contact_id: str,
+    payload: SendContactEmailRequest,
+    user: User = Depends(require_write),
+    db: Session = Depends(get_db),
+):
+    """Send direct communication/statement message to Customer/Vendor via Gmail SMTP."""
+    contact = get_or_404(db, Contact, contact_id, user.organization_id, "Contact")
+    recipient = payload.to_email or contact.email
+    if not recipient or not recipient.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No email address found for this contact")
+
+    result = send_custom_message_email(
+        to_email=recipient.strip(),
+        subject=payload.subject,
+        message=payload.message,
+        recipient_name=contact.display_name,
+    )
+    if not result.get("success"):
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Gmail SMTP error: {result.get('error')}")
+    audit.record(db, user, "email", "contact", contact.id, f"Sent email to {contact.display_name} ({recipient})")
+    db.commit()
+    return result
+

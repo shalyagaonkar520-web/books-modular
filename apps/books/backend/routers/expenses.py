@@ -6,30 +6,58 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
-from backend.models import Account, BankAccount, Contact, Expense, User
+from backend.models import Account, BankAccount, Contact, Expense, Organization, User
 from backend.schemas.common import Message, Page
 from backend.schemas.purchases import ExpenseCreate, ExpenseOut, ExpenseUpdate
-from backend.services import audit, bank, ledger, numbering
+from backend.services import audit, bank, export_service, ledger, numbering
 from backend.services.chart_of_accounts import get_account_by_code
+from backend.services.email_service import send_expense_email
 from backend.services.money import money
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
 router = APIRouter(prefix="/api/expenses", tags=["Purchases"])
 
 
+class SendExpenseEmailRequest(BaseModel):
+    to_email: str
+    recipient_name: Optional[str] = None
+    custom_notes: Optional[str] = None
+    attach_pdf: bool = True
+
+
+
 def to_out(e: Expense) -> ExpenseOut:
     return ExpenseOut(
-        id=e.id, expense_number=e.expense_number, date=e.date, account_id=e.account_id, account_name=e.account.name,
-        paid_through_account_id=e.paid_through_account_id, paid_through_name=e.paid_through.name,
-        vendor_id=e.vendor_id, vendor_name=e.vendor.display_name if e.vendor else None,
-        customer_id=e.customer_id, customer_name=e.customer.display_name if e.customer else None,
-        amount=e.amount, tax_rate=e.tax_rate, tax_amount=e.tax_amount, total=e.total, reference=e.reference,
-        notes=e.notes, is_billable=e.is_billable, created_at=e.created_at,
+        id=e.id,
+        expense_number=e.expense_number,
+        date=e.date,
+        account_id=e.account_id,
+        account_name=e.account.name,
+        paid_through_account_id=e.paid_through_account_id,
+        paid_through_name=e.paid_through.name,
+        vendor_id=e.vendor_id,
+        vendor_name=e.vendor.display_name if e.vendor else None,
+        customer_id=e.customer_id,
+        customer_name=e.customer.display_name if e.customer else None,
+        amount=e.amount,
+        tax_rate=e.tax_rate,
+        tax_amount=e.tax_amount,
+        total=e.total,
+        category=getattr(e, "category", "Other") or "Other",
+        payment_method=getattr(e, "payment_method", "bank_transfer") or "bank_transfer",
+        receipt_url=getattr(e, "receipt_url", None),
+        status=getattr(e, "status", "paid") or "paid",
+        reference=e.reference,
+        notes=e.notes,
+        is_billable=e.is_billable,
+        created_at=e.created_at,
     )
 
 
@@ -55,6 +83,10 @@ def _apply(db: Session, e: Expense, payload: ExpenseCreate, org_id: str) -> None
     e.tax_rate = Decimal(str(payload.tax_rate)).quantize(Decimal("0.01"))
     e.tax_amount = money(e.amount * e.tax_rate / Decimal("100"))
     e.total = money(e.amount + e.tax_amount)
+    e.category = payload.category or "Other"
+    e.payment_method = payload.payment_method or "bank_transfer"
+    e.receipt_url = payload.receipt_url
+    e.status = payload.status or "paid"
     e.reference = payload.reference
     e.notes = payload.notes
     e.is_billable = payload.is_billable
@@ -88,6 +120,7 @@ def _query(org_id: str):
 def list_expenses(
     account_id: Optional[str] = None,
     vendor_id: Optional[str] = None,
+    category: Optional[str] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     pagination: Pagination = Depends(),
@@ -99,6 +132,8 @@ def list_expenses(
         stmt = stmt.where(Expense.account_id == account_id)
     if vendor_id:
         stmt = stmt.where(Expense.vendor_id == vendor_id)
+    if category:
+        stmt = stmt.where(Expense.category == category)
     if start_date:
         stmt = stmt.where(Expense.date >= start_date)
     if end_date:
@@ -106,6 +141,72 @@ def list_expenses(
     stmt = stmt.order_by(Expense.date.desc(), Expense.created_at.desc())
     rows, total = paginate(db, stmt, pagination)
     return Page(items=[to_out(e) for e in rows], total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.get("/export/pdf")
+def export_expenses_pdf(
+    account_id: Optional[str] = None,
+    vendor_id: Optional[str] = None,
+    category: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Export Operating Expenses to PDF."""
+    stmt = _query(user.organization_id)
+    if account_id:
+        stmt = stmt.where(Expense.account_id == account_id)
+    if vendor_id:
+        stmt = stmt.where(Expense.vendor_id == vendor_id)
+    if category:
+        stmt = stmt.where(Expense.category == category)
+    if start_date:
+        stmt = stmt.where(Expense.date >= start_date)
+    if end_date:
+        stmt = stmt.where(Expense.date <= end_date)
+    stmt = stmt.order_by(Expense.date.desc(), Expense.created_at.desc()).limit(500)
+    expenses = db.execute(stmt).scalars().all()
+    org = db.get(Organization, user.organization_id)
+    pdf_bytes = export_service.generate_expenses_list_pdf(expenses, org)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="expenses_journal.pdf"'},
+    )
+
+
+@router.get("/export/excel")
+def export_expenses_excel(
+    account_id: Optional[str] = None,
+    vendor_id: Optional[str] = None,
+    category: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Export Operating Expenses to Excel."""
+    stmt = _query(user.organization_id)
+    if account_id:
+        stmt = stmt.where(Expense.account_id == account_id)
+    if vendor_id:
+        stmt = stmt.where(Expense.vendor_id == vendor_id)
+    if category:
+        stmt = stmt.where(Expense.category == category)
+    if start_date:
+        stmt = stmt.where(Expense.date >= start_date)
+    if end_date:
+        stmt = stmt.where(Expense.date <= end_date)
+    stmt = stmt.order_by(Expense.date.desc(), Expense.created_at.desc()).limit(500)
+    expenses = db.execute(stmt).scalars().all()
+    org = db.get(Organization, user.organization_id)
+    excel_bytes = export_service.generate_expenses_list_excel(expenses, org)
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="expenses_journal.xlsx"'},
+    )
 
 
 @router.get("/{expense_id}", response_model=ExpenseOut)
@@ -151,3 +252,37 @@ def delete_expense(expense_id: str, user: User = Depends(require_write), db: Ses
     audit.record(db, user, "delete", "expense", expense_id, f"Deleted expense {number}")
     db.commit()
     return Message(message=f"Expense {number} deleted and reversed")
+
+
+@router.post("/{expense_id}/send-gmail")
+def send_expense_via_gmail(
+    expense_id: str,
+    payload: SendExpenseEmailRequest,
+    user: User = Depends(require_write),
+    db: Session = Depends(get_db),
+):
+    """Send expense notification and details via Gmail SMTP."""
+    e = db.execute(_query(user.organization_id).where(Expense.id == expense_id)).scalar_one_or_none()
+    if e is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Expense not found")
+    org = db.get(Organization, user.organization_id)
+    pdf_bytes = export_service.generate_expenses_list_pdf([e], org) if payload.attach_pdf else None
+
+    result = send_expense_email(
+        to_email=payload.to_email,
+        recipient_name=payload.recipient_name or (e.vendor.display_name if e.vendor else (e.payee or "Team")),
+        expense_number=e.expense_number,
+        category=e.category or "Operating Expense",
+        payee=(e.vendor.display_name if e.vendor else (e.customer.display_name if e.customer else "Payee")),
+        amount=float(e.amount or 0.0),
+        expense_date=e.date.strftime("%d %b %Y") if e.date else "",
+        custom_notes=payload.custom_notes,
+        pdf_bytes=pdf_bytes,
+        pdf_filename=f"Expense_{e.expense_number}.pdf",
+    )
+    if not result.get("success"):
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Gmail SMTP error: {result.get('error')}")
+    audit.record(db, user, "email", "expense", e.id, f"Emailed expense {e.expense_number} to {payload.to_email}")
+    db.commit()
+    return result
+

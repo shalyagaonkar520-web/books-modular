@@ -11,14 +11,14 @@ export function RequireAuth() {
   const location = useLocation();
 
   if (initializing) return <LoadingBlock label="Restoring your session…" />;
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!user) return <Navigate to="/" replace state={{ from: location.pathname }} />;
   return <Outlet />;
 }
 
 export function RequireGuest() {
   const { user, initializing } = useAuth();
   if (initializing) return <LoadingBlock label="Loading…" />;
-  if (user) return <Navigate to="/" replace />;
+  if (user) return <Navigate to="/dashboard" replace />;
   return <Outlet />;
 }
 

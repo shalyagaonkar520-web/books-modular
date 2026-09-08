@@ -120,6 +120,10 @@ class ExpenseCreate(APIModel):
     reference: Optional[str] = Field(default=None, max_length=120)
     notes: Optional[str] = None
     is_billable: bool = False
+    category: str = "Other"
+    payment_method: str = "bank_transfer"
+    receipt_url: Optional[str] = None
+    status: str = "paid"
 
 
 class ExpenseUpdate(ExpenseCreate):
@@ -142,6 +146,10 @@ class ExpenseOut(APIModel):
     tax_rate: Decimal
     tax_amount: Decimal
     total: Decimal
+    category: str = "Other"
+    payment_method: str = "bank_transfer"
+    receipt_url: Optional[str] = None
+    status: str = "paid"
     reference: Optional[str] = None
     notes: Optional[str] = None
     is_billable: bool

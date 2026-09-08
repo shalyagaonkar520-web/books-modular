@@ -6,18 +6,21 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
-from backend.models import Bill, BillLine, Contact, User
+from backend.models import Bill, BillLine, Contact, Organization, User
 from backend.schemas.common import Message, Page
 from backend.schemas.purchases import BillCreate, BillListItem, BillOut, BillStats, BillStatusUpdate, BillUpdate
 from backend.schemas.sales import LineOut
-from backend.services import audit, inventory, ledger, numbering
+from backend.services import audit, export_service, inventory, ledger, numbering
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.documents import compute_lines, group_by_account, totals
+from backend.services.email_service import SENDER_NAME, SMTP_USER, get_smtp_connection
 from backend.services.money import money
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
@@ -178,12 +181,174 @@ def bill_stats(user: User = Depends(get_current_user), db: Session = Depends(get
     )
 
 
+class SendBillEmailRequest(BaseModel):
+    to_email: str
+    custom_notes: Optional[str] = None
+    attach_pdf: bool = True
+
+
+@router.get("/export/pdf")
+def export_bills_pdf(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    vendor_id: Optional[str] = None,
+    search: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Export Purchase Bills registry to PDF."""
+    stmt = _base_query(user.organization_id)
+    today = date.today()
+    if status_filter == "overdue":
+        stmt = stmt.where(Bill.status.in_(OPEN_STATUSES), Bill.due_date < today)
+    elif status_filter == "unpaid":
+        stmt = stmt.where(Bill.status.in_(OPEN_STATUSES))
+    elif status_filter:
+        stmt = stmt.where(Bill.status == status_filter)
+    if vendor_id:
+        stmt = stmt.where(Bill.vendor_id == vendor_id)
+    if start_date:
+        stmt = stmt.where(Bill.date >= start_date)
+    if end_date:
+        stmt = stmt.where(Bill.date <= end_date)
+    if search and search.strip():
+        q = f"%{search.strip().lower()}%"
+        stmt = stmt.where(func.lower(Bill.bill_number).like(q) | func.lower(Bill.vendor_bill_number).like(q))
+    stmt = stmt.order_by(Bill.date.desc()).limit(500)
+    bills = db.execute(stmt).scalars().all()
+    org = db.get(Organization, user.organization_id)
+    pdf_bytes = export_service.generate_bills_list_pdf(bills, org)
+    return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="bills_report.pdf"'})
+
+
+@router.get("/export/excel")
+def export_bills_excel(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    vendor_id: Optional[str] = None,
+    search: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Export Purchase Bills registry to Excel."""
+    stmt = _base_query(user.organization_id)
+    today = date.today()
+    if status_filter == "overdue":
+        stmt = stmt.where(Bill.status.in_(OPEN_STATUSES), Bill.due_date < today)
+    elif status_filter == "unpaid":
+        stmt = stmt.where(Bill.status.in_(OPEN_STATUSES))
+    elif status_filter:
+        stmt = stmt.where(Bill.status == status_filter)
+    if vendor_id:
+        stmt = stmt.where(Bill.vendor_id == vendor_id)
+    if start_date:
+        stmt = stmt.where(Bill.date >= start_date)
+    if end_date:
+        stmt = stmt.where(Bill.date <= end_date)
+    if search and search.strip():
+        q = f"%{search.strip().lower()}%"
+        stmt = stmt.where(func.lower(Bill.bill_number).like(q) | func.lower(Bill.vendor_bill_number).like(q))
+    stmt = stmt.order_by(Bill.date.desc()).limit(500)
+    bills = db.execute(stmt).scalars().all()
+    org = db.get(Organization, user.organization_id)
+    excel_bytes = export_service.generate_bills_list_excel(bills, org)
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="bills_registry.xlsx"'},
+    )
+
+
 @router.get("/{bill_id}", response_model=BillOut)
 def get_bill(bill_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     bill = db.execute(_base_query(user.organization_id).where(Bill.id == bill_id)).scalar_one_or_none()
     if bill is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Bill not found")
     return to_out(bill)
+
+
+@router.get("/{bill_id}/pdf")
+def download_bill_pdf(bill_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Download single Purchase Bill as PDF."""
+    bill = db.execute(_base_query(user.organization_id).where(Bill.id == bill_id)).scalar_one_or_none()
+    if bill is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Bill not found")
+    org = db.get(Organization, user.organization_id)
+    pdf_bytes = export_service.generate_bill_pdf(bill, org)
+    return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="Bill-{bill.bill_number}.pdf"'})
+
+
+@router.get("/{bill_id}/excel")
+def download_bill_excel(bill_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Export single Purchase Bill to Excel."""
+    bill = db.execute(_base_query(user.organization_id).where(Bill.id == bill_id)).scalar_one_or_none()
+    if bill is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Bill not found")
+    org = db.get(Organization, user.organization_id)
+    excel_bytes = export_service.generate_bills_list_excel([bill], org)
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="Bill-{bill.bill_number}.xlsx"'},
+    )
+
+
+@router.post("/{bill_id}/send-gmail")
+def send_bill_via_gmail(
+    bill_id: str,
+    payload: SendBillEmailRequest,
+    user: User = Depends(require_write),
+    db: Session = Depends(get_db),
+):
+    """Send bill details/query/remittance advice to vendor via Gmail SMTP."""
+    bill = db.execute(_base_query(user.organization_id).where(Bill.id == bill_id)).scalar_one_or_none()
+    if bill is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Bill not found")
+    org = db.get(Organization, user.organization_id)
+    pdf_bytes = export_service.generate_bill_pdf(bill, org) if payload.attach_pdf else None
+
+    from email.mime.application import MIMEApplication
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    msg = MIMEMultipart("mixed") if pdf_bytes else MIMEMultipart("alternative")
+    msg["Subject"] = f"Purchase Bill Voucher {bill.bill_number} - Rooman Technologies"
+    msg["From"] = f"{SENDER_NAME} <{SMTP_USER}>"
+    msg["To"] = payload.to_email
+
+    vendor_name = bill.vendor.display_name if bill.vendor else "Vendor"
+    html = f"""<!DOCTYPE html><html><body style="font-family:sans-serif;padding:24px;background:#f8fafc;color:#1e293b;">
+    <div style="max-width:550px;margin:0 auto;background:#fff;padding:28px;border-radius:10px;border:1px solid #e2e8f0;">
+    <h2 style="color:#0f172a;margin-top:0;">Rooman Technologies - Purchase Bill Voucher</h2>
+    <p>Dear <strong>{vendor_name}</strong>,</p>
+    <p>Please find attached voucher details for Purchase Bill <strong>{bill.bill_number}</strong> (Vendor Ref: {bill.vendor_bill_number or 'N/A'}).</p>
+    <div style="background:#f1f5f9;padding:16px;border-radius:6px;margin:16px 0;">
+      <div>Bill Amount: <strong>₹{bill.total:,.2f}</strong></div>
+      <div>Due Date: <strong>{bill.due_date.strftime('%d %b %Y')}</strong></div>
+      <div>Balance Outstanding: <strong>₹{bill.balance_due:,.2f}</strong></div>
+    </div>
+    {f'<p style="background:#eff6ff;padding:12px;border-left:4px solid #2563eb;"><strong>Note:</strong> {payload.custom_notes}</p>' if payload.custom_notes else ''}
+    <p>Warm regards,<br/><strong>Accounts Payable Team</strong><br/>Rooman Technologies</p>
+    </div></body></html>"""
+
+    msg.attach(MIMEText(html, "html"))
+    if pdf_bytes:
+        part = MIMEApplication(pdf_bytes, _subtype="pdf")
+        part.add_header("Content-Disposition", "attachment", filename=f"Bill_{bill.bill_number}.pdf")
+        msg.attach(part)
+
+    try:
+        server = get_smtp_connection()
+        server.sendmail(SMTP_USER, payload.to_email, msg.as_string())
+        server.quit()
+    except Exception as e:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Gmail SMTP error: {e}")
+
+    audit.record(db, user, "email", "bill", bill.id, f"Emailed bill {bill.bill_number} to {payload.to_email}")
+    db.commit()
+    return {"success": True, "message": f"Bill {bill.bill_number} emailed to {payload.to_email} via Gmail SMTP"}
 
 
 @router.post("", response_model=BillOut, status_code=status.HTTP_201_CREATED)

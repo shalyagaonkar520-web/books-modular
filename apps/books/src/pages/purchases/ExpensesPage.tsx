@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Pencil, Plus, Receipt, Trash2 } from 'lucide-react';
+import { FileDown, FileSpreadsheet, Mail, Pencil, Plus, Receipt, Trash2 } from 'lucide-react';
 
 import { accountingApi, bankingApi, contactsApi, expensesApi } from '@/api/endpoints';
 import type { Expense } from '@/api/types';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { StatTile } from '@/components/ui/Card';
 import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, LoadingBlock, SkeletonRows } from '@/components/ui/Feedback';
+import { CheckboxField, TextAreaField, TextField } from '@/components/ui/Field';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, Toolbar } from '@/components/ui/Toolbar';
@@ -37,10 +38,10 @@ export function ExpensesPage() {
   const [accountId, setAccountId] = useState('');
   const [vendorId, setVendorId] = useState('');
   const [page, setPage] = useState(1);
-
-  const [editing, setEditing] = useState<Expense | null>(null);
   const [creating, setCreating] = useState(() => searchParams.get('new') === '1');
+  const [editing, setEditing] = useState<Expense | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Expense | null>(null);
+  const [mailExpense, setMailExpense] = useState<Expense | null>(null);
   const remove = useSubmit();
 
   const refs = useAsync(async (): Promise<ExpenseRefs> => {
@@ -144,22 +145,35 @@ export function ExpensesPage() {
       key: 'actions',
       header: 'Actions',
       align: 'right',
-      render: (expense) =>
-        canWrite ? (
-          <div className="row-actions">
-            <button type="button" className="action-btn" aria-label={`Edit expense ${expense.expenseNumber}`} onClick={() => setEditing(expense)}>
-              <Pencil size={15} />
-            </button>
-            <button
-              type="button"
-              className="action-btn is-danger"
-              aria-label={`Delete expense ${expense.expenseNumber}`}
-              onClick={() => setPendingDelete(expense)}
-            >
-              <Trash2 size={15} />
-            </button>
-          </div>
-        ) : null,
+      render: (expense) => (
+        <div className="row-actions">
+          <button
+            type="button"
+            className="action-btn"
+            style={{ color: '#ea4335' }}
+            aria-label={`Send expense details for ${expense.expenseNumber} via Gmail`}
+            title="Send expense details via Gmail"
+            onClick={() => setMailExpense(expense)}
+          >
+            <Mail size={15} />
+          </button>
+          {canWrite ? (
+            <>
+              <button type="button" className="action-btn" aria-label={`Edit expense ${expense.expenseNumber}`} onClick={() => setEditing(expense)}>
+                <Pencil size={15} />
+              </button>
+              <button
+                type="button"
+                className="action-btn is-danger"
+                aria-label={`Delete expense ${expense.expenseNumber}`}
+                onClick={() => setPendingDelete(expense)}
+              >
+                <Trash2 size={15} />
+              </button>
+            </>
+          ) : null}
+        </div>
+      ),
     },
   ];
 
@@ -169,11 +183,41 @@ export function ExpensesPage() {
         title="Expenses"
         subtitle="Costs paid straight out of a bank, cash or credit card account."
         actions={
-          <IfCanWrite>
-            <Button variant="primary" icon={<Plus size={15} />} onClick={() => setCreating(true)}>
-              Record expense
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <Button
+              variant="secondary"
+              icon={<FileDown size={15} />}
+              onClick={() =>
+                expensesApi.exportPdf({
+                  account_id: accountId || undefined,
+                  vendor_id: vendorId || undefined,
+                  start_date: startDate || undefined,
+                  end_date: endDate || undefined,
+                })
+              }
+            >
+              Extract PDF
             </Button>
-          </IfCanWrite>
+            <Button
+              variant="secondary"
+              icon={<FileSpreadsheet size={15} />}
+              onClick={() =>
+                expensesApi.exportExcel({
+                  account_id: accountId || undefined,
+                  vendor_id: vendorId || undefined,
+                  start_date: startDate || undefined,
+                  end_date: endDate || undefined,
+                })
+              }
+            >
+              Extract Excel
+            </Button>
+            <IfCanWrite>
+              <Button variant="primary" icon={<Plus size={15} />} onClick={() => setCreating(true)}>
+                Record expense
+              </Button>
+            </IfCanWrite>
+          </div>
         }
       />
 
@@ -290,6 +334,91 @@ export function ExpensesPage() {
           if (pendingDelete) void deleteExpense(pendingDelete);
         }}
       />
+
+      {mailExpense ? (
+        <SendExpenseModal
+          expense={mailExpense}
+          onClose={() => setMailExpense(null)}
+          onSent={(msg) => {
+            toast.success(msg);
+            setMailExpense(null);
+          }}
+        />
+      ) : null}
     </>
+  );
+}
+
+interface SendExpenseModalProps {
+  expense: Expense;
+  onClose: () => void;
+  onSent: (msg: string) => void;
+}
+
+function SendExpenseModal({ expense, onClose, onSent }: SendExpenseModalProps) {
+  const [email, setEmail] = useState('');
+  const [notes, setNotes] = useState(`Expense record #${expense.expenseNumber} for ${formatCurrency(expense.total)} on ${formatDate(expense.date)} (${expense.accountName}).`);
+  const [attachPdf, setAttachPdf] = useState(false);
+  const { submitting, error, run } = useSubmit();
+
+  const handleSend = async () => {
+    if (!email.trim()) return;
+    const result = await run(() =>
+      expensesApi.sendGmail(expense.id, {
+        to_email: email.trim(),
+        attach_pdf: attachPdf,
+        custom_notes: notes.trim() || undefined,
+      }),
+    );
+    if (result) {
+      onSent(result.message);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      size="md"
+      title="Send Expense Details via Gmail"
+      subtitle={`Expense #${expense.expenseNumber} • ${expense.accountName} (${formatCurrency(expense.total)})`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button variant="primary" loading={submitting} icon={<Mail size={15} />} onClick={handleSend}>
+            Send via Gmail
+          </Button>
+        </>
+      }
+    >
+      <FormError message={error} />
+      <div className="form-grid">
+        <TextField
+          label="Recipient Email"
+          type="email"
+          required
+          placeholder="accountant@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+      </div>
+      <div style={{ marginTop: '12px' }}>
+        <CheckboxField
+          label="Attach PDF Report"
+          checked={attachPdf}
+          onChange={(e) => setAttachPdf(e.target.checked)}
+        />
+      </div>
+      <div style={{ marginTop: '12px' }}>
+        <TextAreaField
+          label="Custom Notes"
+          rows={3}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
+      </div>
+    </Modal>
   );
 }

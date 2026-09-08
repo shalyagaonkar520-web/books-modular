@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Ban, CheckCircle2, Eye, FileText, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
+import { Ban, CheckCircle2, Eye, FileDown, FileSpreadsheet, FileText, Mail, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
 
 import { billsApi, contactsApi } from '@/api/endpoints';
 import type { BillListItem } from '@/api/types';
@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/Button';
 import { StatTile } from '@/components/ui/Card';
 import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, SkeletonRows } from '@/components/ui/Feedback';
-import { ConfirmDialog } from '@/components/ui/Modal';
+import { CheckboxField, TextAreaField, TextField } from '@/components/ui/Field';
+import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, SearchInput, Tabs, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
@@ -59,6 +60,7 @@ export function BillsPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [payTarget, setPayTarget] = useState<VendorPaymentBill | null>(null);
   const [confirm, setConfirm] = useState<{ kind: 'void' | 'delete'; bill: BillListItem } | null>(null);
+  const [mailBill, setMailBill] = useState<BillListItem | null>(null);
   const action = useSubmit();
 
   const stats = useAsync(() => billsApi.stats(), []);
@@ -146,6 +148,36 @@ export function BillsPage() {
           <button type="button" className="action-btn" aria-label={`View bill ${bill.billNumber}`} onClick={() => setDetailId(bill.id)}>
             <Eye size={15} />
           </button>
+          <button
+            type="button"
+            className="action-btn"
+            style={{ color: '#ea4335' }}
+            aria-label={`Send bill ${bill.billNumber} via Gmail`}
+            title="Send bill via Gmail"
+            onClick={() => setMailBill(bill)}
+          >
+            <Mail size={15} />
+          </button>
+          <button
+            type="button"
+            className="action-btn"
+            style={{ color: '#dc2626' }}
+            aria-label={`Download PDF for bill ${bill.billNumber}`}
+            title="Full PDF Extract"
+            onClick={() => billsApi.downloadPdf(bill.id, bill.billNumber)}
+          >
+            <FileDown size={15} />
+          </button>
+          <button
+            type="button"
+            className="action-btn"
+            style={{ color: '#15803d' }}
+            aria-label={`Download Excel for bill ${bill.billNumber}`}
+            title="Excel Extract"
+            onClick={() => billsApi.downloadExcel(bill.id, bill.billNumber)}
+          >
+            <FileSpreadsheet size={15} />
+          </button>
           {canWrite ? (
             <>
               {canEditBill(bill) ? (
@@ -211,11 +243,37 @@ export function BillsPage() {
         title="Bills"
         subtitle="Purchase bills owed to your vendors."
         actions={
-          <IfCanWrite>
-            <Button variant="primary" icon={<Plus size={15} />} onClick={() => navigate('/bills/new')}>
-              New bill
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <Button
+              variant="secondary"
+              icon={<FileDown size={15} />}
+              onClick={() =>
+                billsApi.exportPdf({
+                  status: statusTab === 'all' ? undefined : statusTab,
+                  search: debouncedSearch.trim() || undefined,
+                })
+              }
+            >
+              Extract PDF
             </Button>
-          </IfCanWrite>
+            <Button
+              variant="secondary"
+              icon={<FileSpreadsheet size={15} />}
+              onClick={() =>
+                billsApi.exportExcel({
+                  status: statusTab === 'all' ? undefined : statusTab,
+                  search: debouncedSearch.trim() || undefined,
+                })
+              }
+            >
+              Extract Excel
+            </Button>
+            <IfCanWrite>
+              <Button variant="primary" icon={<Plus size={15} />} onClick={() => navigate('/bills/new')}>
+                New bill
+              </Button>
+            </IfCanWrite>
+          </div>
         }
       />
 
@@ -362,6 +420,91 @@ export function BillsPage() {
           }
         }}
       />
+
+      {mailBill ? (
+        <SendBillModal
+          bill={mailBill}
+          onClose={() => setMailBill(null)}
+          onSent={(msg) => {
+            toast.success(msg);
+            setMailBill(null);
+          }}
+        />
+      ) : null}
     </>
+  );
+}
+
+interface SendBillModalProps {
+  bill: BillListItem;
+  onClose: () => void;
+  onSent: (msg: string) => void;
+}
+
+function SendBillModal({ bill, onClose, onSent }: SendBillModalProps) {
+  const [email, setEmail] = useState('');
+  const [notes, setNotes] = useState(`Please find attached purchase bill #${bill.billNumber} from ${bill.vendorName} for ${formatCurrency(bill.total)}.`);
+  const [attachPdf, setAttachPdf] = useState(true);
+  const { submitting, error, run } = useSubmit();
+
+  const handleSend = async () => {
+    if (!email.trim()) return;
+    const result = await run(() =>
+      billsApi.sendGmail(bill.id, {
+        to_email: email.trim(),
+        attach_pdf: attachPdf,
+        custom_notes: notes.trim() || undefined,
+      }),
+    );
+    if (result) {
+      onSent(result.message);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      size="md"
+      title="Send Bill via Gmail"
+      subtitle={`Bill #${bill.billNumber} • ${bill.vendorName} (${formatCurrency(bill.total)})`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button variant="primary" loading={submitting} icon={<Mail size={15} />} onClick={handleSend}>
+            Send Bill via Gmail
+          </Button>
+        </>
+      }
+    >
+      <FormError message={error} />
+      <div className="form-grid">
+        <TextField
+          label="Recipient Email"
+          type="email"
+          required
+          placeholder="vendor@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+      </div>
+      <div style={{ marginTop: '12px' }}>
+        <CheckboxField
+          label="Attach PDF Bill"
+          checked={attachPdf}
+          onChange={(e) => setAttachPdf(e.target.checked)}
+        />
+      </div>
+      <div style={{ marginTop: '12px' }}>
+        <TextAreaField
+          label="Custom Notes"
+          rows={3}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
+      </div>
+    </Modal>
   );
 }

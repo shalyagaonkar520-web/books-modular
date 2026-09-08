@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Plus, Trash2, Wallet } from 'lucide-react';
+import { FileDown, FileSpreadsheet, Mail, Plus, Trash2, Wallet } from 'lucide-react';
 
 import { contactsApi, vendorPaymentsApi } from '@/api/endpoints';
 import type { VendorPayment } from '@/api/types';
@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/Button';
 import { StatTile } from '@/components/ui/Card';
 import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, SkeletonRows } from '@/components/ui/Feedback';
-import { ConfirmDialog } from '@/components/ui/Modal';
+import { CheckboxField, TextAreaField, TextField } from '@/components/ui/Field';
+import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
@@ -41,6 +42,7 @@ export function PaymentsMadePage() {
   const [page, setPage] = useState(1);
   const [recording, setRecording] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<VendorPayment | null>(null);
+  const [mailPayment, setMailPayment] = useState<VendorPayment | null>(null);
   const remove = useSubmit();
 
   const vendors = useAsync((signal) => contactsApi.list({ type: 'vendor', page_size: 200 }, signal), []);
@@ -117,9 +119,29 @@ export function PaymentsMadePage() {
       key: 'actions',
       header: 'Actions',
       align: 'right',
-      render: (payment) =>
-        canWrite ? (
-          <div className="row-actions">
+      render: (payment) => (
+        <div className="row-actions">
+          <button
+            type="button"
+            className="action-btn"
+            style={{ color: '#ea4335' }}
+            aria-label={`Send remittance advice for ${payment.paymentNumber} via Gmail`}
+            title="Send remittance advice via Gmail"
+            onClick={() => setMailPayment(payment)}
+          >
+            <Mail size={15} />
+          </button>
+          <button
+            type="button"
+            className="action-btn"
+            style={{ color: '#dc2626' }}
+            aria-label={`Download remittance advice PDF for ${payment.paymentNumber}`}
+            title="Download remittance advice PDF"
+            onClick={() => vendorPaymentsApi.downloadPdf(payment.id, payment.paymentNumber)}
+          >
+            <FileDown size={15} />
+          </button>
+          {canWrite ? (
             <button
               type="button"
               className="action-btn is-danger"
@@ -128,8 +150,9 @@ export function PaymentsMadePage() {
             >
               <Trash2 size={15} />
             </button>
-          </div>
-        ) : null,
+          ) : null}
+        </div>
+      ),
     },
   ];
 
@@ -139,11 +162,39 @@ export function PaymentsMadePage() {
         title="Payments made"
         subtitle="Every payment sent to a vendor, whether against a bill or as an advance."
         actions={
-          <IfCanWrite>
-            <Button variant="primary" icon={<Plus size={15} />} onClick={() => setRecording(true)}>
-              Record payment
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <Button
+              variant="secondary"
+              icon={<FileDown size={15} />}
+              onClick={() =>
+                vendorPaymentsApi.exportPdf({
+                  vendor_id: vendorId || undefined,
+                  start_date: startDate || undefined,
+                  end_date: endDate || undefined,
+                })
+              }
+            >
+              Extract PDF
             </Button>
-          </IfCanWrite>
+            <Button
+              variant="secondary"
+              icon={<FileSpreadsheet size={15} />}
+              onClick={() =>
+                vendorPaymentsApi.exportExcel({
+                  vendor_id: vendorId || undefined,
+                  start_date: startDate || undefined,
+                  end_date: endDate || undefined,
+                })
+              }
+            >
+              Extract Excel
+            </Button>
+            <IfCanWrite>
+              <Button variant="primary" icon={<Plus size={15} />} onClick={() => setRecording(true)}>
+                Record payment
+              </Button>
+            </IfCanWrite>
+          </div>
         }
       />
 
@@ -255,6 +306,91 @@ export function PaymentsMadePage() {
           if (pendingDelete) void deletePayment(pendingDelete);
         }}
       />
+
+      {mailPayment ? (
+        <SendRemittanceModal
+          payment={mailPayment}
+          onClose={() => setMailPayment(null)}
+          onSent={(msg) => {
+            toast.success(msg);
+            setMailPayment(null);
+          }}
+        />
+      ) : null}
     </>
+  );
+}
+
+interface SendRemittanceModalProps {
+  payment: VendorPayment;
+  onClose: () => void;
+  onSent: (msg: string) => void;
+}
+
+function SendRemittanceModal({ payment, onClose, onSent }: SendRemittanceModalProps) {
+  const [email, setEmail] = useState('');
+  const [notes, setNotes] = useState(`Please find attached remittance advice for payment #${payment.paymentNumber} of ${formatCurrency(payment.amount)} to ${payment.vendorName}.`);
+  const [attachPdf, setAttachPdf] = useState(true);
+  const { submitting, error, run } = useSubmit();
+
+  const handleSend = async () => {
+    if (!email.trim()) return;
+    const result = await run(() =>
+      vendorPaymentsApi.sendGmail(payment.id, {
+        to_email: email.trim(),
+        attach_pdf: attachPdf,
+        custom_notes: notes.trim() || undefined,
+      }),
+    );
+    if (result) {
+      onSent(result.message);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      size="md"
+      title="Send Remittance Advice via Gmail"
+      subtitle={`Payment #${payment.paymentNumber} • ${payment.vendorName} (${formatCurrency(payment.amount)})`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button variant="primary" loading={submitting} icon={<Mail size={15} />} onClick={handleSend}>
+            Send Remittance Advice
+          </Button>
+        </>
+      }
+    >
+      <FormError message={error} />
+      <div className="form-grid">
+        <TextField
+          label="Recipient Email"
+          type="email"
+          required
+          placeholder="vendor@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+      </div>
+      <div style={{ marginTop: '12px' }}>
+        <CheckboxField
+          label="Attach PDF Remittance Advice"
+          checked={attachPdf}
+          onChange={(e) => setAttachPdf(e.target.checked)}
+        />
+      </div>
+      <div style={{ marginTop: '12px' }}>
+        <TextAreaField
+          label="Custom Notes"
+          rows={3}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
+      </div>
+    </Modal>
   );
 }
