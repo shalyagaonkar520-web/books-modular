@@ -1,1 +1,1 @@
-"""Zoho Books Clone - FastAPI Backend"""
+"""Rooman Books backend package."""

@@ -1,122 +1,132 @@
-import React from 'react';
+import { useState } from 'react';
+import { NavLink } from 'react-router-dom';
 import {
-  Home,
-  Package,
-  ShoppingCart,
-  ShoppingBag,
-  Clock,
-  Landmark,
-  Calculator,
   BarChart3,
-  FileText,
-  DollarSign,
+  Building2,
+  ChevronDown,
   CreditCard,
-  Lock
+  FileText,
+  FolderOpen,
+  Home,
+  Landmark,
+  Package,
+  Receipt,
+  ShoppingBag,
+  ShoppingCart,
+  Users,
+  Wallet,
 } from 'lucide-react';
 
-export type NavModule =
-  | 'home'
-  | 'items'
-  | 'sales'
-  | 'purchases'
-  | 'time_tracking'
-  | 'banking'
-  | 'accountant'
-  | 'reports'
-  | 'documents'
-  | 'payroll'
-  | 'payments';
+import { useAuth } from '@/auth/AuthContext';
 
-interface SidebarProps {
-  activeModule: NavModule;
-  onSelectModule: (module: NavModule) => void;
-  onLockedClick: (moduleName: string) => void;
-  isOpenMobile: boolean;
-  onCloseMobile: () => void;
-}
-
-interface NavItemDef {
-  id: NavModule;
+interface NavEntry {
+  to: string;
   label: string;
-  icon: React.ReactNode;
-  isLocked: boolean;
+  icon: typeof Home;
+  adminOnly?: boolean;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({
-  activeModule,
-  onSelectModule,
-  onLockedClick,
-  isOpenMobile,
-  onCloseMobile,
-}) => {
-  const navItems: NavItemDef[] = [
-    { id: 'home', label: 'Home', icon: <Home size={18} />, isLocked: false },
-    { id: 'items', label: 'Items', icon: <Package size={18} />, isLocked: false },
-    { id: 'sales', label: 'Sales', icon: <ShoppingCart size={18} />, isLocked: true },
-    { id: 'purchases', label: 'Purchases', icon: <ShoppingBag size={18} />, isLocked: true },
-    { id: 'time_tracking', label: 'Time Tracking', icon: <Clock size={18} />, isLocked: true },
-    { id: 'banking', label: 'Banking', icon: <Landmark size={18} />, isLocked: true },
-    { id: 'accountant', label: 'Accountant', icon: <Calculator size={18} />, isLocked: true },
-    { id: 'reports', label: 'Reports', icon: <BarChart3 size={18} />, isLocked: true },
-    { id: 'documents', label: 'Documents', icon: <FileText size={18} />, isLocked: true },
-    { id: 'payroll', label: 'Zoho Payroll', icon: <DollarSign size={18} />, isLocked: true },
-    { id: 'payments', label: 'Payments', icon: <CreditCard size={18} />, isLocked: true },
-  ];
+interface NavGroup {
+  id: string;
+  label: string;
+  icon: typeof Home;
+  entries: NavEntry[];
+}
 
-  const handleItemClick = (item: NavItemDef) => {
-    if (item.isLocked) {
-      onLockedClick(item.label);
-    } else {
-      onSelectModule(item.id);
-      if (isOpenMobile) onCloseMobile();
-    }
-  };
+const GROUPS: NavGroup[] = [
+  {
+    id: 'sales',
+    label: 'Sales',
+    icon: ShoppingCart,
+    entries: [
+      { to: '/customers', label: 'Customers', icon: Users },
+      { to: '/invoices', label: 'Invoices', icon: FileText },
+      { to: '/payments-received', label: 'Payments received', icon: Wallet },
+    ],
+  },
+  {
+    id: 'purchases',
+    label: 'Purchases',
+    icon: ShoppingBag,
+    entries: [
+      { to: '/vendors', label: 'Vendors', icon: Building2 },
+      { to: '/bills', label: 'Bills', icon: Receipt },
+      { to: '/expenses', label: 'Expenses', icon: CreditCard },
+      { to: '/payments-made', label: 'Payments made', icon: Wallet },
+    ],
+  },
+];
+
+const SINGLE_LINKS: NavEntry[] = [
+  { to: '/', label: 'Dashboard', icon: Home },
+  { to: '/items', label: 'Items', icon: Package },
+];
+
+const LOWER_LINKS: NavEntry[] = [
+  { to: '/banking', label: 'Banking', icon: Landmark },
+  { to: '/time-tracking', label: 'Time tracking', icon: FolderOpen },
+  { to: '/accounting', label: 'Accountant', icon: BarChart3 },
+  { to: '/reports', label: 'Reports', icon: BarChart3 },
+  { to: '/documents', label: 'Documents', icon: FolderOpen },
+  { to: '/payroll', label: 'Payroll', icon: Users },
+];
+
+export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () => void }) {
+  const { isAdmin } = useAuth();
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  const toggle = (id: string) => setCollapsed((current) => ({ ...current, [id]: !current[id] }));
 
   return (
     <>
-      {/* Mobile backdrop */}
-      {isOpenMobile && (
-        <div className="zb-sidebar-backdrop" onClick={onCloseMobile} />
-      )}
+      {open ? <div className="sidebar-backdrop" onClick={onNavigate} aria-hidden="true" /> : null}
+      <aside className={`sidebar ${open ? 'is-open' : ''}`} aria-label="Main navigation">
+        <nav className="sidebar-nav">
+          {SINGLE_LINKS.map((entry) => (
+            <NavLink key={entry.to} to={entry.to} end={entry.to === '/'} className="nav-link" onClick={onNavigate}>
+              <entry.icon size={17} aria-hidden="true" />
+              <span>{entry.label}</span>
+            </NavLink>
+          ))}
 
-      <aside className={`zb-sidebar ${isOpenMobile ? 'open-mobile' : ''}`}>
-        <div className="zb-sidebar-content">
-          <div className="zb-sidebar-section">
-            <div className="zb-sidebar-section-title">CORE MODULES</div>
-            <nav className="zb-nav-list">
-              {navItems.map(item => {
-                const isActive = activeModule === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    className={`zb-nav-item ${isActive ? 'active' : ''} ${
-                      item.isLocked ? 'locked' : ''
-                    }`}
-                    onClick={() => handleItemClick(item)}
-                    title={item.isLocked ? `${item.label} (Locked - Coming Soon)` : item.label}
-                  >
-                    <span className="zb-nav-icon">{item.icon}</span>
-                    <span className="zb-nav-label">{item.label}</span>
-                    {item.isLocked && (
-                      <span className="zb-lock-badge">
-                        <Lock size={12} />
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-        </div>
+          {GROUPS.map((group) => {
+            const isCollapsed = collapsed[group.id];
+            return (
+              <div className="nav-group" key={group.id}>
+                <button type="button" className="nav-group-toggle" onClick={() => toggle(group.id)} aria-expanded={!isCollapsed}>
+                  <group.icon size={17} aria-hidden="true" />
+                  <span>{group.label}</span>
+                  <ChevronDown size={14} className={`chevron ${isCollapsed ? 'is-collapsed' : ''}`} aria-hidden="true" />
+                </button>
+                {!isCollapsed ? (
+                  <div className="nav-sublist">
+                    {group.entries.map((entry) => (
+                      <NavLink key={entry.to} to={entry.to} className="nav-link nav-sublink" onClick={onNavigate}>
+                        <entry.icon size={15} aria-hidden="true" />
+                        <span>{entry.label}</span>
+                      </NavLink>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
 
-        {/* Sidebar Footer status */}
-        <div className="zb-sidebar-footer">
-          <div className="zb-app-status-badge">
-            <span className="zb-status-dot"></span>
-            <span>Version 1.0 (Home + Items Active)</span>
-          </div>
-        </div>
+          {LOWER_LINKS.map((entry) => (
+            <NavLink key={entry.to} to={entry.to} className="nav-link" onClick={onNavigate}>
+              <entry.icon size={17} aria-hidden="true" />
+              <span>{entry.label}</span>
+            </NavLink>
+          ))}
+
+          {isAdmin ? (
+            <NavLink to="/settings" className="nav-link" onClick={onNavigate}>
+              <Building2 size={17} aria-hidden="true" />
+              <span>Settings</span>
+            </NavLink>
+          ) : null}
+        </nav>
       </aside>
     </>
   );
-};
+}
