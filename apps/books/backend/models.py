@@ -1,470 +1,609 @@
-from typing import Optional, List, Literal, Dict, Any
-from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict
+"""SQLAlchemy ORM models for Rooman Books.
+
+All business tables are scoped by ``organization_id`` (multi-tenant) and use
+string UUID primary keys so that the schema is portable between SQLite and
+PostgreSQL.
+"""
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, date, datetime
+from decimal import Decimal
+from typing import List, Optional
 
-ItemType = Literal['goods', 'service']
-CashFlowPeriod = Literal['this_fiscal_year', 'this_month', 'last_month', 'this_quarter']
-
-
-class SalesInfo(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    selling_price: float = Field(default=0.0, alias='sellingPrice')
-    sales_account: str = Field(default='Sales - General', alias='salesAccount')
-    description: Optional[str] = None
-
-
-class PurchaseInfo(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    cost_price: float = Field(default=0.0, alias='costPrice')
-    cost_account: str = Field(default='Cost of Goods Sold', alias='costAccount')
-    description: Optional[str] = None
-    preferred_vendor: Optional[str] = Field(default=None, alias='preferredVendor')
-
-
-class InventoryInfo(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    track_inventory: bool = Field(default=True, alias='trackInventory')
-    opening_stock: float = Field(default=0.0, alias='openingStock')
-    opening_stock_rate: float = Field(default=0.0, alias='openingStockRate')
-    reorder_level: float = Field(default=0.0, alias='reorderLevel')
-    warehouse_location: Optional[str] = Field(default=None, alias='warehouseLocation')
-
-
-class ItemBase(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    name: str = Field(..., min_length=1, max_length=200)
-    type: ItemType = 'goods'
-    sku: str = Field(..., min_length=1, max_length=50)
-    unit: str = Field(default='pcs', max_length=20)
-    description: Optional[str] = None
-    image_url: Optional[str] = Field(default=None, alias='imageUrl')
-    sales_info: SalesInfo = Field(default_factory=SalesInfo, alias='salesInfo')
-    purchase_info: PurchaseInfo = Field(default_factory=PurchaseInfo, alias='purchaseInfo')
-    inventory_info: Optional[InventoryInfo] = Field(default=None, alias='inventoryInfo')
-
-
-class ItemCreate(ItemBase):
-    pass
-
-
-class ItemUpdate(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    name: Optional[str] = None
-    type: Optional[ItemType] = None
-    sku: Optional[str] = None
-    unit: Optional[str] = None
-    description: Optional[str] = None
-    image_url: Optional[str] = Field(default=None, alias='imageUrl')
-    sales_info: Optional[SalesInfo] = Field(default=None, alias='salesInfo')
-    purchase_info: Optional[PurchaseInfo] = Field(default=None, alias='purchaseInfo')
-    inventory_info: Optional[InventoryInfo] = Field(default=None, alias='inventoryInfo')
-
-
-class ItemResponse(ItemBase):
-    id: str
-    created_at: str = Field(..., alias='createdAt')
-    updated_at: str = Field(..., alias='updatedAt')
-
-
-# Dashboard Models
-class ReceivablesSummary(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    total_unpaid_invoices: int = Field(alias='totalUnpaidInvoices')
-    current_amount: float = Field(alias='currentAmount')
-    overdue_amount: float = Field(alias='overdueAmount')
-    total_receivables: float = Field(alias='totalReceivables')
-
-
-class PayablesSummary(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    total_unpaid_bills: int = Field(alias='totalUnpaidBills')
-    current_amount: float = Field(alias='currentAmount')
-    overdue_amount: float = Field(alias='overdueAmount')
-    total_payables: float = Field(alias='totalPayables')
-
-
-class MonthlyBreakdown(BaseModel):
-    month: str
-    incoming: float
-    outgoing: float
-
-
-class CashFlowSummary(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    opening_balance: float = Field(alias='openingBalance')
-    incoming_amount: float = Field(alias='incomingAmount')
-    outgoing_amount: float = Field(alias='outgoingAmount')
-    net_cash_flow: float = Field(alias='netCashFlow')
-    monthly_breakdown: List[MonthlyBreakdown] = Field(alias='monthlyBreakdown')
-
-
-class InventorySummary(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    total_items_count: int = Field(alias='totalItemsCount')
-    goods_count: int = Field(alias='goodsCount')
-    service_count: int = Field(alias='serviceCount')
-    tracked_count: int = Field(alias='trackedCount')
-    total_inventory_valuation: float = Field(alias='totalInventoryValuation')
-    low_stock_items_count: int = Field(alias='lowStockItemsCount')
-
-
-class DashboardSummaryResponse(BaseModel):
-    receivables: ReceivablesSummary
-    payables: PayablesSummary
-    cash_flow: CashFlowSummary = Field(alias='cashFlow')
-    inventory: InventorySummary
-
-
-# Authentication Models
-class UserLoginRequest(BaseModel):
-    email: str
-    password: str
-
-
-class UserRegisterRequest(BaseModel):
-    name: str = Field(..., min_length=2, max_length=100)
-    email: str
-    password: str = Field(..., min_length=6)
-    organization: Optional[str] = "Zylker Electronics India Pvt Ltd"
-    role: Optional[str] = "Administrator"
-
-
-class UserProfile(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    name: str
-    email: str
-    role: str
-    organization: str
-    avatar: Optional[str] = None
-    auth_provider: Optional[str] = Field(default="local", alias="authProvider")
-
-
-class OAuthLoginRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    provider: Literal['google', 'microsoft', 'zoho', 'github']
-    code: Optional[str] = None
-    access_token: Optional[str] = Field(default=None, alias='accessToken')
-    email: Optional[str] = None
-    name: Optional[str] = None
-    avatar: Optional[str] = None
-    organization: Optional[str] = "Zylker Electronics India Pvt Ltd"
-    role: Optional[str] = "Administrator"
-
-
-class OAuthProviderInfo(BaseModel):
-    id: str
-    name: str
-    icon: str
-    status: str = "Active"
-    description: str
-
-
-class AuthResponse(BaseModel):
-    user: UserProfile
-    token: str
-    message: str
-
-
-# Invoice Models
-class InvoiceLineItem(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: Optional[str] = None
-    name: str
-    description: Optional[str] = None
-    hsn: str = "8471"
-    quantity: float = 1.0
-    rate: float = 0.0
-    discount: float = 0.0
-    tax_rate: float = Field(default=18.0, alias="taxRate")
-    amount: float = 0.0
-
-
-class InvoiceCreate(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    client: str
-    client_email: Optional[str] = Field(default="", alias="clientEmail")
-    client_gstin: Optional[str] = Field(default="29AABCU9603R1ZM", alias="clientGstin")
-    date: str
-    due: str
-    items: List[InvoiceLineItem] = []
-    amount: Optional[float] = None
-    status: str = "Sent"
-    notes: Optional[str] = "Thank you for your business. Please remit payment via NEFT/RTGS."
-
-
-class InvoiceUpdateStatus(BaseModel):
-    status: Literal['Paid', 'Sent', 'Overdue', 'Draft']
-
-
-class InvoiceResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    client: str
-    client_email: Optional[str] = Field(default="", alias="clientEmail")
-    client_gstin: Optional[str] = Field(default="29AABCU9603R1ZM", alias="clientGstin")
-    date: str
-    due: str
-    subtotal: float
-    tax_amount: float = Field(alias="taxAmount")
-    amount: float
-    status: str
-    items: List[InvoiceLineItem] = []
-    notes: Optional[str] = None
-    created_at: str = Field(alias="createdAt")
-
-
-# Document Models
-class DocumentCreate(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    title: str
-    category: str
-    uploaded_by: Optional[str] = Field(default="Shalya Gaonkar", alias="uploadedBy")
-    size: Optional[str] = "1.2 MB"
-    verified: bool = True
-    notes: Optional[str] = None
-
-
-class DocumentResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    title: str
-    category: str
-    uploaded_by: str = Field(alias="uploadedBy")
-    date: str
-    size: str
-    verified: bool
-    checksum: str
-    notes: Optional[str] = None
-
-
-# Payroll Models
-class PayrollEmployeeCreate(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    name: str
-    designation: str
-    department: str
-    gross: float
-    bank_acc: Optional[str] = Field(default="••••••••5812", alias="bankAcc")
-    pan: Optional[str] = "ABCDE1234F"
-    uan: Optional[str] = "101294819201"
-
-
-class PayrollEmployeeResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    name: str
-    designation: str
-    department: str
-    gross: float
-    deductions: float
-    net: float
-    bank_acc: str = Field(alias="bankAcc")
-    pan: str
-    uan: str
-    status: str
-    last_pay_date: str = Field(alias="lastPayDate")
-
-
-class PayslipResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    employee_id: str = Field(alias="employeeId")
-    name: str
-    designation: str
-    department: str
-    month: str
-    gross: float
-    basic: float
-    hra: float
-    special_allowance: float = Field(alias="specialAllowance")
-    pf: float
-    pt: float
-    tds: float
-    total_deductions: float = Field(alias="totalDeductions")
-    net: float
-    net_in_words: str = Field(alias="netInWords")
-    bank_acc: str = Field(alias="bankAcc")
-    pan: str
-    uan: str
-    status: str
-
-
-# =========================================================================
-# AUTOMATION ENGINE MODELS
-# =========================================================================
-
-class BusinessEventInput(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    source: str = "manual_prompt"  # manual_prompt, receipt_upload, bank_feed, invoice_upload
-    raw_text: str = Field(default="", alias="rawText")
-    event_type: Optional[str] = Field(default="general", alias="eventType")
-    amount: Optional[float] = 0.0
-    currency: Optional[str] = "INR"
-    extracted_data: Optional[Dict[str, Any]] = Field(default_factory=dict, alias="extractedData")
-
-
-class BusinessEventResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    source: str
-    raw_text: str = Field(alias="rawText")
-    event_type: str = Field(alias="eventType")
-    amount: float
-    currency: str
-    extracted_data: Dict[str, Any] = Field(alias="extractedData")
-    confidence: float
-    status: str
-    review_reason: Optional[str] = Field(default=None, alias="reviewReason")
-    created_at: str = Field(alias="createdAt")
-
-
-class JournalLineModel(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: Optional[str] = None
-    account: str
-    debit: float = 0.0
-    credit: float = 0.0
-    notes: Optional[str] = None
-
-
-class JournalEntryResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    event_id: Optional[str] = Field(default=None, alias="eventId")
-    reference_no: Optional[str] = Field(default=None, alias="referenceNo")
-    date: str
-    description: str
-    source: str
-    total_debit: float = Field(alias="totalDebit")
-    total_credit: float = Field(alias="totalCredit")
-    balanced: bool
-    created_at: str = Field(alias="createdAt")
-    lines: List[JournalLineModel] = []
-
-
-class TrialBalanceAccount(BaseModel):
-    account: str
-    debit: float
-    credit: float
-    net: float
-
-
-class TrialBalanceResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    as_of: str = Field(alias="asOf")
-    total_debit: float = Field(alias="totalDebit")
-    total_credit: float = Field(alias="totalCredit")
-    is_balanced: bool = Field(alias="isBalanced")
-    accounts: List[TrialBalanceAccount]
-
-
-class AutomationRuleModel(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    name: str
-    trigger_event: str = Field(alias="triggerEvent")
-    condition_field: str = Field(alias="conditionField")
-    operator: str
-    condition_value: str = Field(alias="conditionValue")
-    action_type: str = Field(alias="actionType")
-    action_value: str = Field(alias="actionValue")
-    is_active: bool = Field(alias="isActive")
-    execution_count: int = Field(alias="executionCount")
-    created_at: str = Field(alias="createdAt")
-
-
-class BankReconciliationResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    bank_trans_date: str = Field(alias="bankTransDate")
-    bank_description: str = Field(alias="bankDescription")
-    bank_amount: float = Field(alias="bankAmount")
-    trans_type: str = Field(alias="transType")
-    matched_entity_type: Optional[str] = Field(default=None, alias="matchedEntityType")
-    matched_entity_id: Optional[str] = Field(default=None, alias="matchedEntityId")
-    matched_entity_name: Optional[str] = Field(default=None, alias="matchedEntityName")
-    confidence: float
-    status: str
-    reconciled_at: Optional[str] = Field(default=None, alias="reconciledAt")
-
-
-class AuditLogResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    event_id: Optional[str] = Field(default=None, alias="eventId")
-    action: str
-    actor: str
-    rationale: str
-    confidence: float
-    status: str
-    timestamp: str
-
-
-class NeedsAttentionItem(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    type: str
-    severity: str
-    title: str
-    description: str
-    amount: float
-    target_id: Optional[str] = Field(default=None, alias="targetId")
-    target_module: str = Field(alias="targetModule")
-    actions: List[str]
-
-
-class AutomationMetricsResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    automation_score: int = Field(alias="automationScore")
-    processed_today_count: int = Field(alias="processedTodayCount")
-    reconciled_count: int = Field(alias="reconciledCount")
-    categorized_count: int = Field(alias="categorizedCount")
-    alerts_count: int = Field(alias="alertsCount")
-    active_rules_count: int = Field(alias="activeRulesCount")
-
-
-class AssistantQueryRequest(BaseModel):
-    query: str
-
-
-class AssistantQueryResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    intent: str
-    reply: str
-    data: Optional[Any] = None
-    action_type: Optional[str] = Field(default=None, alias="actionType")
-    action_label: Optional[str] = Field(default=None, alias="actionLabel")
-    action_payload: Optional[Dict[str, Any]] = Field(default=None, alias="actionPayload")
-
-
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from backend.db import Base
+
+Money = Numeric(14, 2)
+Qty = Numeric(14, 3)
+
+
+def new_id() -> str:
+    return uuid.uuid4().hex
+
+
+def utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+class TimestampMixin:
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+
+class OrgScopedMixin:
+    organization_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Identity & tenancy
+# --------------------------------------------------------------------------- #
+class Organization(TimestampMixin, Base):
+    __tablename__ = "organizations"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    legal_name: Mapped[Optional[str]] = mapped_column(String(200))
+    gstin: Mapped[Optional[str]] = mapped_column(String(20))
+    pan: Mapped[Optional[str]] = mapped_column(String(20))
+    email: Mapped[Optional[str]] = mapped_column(String(200))
+    phone: Mapped[Optional[str]] = mapped_column(String(40))
+    address: Mapped[Optional[str]] = mapped_column(Text)
+    city: Mapped[Optional[str]] = mapped_column(String(100))
+    state: Mapped[Optional[str]] = mapped_column(String(100))
+    postal_code: Mapped[Optional[str]] = mapped_column(String(20))
+    country: Mapped[str] = mapped_column(String(100), default="India", nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="INR", nullable=False)
+    fiscal_year_start_month: Mapped[int] = mapped_column(Integer, default=4, nullable=False)
+    invoice_terms: Mapped[Optional[str]] = mapped_column(Text)
+    invoice_notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    users: Mapped[List[User]] = relationship(back_populates="organization")
+
+
+class User(TimestampMixin, OrgScopedMixin, Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), default="staff", nullable=False)  # admin | staff | viewer
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    organization: Mapped[Organization] = relationship(back_populates="users")
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(255))
+
+
+class DocumentSequence(Base):
+    """Per-organization running numbers for invoices, bills, payments, etc."""
+
+    __tablename__ = "document_sequences"
+    __table_args__ = (UniqueConstraint("organization_id", "kind", name="uq_sequence_org_kind"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    organization_id: Mapped[str] = mapped_column(String(32), ForeignKey("organizations.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    prefix: Mapped[str] = mapped_column(String(10), nullable=False)
+    next_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    organization_id: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    user_id: Mapped[Optional[str]] = mapped_column(String(32))
+    user_name: Mapped[Optional[str]] = mapped_column(String(120))
+    action: Mapped[str] = mapped_column(String(40), nullable=False)  # create | update | delete | login ...
+    entity_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    entity_id: Mapped[Optional[str]] = mapped_column(String(64))
+    summary: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+# --------------------------------------------------------------------------- #
+# Chart of accounts & journal
+# --------------------------------------------------------------------------- #
+class Account(TimestampMixin, OrgScopedMixin, Base):
+    __tablename__ = "accounts"
+    __table_args__ = (UniqueConstraint("organization_id", "code", name="uq_account_org_code"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    code: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    # asset | liability | equity | income | expense
+    type: Mapped[str] = mapped_column(String(20), nullable=False)
+    # finer grained: bank, cash, accounts_receivable, accounts_payable, inventory, tax, cogs, other_income ...
+    subtype: Mapped[Optional[str]] = mapped_column(String(40))
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class JournalEntry(TimestampMixin, OrgScopedMixin, Base):
+    __tablename__ = "journal_entries"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    entry_number: Mapped[str] = mapped_column(String(30), nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    reference: Mapped[Optional[str]] = mapped_column(String(120))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    # manual | invoice | customer_payment | bill | vendor_payment | expense | payroll | inventory_adjustment
+    source_type: Mapped[str] = mapped_column(String(40), default="manual", nullable=False)
+    source_id: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    is_reversal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    total: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    created_by: Mapped[Optional[str]] = mapped_column(String(32))
+
+    lines: Mapped[List[JournalLine]] = relationship(
+        back_populates="entry", cascade="all, delete-orphan", order_by="JournalLine.position"
+    )
+
+
+class JournalLine(Base):
+    __tablename__ = "journal_lines"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    entry_id: Mapped[str] = mapped_column(String(32), ForeignKey("journal_entries.id", ondelete="CASCADE"), index=True)
+    account_id: Mapped[str] = mapped_column(String(32), ForeignKey("accounts.id"), index=True, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(255))
+    debit: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    credit: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    contact_id: Mapped[Optional[str]] = mapped_column(String(32))
+
+    entry: Mapped[JournalEntry] = relationship(back_populates="lines")
+    account: Mapped[Account] = relationship()
+
+
+# --------------------------------------------------------------------------- #
+# Items & contacts
+# --------------------------------------------------------------------------- #
+class Item(TimestampMixin, OrgScopedMixin, Base):
+    __tablename__ = "items"
+    __table_args__ = (UniqueConstraint("organization_id", "sku", name="uq_item_org_sku"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    type: Mapped[str] = mapped_column(String(10), default="goods", nullable=False)  # goods | service
+    sku: Mapped[str] = mapped_column(String(50), nullable=False)
+    unit: Mapped[str] = mapped_column(String(20), default="pcs", nullable=False)
+    hsn_sac: Mapped[Optional[str]] = mapped_column(String(20))
+    tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    image_url: Mapped[Optional[str]] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    selling_price: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    sales_account_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("accounts.id"))
+    sales_description: Mapped[Optional[str]] = mapped_column(Text)
+
+    cost_price: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    purchase_account_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("accounts.id"))
+    purchase_description: Mapped[Optional[str]] = mapped_column(Text)
+    preferred_vendor_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("contacts.id"))
+
+    track_inventory: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    opening_stock: Mapped[Decimal] = mapped_column(Qty, default=Decimal("0"), nullable=False)
+    opening_stock_rate: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    stock_on_hand: Mapped[Decimal] = mapped_column(Qty, default=Decimal("0"), nullable=False)
+    reorder_level: Mapped[Decimal] = mapped_column(Qty, default=Decimal("0"), nullable=False)
+    warehouse_location: Mapped[Optional[str]] = mapped_column(String(120))
+
+    sales_account: Mapped[Optional[Account]] = relationship(foreign_keys=[sales_account_id])
+    purchase_account: Mapped[Optional[Account]] = relationship(foreign_keys=[purchase_account_id])
+    preferred_vendor: Mapped[Optional[Contact]] = relationship(foreign_keys=[preferred_vendor_id])
+
+
+class Contact(TimestampMixin, OrgScopedMixin, Base):
+    __tablename__ = "contacts"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    type: Mapped[str] = mapped_column(String(10), nullable=False, index=True)  # customer | vendor
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    company_name: Mapped[Optional[str]] = mapped_column(String(200))
+    contact_person: Mapped[Optional[str]] = mapped_column(String(120))
+    email: Mapped[Optional[str]] = mapped_column(String(255))
+    phone: Mapped[Optional[str]] = mapped_column(String(40))
+    gstin: Mapped[Optional[str]] = mapped_column(String(20))
+    pan: Mapped[Optional[str]] = mapped_column(String(20))
+    gst_treatment: Mapped[str] = mapped_column(String(30), default="unregistered", nullable=False)
+    billing_address: Mapped[Optional[str]] = mapped_column(Text)
+    shipping_address: Mapped[Optional[str]] = mapped_column(Text)
+    payment_terms_days: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class InventoryAdjustment(TimestampMixin, OrgScopedMixin, Base):
+    __tablename__ = "inventory_adjustments"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    adjustment_number: Mapped[str] = mapped_column(String(30), nullable=False)
+    item_id: Mapped[str] = mapped_column(String(32), ForeignKey("items.id"), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    quantity_delta: Mapped[Decimal] = mapped_column(Qty, nullable=False)
+    reason: Mapped[str] = mapped_column(String(120), nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_by: Mapped[Optional[str]] = mapped_column(String(32))
+
+    item: Mapped[Item] = relationship()
+
+
+# --------------------------------------------------------------------------- #
+# Sales
+# --------------------------------------------------------------------------- #
+class Invoice(TimestampMixin, OrgScopedMixin, Base):
+    __tablename__ = "invoices"
+    __table_args__ = (UniqueConstraint("organization_id", "invoice_number", name="uq_invoice_org_number"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    invoice_number: Mapped[str] = mapped_column(String(30), nullable=False)
+    customer_id: Mapped[str] = mapped_column(String(32), ForeignKey("contacts.id"), nullable=False, index=True)
+    project_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("projects.id"))
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    due_date: Mapped[date] = mapped_column(Date, nullable=False)
+    # draft | sent | partially_paid | paid | void  (overdue is derived)
+    status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False, index=True)
+    reference: Mapped[Optional[str]] = mapped_column(String(120))
+    subtotal: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    discount_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    tax_total: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    total: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    amount_paid: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    terms: Mapped[Optional[str]] = mapped_column(Text)
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[Optional[str]] = mapped_column(String(32))
+
+    customer: Mapped[Contact] = relationship()
+    lines: Mapped[List[InvoiceLine]] = relationship(
+        back_populates="invoice", cascade="all, delete-orphan", order_by="InvoiceLine.position"
+    )
+    payments: Mapped[List[CustomerPayment]] = relationship(back_populates="invoice")
+
+    @property
+    def balance_due(self) -> Decimal:
+        return (self.total or Decimal("0")) - (self.amount_paid or Decimal("0"))
+
+
+class InvoiceLine(Base):
+    __tablename__ = "invoice_lines"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    invoice_id: Mapped[str] = mapped_column(String(32), ForeignKey("invoices.id", ondelete="CASCADE"), index=True)
+    item_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("items.id"))
+    account_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("accounts.id"))
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Qty, default=Decimal("1"), nullable=False)
+    rate: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)  # before tax
+    tax_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+
+    invoice: Mapped[Invoice] = relationship(back_populates="lines")
+    item: Mapped[Optional[Item]] = relationship()
+
+
+class CustomerPayment(TimestampMixin, OrgScopedMixin, Base):
+    __tablename__ = "customer_payments"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    payment_number: Mapped[str] = mapped_column(String(30), nullable=False)
+    customer_id: Mapped[str] = mapped_column(String(32), ForeignKey("contacts.id"), nullable=False, index=True)
+    invoice_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("invoices.id"), index=True)
+    bank_account_id: Mapped[str] = mapped_column(String(32), ForeignKey("bank_accounts.id"), nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    amount: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    mode: Mapped[str] = mapped_column(String(20), default="bank_transfer", nullable=False)
+    reference: Mapped[Optional[str]] = mapped_column(String(120))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_by: Mapped[Optional[str]] = mapped_column(String(32))
+
+    customer: Mapped[Contact] = relationship()
+    invoice: Mapped[Optional[Invoice]] = relationship(back_populates="payments")
+    bank_account: Mapped[BankAccount] = relationship()
+
+
+# --------------------------------------------------------------------------- #
+# Purchases
+# --------------------------------------------------------------------------- #
+class Bill(TimestampMixin, OrgScopedMixin, Base):
+    __tablename__ = "bills"
+    __table_args__ = (UniqueConstraint("organization_id", "bill_number", name="uq_bill_org_number"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    bill_number: Mapped[str] = mapped_column(String(30), nullable=False)
+    vendor_bill_number: Mapped[Optional[str]] = mapped_column(String(60))
+    vendor_id: Mapped[str] = mapped_column(String(32), ForeignKey("contacts.id"), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    due_date: Mapped[date] = mapped_column(Date, nullable=False)
+    # draft | open | partially_paid | paid | void
+    status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False, index=True)
+    subtotal: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    discount_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    tax_total: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    total: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    amount_paid: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_by: Mapped[Optional[str]] = mapped_column(String(32))
+
+    vendor: Mapped[Contact] = relationship()
+    lines: Mapped[List[BillLine]] = relationship(
+        back_populates="bill", cascade="all, delete-orphan", order_by="BillLine.position"
+    )
+    payments: Mapped[List[VendorPayment]] = relationship(back_populates="bill")
+
+    @property
+    def balance_due(self) -> Decimal:
+        return (self.total or Decimal("0")) - (self.amount_paid or Decimal("0"))
+
+
+class BillLine(Base):
+    __tablename__ = "bill_lines"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    bill_id: Mapped[str] = mapped_column(String(32), ForeignKey("bills.id", ondelete="CASCADE"), index=True)
+    item_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("items.id"))
+    account_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("accounts.id"))
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Qty, default=Decimal("1"), nullable=False)
+    rate: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    tax_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+
+    bill: Mapped[Bill] = relationship(back_populates="lines")
+    item: Mapped[Optional[Item]] = relationship()
+
+
+class VendorPayment(TimestampMixin, OrgScopedMixin, Base):
+    __tablename__ = "vendor_payments"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    payment_number: Mapped[str] = mapped_column(String(30), nullable=False)
+    vendor_id: Mapped[str] = mapped_column(String(32), ForeignKey("contacts.id"), nullable=False, index=True)
+    bill_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("bills.id"), index=True)
+    bank_account_id: Mapped[str] = mapped_column(String(32), ForeignKey("bank_accounts.id"), nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    amount: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    mode: Mapped[str] = mapped_column(String(20), default="bank_transfer", nullable=False)
+    reference: Mapped[Optional[str]] = mapped_column(String(120))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_by: Mapped[Optional[str]] = mapped_column(String(32))
+
+    vendor: Mapped[Contact] = relationship()
+    bill: Mapped[Optional[Bill]] = relationship(back_populates="payments")
+    bank_account: Mapped[BankAccount] = relationship()
+
+
+class Expense(TimestampMixin, OrgScopedMixin, Base):
+    __tablename__ = "expenses"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    expense_number: Mapped[str] = mapped_column(String(30), nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    account_id: Mapped[str] = mapped_column(String(32), ForeignKey("accounts.id"), nullable=False)
+    paid_through_account_id: Mapped[str] = mapped_column(String(32), ForeignKey("bank_accounts.id"), nullable=False)
+    vendor_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("contacts.id"))
+    customer_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("contacts.id"))
+    amount: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"), nullable=False)
+    tax_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    total: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    reference: Mapped[Optional[str]] = mapped_column(String(120))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    is_billable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by: Mapped[Optional[str]] = mapped_column(String(32))
+
+    account: Mapped[Account] = relationship(foreign_keys=[account_id])
+    paid_through: Mapped[BankAccount] = relationship()
+    vendor: Mapped[Optional[Contact]] = relationship(foreign_keys=[vendor_id])
+    customer: Mapped[Optional[Contact]] = relationship(foreign_keys=[customer_id])
+
+
+# --------------------------------------------------------------------------- #
+# Banking
+# --------------------------------------------------------------------------- #
+class BankAccount(TimestampMixin, OrgScopedMixin, Base):
+    __tablename__ = "bank_accounts"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    type: Mapped[str] = mapped_column(String(20), default="bank", nullable=False)  # bank | cash | credit_card
+    bank_name: Mapped[Optional[str]] = mapped_column(String(120))
+    account_number: Mapped[Optional[str]] = mapped_column(String(40))
+    ifsc: Mapped[Optional[str]] = mapped_column(String(20))
+    currency: Mapped[str] = mapped_column(String(3), default="INR", nullable=False)
+    opening_balance: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    opening_balance_date: Mapped[date] = mapped_column(Date, nullable=False)
+    ledger_account_id: Mapped[str] = mapped_column(String(32), ForeignKey("accounts.id"), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    ledger_account: Mapped[Account] = relationship()
+    transactions: Mapped[List[BankTransaction]] = relationship(back_populates="bank_account")
+
+
+class BankTransaction(TimestampMixin, OrgScopedMixin, Base):
+    __tablename__ = "bank_transactions"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    bank_account_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("bank_accounts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    type: Mapped[str] = mapped_column(String(10), nullable=False)  # deposit | withdrawal
+    amount: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    description: Mapped[str] = mapped_column(String(255), nullable=False)
+    reference: Mapped[Optional[str]] = mapped_column(String(120))
+    # customer_payment | vendor_payment | expense | payroll | transfer | manual
+    source_type: Mapped[str] = mapped_column(String(30), default="manual", nullable=False)
+    source_id: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    counter_account_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("accounts.id"))
+    is_reconciled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    reconciled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    journal_entry_id: Mapped[Optional[str]] = mapped_column(String(32))
+    created_by: Mapped[Optional[str]] = mapped_column(String(32))
+
+    bank_account: Mapped[BankAccount] = relationship(back_populates="transactions")
+
+
+# --------------------------------------------------------------------------- #
+# Time tracking
+# --------------------------------------------------------------------------- #
+class Project(TimestampMixin, OrgScopedMixin, Base):
+    __tablename__ = "projects"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    customer_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("contacts.id"))
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    # fixed | hourly
+    billing_method: Mapped[str] = mapped_column(String(20), default="hourly", nullable=False)
+    hourly_rate: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    budget_hours: Mapped[Decimal] = mapped_column(Qty, default=Decimal("0"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)  # active | completed | on_hold
+
+    customer: Mapped[Optional[Contact]] = relationship()
+    time_entries: Mapped[List[TimeEntry]] = relationship(back_populates="project", cascade="all, delete-orphan")
+
+
+class TimeEntry(TimestampMixin, OrgScopedMixin, Base):
+    __tablename__ = "time_entries"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    project_id: Mapped[str] = mapped_column(String(32), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    hours: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    is_billable: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    invoice_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("invoices.id"))
+
+    project: Mapped[Project] = relationship(back_populates="time_entries")
+    user: Mapped[User] = relationship()
+
+
+# --------------------------------------------------------------------------- #
+# Documents
+# --------------------------------------------------------------------------- #
+class Document(TimestampMixin, OrgScopedMixin, Base):
+    __tablename__ = "documents"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(60), default="general", nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    linked_entity_type: Mapped[Optional[str]] = mapped_column(String(40))
+    linked_entity_id: Mapped[Optional[str]] = mapped_column(String(32))
+    uploaded_by: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("users.id"))
+
+    uploader: Mapped[Optional[User]] = relationship()
+
+
+# --------------------------------------------------------------------------- #
+# Payroll
+# --------------------------------------------------------------------------- #
+class Employee(TimestampMixin, OrgScopedMixin, Base):
+    __tablename__ = "employees"
+    __table_args__ = (UniqueConstraint("organization_id", "employee_code", name="uq_employee_org_code"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    employee_code: Mapped[str] = mapped_column(String(30), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    email: Mapped[Optional[str]] = mapped_column(String(255))
+    designation: Mapped[Optional[str]] = mapped_column(String(120))
+    department: Mapped[Optional[str]] = mapped_column(String(120))
+    date_of_joining: Mapped[date] = mapped_column(Date, nullable=False)
+    pan: Mapped[Optional[str]] = mapped_column(String(20))
+    bank_account_number: Mapped[Optional[str]] = mapped_column(String(40))
+    bank_ifsc: Mapped[Optional[str]] = mapped_column(String(20))
+    basic_salary: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    hra: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    other_allowances: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    pf_employee: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    professional_tax: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    tds: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class PayRun(TimestampMixin, OrgScopedMixin, Base):
+    __tablename__ = "pay_runs"
+    __table_args__ = (UniqueConstraint("organization_id", "period_year", "period_month", name="uq_payrun_period"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    period_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    period_month: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False)  # draft | approved | paid
+    pay_date: Mapped[Optional[date]] = mapped_column(Date)
+    bank_account_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("bank_accounts.id"))
+    total_gross: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    total_deductions: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    total_net: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    created_by: Mapped[Optional[str]] = mapped_column(String(32))
+
+    payslips: Mapped[List[Payslip]] = relationship(back_populates="pay_run", cascade="all, delete-orphan")
+
+
+class Payslip(Base):
+    __tablename__ = "payslips"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    pay_run_id: Mapped[str] = mapped_column(String(32), ForeignKey("pay_runs.id", ondelete="CASCADE"), index=True)
+    employee_id: Mapped[str] = mapped_column(String(32), ForeignKey("employees.id"), nullable=False, index=True)
+    basic_salary: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    hra: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    other_allowances: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    gross: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    pf_employee: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    professional_tax: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    tds: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    loss_of_pay_days: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"), nullable=False)
+    loss_of_pay_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    total_deductions: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    net_pay: Mapped[Decimal] = mapped_column(Money, nullable=False)
+
+    pay_run: Mapped[PayRun] = relationship(back_populates="payslips")
+    employee: Mapped[Employee] = relationship()
+
+
+Index("ix_invoices_org_status_due", Invoice.organization_id, Invoice.status, Invoice.due_date)
+Index("ix_bills_org_status_due", Bill.organization_id, Bill.status, Bill.due_date)

@@ -1,311 +1,169 @@
-import React, { useState } from 'react';
-import {
-  Search,
-  Bell,
-  Settings,
-  ChevronDown,
-  Building2,
-  Menu,
-  PlusCircle,
-  User,
-  Check,
-  X
-} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Bell, ChevronDown, LogOut, Menu, Plus, Settings, User as UserIcon } from 'lucide-react';
 
-import { UserProfile } from '../../services/apiClient';
-import {
-  Globe
-} from 'lucide-react';
+import { dashboardApi } from '@/api/endpoints';
+import type { NotificationItem } from '@/api/types';
+import { useAuth } from '@/auth/AuthContext';
+import { initials } from '@/utils/format';
 
-interface HeaderProps {
-  onToggleSidebar: () => void;
-  onQuickAddItem: () => void;
-  serverConnected?: boolean;
-  currentUser?: UserProfile | null;
-  onSignOut?: () => void;
-  onNavigateLanding?: () => void;
-  appMode?: 'simple' | 'accountant';
-  onToggleAppMode?: (mode: 'simple' | 'accountant') => void;
-  attentionCount?: number;
-  onOpenAttention?: () => void;
-}
+const NOTIFICATION_ROUTES: Record<string, string> = {
+  invoice: '/invoices',
+  bill: '/bills',
+  item: '/items',
+  banking: '/banking',
+};
 
-export const Header: React.FC<HeaderProps> = ({
-  onToggleSidebar,
-  onQuickAddItem,
-  serverConnected = true,
-  currentUser,
-  onSignOut,
-  onNavigateLanding,
-  appMode = 'simple',
-  onToggleAppMode,
-  attentionCount = 0,
-  onOpenAttention,
-}) => {
-  const [selectedOrg, setSelectedOrg] = useState('Rooman Technologies Pvt Ltd');
-  const [showOrgDropdown, setShowOrgDropdown] = useState(false);
-  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
+  const { user, organization, logout, canWrite } = useAuth();
+  const navigate = useNavigate();
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [openMenu, setOpenMenu] = useState<'none' | 'profile' | 'bell' | 'create'>('none');
+  const headerRef = useRef<HTMLElement>(null);
 
-  const organizations = [
-    'Rooman Technologies Pvt Ltd',
-    'Rooman Enterprise Solutions (GST Registered)',
-    'Global Financial Services',
-  ];
+  useEffect(() => {
+    let active = true;
+    const load = () =>
+      dashboardApi
+        .notifications()
+        .then((data) => {
+          if (active) setNotifications(data.items);
+        })
+        .catch(() => undefined);
+    load();
+    const timer = window.setInterval(load, 120_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onClickAway = (event: MouseEvent) => {
+      if (headerRef.current && !headerRef.current.contains(event.target as Node)) setOpenMenu('none');
+    };
+    document.addEventListener('mousedown', onClickAway);
+    return () => document.removeEventListener('mousedown', onClickAway);
+  }, []);
 
   return (
-    <header className="zb-header">
-      {/* Left side: Hamburger + Logo + Organization Switcher */}
-      <div className="zb-header-left">
-        <button
-          className="zb-icon-btn zb-mobile-menu-btn"
-          onClick={onToggleSidebar}
-          title="Toggle Navigation Menu"
-        >
-          <Menu size={20} />
+    <header className="app-header" ref={headerRef}>
+      <div className="header-left">
+        <button type="button" className="icon-btn menu-btn" onClick={onToggleSidebar} aria-label="Toggle navigation">
+          <Menu size={19} />
         </button>
-
-        <div className="zb-brand">
-          <div className="zb-brand-logo-container">
-            <img src="/rooman-logo.png" alt="Rooman" className="zb-brand-logo-img" />
-          </div>
-          <div className="zb-brand-info">
-            <span className="zb-brand-title">Books</span>
-            <span className="zb-brand-edition">IND Edition</span>
-          </div>
-        </div>
-
-        <div className="zb-org-selector-container">
-          <button
-            className="zb-org-selector-btn"
-            onClick={() => {
-              setShowOrgDropdown(!showOrgDropdown);
-              setShowProfileDropdown(false);
-              setShowNotifications(false);
-            }}
-          >
-            <Building2 size={16} className="zb-org-icon" />
-            <span className="zb-org-name">{selectedOrg}</span>
-            <ChevronDown size={14} className="zb-chevron" />
-          </button>
-
-          {showOrgDropdown && (
-            <div className="zb-dropdown-menu zb-org-dropdown">
-              <div className="zb-dropdown-header">Select Organization</div>
-              {organizations.map(org => (
-                <button
-                  key={org}
-                  className={`zb-dropdown-item ${org === selectedOrg ? 'active' : ''}`}
-                  onClick={() => {
-                    setSelectedOrg(org);
-                    setShowOrgDropdown(false);
-                  }}
-                >
-                  <span className="zb-dropdown-text">{org}</span>
-                  {org === selectedOrg && <Check size={14} className="zb-check" />}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <Link to="/" className="brand">
+          <img src="/rooman-logo.png" alt="" className="brand-logo" width={28} height={28} />
+          <span className="brand-text">
+            <strong>Rooman Books</strong>
+            <small>{organization?.name ?? 'Accounting'}</small>
+          </span>
+        </Link>
       </div>
 
-      {/* Center: Global Search Bar */}
-      <div className="zb-header-center">
-        <div className="zb-search-wrapper">
-          <Search size={16} className="zb-search-icon" />
-          <input
-            type="text"
-            className="zb-search-input"
-            placeholder="Search items, invoices, contacts... (Press '/' to focus)"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-          />
-          {searchQuery && (
-            <button className="zb-search-clear" onClick={() => setSearchQuery('')}>
-              <X size={14} />
+      <div className="header-right">
+        {canWrite ? (
+          <div className="menu-anchor">
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => setOpenMenu(openMenu === 'create' ? 'none' : 'create')}
+              aria-expanded={openMenu === 'create'}
+            >
+              <Plus size={15} />
+              <span>Create</span>
             </button>
-          )}
-        </div>
-      </div>
+            {openMenu === 'create' ? (
+              <div className="dropdown" role="menu">
+                <button type="button" role="menuitem" onClick={() => { setOpenMenu('none'); navigate('/invoices/new'); }}>
+                  Invoice
+                </button>
+                <button type="button" role="menuitem" onClick={() => { setOpenMenu('none'); navigate('/bills/new'); }}>
+                  Bill
+                </button>
+                <button type="button" role="menuitem" onClick={() => { setOpenMenu('none'); navigate('/expenses?new=1'); }}>
+                  Expense
+                </button>
+                <button type="button" role="menuitem" onClick={() => { setOpenMenu('none'); navigate('/items?new=1'); }}>
+                  Item
+                </button>
+                <button type="button" role="menuitem" onClick={() => { setOpenMenu('none'); navigate('/customers?new=1'); }}>
+                  Customer
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
-      {/* Right Side: Mode Switcher + Attention + Quick Action + Notifications + Settings + Profile */}
-      <div className="zb-header-right">
-        {/* Simple Mode vs Accountant Mode Switcher */}
-        <div className="zb-mode-switcher-container" title="Switch between Simple Mode (Business Owner) and Accountant Mode (General Ledger & Trial Balance)">
+        <div className="menu-anchor">
           <button
-            className={`zb-mode-switch-btn ${appMode === 'simple' ? 'active' : ''}`}
-            onClick={() => onToggleAppMode && onToggleAppMode('simple')}
-          >
-            Simple Mode
-          </button>
-          <button
-            className={`zb-mode-switch-btn ${appMode === 'accountant' ? 'active' : ''}`}
-            onClick={() => onToggleAppMode && onToggleAppMode('accountant')}
-          >
-            Accountant Mode
-          </button>
-        </div>
-
-        {/* Attention Exceptions Alert Button */}
-        {attentionCount > 0 && (
-          <button
-            className="zb-btn-attention-pill"
-            onClick={onOpenAttention}
-            title={`${attentionCount} exceptions require your attention`}
-          >
-            <span className="zb-attention-indicator-dot"></span>
-            <span>{attentionCount} Attention</span>
-          </button>
-        )}
-
-        {/* Connection Status Badge */}
-        <div
-          className={`zb-server-badge ${serverConnected ? 'online' : 'offline'}`}
-          title={serverConnected ? 'Cloud ledger synchronized and active' : 'Offline Mode - working with local storage'}
-        >
-          <span className="zb-status-dot"></span>
-          <span>{serverConnected ? 'Cloud Synced' : 'Offline Mode'}</span>
-        </div>
-
-        <button
-          className="zb-btn zb-btn-primary zb-quick-add-btn"
-          onClick={onQuickAddItem}
-          title="Add New Item"
-        >
-          <PlusCircle size={16} />
-          <span className="zb-btn-text">New Item</span>
-        </button>
-
-        {/* Notifications Button */}
-        <div className="zb-relative">
-          <button
-            className="zb-icon-btn zb-has-badge"
-            onClick={() => {
-              setShowNotifications(!showNotifications);
-              setShowOrgDropdown(false);
-              setShowProfileDropdown(false);
-            }}
-            title="Notifications"
+            type="button"
+            className="icon-btn"
+            onClick={() => setOpenMenu(openMenu === 'bell' ? 'none' : 'bell')}
+            aria-label={`Notifications (${notifications.length})`}
+            aria-expanded={openMenu === 'bell'}
           >
             <Bell size={18} />
-            <span className="zb-badge-dot"></span>
+            {notifications.length ? <span className="badge-dot">{notifications.length > 9 ? '9+' : notifications.length}</span> : null}
           </button>
-
-          {showNotifications && (
-            <div className="zb-dropdown-menu zb-notifications-dropdown">
-              <div className="zb-dropdown-header zb-flex-between">
-                <span>Notifications</span>
-                <span className="zb-badge-count">2 New</span>
-              </div>
-              <div className="zb-notification-list">
-                <div className="zb-notification-item">
-                  <div className="zb-notif-title">Low Stock Alert</div>
-                  <div className="zb-notif-body">
-                    Logitech MX Master 3S is below reorder level (4 pcs remaining).
-                  </div>
-                  <div className="zb-notif-time">10 mins ago</div>
-                </div>
-                <div className="zb-notification-item">
-                  <div className="zb-notif-title">System Update</div>
-                  <div className="zb-notif-body">
-                    Rooman Books Home & Items module synchronized successfully.
-                  </div>
-                  <div className="zb-notif-time">1 hour ago</div>
-                </div>
-              </div>
+          {openMenu === 'bell' ? (
+            <div className="dropdown dropdown-wide" role="menu">
+              <div className="dropdown-header">Needs attention</div>
+              {notifications.length === 0 ? (
+                <p className="dropdown-empty">Nothing needs your attention right now.</p>
+              ) : (
+                notifications.slice(0, 8).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="menuitem"
+                    className={`notification notification-${item.severity}`}
+                    onClick={() => {
+                      setOpenMenu('none');
+                      navigate(NOTIFICATION_ROUTES[item.entityType] ?? '/');
+                    }}
+                  >
+                    <strong>{item.title}</strong>
+                    <span>{item.body}</span>
+                  </button>
+                ))
+              )}
             </div>
-          )}
+          ) : null}
         </div>
 
-        {/* Landing Page Button */}
-        {onNavigateLanding && (
+        <div className="menu-anchor">
           <button
-            className="zb-landing-switch-btn"
-            onClick={onNavigateLanding}
-            title="Return to Landing Page"
+            type="button"
+            className="profile-btn"
+            onClick={() => setOpenMenu(openMenu === 'profile' ? 'none' : 'profile')}
+            aria-expanded={openMenu === 'profile'}
           >
-            <Globe size={15} />
-            <span>Landing Page</span>
+            <span className="avatar">{initials(user?.name ?? '')}</span>
+            <ChevronDown size={14} aria-hidden="true" />
           </button>
-        )}
-
-        {/* Settings Button */}
-        <button className="zb-icon-btn" title="Organization Settings">
-          <Settings size={18} />
-        </button>
-
-        {/* Profile Avatar */}
-        <div className="zb-relative">
-          <button
-            className="zb-profile-btn"
-            onClick={() => {
-              setShowProfileDropdown(!showProfileDropdown);
-              setShowOrgDropdown(false);
-              setShowNotifications(false);
-            }}
-          >
-            <div className="zb-avatar">
-              <span>{currentUser?.name ? currentUser.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'SG'}</span>
-            </div>
-            <ChevronDown size={14} className="zb-avatar-chevron" />
-          </button>
-
-          {showProfileDropdown && (
-            <div className="zb-dropdown-menu zb-profile-dropdown">
-              <div className="zb-profile-header">
-                <div className="zb-avatar large">
-                  {currentUser?.name ? currentUser.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'SG'}
-                </div>
-                <div>
-                  <div className="zb-user-name">{currentUser?.name || 'Shaly Gaonkar'}</div>
-                  <div className="zb-user-email">{currentUser?.email || 'admin@zylkerbooks.com'}</div>
-                  <div className="zb-flex-align gap-2">
-                    <span className="zb-user-role">{currentUser?.role || 'Administrator'}</span>
-                    {currentUser?.authProvider && currentUser.authProvider !== 'local' && (
-                      <span className="zb-oauth-tag">
-                        {currentUser.authProvider === 'google' && 'Google SSO'}
-                        {currentUser.authProvider === 'microsoft' && 'Microsoft 365'}
-                        {currentUser.authProvider === 'zoho' && 'Zoho SSO'}
-                        {currentUser.authProvider === 'github' && 'GitHub SSO'}
-                      </span>
-                    )}
-                  </div>
-                </div>
+          {openMenu === 'profile' ? (
+            <div className="dropdown" role="menu">
+              <div className="dropdown-profile">
+                <strong>{user?.name}</strong>
+                <span>{user?.email}</span>
+                <span className="role-pill">{user?.role}</span>
               </div>
-              <div className="zb-dropdown-divider"></div>
-              {onNavigateLanding && (
-                <button
-                  className="zb-dropdown-item"
-                  onClick={() => {
-                    setShowProfileDropdown(false);
-                    onNavigateLanding();
-                  }}
-                >
-                  <Globe size={14} /> Back to Landing Page
+              <button type="button" role="menuitem" onClick={() => { setOpenMenu('none'); navigate('/profile'); }}>
+                <UserIcon size={14} /> My profile
+              </button>
+              {user?.role === 'admin' ? (
+                <button type="button" role="menuitem" onClick={() => { setOpenMenu('none'); navigate('/settings'); }}>
+                  <Settings size={14} /> Organization settings
                 </button>
-              )}
-              <button className="zb-dropdown-item">
-                <User size={14} /> My Profile & Preferences
-              </button>
-              <button className="zb-dropdown-item">
-                <Settings size={14} /> Organization Setup
-              </button>
-              <div className="zb-dropdown-divider"></div>
-              <button
-                className="zb-dropdown-item text-danger"
-                onClick={() => {
-                  setShowProfileDropdown(false);
-                  if (onSignOut) onSignOut();
-                }}
-              >
-                Sign Out
+              ) : null}
+              <button type="button" role="menuitem" className="danger" onClick={() => void logout()}>
+                <LogOut size={14} /> Sign out
               </button>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </header>
   );
-};
+}
