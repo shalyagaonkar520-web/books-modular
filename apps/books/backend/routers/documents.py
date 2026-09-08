@@ -157,7 +157,8 @@ class ExcelCommitItem(BaseModel):
 
 
 class ExcelCommitPayload(BaseModel):
-    items: List[ExcelCommitItem]
+    items: Optional[List[ExcelCommitItem]] = None
+    sections: Optional[List[ExcelCategorizeSection]] = None
 
 
 class ExcelCommitResponse(BaseModel):
@@ -277,6 +278,9 @@ async def import_excel_categorize(
         try:
             wb = openpyxl.load_workbook(io.BytesIO(contents), data_only=True)
             for sheet_name in wb.sheetnames:
+                s_lower = sheet_name.strip().lower()
+                if any(x in s_lower for x in ["overview", "guide", "readme", "instruction", "notes", "legend"]):
+                    continue
                 ws = wb[sheet_name]
                 raw_rows = []
                 for row_vals in ws.iter_rows(values_only=True):
@@ -329,12 +333,22 @@ def import_excel_commit(
     expense_acct = db.execute(select(Account).where(Account.organization_id == org_id, Account.type == "expense")).scalars().first()
     bank_acct = db.execute(select(BankAccount).where(BankAccount.organization_id == org_id)).scalars().first()
 
-    for item in payload.items:
+    all_items: List[ExcelCommitItem] = []
+    if payload.items:
+        all_items.extend(payload.items)
+    if payload.sections:
+        for sec in payload.sections:
+            for row in sec.rows:
+                all_items.append(ExcelCommitItem(category=sec.category, data=row))
+
+    for item in all_items:
         cat = item.category.lower()
         d = item.data
 
         if cat == "customers":
-            name = d.get("display_name") or d.get("company_name") or d.get("name") or "New Customer"
+            name = (d.get("display_name") or d.get("company_name") or d.get("name") or "").strip()
+            if not name or any(x in name.lower() for x in ["rooman books", "overview", "template", "sheet name", "required fields"]):
+                continue
             email = d.get("email") or f"client_{uuid.uuid4().hex[:6]}@example.com"
             contact = Contact(
                 organization_id=org_id,
@@ -348,10 +362,13 @@ def import_excel_commit(
                 billing_address=str(d.get("billing_address") or d.get("address") or "")[:255] or None,
             )
             db.add(contact)
+            db.flush()
             counts["customers"] += 1
 
         elif cat == "vendors":
-            name = d.get("display_name") or d.get("vendor_name") or d.get("name") or "New Vendor"
+            name = (d.get("display_name") or d.get("vendor_name") or d.get("name") or "").strip()
+            if not name or any(x in name.lower() for x in ["rooman books", "overview", "template", "sheet name", "required fields"]):
+                continue
             contact = Contact(
                 organization_id=org_id,
                 type="vendor",
@@ -364,6 +381,7 @@ def import_excel_commit(
                 billing_address=str(d.get("billing_address") or d.get("address") or "")[:255] or None,
             )
             db.add(contact)
+            db.flush()
             counts["vendors"] += 1
 
         elif cat == "expenses":
@@ -389,7 +407,7 @@ def import_excel_commit(
         elif cat == "invoices":
             # Find or create customer
             cust_name = str(d.get("display_name") or d.get("customer_name") or "Customer")[:100]
-            cust = db.execute(select(Contact).where(Contact.organization_id == org_id, Contact.type == "customer", Contact.display_name == cust_name)).scalar_one_or_none()
+            cust = db.execute(select(Contact).where(Contact.organization_id == org_id, Contact.type == "customer", Contact.display_name == cust_name)).scalars().first()
             if not cust:
                 cust = Contact(
                     organization_id=org_id,
@@ -430,7 +448,7 @@ def import_excel_commit(
         elif cat == "bills":
             # Find or create vendor
             vnd_name = str(d.get("display_name") or d.get("vendor_name") or "Vendor")[:100]
-            vnd = db.execute(select(Contact).where(Contact.organization_id == org_id, Contact.type == "vendor", Contact.display_name == vnd_name)).scalar_one_or_none()
+            vnd = db.execute(select(Contact).where(Contact.organization_id == org_id, Contact.type == "vendor", Contact.display_name == vnd_name)).scalars().first()
             if not vnd:
                 vnd = Contact(organization_id=org_id, type="vendor", display_name=vnd_name, email=str(d.get("email") or ""))
                 db.add(vnd)
@@ -470,6 +488,26 @@ def import_excel_commit(
         success=True,
         imported_counts=counts,
         message=f"Successfully categorized and imported {total_saved} records into Rooman Books.",
+    )
+
+
+@router.get("/download-sample-excel")
+def download_sample_excel(type: str = "indian"):
+    filename = "Rooman_Books_Indian_Data.xlsx" if type == "indian" else "Rooman_Books_Import_Template.xlsx"
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    file_path = os.path.join(base_dir, filename)
+    if not os.path.exists(file_path):
+        file_path = os.path.join(base_dir, "public", filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Sample Excel file not found")
+    return FileResponse(
+        file_path,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=filename,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache",
+        },
     )
 
 
@@ -513,3 +551,6 @@ def delete_document(document_id: str, user: User = Depends(require_write), db: S
     except OSError:  # pragma: no cover
         pass
     return Message(message="Document deleted")
+
+
+

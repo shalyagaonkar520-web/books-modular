@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { CheckCircle2, FileSpreadsheet, Layers, Upload, Eye } from 'lucide-react';
+import { CheckCircle2, FileSpreadsheet, Layers, Upload, Eye, Trash2 } from 'lucide-react';
 
 import { documentsApi } from '@/api/endpoints';
 import type { ExcelCategorizeResponse, ExcelCommitResponse } from '@/api/types';
@@ -33,6 +33,8 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
   const [selectedSectionIndex, setSelectedSectionIndex] = useState(0);
   const [commitResult, setCommitResult] = useState<ExcelCommitResponse | null>(null);
 
+  const [selectedRowIndices, setSelectedRowIndices] = useState<Set<number>>(new Set());
+
   const analyzeSubmit = useSubmit();
   const commitSubmit = useSubmit();
 
@@ -40,6 +42,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
     setFile(null);
     setCategorized(null);
     setSelectedSectionIndex(0);
+    setSelectedRowIndices(new Set());
     setCommitResult(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -89,6 +92,63 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
     }
   };
 
+  const handleDeleteSection = (indexToDelete: number) => {
+    if (!categorized) return;
+    const remaining = categorized.sections.filter((_, i) => i !== indexToDelete);
+    if (remaining.length === 0) {
+      resetAll();
+    } else {
+      const newTotal = remaining.reduce((acc, s) => acc + s.count, 0);
+      setCategorized({
+        ...categorized,
+        total_sheets: remaining.length,
+        total_rows: newTotal,
+        sections: remaining,
+      });
+      setSelectedSectionIndex(0);
+      setSelectedRowIndices(new Set());
+    }
+  };
+
+  const handleToggleSelectAllRows = () => {
+    if (!activeSection) return;
+    if (selectedRowIndices.size === activeSection.rows.length) {
+      setSelectedRowIndices(new Set());
+    } else {
+      setSelectedRowIndices(new Set(activeSection.rows.map((_, i) => i)));
+    }
+  };
+
+  const handleToggleRowSelection = (rIdx: number) => {
+    const next = new Set(selectedRowIndices);
+    if (next.has(rIdx)) next.delete(rIdx);
+    else next.add(rIdx);
+    setSelectedRowIndices(next);
+  };
+
+  const handleDeleteSelectedRows = () => {
+    if (!categorized || !activeSection) return;
+    const remaining = activeSection.rows.filter((_, i) => !selectedRowIndices.has(i));
+    if (remaining.length === 0) {
+      handleDeleteSection(selectedSectionIndex);
+    } else {
+      const updated = [...categorized.sections];
+      updated[selectedSectionIndex] = {
+        ...activeSection,
+        count: remaining.length,
+        rows: remaining,
+      };
+      const newTotal = updated.reduce((acc, s) => acc + s.count, 0);
+      setCategorized({
+        ...categorized,
+        total_rows: newTotal,
+        sections: updated,
+      });
+      setSelectedRowIndices(new Set());
+      toast.success(`Deleted ${selectedRowIndices.size} row(s).`);
+    }
+  };
+
   const activeSection = categorized?.sections[selectedSectionIndex];
 
   return (
@@ -105,9 +165,19 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
           </Button>
         ) : categorized ? (
           <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-            <Button variant="secondary" onClick={resetAll} disabled={commitSubmit.submitting}>
-              Choose Another File
-            </Button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <Button variant="secondary" onClick={resetAll} disabled={commitSubmit.submitting}>
+                Choose Another File
+              </Button>
+              <Button
+                variant="danger"
+                onClick={resetAll}
+                disabled={commitSubmit.submitting}
+                icon={<Trash2 size={16} />}
+              >
+                Delete All
+              </Button>
+            </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               <Button variant="secondary" onClick={handleClose} disabled={commitSubmit.submitting}>
                 Cancel
@@ -225,10 +295,12 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                 const isActive = idx === selectedSectionIndex;
                 const tone = CATEGORY_COLORS[section.category.toLowerCase()] || 'neutral';
                 return (
-                  <button
+                  <div
                     key={idx}
-                    type="button"
-                    onClick={() => setSelectedSectionIndex(idx)}
+                    onClick={() => {
+                      setSelectedSectionIndex(idx);
+                      setSelectedRowIndices(new Set());
+                    }}
                     style={{
                       border: isActive ? '2px solid var(--color-primary, #0284c7)' : '1px solid var(--color-border)',
                       backgroundColor: isActive ? 'var(--color-bg, #ffffff)' : 'var(--color-bg-subtle, #f9fafb)',
@@ -244,7 +316,28 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                     <Badge tone={tone}>{section.category.toUpperCase()}</Badge>
                     <span>{section.sheet_name}</span>
                     <span className="text-muted small">({section.count} rows)</span>
-                  </button>
+                    <button
+                      type="button"
+                      title="Delete this section"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteSection(idx);
+                      }}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--color-text-muted, #94a3b8)',
+                        cursor: 'pointer',
+                        padding: '2px',
+                        display: 'flex',
+                        alignItems: 'center',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-text-muted, #94a3b8)')}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -252,12 +345,38 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
 
           {activeSection ? (
             <div style={{ marginTop: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
                 <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Eye size={15} />
                   <span>Preview for {activeSection.category.toUpperCase()} ({activeSection.sheet_name})</span>
                 </h4>
-                <small className="text-muted">Showing first {Math.min(activeSection.rows.length, 10)} of {activeSection.count} rows</small>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleToggleSelectAllRows}
+                  >
+                    {activeSection.rows.length > 0 && selectedRowIndices.size === activeSection.rows.length ? 'Deselect All' : 'Select All'}
+                  </Button>
+                  {selectedRowIndices.size > 0 && (
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={handleDeleteSelectedRows}
+                      icon={<Trash2 size={13} />}
+                    >
+                      Delete Selected ({selectedRowIndices.size})
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handleDeleteSection(selectedSectionIndex)}
+                    icon={<Trash2 size={13} />}
+                  >
+                    Delete Section
+                  </Button>
+                </div>
               </div>
 
               <div
@@ -272,6 +391,14 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                 <table className="data-table" style={{ width: '100%', fontSize: '0.82rem' }}>
                   <thead>
                     <tr>
+                      <th style={{ width: '38px', padding: '8px', textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={activeSection.rows.length > 0 && selectedRowIndices.size === activeSection.rows.length}
+                          onChange={handleToggleSelectAllRows}
+                          aria-label="Select all rows"
+                        />
+                      </th>
                       {activeSection.headers.map((h, i) => (
                         <th key={i} style={{ whiteSpace: 'nowrap', padding: '8px 12px' }}>
                           {h}
@@ -280,15 +407,26 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                     </tr>
                   </thead>
                   <tbody>
-                    {activeSection.rows.slice(0, 10).map((row, rIdx) => (
-                      <tr key={rIdx}>
-                        {activeSection.headers.map((h, cIdx) => (
-                          <td key={cIdx} style={{ whiteSpace: 'nowrap', padding: '6px 12px' }}>
-                            {String(row[h] ?? '')}
+                    {activeSection.rows.slice(0, 10).map((row, rIdx) => {
+                      const isSelected = selectedRowIndices.has(rIdx);
+                      return (
+                        <tr key={rIdx} style={{ backgroundColor: isSelected ? 'var(--color-bg-subtle, #f0fdf4)' : undefined }}>
+                          <td style={{ width: '38px', padding: '6px 8px', textAlign: 'center' }}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleRowSelection(rIdx)}
+                              aria-label={`Select row ${rIdx + 1}`}
+                            />
                           </td>
-                        ))}
-                      </tr>
-                    ))}
+                          {activeSection.headers.map((h, cIdx) => (
+                            <td key={cIdx} style={{ whiteSpace: 'nowrap', padding: '6px 12px' }}>
+                              {String(row[h] ?? '')}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -297,6 +435,26 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
         </div>
       ) : (
         <div>
+          <div style={{ marginBottom: '14px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <a
+              href="/api/documents/download-sample-excel?type=indian"
+              download="Rooman_Books_Indian_Data.xlsx"
+              className="btn btn-secondary btn-sm"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', textDecoration: 'none', color: 'var(--color-text)' }}
+            >
+              <FileSpreadsheet size={15} style={{ color: '#16a34a' }} />
+              <span>Download Indian Demo Data (.xlsx)</span>
+            </a>
+            <a
+              href="/api/documents/download-sample-excel?type=template"
+              download="Rooman_Books_Import_Template.xlsx"
+              className="btn btn-secondary btn-sm"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', textDecoration: 'none', color: 'var(--color-text)' }}
+            >
+              <FileSpreadsheet size={15} style={{ color: '#0284c7' }} />
+              <span>Download Import Template (.xlsx)</span>
+            </a>
+          </div>
           <div
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleDrop}

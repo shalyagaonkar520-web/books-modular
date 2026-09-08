@@ -223,8 +223,12 @@ export const documentsApi = {
   remove: (id: string) => api.delete<Message>(`/documents/${id}`),
   importExcelCategorize: (formData: FormData) =>
     api.upload<ExcelCategorizeResponse>('/documents/import-excel-categorize', formData),
-  importExcelCommit: (sections: ExcelCategorizeSection[]) =>
-    api.post<ExcelCommitResponse>('/documents/import-excel-commit', { sections }),
+  importExcelCommit: (sections: ExcelCategorizeSection[]) => {
+    const items = sections.flatMap((sec) =>
+      sec.rows.map((row) => ({ category: sec.category, data: row }))
+    );
+    return api.post<ExcelCommitResponse>('/documents/import-excel-commit', { sections, items });
+  },
 };
 
 export const payrollApi = {

@@ -20,15 +20,43 @@ interface DataTableProps<T> {
   onSort?: (key: string) => void;
   footer?: ReactNode;
   caption?: string;
+  selectedKeys?: Set<string>;
+  onSelectRow?: (key: string) => void;
+  onSelectAll?: () => void;
+  isAllSelected?: boolean;
 }
 
-export function DataTable<T>({ columns, rows, rowKey, onRowClick, sortBy, sortOrder, onSort, footer, caption }: DataTableProps<T>) {
+export function DataTable<T>({
+  columns,
+  rows,
+  rowKey,
+  onRowClick,
+  sortBy,
+  sortOrder,
+  onSort,
+  footer,
+  caption,
+  selectedKeys,
+  onSelectRow,
+  onSelectAll,
+  isAllSelected,
+}: DataTableProps<T>) {
   return (
     <div className="table-wrap">
       <table className="data-table">
         {caption ? <caption className="sr-only">{caption}</caption> : null}
         <thead>
           <tr>
+            {onSelectRow ? (
+              <th style={{ width: '40px', textAlign: 'center', padding: '8px' }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(isAllSelected)}
+                  onChange={onSelectAll}
+                  aria-label="Select all rows"
+                />
+              </th>
+            ) : null}
             {columns.map((column) => {
               const isSorted = sortBy === column.key;
               const canSort = column.sortable && onSort;
@@ -53,27 +81,45 @@ export function DataTable<T>({ columns, rows, rowKey, onRowClick, sortBy, sortOr
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr
-              key={rowKey(row)}
-              className={onRowClick ? 'clickable' : undefined}
-              onClick={onRowClick ? () => onRowClick(row) : undefined}
-              tabIndex={onRowClick ? 0 : undefined}
-              onKeyDown={
-                onRowClick
-                  ? (event) => {
-                      if (event.key === 'Enter') onRowClick(row);
-                    }
-                  : undefined
-              }
-            >
-              {columns.map((column) => (
-                <td key={column.key} className={`align-${column.align ?? 'left'}`}>
-                  {column.render(row)}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const key = rowKey(row);
+            const isSelected = selectedKeys?.has(key);
+            return (
+              <tr
+                key={key}
+                className={onRowClick ? 'clickable' : undefined}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                style={isSelected ? { backgroundColor: 'var(--color-bg-subtle, #f1f5f9)' } : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
+                onKeyDown={
+                  onRowClick
+                    ? (event) => {
+                        if (event.key === 'Enter') onRowClick(row);
+                      }
+                    : undefined
+                }
+              >
+                {onSelectRow ? (
+                  <td
+                    style={{ width: '40px', textAlign: 'center', padding: '6px 8px' }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(isSelected)}
+                      onChange={() => onSelectRow(key)}
+                      aria-label={`Select row ${key}`}
+                    />
+                  </td>
+                ) : null}
+                {columns.map((column) => (
+                  <td key={column.key} className={`align-${column.align ?? 'left'}`}>
+                    {column.render(row)}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
         {footer ? <tfoot>{footer}</tfoot> : null}
       </table>

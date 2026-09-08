@@ -85,6 +85,8 @@ export function ItemsPage() {
   const [detailsItem, setDetailsItem] = useState<Item | null>(null);
   const [adjustItem, setAdjustItem] = useState<Item | null>(null);
   const [deleteItem, setDeleteItem] = useState<Item | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const deleteSubmit = useSubmit();
 
   const list = useAsync(
@@ -161,6 +163,25 @@ export function ItemsPage() {
     if (result.message.toLowerCase().includes('inactive')) toast.notify(result.message, 'warning');
     else toast.success(result.message);
     setDeleteItem(null);
+    reloadAll();
+  }
+
+  async function confirmBulkDelete() {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Delete ${selectedIds.size} selected item(s)?`)) return;
+    setBulkDeleting(true);
+    let count = 0;
+    for (const id of selectedIds) {
+      try {
+        await itemsApi.remove(id);
+        count++;
+      } catch {
+        // continue
+      }
+    }
+    setBulkDeleting(false);
+    toast.success(`Deleted ${count} item(s)`);
+    setSelectedIds(new Set());
     reloadAll();
   }
 
@@ -321,6 +342,39 @@ export function ItemsPage() {
           </div>
         ) : (
           <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 16px', background: 'var(--surface-muted, #f8fafc)', borderBottom: '1px solid var(--border-color, #e2e8f0)' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    if (selectedIds.size === rows.length) {
+                      setSelectedIds(new Set());
+                    } else {
+                      setSelectedIds(new Set(rows.map((i) => i.id)));
+                    }
+                  }}
+                >
+                  {selectedIds.size === rows.length && rows.length > 0 ? 'Deselect All' : `Select All on Page (${rows.length})`}
+                </Button>
+                {selectedIds.size > 0 ? (
+                  <span className="small text-muted">{selectedIds.size} selected</span>
+                ) : null}
+              </div>
+              {selectedIds.size > 0 ? (
+                <IfCanWrite>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    loading={bulkDeleting}
+                    onClick={() => void confirmBulkDelete()}
+                    icon={<Trash2 size={13} />}
+                  >
+                    Delete Selected ({selectedIds.size})
+                  </Button>
+                </IfCanWrite>
+              ) : null}
+            </div>
             <DataTable
               columns={columns}
               rows={rows}
@@ -330,6 +384,18 @@ export function ItemsPage() {
               sortOrder={sortOrder}
               onSort={handleSort}
               caption="Item catalogue"
+              selectedKeys={selectedIds}
+              onSelectRow={(id) => {
+                const next = new Set(selectedIds);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                setSelectedIds(next);
+              }}
+              onSelectAll={() => {
+                if (selectedIds.size === rows.length) setSelectedIds(new Set());
+                else setSelectedIds(new Set(rows.map((i) => i.id)));
+              }}
+              isAllSelected={rows.length > 0 && selectedIds.size === rows.length}
             />
             <Pagination page={page} pageSize={PAGE_SIZE} total={list.data?.total ?? 0} onPageChange={setPage} />
           </>
