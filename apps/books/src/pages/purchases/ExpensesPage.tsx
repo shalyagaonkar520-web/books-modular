@@ -129,6 +129,8 @@ export function ExpensesPage() {
     setPage(1);
   };
 
+  const rows = list.data?.items ?? [];
+
   const columns: Array<Column<Expense>> = [
     {
       key: 'expenseNumber',
@@ -311,15 +313,14 @@ export function ExpensesPage() {
                   size="sm"
                   variant="ghost"
                   onClick={() => {
-                    const items = list.data.items;
-                    if (selectedIds.size === items.length) {
+                    if (selectedIds.size === rows.length) {
                       setSelectedIds(new Set());
                     } else {
-                      setSelectedIds(new Set(items.map((e) => e.id)));
+                      setSelectedIds(new Set(rows.map((e) => e.id)));
                     }
                   }}
                 >
-                  {selectedIds.size === list.data.items.length && list.data.items.length > 0 ? 'Deselect All' : `Select All on Page (${list.data.items.length})`}
+                  {selectedIds.size === rows.length && rows.length > 0 ? 'Deselect All' : `Select All on Page (${rows.length})`}
                 </Button>
                 {selectedIds.size > 0 ? (
                   <span className="small text-muted">{selectedIds.size} selected</span>
@@ -341,7 +342,7 @@ export function ExpensesPage() {
             </div>
             <DataTable
               columns={columns}
-              rows={list.data.items}
+              rows={rows}
               rowKey={(expense) => expense.id}
               caption="Expenses"
               selectedKeys={selectedIds}
@@ -352,13 +353,12 @@ export function ExpensesPage() {
                 setSelectedIds(next);
               }}
               onSelectAll={() => {
-                const items = list.data.items;
-                if (selectedIds.size === items.length) setSelectedIds(new Set());
-                else setSelectedIds(new Set(items.map((e) => e.id)));
+                if (selectedIds.size === rows.length) setSelectedIds(new Set());
+                else setSelectedIds(new Set(rows.map((e) => e.id)));
               }}
-              isAllSelected={list.data.items.length > 0 && selectedIds.size === list.data.items.length}
+              isAllSelected={rows.length > 0 && selectedIds.size === rows.length}
             />
-            <Pagination page={list.data.page} pageSize={list.data.pageSize} total={list.data.total} onPageChange={setPage} />
+            <Pagination page={list.data?.page ?? page} pageSize={list.data?.pageSize ?? PAGE_SIZE} total={list.data?.total ?? 0} onPageChange={setPage} />
           </>
         )}
       </div>
