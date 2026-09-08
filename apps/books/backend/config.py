@@ -31,18 +31,31 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 14
     cookie_secure: bool = Field(default=False, description="Set True behind HTTPS in production")
     cookie_domain: str | None = None
-    cors_origins: List[str] = Field(default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"])
+    cors_origins: List[str] | str = Field(default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"])
     allow_public_signup: bool = Field(default=True, description="If false, only invited users can join")
     login_rate_limit_per_minute: int = 10
 
     # Uploads
     max_upload_size_mb: int = 25
 
+    # Razorpay Gateway & Financial Hub
+    razorpay_key_id: str = Field(default="rzp_live_StCGrX25cCk27O")
+    razorpay_key_secret: str = Field(default="dXNiyM3czTHNM9H5MUDIl5uR")
+    razorpay_webhook_secret: str = Field(default="rooman_books_webhook_secret_2026")
+    razorpay_mode: str = Field(default="test", description="test | live")
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_origins(cls, value):
         if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
+            val = value.strip()
+            if val.startswith("[") and val.endswith("]"):
+                import json
+                try:
+                    return json.loads(val)
+                except Exception:
+                    pass
+            return [origin.strip() for origin in val.split(",") if origin.strip()]
         return value
 
     @property

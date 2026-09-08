@@ -83,6 +83,7 @@ def create_app() -> FastAPI:
         payments,
         payroll,
         projects,
+        razorpay,
         reports,
     )
 
@@ -102,8 +103,11 @@ def create_app() -> FastAPI:
         payroll,
         reports,
         dashboard,
+        razorpay,
     ):
         app.include_router(module.router)
+    from backend.routes import email
+    app.include_router(email.router)
     app.include_router(items.adjustments_router)
 
     @app.get("/api/health", tags=["Health"])

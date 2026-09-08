@@ -13,6 +13,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: { '@': path.resolve(__dirname, 'src') },
+    extensions: ['.tsx', '.ts', '.jsx', '.js', '.json'],
   },
   server: {
     port: 3000,

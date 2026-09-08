@@ -1,7 +1,7 @@
 /** Sales > Payments received: every customer payment, with filters and recording. */
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Trash2, Wallet } from 'lucide-react';
+import { FileDown, FileSpreadsheet, Mail, Plus, Trash2, Wallet } from 'lucide-react';
 
 import { contactsApi, customerPaymentsApi } from '@/api/endpoints';
 import type { CustomerPayment } from '@/api/types';
@@ -10,7 +10,8 @@ import { Button } from '@/components/ui/Button';
 import { StatTile } from '@/components/ui/Card';
 import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, SkeletonRows } from '@/components/ui/Feedback';
-import { ConfirmDialog } from '@/components/ui/Modal';
+import { CheckboxField, TextAreaField, TextField } from '@/components/ui/Field';
+import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
@@ -67,6 +68,7 @@ export function PaymentsReceivedPage() {
   const [page, setPage] = useState(1);
   const [recording, setRecording] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<CustomerPayment | null>(null);
+  const [mailPayment, setMailPayment] = useState<CustomerPayment | null>(null);
 
   const filters = useMemo(
     () => ({ customer_id: customerId || undefined, start_date: startDate || undefined, end_date: endDate || undefined }),
@@ -131,8 +133,28 @@ export function PaymentsReceivedPage() {
       header: 'Actions',
       align: 'right',
       render: (row) => (
-        <IfCanWrite>
-          <span className="row-actions">
+        <span className="row-actions">
+          <button
+            type="button"
+            className="action-btn"
+            style={{ color: '#ea4335' }}
+            aria-label={`Send receipt for ${row.paymentNumber} via Gmail`}
+            title="Send receipt via Gmail"
+            onClick={() => setMailPayment(row)}
+          >
+            <Mail size={15} />
+          </button>
+          <button
+            type="button"
+            className="action-btn"
+            style={{ color: '#dc2626' }}
+            aria-label={`Download PDF receipt for ${row.paymentNumber}`}
+            title="Download PDF receipt"
+            onClick={() => customerPaymentsApi.downloadPdf(row.id, row.paymentNumber)}
+          >
+            <FileDown size={15} />
+          </button>
+          <IfCanWrite>
             <button
               type="button"
               className="action-btn is-danger"
@@ -144,8 +166,8 @@ export function PaymentsReceivedPage() {
             >
               <Trash2 size={15} />
             </button>
-          </span>
-        </IfCanWrite>
+          </IfCanWrite>
+        </span>
       ),
     },
   ];
@@ -161,11 +183,39 @@ export function PaymentsReceivedPage() {
         subtitle="Money collected from your customers."
         breadcrumb={['Sales', 'Payments received']}
         actions={
-          <IfCanWrite>
-            <Button variant="primary" icon={<Plus size={15} />} onClick={() => setRecording(true)}>
-              Record payment
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <Button
+              variant="secondary"
+              icon={<FileDown size={15} />}
+              onClick={() =>
+                customerPaymentsApi.exportPdf({
+                  customer_id: customerId || undefined,
+                  start_date: startDate || undefined,
+                  end_date: endDate || undefined,
+                })
+              }
+            >
+              Extract PDF
             </Button>
-          </IfCanWrite>
+            <Button
+              variant="secondary"
+              icon={<FileSpreadsheet size={15} />}
+              onClick={() =>
+                customerPaymentsApi.exportExcel({
+                  customer_id: customerId || undefined,
+                  start_date: startDate || undefined,
+                  end_date: endDate || undefined,
+                })
+              }
+            >
+              Extract Excel
+            </Button>
+            <IfCanWrite>
+              <Button variant="primary" icon={<Plus size={15} />} onClick={() => setRecording(true)}>
+                Record payment
+              </Button>
+            </IfCanWrite>
+          </div>
         }
       />
 
@@ -279,6 +329,90 @@ export function PaymentsReceivedPage() {
           </>
         }
       />
+      {mailPayment ? (
+        <SendReceiptModal
+          payment={mailPayment}
+          onClose={() => setMailPayment(null)}
+          onSent={(msg) => {
+            toast.success(msg);
+            setMailPayment(null);
+          }}
+        />
+      ) : null}
     </>
+  );
+}
+
+interface SendReceiptModalProps {
+  payment: CustomerPayment;
+  onClose: () => void;
+  onSent: (msg: string) => void;
+}
+
+function SendReceiptModal({ payment, onClose, onSent }: SendReceiptModalProps) {
+  const [email, setEmail] = useState('');
+  const [notes, setNotes] = useState(`Thank you for your payment of ${formatCurrency(payment.amount)} (Receipt #${payment.paymentNumber}).`);
+  const [attachPdf, setAttachPdf] = useState(true);
+  const { submitting, error, run } = useSubmit();
+
+  const handleSend = async () => {
+    if (!email.trim()) return;
+    const result = await run(() =>
+      customerPaymentsApi.sendGmail(payment.id, {
+        to_email: email.trim(),
+        attach_pdf: attachPdf,
+        custom_notes: notes.trim() || undefined,
+      }),
+    );
+    if (result) {
+      onSent(result.message);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      size="md"
+      title="Send Payment Receipt via Gmail"
+      subtitle={`Receipt #${payment.paymentNumber} • ${payment.customerName}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button variant="primary" loading={submitting} icon={<Mail size={15} />} onClick={handleSend}>
+            Send Receipt via Gmail
+          </Button>
+        </>
+      }
+    >
+      <FormError message={error} />
+      <div className="form-grid">
+        <TextField
+          label="Recipient Email"
+          type="email"
+          required
+          placeholder="customer@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+      </div>
+      <div style={{ marginTop: '12px' }}>
+        <CheckboxField
+          label="Attach PDF Receipt"
+          checked={attachPdf}
+          onChange={(e) => setAttachPdf(e.target.checked)}
+        />
+      </div>
+      <div style={{ marginTop: '12px' }}>
+        <TextAreaField
+          label="Custom Notes"
+          rows={3}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
+      </div>
+    </Modal>
   );
 }

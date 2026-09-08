@@ -1,10 +1,9 @@
-/** Read-only invoice detail with payment history and a print-friendly layout. */
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Ban, IndianRupee, Pencil, Printer, Send, Trash2 } from 'lucide-react';
+import { ArrowLeft, Ban, CreditCard, FileDown, FileSpreadsheet, IndianRupee, Mail, Pencil, Printer, Send, Trash2 } from 'lucide-react';
 
 import { customerPaymentsApi, invoicesApi } from '@/api/endpoints';
-import type { CustomerPayment } from '@/api/types';
+import type { CustomerPayment, Invoice } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
 import { IfCanWrite } from '@/auth/RouteGuards';
 import { Badge } from '@/components/ui/Badge';
@@ -12,7 +11,8 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, LoadingBlock, SkeletonRows } from '@/components/ui/Feedback';
-import { ConfirmDialog } from '@/components/ui/Modal';
+import { TextAreaField, TextField } from '@/components/ui/Field';
+import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
@@ -21,6 +21,7 @@ import { formatCurrency, formatDate, formatPercent, formatQuantity } from '@/uti
 import { PAYMENT_MODES, statusLabel, statusTone } from '@/utils/status';
 
 import { RecordPaymentModal, type PaymentInvoiceContext } from './RecordPaymentModal';
+import { PayOnlineModal } from './PayOnlineModal';
 
 type Pending = { kind: 'send' | 'void' } | { kind: 'deletePayment'; payment: CustomerPayment };
 
@@ -35,6 +36,8 @@ export function InvoiceViewPage() {
 
   const [pending, setPending] = useState<Pending | null>(null);
   const [payingOpen, setPayingOpen] = useState(false);
+  const [payOnlineOpen, setPayOnlineOpen] = useState(false);
+  const [mailModalOpen, setMailModalOpen] = useState(false);
 
   const invoice = useAsync(() => invoicesApi.get(invoiceId), [invoiceId]);
   const payments = useAsync(() => customerPaymentsApi.list({ invoice_id: invoiceId, page_size: 200 }), [invoiceId]);
@@ -119,7 +122,7 @@ export function InvoiceViewPage() {
   }
 
   const canEdit = data.status === 'draft' || ((data.status === 'sent' || data.status === 'overdue') && data.amountPaid === 0);
-  const canPay = ['sent', 'partially_paid', 'overdue'].includes(data.status) && data.balanceDue > 0;
+  const canPay = data.status !== 'void' && data.balanceDue > 0;
   const paymentRows = payments.data?.items ?? [];
 
   return (
@@ -135,6 +138,27 @@ export function InvoiceViewPage() {
             </Button>
             <Button icon={<Printer size={15} />} onClick={() => window.print()}>
               Print
+            </Button>
+            <Button
+              variant="secondary"
+              icon={<FileDown size={15} style={{ color: '#dc2626' }} />}
+              onClick={() => invoicesApi.downloadPdf(data.id, data.invoiceNumber)}
+            >
+              Download PDF
+            </Button>
+            <Button
+              variant="secondary"
+              icon={<FileSpreadsheet size={15} style={{ color: '#15803d' }} />}
+              onClick={() => invoicesApi.downloadExcel(data.id, data.invoiceNumber)}
+            >
+              Download Excel
+            </Button>
+            <Button
+              variant="secondary"
+              icon={<Mail size={15} style={{ color: '#ea4335' }} />}
+              onClick={() => setMailModalOpen(true)}
+            >
+              Send via Gmail
             </Button>
             <IfCanWrite>
               <>
@@ -155,9 +179,19 @@ export function InvoiceViewPage() {
                   </Button>
                 ) : null}
                 {canPay ? (
-                  <Button variant="primary" icon={<IndianRupee size={15} />} onClick={() => setPayingOpen(true)}>
-                    Record payment
-                  </Button>
+                  <>
+                    <Button
+                      variant="primary"
+                      icon={<CreditCard size={15} />}
+                      onClick={() => setPayOnlineOpen(true)}
+                      style={{ backgroundColor: '#16a34a', borderColor: '#16a34a', color: '#ffffff' }}
+                    >
+                      Pay Online
+                    </Button>
+                    <Button variant="secondary" icon={<IndianRupee size={15} />} onClick={() => setPayingOpen(true)}>
+                      Record payment
+                    </Button>
+                  </>
                 ) : null}
                 {data.status !== 'void' ? (
                   <Button
@@ -337,6 +371,27 @@ export function InvoiceViewPage() {
 
       <RecordPaymentModal open={payingOpen} invoice={paymentContext} onClose={() => setPayingOpen(false)} onSaved={refresh} />
 
+      {data ? (
+        <PayOnlineModal
+          open={payOnlineOpen}
+          onClose={() => setPayOnlineOpen(false)}
+          invoice={data}
+          onPaymentSuccess={refresh}
+        />
+      ) : null}
+
+      {mailModalOpen ? (
+        <SendInvoiceDetailGmailModal
+          invoice={data}
+          onClose={() => setMailModalOpen(false)}
+          onSent={(message) => {
+            toast.success(message);
+            setMailModalOpen(false);
+            refresh();
+          }}
+        />
+      ) : null}
+
       <ConfirmDialog
         open={!!pending}
         title={pending?.kind === 'send' ? 'Mark invoice as sent' : pending?.kind === 'void' ? 'Void invoice' : 'Delete payment'}
@@ -361,5 +416,162 @@ export function InvoiceViewPage() {
         }
       />
     </>
+  );
+}
+
+interface SendInvoiceDetailGmailModalProps {
+  invoice: Invoice;
+  onClose: () => void;
+  onSent: (message: string) => void;
+}
+
+function SendInvoiceDetailGmailModal({ invoice, onClose, onSent }: SendInvoiceDetailGmailModalProps) {
+  const [email, setEmail] = useState(invoice.customerEmail ?? '');
+  const [sendAsOverdue, setSendAsOverdue] = useState(invoice.status === 'overdue');
+  const [attachPdf, setAttachPdf] = useState(true);
+  const [customNotes, setCustomNotes] = useState('');
+  const { submitting, error, run } = useSubmit();
+
+  async function handleSend() {
+    if (!email.trim()) return;
+    const result = await run(() =>
+      invoicesApi.sendGmail(invoice.id, {
+        to_email: email.trim(),
+        send_as_overdue: sendAsOverdue,
+        attach_pdf: attachPdf,
+        custom_notes: customNotes.trim() || undefined,
+      })
+    );
+    if (result) {
+      onSent(
+        sendAsOverdue
+          ? `Overdue Payment Reminder for ${invoice.invoiceNumber} emailed to ${email.trim()} via Gmail SMTP`
+          : `Tax Invoice ${invoice.invoiceNumber} emailed to ${email.trim()} via Gmail SMTP`
+      );
+    }
+  }
+
+  const gmailWebUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}&su=${encodeURIComponent(
+    sendAsOverdue
+      ? `Payment Reminder: Invoice ${invoice.invoiceNumber} is Overdue - Rooman Technologies`
+      : `Tax Invoice ${invoice.invoiceNumber} from Rooman Technologies`
+  )}&body=${encodeURIComponent(
+    `Dear ${invoice.customerName},\n\n${
+      sendAsOverdue
+        ? `This is an urgent reminder regarding overdue invoice ${invoice.invoiceNumber}. Outstanding balance: ${formatCurrency(invoice.balanceDue)}.`
+        : `Please find details of Tax Invoice ${invoice.invoiceNumber}.\nAmount: ${formatCurrency(invoice.total)}\nDue Date: ${formatDate(invoice.dueDate)}.`
+    }\n\nWarm regards,\nRooman Technologies Accounts Desk`
+  )}`;
+
+  return (
+    <Modal
+      open
+      size="md"
+      title={`Gmail Send Options: ${invoice.invoiceNumber}`}
+      subtitle={`Customer: ${invoice.customerName} · Total: ${formatCurrency(invoice.total)}`}
+      onClose={onClose}
+      footer={
+        <>
+          <a
+            href={gmailWebUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-secondary btn-md"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <Send size={14} />
+            <span>Open in Gmail Web</span>
+          </a>
+          <Button onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            loading={submitting}
+            disabled={!email.trim()}
+            icon={<Mail size={15} />}
+            style={sendAsOverdue ? { backgroundColor: '#dc2626', borderColor: '#dc2626', color: '#ffffff' } : undefined}
+            onClick={handleSend}
+          >
+            {sendAsOverdue ? 'Send Overdue Reminder' : 'Send Tax Invoice'}
+          </Button>
+        </>
+      }
+    >
+      <FormError message={error} />
+      <div className="stack" style={{ gap: '14px' }}>
+        <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+          <label style={{ fontSize: '13px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '8px' }}>
+            Email Mode:
+          </label>
+          <div style={{ display: 'flex', gap: '16px' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13.5px', cursor: 'pointer' }}>
+              <input
+                type="radio"
+                name="detailEmailMode"
+                checked={!sendAsOverdue}
+                onChange={() => setSendAsOverdue(false)}
+              />
+              <span>Standard Tax Invoice Dispatch</span>
+            </label>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13.5px', cursor: 'pointer', color: '#b91c1c', fontWeight: 600 }}>
+              <input
+                type="radio"
+                name="detailEmailMode"
+                checked={sendAsOverdue}
+                onChange={() => setSendAsOverdue(true)}
+              />
+              <span>Overdue Payment Reminder</span>
+            </label>
+          </div>
+        </div>
+
+        <div className="form-grid">
+          <TextField
+            label="Customer"
+            value={invoice.customerName}
+            disabled
+          />
+          <TextField
+            label="Recipient Email (Gmail)"
+            type="email"
+            required
+            placeholder="e.g. customer@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <TextField
+            label="Invoice Total"
+            value={formatCurrency(invoice.total)}
+            disabled
+          />
+          <TextField
+            label={sendAsOverdue ? 'Balance Due (Overdue)' : 'Due Date'}
+            value={sendAsOverdue ? formatCurrency(invoice.balanceDue) : formatDate(invoice.dueDate)}
+            disabled
+          />
+        </div>
+
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '13.5px', cursor: 'pointer', padding: '4px 0' }}>
+          <input
+            type="checkbox"
+            checked={attachPdf}
+            onChange={(e) => setAttachPdf(e.target.checked)}
+          />
+          <span style={{ fontWeight: 500 }}>Attach generated official GST Tax Invoice PDF to email</span>
+        </label>
+
+        <TextAreaField
+          label="Custom Note / Remittance Instructions (Optional)"
+          value={customNotes}
+          placeholder="e.g. Kindly share transaction UTR once processed..."
+          rows={2}
+          onChange={(e) => setCustomNotes(e.target.value)}
+        />
+      </div>
+      <p className="small text-muted" style={{ marginTop: '12px' }}>
+        Dispatched automatically via authenticated Gmail SMTP server (shalya@rooman.com).
+      </p>
+    </Modal>
   );
 }

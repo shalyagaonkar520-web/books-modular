@@ -49,6 +49,7 @@ const GROUPS: NavGroup[] = [
     label: 'Purchases',
     icon: ShoppingBag,
     entries: [
+      { to: '/expense-dashboard', label: 'Expense Dashboard', icon: BarChart3 },
       { to: '/vendors', label: 'Vendors', icon: Building2 },
       { to: '/bills', label: 'Bills', icon: Receipt },
       { to: '/expenses', label: 'Expenses', icon: CreditCard },
@@ -58,11 +59,12 @@ const GROUPS: NavGroup[] = [
 ];
 
 const SINGLE_LINKS: NavEntry[] = [
-  { to: '/', label: 'Dashboard', icon: Home },
+  { to: '/dashboard', label: 'Dashboard', icon: Home },
   { to: '/items', label: 'Items', icon: Package },
 ];
 
 const LOWER_LINKS: NavEntry[] = [
+  { to: '/financial-dashboard', label: 'Financial Hub', icon: CreditCard },
   { to: '/banking', label: 'Banking', icon: Landmark },
   { to: '/time-tracking', label: 'Time tracking', icon: FolderOpen },
   { to: '/accounting', label: 'Accountant', icon: BarChart3 },

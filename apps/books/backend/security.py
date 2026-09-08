@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+try:
+    from datetime import UTC
+except ImportError:
+    from datetime import timezone
+    UTC = timezone.utc
 from typing import Any, Dict, Optional
 
 import jwt
@@ -29,7 +34,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def create_access_token(user_id: str, organization_id: str, role: str, expires_minutes: Optional[int] = None) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload: Dict[str, Any] = {
         "sub": user_id,
         "org": organization_id,

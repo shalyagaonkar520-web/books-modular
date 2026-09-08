@@ -678,3 +678,25 @@ export interface AuditLog {
   summary?: string | null;
   createdAt: string;
 }
+
+export interface ExcelCategorizeSection {
+  category: string;
+  sheet_name: string;
+  headers: string[];
+  count: number;
+  rows: Array<Record<string, unknown>>;
+}
+
+export interface ExcelCategorizeResponse {
+  filename: string;
+  total_sheets: number;
+  total_rows: number;
+  sections: ExcelCategorizeSection[];
+}
+
+export interface ExcelCommitResponse {
+  success: boolean;
+  imported_counts: Record<string, number>;
+  message: string;
+}
+

@@ -1,9 +1,9 @@
 /** Customers and vendors share this page; every label follows the `type` prop. */
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { FileText, Pencil, Plus, Trash2, Users } from 'lucide-react';
+import { FileDown, FileSpreadsheet, FileText, Mail, Pencil, Plus, Send, Trash2, Users } from 'lucide-react';
 
-import { contactsApi } from '@/api/endpoints';
+import { contactsApi, emailApi } from '@/api/endpoints';
 import type { Contact, ContactType, GstTreatment } from '@/api/types';
 import { useAsync } from '@/hooks/useAsync';
 import { useDebounced } from '@/hooks/useDebounced';
@@ -65,6 +65,7 @@ export function ContactsPage({ type }: { type: ContactType }) {
   const [formOpen, setFormOpen] = useState(false);
   const [formContact, setFormContact] = useState<Contact | null>(null);
   const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [emailContact, setEmailContact] = useState<Contact | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
   const deleteSubmit = useSubmit();
 
@@ -146,6 +147,38 @@ export function ContactsPage({ type }: { type: ContactType }) {
       header: 'Email',
       render: (contact) => (contact.email ? <a href={`mailto:${contact.email}`} onClick={(event) => event.stopPropagation()}>{contact.email}</a> : <span className="text-muted">—</span>),
     },
+    {
+      key: 'mailing',
+      header: 'Mailing / Gmail',
+      render: (contact) => (
+        contact.email ? (
+          <div className="row-actions" onClick={(event) => event.stopPropagation()} style={{ justifyContent: 'flex-start' }}>
+            <button
+              type="button"
+              className="action-btn"
+              title={`Send Gmail to ${contact.displayName}`}
+              aria-label={`Send Gmail to ${contact.displayName}`}
+              onClick={() => setEmailContact(contact)}
+              style={{ color: '#ea4335' }}
+            >
+              <Mail size={15} />
+            </button>
+            <a
+              href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(contact.email)}&su=${encodeURIComponent(`Communication from Rooman Technologies - ${contact.displayName}`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="action-btn"
+              title="Open directly in Gmail web"
+              aria-label={`Open Gmail web compose for ${contact.displayName}`}
+            >
+              <Send size={13} />
+            </a>
+          </div>
+        ) : (
+          <span className="text-muted">—</span>
+        )
+      ),
+    },
     { key: 'phone', header: 'Phone', render: (contact) => contact.phone || <span className="text-muted">—</span> },
     { key: 'gstin', header: 'GSTIN', render: (contact) => (contact.gstin ? <span className="code-tag">{contact.gstin}</span> : <span className="text-muted">—</span>) },
     { key: 'paymentTermsDays', header: 'Terms', align: 'right', render: (contact) => <span className="text-muted small">{`${formatNumber(contact.paymentTermsDays, 0)} days`}</span> },
@@ -195,11 +228,39 @@ export function ContactsPage({ type }: { type: ContactType }) {
             : 'Everyone you buy from, with their balances and payment terms.'
         }
         actions={
-          <IfCanWrite>
-            <Button variant="primary" icon={<Plus size={15} />} onClick={openCreate}>
-              New {copy.singular}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <Button
+              variant="secondary"
+              icon={<FileDown size={15} />}
+              onClick={() =>
+                contactsApi.exportPdf({
+                  type,
+                  include_inactive: includeInactive,
+                  search: debouncedSearch.trim() || undefined,
+                })
+              }
+            >
+              Extract PDF
             </Button>
-          </IfCanWrite>
+            <Button
+              variant="secondary"
+              icon={<FileSpreadsheet size={15} />}
+              onClick={() =>
+                contactsApi.exportExcel({
+                  type,
+                  include_inactive: includeInactive,
+                  search: debouncedSearch.trim() || undefined,
+                })
+              }
+            >
+              Extract Excel
+            </Button>
+            <IfCanWrite>
+              <Button variant="primary" icon={<Plus size={15} />} onClick={openCreate}>
+                New {copy.singular}
+              </Button>
+            </IfCanWrite>
+          </div>
         }
       />
 
@@ -302,6 +363,21 @@ export function ContactsPage({ type }: { type: ContactType }) {
             setFormContact(contact);
             setFormOpen(true);
           }}
+          onSendEmail={(contact) => {
+            setDetailsId(null);
+            setEmailContact(contact);
+          }}
+        />
+      ) : null}
+
+      {emailContact ? (
+        <SendContactEmailModal
+          contact={emailContact}
+          onClose={() => setEmailContact(null)}
+          onSent={(message) => {
+            toast.success(message);
+            setEmailContact(null);
+          }}
         />
       ) : null}
 
@@ -366,12 +442,17 @@ interface ContactFormModalProps {
 }
 
 function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactFormModalProps) {
+  const toast = useToast();
   const [form, setForm] = useState<FormState>(() => initialForm(contact));
   const { submitting, error, fieldErrors, run } = useSubmit();
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((current) => ({ ...current, [key]: value }));
 
   async function save() {
+    if (type === 'customer' && !form.email.trim()) {
+      toast.error('Customer email is required for invoices and payment notifications');
+      return;
+    }
     const payload: Partial<Contact> = {
       type,
       displayName: form.displayName.trim(),
@@ -417,7 +498,7 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
           <TextField label="Display name" required value={form.displayName} error={fieldErrors.displayName} onChange={(event) => set('displayName', event.target.value)} />
           <TextField label="Company name" value={form.companyName} error={fieldErrors.companyName} onChange={(event) => set('companyName', event.target.value)} />
           <TextField label="Contact person" value={form.contactPerson} error={fieldErrors.contactPerson} onChange={(event) => set('contactPerson', event.target.value)} />
-          <TextField label="Email" type="email" value={form.email} error={fieldErrors.email} onChange={(event) => set('email', event.target.value)} />
+          <TextField label="Email" type="email" required={type === 'customer'} value={form.email} error={fieldErrors.email} onChange={(event) => set('email', event.target.value)} />
           <TextField label="Phone" type="tel" value={form.phone} error={fieldErrors.phone} onChange={(event) => set('phone', event.target.value)} />
         </div>
       </section>
@@ -472,9 +553,10 @@ interface ContactDetailsModalProps {
   copy: Copy;
   onClose: () => void;
   onEdit: (contact: Contact) => void;
+  onSendEmail?: (contact: Contact) => void;
 }
 
-function ContactDetailsModal({ contactId, copy, onClose, onEdit }: ContactDetailsModalProps) {
+function ContactDetailsModal({ contactId, copy, onClose, onEdit, onSendEmail }: ContactDetailsModalProps) {
   const summary = useAsync(() => contactsApi.summary(contactId), [contactId]);
   const contact = summary.data?.contact ?? null;
   const dash = <span className="text-muted">—</span>;
@@ -493,6 +575,15 @@ function ContactDetailsModal({ contactId, copy, onClose, onEdit }: ContactDetail
           <Link className="btn btn-secondary btn-md" to={`${copy.documentsPath}${contactId}`}>
             <span>View {copy.documentsLabel}</span>
           </Link>
+          {contact && contact.email && onSendEmail ? (
+            <Button
+              variant="secondary"
+              icon={<Mail size={15} style={{ color: '#ea4335' }} />}
+              onClick={() => onSendEmail(contact)}
+            >
+              Send Gmail
+            </Button>
+          ) : null}
           {contact ? (
             <IfCanWrite>
               <Button variant="primary" icon={<Pencil size={15} />} onClick={() => onEdit(contact)}>
@@ -520,7 +611,29 @@ function ContactDetailsModal({ contactId, copy, onClose, onEdit }: ContactDetail
             <Detail label="Status" value={<Badge tone={contact.isActive ? 'success' : 'neutral'}>{contact.isActive ? 'Active' : 'Inactive'}</Badge>} />
             <Detail label="Overdue" value={<Badge tone={overdueTone}>{formatCurrency(summary.data.overdue)}</Badge>} />
             <Detail label="Contact person" value={contact.contactPerson || dash} />
-            <Detail label="Email" value={contact.email ? <a href={`mailto:${contact.email}`}>{contact.email}</a> : dash} />
+            <Detail
+              label="Email"
+              value={
+                contact.email ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                    <a href={`mailto:${contact.email}`}>{contact.email}</a>
+                    {onSendEmail ? (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: '2px 8px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        onClick={() => onSendEmail(contact)}
+                      >
+                        <Mail size={12} style={{ color: '#ea4335' }} />
+                        <span>Send Gmail</span>
+                      </button>
+                    ) : null}
+                  </span>
+                ) : (
+                  dash
+                )
+              }
+            />
             <Detail label="Phone" value={contact.phone || dash} />
             <Detail label="GSTIN" value={contact.gstin ? <span className="code-tag">{contact.gstin}</span> : dash} />
             <Detail label="PAN" value={contact.pan ? <span className="code-tag">{contact.pan}</span> : dash} />
@@ -540,6 +653,94 @@ function ContactDetailsModal({ contactId, copy, onClose, onEdit }: ContactDetail
           </p>
         </>
       )}
+    </Modal>
+  );
+}
+
+interface SendContactEmailModalProps {
+  contact: Contact;
+  onClose: () => void;
+  onSent: (message: string) => void;
+}
+
+function SendContactEmailModal({ contact, onClose, onSent }: SendContactEmailModalProps) {
+  const [subject, setSubject] = useState(`Communication from Rooman Technologies - ${contact.displayName}`);
+  const [message, setMessage] = useState(
+    `Dear ${contact.contactPerson || contact.displayName},\n\nWe are reaching out to you from Rooman Technologies regarding your account. Please feel free to get in touch if you have any questions.\n\nWarm regards,\nAccounts & Client Relations\nRooman Technologies Pvt Ltd`
+  );
+  const { submitting, error, run } = useSubmit();
+
+  async function handleSend() {
+    if (!contact.email) return;
+    const result = await run(() =>
+      emailApi.sendMessage({
+        to_email: contact.email!,
+        subject: subject.trim(),
+        message: message.trim(),
+        recipient_name: contact.contactPerson || contact.displayName,
+      })
+    );
+    if (result) {
+      onSent(`Email sent to ${contact.email} successfully via Gmail`);
+    }
+  }
+
+  const gmailWebUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(contact.email ?? '')}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+
+  return (
+    <Modal
+      open
+      size="md"
+      title="Send Email via Gmail"
+      subtitle={`To: ${contact.displayName} (${contact.email})`}
+      onClose={onClose}
+      footer={
+        <>
+          <a
+            href={gmailWebUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-secondary btn-md"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <Send size={14} />
+            <span>Open in Gmail Web</span>
+          </a>
+          <Button onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            loading={submitting}
+            icon={<Mail size={15} />}
+            onClick={handleSend}
+          >
+            Send via Gmail
+          </Button>
+        </>
+      }
+    >
+      <FormError message={error} />
+      <div className="form-grid">
+        <TextField
+          label="To Email"
+          value={contact.email ?? ''}
+          disabled
+        />
+        <TextField
+          label="Subject"
+          required
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+        />
+      </div>
+      <TextAreaField
+        label="Email Message"
+        rows={6}
+        required
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+      />
     </Modal>
   );
 }

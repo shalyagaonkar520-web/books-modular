@@ -56,7 +56,7 @@ export function RegisterPage() {
       });
       return true;
     });
-    if (result) navigate('/', { replace: true });
+    if (result) navigate('/dashboard', { replace: true });
   };
 
   return (

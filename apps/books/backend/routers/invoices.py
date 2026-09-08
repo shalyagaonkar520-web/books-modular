@@ -1,17 +1,24 @@
 """Sales invoices."""
 from __future__ import annotations
 
-from datetime import timezone, date, datetime, timedelta
+from datetime import date, datetime, timedelta
+try:
+    from datetime import UTC
+except ImportError:
+    from datetime import timezone
+    UTC = timezone.utc
 from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
-from backend.models import Contact, Invoice, InvoiceLine, Project, TimeEntry, User
+from backend.models import Contact, Invoice, InvoiceLine, Organization, Project, TimeEntry, User
 from backend.schemas.common import Message, Page
 from backend.schemas.sales import (
     InvoiceCreate,
@@ -22,9 +29,10 @@ from backend.schemas.sales import (
     InvoiceUpdate,
     LineOut,
 )
-from backend.services import audit, inventory, ledger, numbering
+from backend.services import audit, export_service, inventory, ledger, numbering
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.documents import compute_lines, group_by_account, totals
+from backend.services.email_service import send_due_reminder_email, send_invoice_email
 from backend.services.money import money
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
@@ -247,12 +255,277 @@ def invoice_stats(user: User = Depends(get_current_user), db: Session = Depends(
     )
 
 
+class SendInvoiceEmailRequest(BaseModel):
+    to_email: str
+    send_as_overdue: bool = False
+    attach_pdf: bool = True
+    custom_notes: Optional[str] = None
+
+
+@router.get("/export/pdf")
+def export_invoices_pdf(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    customer_id: Optional[str] = None,
+    search: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Export filtered invoices list to PDF."""
+    stmt = _base_query(user.organization_id)
+    today = date.today()
+    if status_filter == "overdue":
+        stmt = stmt.where(Invoice.status.in_(OPEN_STATUSES), Invoice.due_date < today)
+    elif status_filter == "unpaid":
+        stmt = stmt.where(Invoice.status.in_(OPEN_STATUSES))
+    elif status_filter:
+        stmt = stmt.where(Invoice.status == status_filter)
+    if customer_id:
+        stmt = stmt.where(Invoice.customer_id == customer_id)
+    if start_date:
+        stmt = stmt.where(Invoice.date >= start_date)
+    if end_date:
+        stmt = stmt.where(Invoice.date <= end_date)
+    if search and search.strip():
+        q = f"%{search.strip().lower()}%"
+        stmt = stmt.where(
+            func.lower(Invoice.invoice_number).like(q)
+            | func.lower(Invoice.reference).like(q)
+            | Invoice.customer.has(func.lower(Contact.display_name).like(q))
+        )
+    stmt = stmt.order_by(Invoice.date.desc()).limit(500)
+    invoices = db.execute(stmt).scalars().all()
+    org = db.get(Organization, user.organization_id)
+    pdf_content = export_service.generate_invoices_list_pdf(invoices, org)
+    return Response(
+        content=pdf_content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="invoices_report.pdf"'},
+    )
+
+
+@router.get("/export/excel")
+def export_invoices_excel(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    customer_id: Optional[str] = None,
+    search: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Export filtered invoices list to Excel (.xlsx)."""
+    stmt = _base_query(user.organization_id)
+    today = date.today()
+    if status_filter == "overdue":
+        stmt = stmt.where(Invoice.status.in_(OPEN_STATUSES), Invoice.due_date < today)
+    elif status_filter == "unpaid":
+        stmt = stmt.where(Invoice.status.in_(OPEN_STATUSES))
+    elif status_filter:
+        stmt = stmt.where(Invoice.status == status_filter)
+    if customer_id:
+        stmt = stmt.where(Invoice.customer_id == customer_id)
+    if start_date:
+        stmt = stmt.where(Invoice.date >= start_date)
+    if end_date:
+        stmt = stmt.where(Invoice.date <= end_date)
+    if search and search.strip():
+        q = f"%{search.strip().lower()}%"
+        stmt = stmt.where(
+            func.lower(Invoice.invoice_number).like(q)
+            | func.lower(Invoice.reference).like(q)
+            | Invoice.customer.has(func.lower(Contact.display_name).like(q))
+        )
+    stmt = stmt.order_by(Invoice.date.desc()).limit(500)
+    invoices = db.execute(stmt).scalars().all()
+    org = db.get(Organization, user.organization_id)
+    excel_content = export_service.generate_invoices_list_excel(invoices, org)
+    return Response(
+        content=excel_content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="invoices_registry.xlsx"'},
+    )
+
+
+@router.post("/auto-remind-overdue")
+def auto_remind_overdue_invoices(
+    user: User = Depends(require_write),
+    db: Session = Depends(get_db),
+):
+    """Automatically scans all overdue invoices with outstanding balances and dispatches Gmail reminder emails."""
+    today = date.today()
+    stmt = (
+        _base_query(user.organization_id)
+        .where(
+            Invoice.status.in_(OPEN_STATUSES),
+            Invoice.due_date < today,
+        )
+        .order_by(Invoice.due_date.asc())
+    )
+    all_overdue = db.execute(stmt).scalars().all()
+    overdue_invoices = [inv for inv in all_overdue if inv.balance_due > 0]
+    org = db.get(Organization, user.organization_id)
+
+    dispatched = []
+    skipped = []
+
+    for inv in overdue_invoices:
+        cust_email = inv.customer.email if inv.customer else None
+        if not cust_email or "@" not in cust_email:
+            skipped.append({
+                "invoice_number": inv.invoice_number,
+                "customer": inv.customer.display_name if inv.customer else "Unknown",
+                "reason": "No valid email address on customer contact",
+            })
+            continue
+
+        days_overdue = max((today - inv.due_date).days, 1)
+        pdf_bytes = export_service.generate_invoice_pdf(inv, org)
+        res = send_due_reminder_email(
+            to_email=cust_email,
+            customer_name=inv.customer.display_name if inv.customer else "Valued Client",
+            invoice_id=inv.invoice_number,
+            amount=float(inv.balance_due or inv.total),
+            due_date=inv.due_date.strftime("%d %b %Y"),
+            days_overdue=days_overdue,
+            custom_notes="Automated reminder: Please remit the balance due as per terms.",
+            pdf_bytes=pdf_bytes,
+            pdf_filename=f"Invoice_{inv.invoice_number}.pdf",
+        )
+        if res.get("success"):
+            dispatched.append({
+                "invoice_number": inv.invoice_number,
+                "customer": inv.customer.display_name if inv.customer else "Client",
+                "email": cust_email,
+                "balance_due": float(inv.balance_due),
+                "days_overdue": days_overdue,
+            })
+            audit.record(
+                db, user, "email", "invoice", inv.id,
+                f"Auto-sent overdue reminder via Gmail SMTP to {cust_email} ({days_overdue} days overdue)"
+            )
+        else:
+            skipped.append({
+                "invoice_number": inv.invoice_number,
+                "customer": inv.customer.display_name if inv.customer else "Client",
+                "reason": res.get("error", "SMTP delivery failure"),
+            })
+
+    db.commit()
+    return {
+        "success": True,
+        "total_overdue": len(overdue_invoices),
+        "reminders_sent": len(dispatched),
+        "skipped_count": len(skipped),
+        "dispatched": dispatched,
+        "skipped": skipped,
+    }
+
+
 @router.get("/{invoice_id}", response_model=InvoiceOut)
 def get_invoice(invoice_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     inv = db.execute(_base_query(user.organization_id).where(Invoice.id == invoice_id)).scalar_one_or_none()
     if inv is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
     return to_out(inv)
+
+
+@router.get("/{invoice_id}/pdf")
+def download_invoice_pdf(
+    invoice_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Full PDF extract of a single GST Tax Invoice."""
+    inv = db.execute(_base_query(user.organization_id).where(Invoice.id == invoice_id)).scalar_one_or_none()
+    if inv is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+    org = db.get(Organization, user.organization_id)
+    pdf_bytes = export_service.generate_invoice_pdf(inv, org)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="Invoice-{inv.invoice_number}.pdf"'},
+    )
+
+
+@router.get("/{invoice_id}/excel")
+def download_invoice_excel(
+    invoice_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Full Excel (.xlsx) extract of a single invoice."""
+    inv = db.execute(_base_query(user.organization_id).where(Invoice.id == invoice_id)).scalar_one_or_none()
+    if inv is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+    org = db.get(Organization, user.organization_id)
+    excel_bytes = export_service.generate_invoice_excel(inv, org)
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="Invoice-{inv.invoice_number}.xlsx"'},
+    )
+
+
+@router.post("/{invoice_id}/send-gmail")
+def send_invoice_via_gmail(
+    invoice_id: str,
+    payload: SendInvoiceEmailRequest,
+    user: User = Depends(require_write),
+    db: Session = Depends(get_db),
+):
+    """Send invoice via Gmail SMTP with configurable options (standard dispatch vs overdue reminder, PDF attachment, custom notes)."""
+    inv = db.execute(_base_query(user.organization_id).where(Invoice.id == invoice_id)).scalar_one_or_none()
+    if inv is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+    org = db.get(Organization, user.organization_id)
+
+    pdf_bytes = export_service.generate_invoice_pdf(inv, org) if payload.attach_pdf else None
+    customer_name = inv.customer.display_name if inv.customer else "Valued Customer"
+
+    if payload.send_as_overdue:
+        today = date.today()
+        days_overdue = max((today - inv.due_date).days, 1) if inv.due_date < today else 0
+        res = send_due_reminder_email(
+            to_email=payload.to_email,
+            customer_name=customer_name,
+            invoice_id=inv.invoice_number,
+            amount=float(inv.balance_due or inv.total),
+            due_date=inv.due_date.strftime("%d %b %Y"),
+            days_overdue=days_overdue,
+            custom_notes=payload.custom_notes,
+            pdf_bytes=pdf_bytes,
+            pdf_filename=f"Invoice_{inv.invoice_number}.pdf",
+        )
+    else:
+        res = send_invoice_email(
+            to_email=payload.to_email,
+            customer_name=customer_name,
+            invoice_id=inv.invoice_number,
+            amount=float(inv.total),
+            due_date=inv.due_date.strftime("%d %b %Y"),
+            items_summary=f"Tax Invoice {inv.invoice_number} for {customer_name}",
+            custom_notes=payload.custom_notes,
+            pdf_bytes=pdf_bytes,
+            pdf_filename=f"Invoice_{inv.invoice_number}.pdf",
+        )
+
+    if not res.get("success"):
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail=res.get("error", "Gmail SMTP send failed"))
+
+    if inv.status == "draft":
+        inv.status = "sent"
+        inv.sent_at = datetime.now(UTC)
+        post_invoice(db, inv, user)
+
+    audit.record(
+        db, user, "email", "invoice", inv.id,
+        f"Sent invoice {inv.invoice_number} to {payload.to_email} via Gmail SMTP (overdue={payload.send_as_overdue}, pdf={payload.attach_pdf})"
+    )
+    db.commit()
+    return res
 
 
 @router.post("", response_model=InvoiceOut, status_code=status.HTTP_201_CREATED)
@@ -268,7 +541,7 @@ def create_invoice(payload: InvoiceCreate, user: User = Depends(require_write), 
     db.flush()
     if payload.status == "sent":
         inv.status = "sent"
-        inv.sent_at = datetime.now(timezone.utc)
+        inv.sent_at = datetime.now(UTC)
         post_invoice(db, inv, user)
     audit.record(db, user, "create", "invoice", inv.id, f"Created invoice {inv.invoice_number} ({inv.status})")
     db.commit()
@@ -287,7 +560,7 @@ def update_invoice(invoice_id: str, payload: InvoiceUpdate, user: User = Depends
     db.flush()
     if payload.status == "sent" or was_posted:
         inv.status = "sent"
-        inv.sent_at = inv.sent_at or datetime.now(timezone.utc)
+        inv.sent_at = inv.sent_at or datetime.now(UTC)
         post_invoice(db, inv, user)
     else:
         inv.status = "draft"
@@ -304,7 +577,7 @@ def change_status(invoice_id: str, payload: InvoiceStatusUpdate, user: User = De
         if inv.status != "draft":
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only draft invoices can be marked as sent")
         inv.status = "sent"
-        inv.sent_at = datetime.now(timezone.utc)
+        inv.sent_at = datetime.now(UTC)
         post_invoice(db, inv, user)
     elif target == "void":
         if inv.status == "void":
