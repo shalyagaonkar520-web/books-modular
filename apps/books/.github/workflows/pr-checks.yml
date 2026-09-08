@@ -1,0 +1,56 @@
+name: PR checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  title:
+    name: Conventional PR title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check title format
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          echo "Title: $TITLE"
+          if ! echo "$TITLE" | grep -Eq '^(feat|fix|chore|docs|refactor|test|perf|build|ci)(\([a-z0-9./-]+\))?!?: .+'; then
+            echo "::error::PR titles must follow Conventional Commits, e.g. 'fix(invoices): keep stock in sync on void'."
+            exit 1
+          fi
+
+  no-secrets:
+    name: No committed secrets or databases
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan changed files
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          FILES=$(git diff --name-only "$BASE" "$HEAD")
+          echo "$FILES"
+          FAILED=0
+          for f in $FILES; do
+            case "$f" in
+              *.env|.env|.env.*|*.db|*.sqlite3|*.pem|*.key)
+                if [ "$f" != ".env.example" ]; then
+                  echo "::error file=$f::$f must not be committed."
+                  FAILED=1
+                fi
+                ;;
+            esac
+          done
+          if [ -n "$FILES" ]; then
+            if git diff "$BASE" "$HEAD" -- $FILES | grep -nE '^\+.*(SECRET_KEY|PASSWORD|API_KEY|TOKEN)[[:space:]]*=[[:space:]]*["'\'']?[A-Za-z0-9/+_-]{16,}' | grep -v example; then
+              echo "::error::A hard-coded credential looks like it was added. Use environment variables instead."
+              FAILED=1
+            fi
+          fi
+          exit $FAILED

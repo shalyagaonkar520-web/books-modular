@@ -1,24 +1,40 @@
-FROM python:3.10-slim
+# ---------- Rooman Books API ----------
+FROM python:3.12-slim AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-# Install system dependencies needed for PostgreSQL client
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libpq-dev \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/*
 
-# Install Python requirements
-COPY requirements.txt .
+COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend code
-COPY backend/ ./backend/
-COPY run_server.py .
+COPY backend ./backend
+COPY alembic ./alembic
+COPY alembic.ini ./
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Run as a non-root user and keep the data volume writable by it.
+RUN useradd --create-home --uid 10001 appuser \
+ && mkdir -p /app/data \
+ && chown -R appuser:appuser /app
+USER appuser
+
+ENV DATA_DIR=/app/data \
+    DATABASE_URL=sqlite:////app/data/roomanbooks.db \
+    ENVIRONMENT=production \
+    PORT=8000
 
 EXPOSE 8000
 
-ENV PYTHONUNBUFFERED=1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD curl -fsS "http://127.0.0.1:${PORT}/api/health" || exit 1
 
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["serve"]

@@ -1,65 +1,134 @@
+"""Rooman Books API application."""
+from __future__ import annotations
+
+import logging
+import os
+import time
+import uuid
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from backend.database import init_db
-from backend.routes.items import router as items_router
-from backend.routes.dashboard import router as dashboard_router
-from backend.routes.auth import router as auth_router
-from backend.routes.invoices import router as invoices_router
-from backend.routes.documents import router as documents_router
-from backend.routes.payroll import router as payroll_router
-from backend.routes.email import router as email_router
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+
+from backend.config import get_settings
+from backend.db import SessionLocal, create_all
+
+settings = get_settings()
+logger = logging.getLogger("roomanbooks")
+logging.basicConfig(level=logging.DEBUG if settings.debug else logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Initialize database and seed initial data if empty
-    init_db()
+async def lifespan(_app: FastAPI):
+    os.makedirs(settings.upload_dir, exist_ok=True)
+    if settings.auto_create_tables:
+        create_all()
+    logger.info("Rooman Books API started (env=%s, db=%s)", settings.environment, "sqlite" if settings.is_sqlite else "postgresql")
     yield
 
 
-app = FastAPI(
-    title="Zoho Books API",
-    description="Python FastAPI backend for Zoho Books Clone with persistence and business analytics",
-    version="1.0.0",
-    lifespan=lifespan,
-)
+def create_app() -> FastAPI:
+    app = FastAPI(
+        title="Rooman Books API",
+        description="Accounting, invoicing, purchases, banking, payroll and reporting API for Rooman Books.",
+        version="2.0.0",
+        lifespan=lifespan,
+        docs_url="/docs" if not settings.is_production or settings.debug else None,
+        redoc_url="/redoc" if not settings.is_production or settings.debug else None,
+    )
 
-# Enable CORS for React frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    )
 
-# Include API Routers
-app.include_router(items_router)
-app.include_router(dashboard_router)
-app.include_router(auth_router)
-app.include_router(invoices_router)
-app.include_router(documents_router)
-app.include_router(payroll_router)
-app.include_router(email_router)
+    @app.middleware("http")
+    async def request_context(request: Request, call_next):
+        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
+        started = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - started) * 1000
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "same-origin"
+        if settings.is_production:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        if request.url.path.startswith("/api"):
+            logger.info("%s %s -> %s (%.1f ms) rid=%s", request.method, request.url.path, response.status_code, duration_ms, request_id)
+        return response
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception(request: Request, exc: Exception):  # pragma: no cover - safety net
+        logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+    from backend.routers import (
+        accounting,
+        auth,
+        banking,
+        bills,
+        contacts,
+        dashboard,
+        documents,
+        expenses,
+        invoices,
+        items,
+        organization,
+        payments,
+        payroll,
+        projects,
+        reports,
+    )
+
+    for module in (
+        auth,
+        organization,
+        items,
+        contacts,
+        invoices,
+        payments,
+        bills,
+        expenses,
+        banking,
+        accounting,
+        projects,
+        documents,
+        payroll,
+        reports,
+        dashboard,
+    ):
+        app.include_router(module.router)
+    app.include_router(items.adjustments_router)
+
+    @app.get("/api/health", tags=["Health"])
+    def health():
+        db_status = "ok"
+        try:
+            with SessionLocal() as db:
+                db.execute(text("SELECT 1"))
+        except Exception as exc:  # pragma: no cover - only when DB is down
+            logger.error("Health check DB failure: %s", exc)
+            db_status = "error"
+        payload = {
+            "status": "healthy" if db_status == "ok" else "degraded",
+            "service": "Rooman Books API",
+            "version": app.version,
+            "database": db_status,
+            "engine": "sqlite" if settings.is_sqlite else "postgresql",
+        }
+        return JSONResponse(status_code=200 if db_status == "ok" else 503, content=payload)
+
+    @app.get("/", include_in_schema=False)
+    def root():
+        return {"service": "Rooman Books API", "docs": "/docs", "health": "/api/health"}
+
+    return app
 
 
-@app.get("/api/health", tags=["Health"])
-def health_check():
-    return {
-        "status": "healthy",
-        "service": "Zoho Books Cloud Ledger Engine",
-        "version": "1.0.0",
-        "database": "Connected",
-    }
-
-
-@app.get("/", tags=["Root"])
-def root():
-    return {
-        "message": "Welcome to Zoho Books Clone API",
-        "docs": "/docs",
-        "health": "/api/health",
-        "items": "/api/items",
-        "dashboard": "/api/dashboard/summary",
-    }
+app = create_app()

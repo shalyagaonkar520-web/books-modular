@@ -1,0 +1,16 @@
+[tool.ruff]
+line-length = 140
+target-version = "py311"
+extend-exclude = ["alembic/versions", "node_modules", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "B008", "B904", "UP007", "UP006", "UP035", "UP045"]
+
+[tool.ruff.lint.per-file-ignores]
+"backend/schemas/items.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = ["ignore::DeprecationWarning"]
