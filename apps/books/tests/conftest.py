@@ -1,12 +1,16 @@
 """Pytest fixtures: isolated SQLite database per test session, in-process API client."""
 from __future__ import annotations
 
+import datetime
 import os
 import shutil
 import tempfile
 from datetime import date
 
 import pytest
+
+if not hasattr(datetime, "UTC"):
+    datetime.UTC = datetime.timezone.utc  # noqa: UP017
 
 _TMP = tempfile.mkdtemp(prefix="roomanbooks-test-")
 os.environ.setdefault("ENVIRONMENT", "test")

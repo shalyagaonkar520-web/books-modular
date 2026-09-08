@@ -3,12 +3,7 @@ from __future__ import annotations
 
 import json
 import secrets
-from datetime import date, datetime
-try:
-    from datetime import UTC
-except ImportError:
-    from datetime import timezone
-    UTC = timezone.utc
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, Dict, Optional
 

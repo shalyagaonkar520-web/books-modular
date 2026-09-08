@@ -1,12 +1,7 @@
 """Projects and timesheets, plus billing unbilled time into an invoice."""
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
-try:
-    from datetime import UTC
-except ImportError:
-    from datetime import timezone
-    UTC = timezone.utc
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import List, Optional
 

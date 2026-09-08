@@ -3,12 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from datetime import datetime, timedelta
-try:
-    from datetime import UTC
-except ImportError:
-    from datetime import timezone
-    UTC = timezone.utc
+from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, Optional
 
 import jwt
