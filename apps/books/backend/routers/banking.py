@@ -1,7 +1,7 @@
 """Bank accounts, transactions, transfers and reconciliation."""
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import timezone, date, datetime
 from decimal import Decimal
 from typing import List, Optional
 
@@ -215,7 +215,7 @@ def reconcile(payload: ReconcileRequest, user: User = Depends(require_write), db
     ).scalars().all()
     if len(rows) != len(set(payload.transaction_ids)):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "One or more transactions were not found")
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     for tx in rows:
         tx.is_reconciled = payload.reconciled
         tx.reconciled_at = now if payload.reconciled else None

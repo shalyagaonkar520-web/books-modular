@@ -1,7 +1,7 @@
 """Projects and timesheets, plus billing unbilled time into an invoice."""
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import timezone, date, datetime, timedelta
 from decimal import Decimal
 from typing import List, Optional
 
@@ -226,7 +226,7 @@ def invoice_unbilled_time(payload: InvoiceFromTimeRequest, user: User = Depends(
     inv = Invoice(
         organization_id=org_id, invoice_number=numbering.next_number(db, org_id, "invoice"), customer_id=customer.id, project_id=project.id,
         date=payload.date, due_date=payload.due_date or (payload.date + timedelta(days=customer.payment_terms_days)), status="sent",
-        sent_at=datetime.now(UTC), created_by=user.id, reference=f"Project: {project.name}",
+        sent_at=datetime.now(timezone.utc), created_by=user.id, reference=f"Project: {project.name}",
     )
     amount = money(hours * project.hourly_rate)
     tax = money(amount * Decimal(str(payload.tax_rate)) / Decimal("100"))

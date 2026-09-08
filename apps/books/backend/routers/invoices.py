@@ -1,7 +1,7 @@
 """Sales invoices."""
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import timezone, date, datetime, timedelta
 from decimal import Decimal
 from typing import Optional
 
@@ -268,7 +268,7 @@ def create_invoice(payload: InvoiceCreate, user: User = Depends(require_write), 
     db.flush()
     if payload.status == "sent":
         inv.status = "sent"
-        inv.sent_at = datetime.now(UTC)
+        inv.sent_at = datetime.now(timezone.utc)
         post_invoice(db, inv, user)
     audit.record(db, user, "create", "invoice", inv.id, f"Created invoice {inv.invoice_number} ({inv.status})")
     db.commit()
@@ -287,7 +287,7 @@ def update_invoice(invoice_id: str, payload: InvoiceUpdate, user: User = Depends
     db.flush()
     if payload.status == "sent" or was_posted:
         inv.status = "sent"
-        inv.sent_at = inv.sent_at or datetime.now(UTC)
+        inv.sent_at = inv.sent_at or datetime.now(timezone.utc)
         post_invoice(db, inv, user)
     else:
         inv.status = "draft"
@@ -304,7 +304,7 @@ def change_status(invoice_id: str, payload: InvoiceStatusUpdate, user: User = De
         if inv.status != "draft":
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only draft invoices can be marked as sent")
         inv.status = "sent"
-        inv.sent_at = datetime.now(UTC)
+        inv.sent_at = datetime.now(timezone.utc)
         post_invoice(db, inv, user)
     elif target == "void":
         if inv.status == "void":

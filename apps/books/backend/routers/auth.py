@@ -1,7 +1,7 @@
 """Registration, login, token refresh, profile."""
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
@@ -47,7 +47,7 @@ def _issue_tokens(db: Session, user: User, response: Response, request: Request)
         RefreshToken(
             user_id=user.id,
             token_hash=hash_token(raw_refresh),
-            expires_at=datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days),
+            expires_at=datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days),
             user_agent=(request.headers.get("user-agent") or "")[:255],
         )
     )
@@ -110,7 +110,7 @@ def register(payload: RegisterRequest, request: Request, response: Response, db:
         email=email,
         password_hash=hash_password(payload.password),
         role="admin",
-        last_login_at=datetime.now(UTC),
+        last_login_at=datetime.now(timezone.utc),
     )
     db.add(user)
     db.flush()
@@ -129,7 +129,7 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
     if not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has been deactivated")
-    user.last_login_at = datetime.now(UTC)
+    user.last_login_at = datetime.now(timezone.utc)
     access = _issue_tokens(db, user, response, request)
     audit.record(db, user, "login", "user", user.id, f"{user.email} signed in")
     db.commit()
@@ -142,8 +142,8 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
     if not raw:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No refresh token")
     token = db.execute(select(RefreshToken).where(RefreshToken.token_hash == hash_token(raw))).scalar_one_or_none()
-    now = datetime.now(UTC)
-    if token is None or token.revoked_at is not None or token.expires_at.replace(tzinfo=UTC) < now:
+    now = datetime.now(timezone.utc)
+    if token is None or token.revoked_at is not None or token.expires_at.replace(tzinfo=timezone.utc) < now:
         _clear_cookie(response)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Refresh token is invalid or expired")
     user = db.get(User, token.user_id)
@@ -162,7 +162,7 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     if raw:
         token = db.execute(select(RefreshToken).where(RefreshToken.token_hash == hash_token(raw))).scalar_one_or_none()
         if token and token.revoked_at is None:
-            token.revoked_at = datetime.now(UTC)
+            token.revoked_at = datetime.now(timezone.utc)
             db.commit()
     _clear_cookie(response)
     return Message(message="Signed out")
@@ -192,7 +192,7 @@ def change_password(
     user.password_hash = hash_password(payload.new_password)
     # Revoke all refresh tokens so other sessions must log in again.
     for token in db.execute(select(RefreshToken).where(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None))).scalars():
-        token.revoked_at = datetime.now(UTC)
+        token.revoked_at = datetime.now(timezone.utc)
     audit.record(db, user, "update", "user", user.id, "Password changed")
     db.commit()
     return Message(message="Password updated. Other sessions have been signed out.")
