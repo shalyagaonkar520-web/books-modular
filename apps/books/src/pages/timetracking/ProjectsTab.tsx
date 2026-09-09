@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { FolderKanban } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -9,7 +9,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { EmptyState, ErrorBlock, SkeletonRows } from '@/components/ui/Feedback';
+import { EmptyState, ErrorBlock, FormError, SkeletonRows } from '@/components/ui/Feedback';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { FilterSelect, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
@@ -40,9 +40,6 @@ export function ProjectsTab({ onProjectsChanged }: { onProjectsChanged: () => vo
   const projects = useAsync(() => projectsApi.list({ status: statusFilter || undefined }), [statusFilter]);
 
   const action = useSubmit();
-  useEffect(() => {
-    if (action.error) toast.error(action.error);
-  }, [action.error, toast]);
 
   const refresh = () => {
     projects.reload();
@@ -52,8 +49,8 @@ export function ProjectsTab({ onProjectsChanged }: { onProjectsChanged: () => vo
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     const result = await action.run(() => projectsApi.remove(deleteTarget.id));
-    setDeleteTarget(null);
     if (result) {
+      setDeleteTarget(null);
       toast.success(result.message);
       refresh();
     }
@@ -208,14 +205,20 @@ export function ProjectsTab({ onProjectsChanged }: { onProjectsChanged: () => vo
         open={!!deleteTarget}
         title="Delete project"
         message={
-          deleteTarget
-            ? `Delete ${deleteTarget.name}? If the project already has invoiced time it will be marked completed instead of deleted.`
-            : ''
+          <>
+            <FormError message={action.error} />
+            {deleteTarget
+              ? `Delete ${deleteTarget.name}? If the project already has invoiced time it will be marked completed instead of deleted.`
+              : ''}
+          </>
         }
         confirmLabel="Delete"
         busy={action.submitting}
         onConfirm={() => void confirmDelete()}
-        onCancel={() => setDeleteTarget(null)}
+        onCancel={() => {
+          setDeleteTarget(null);
+          action.reset();
+        }}
       />
     </>
   );

@@ -42,6 +42,8 @@ export function ExpensesPage() {
   const [editing, setEditing] = useState<Expense | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Expense | null>(null);
   const [mailExpense, setMailExpense] = useState<Expense | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const remove = useSubmit();
 
   const refs = useAsync(async (): Promise<ExpenseRefs> => {
@@ -94,6 +96,30 @@ export function ExpensesPage() {
     summary.reload();
   };
 
+  const confirmBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Delete ${selectedIds.size} selected expense(s)?`)) return;
+    setBulkDeleting(true);
+    let count = 0;
+    const failedIds = new Set<string>();
+    for (const id of selectedIds) {
+      try {
+        await expensesApi.remove(id);
+        count++;
+      } catch {
+        failedIds.add(id);
+      }
+    }
+    setBulkDeleting(false);
+    if (failedIds.size > 0) {
+      toast.error(`Deleted ${count} of ${selectedIds.size} expense(s); ${failedIds.size} could not be deleted.`);
+    } else {
+      toast.success(`Deleted ${count} expense(s)`);
+    }
+    setSelectedIds(failedIds);
+    refreshAll();
+  };
+
   const deleteExpense = async (expense: Expense) => {
     const result = await remove.run(() => expensesApi.remove(expense.id));
     if (result) {
@@ -107,6 +133,8 @@ export function ExpensesPage() {
     setter(value);
     setPage(1);
   };
+
+  const rows = list.data?.items ?? [];
 
   const columns: Array<Column<Expense>> = [
     {
@@ -284,8 +312,58 @@ export function ExpensesPage() {
           />
         ) : (
           <>
-            <DataTable columns={columns} rows={list.data.items} rowKey={(expense) => expense.id} caption="Expenses" />
-            <Pagination page={list.data.page} pageSize={list.data.pageSize} total={list.data.total} onPageChange={setPage} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 16px', background: 'var(--surface-muted, #f8fafc)', borderBottom: '1px solid var(--border-color, #e2e8f0)' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    if (selectedIds.size === rows.length) {
+                      setSelectedIds(new Set());
+                    } else {
+                      setSelectedIds(new Set(rows.map((e) => e.id)));
+                    }
+                  }}
+                >
+                  {selectedIds.size === rows.length && rows.length > 0 ? 'Deselect All' : `Select All on Page (${rows.length})`}
+                </Button>
+                {selectedIds.size > 0 ? (
+                  <span className="small text-muted">{selectedIds.size} selected</span>
+                ) : null}
+              </div>
+              {selectedIds.size > 0 ? (
+                <IfCanWrite>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    loading={bulkDeleting}
+                    onClick={() => void confirmBulkDelete()}
+                    icon={<Trash2 size={13} />}
+                  >
+                    Delete Selected ({selectedIds.size})
+                  </Button>
+                </IfCanWrite>
+              ) : null}
+            </div>
+            <DataTable
+              columns={columns}
+              rows={rows}
+              rowKey={(expense) => expense.id}
+              caption="Expenses"
+              selectedKeys={selectedIds}
+              onSelectRow={(id) => {
+                const next = new Set(selectedIds);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                setSelectedIds(next);
+              }}
+              onSelectAll={() => {
+                if (selectedIds.size === rows.length) setSelectedIds(new Set());
+                else setSelectedIds(new Set(rows.map((e) => e.id)));
+              }}
+              isAllSelected={rows.length > 0 && selectedIds.size === rows.length}
+            />
+            <Pagination page={list.data?.page ?? page} pageSize={list.data?.pageSize ?? PAGE_SIZE} total={list.data?.total ?? 0} onPageChange={setPage} />
           </>
         )}
       </div>

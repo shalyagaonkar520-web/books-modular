@@ -67,6 +67,8 @@ export function ContactsPage({ type }: { type: ContactType }) {
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [emailContact, setEmailContact] = useState<Contact | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const deleteSubmit = useSubmit();
 
   // Reset paging and filters when switching between customers and vendors.
@@ -74,6 +76,7 @@ export function ContactsPage({ type }: { type: ContactType }) {
     setSearch('');
     setIncludeInactive(false);
     setPage(1);
+    setSelectedIds(new Set());
   }, [type]);
 
   const list = useAsync(
@@ -126,6 +129,30 @@ export function ContactsPage({ type }: { type: ContactType }) {
     if (result.message.toLowerCase().includes('inactive')) toast.notify(result.message, 'warning');
     else toast.success(result.message);
     setDeleteTarget(null);
+    list.reload();
+  }
+
+  async function confirmBulkDelete() {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Delete ${selectedIds.size} selected ${copy.plural.toLowerCase()}?`)) return;
+    setBulkDeleting(true);
+    let count = 0;
+    const failedIds = new Set<string>();
+    for (const id of selectedIds) {
+      try {
+        await contactsApi.remove(id);
+        count++;
+      } catch {
+        failedIds.add(id);
+      }
+    }
+    setBulkDeleting(false);
+    if (failedIds.size > 0) {
+      toast.error(`Deleted ${count} of ${selectedIds.size} ${copy.plural.toLowerCase()}; ${failedIds.size} could not be deleted.`);
+    } else {
+      toast.success(`Deleted ${count} ${copy.plural.toLowerCase()}`);
+    }
+    setSelectedIds(failedIds);
     list.reload();
   }
 
@@ -327,12 +354,55 @@ export function ContactsPage({ type }: { type: ContactType }) {
           </div>
         ) : (
           <>
+            <div style={{ padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--color-bg-subtle, #f8fafc)', borderBottom: '1px solid var(--color-border)', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    if (selectedIds.size === rows.length) {
+                      setSelectedIds(new Set());
+                    } else {
+                      setSelectedIds(new Set(rows.map((r) => r.id)));
+                    }
+                  }}
+                >
+                  {selectedIds.size === rows.length && rows.length > 0 ? 'Deselect All' : `Select All on Page (${rows.length})`}
+                </Button>
+                {selectedIds.size > 0 ? (
+                  <span className="small text-muted">{selectedIds.size} selected</span>
+                ) : null}
+              </div>
+              {selectedIds.size > 0 && canWrite ? (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  loading={bulkDeleting}
+                  onClick={() => void confirmBulkDelete()}
+                  icon={<Trash2 size={13} />}
+                >
+                  Delete Selected ({selectedIds.size})
+                </Button>
+              ) : null}
+            </div>
             <DataTable
               columns={columns}
               rows={rows}
               rowKey={(contact) => contact.id}
               onRowClick={(contact) => setDetailsId(contact.id)}
               caption={`${copy.plural} list`}
+              selectedKeys={selectedIds}
+              onSelectRow={(id) => {
+                const next = new Set(selectedIds);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                setSelectedIds(next);
+              }}
+              onSelectAll={() => {
+                if (selectedIds.size === rows.length) setSelectedIds(new Set());
+                else setSelectedIds(new Set(rows.map((r) => r.id)));
+              }}
+              isAllSelected={rows.length > 0 && selectedIds.size === rows.length}
             />
             <Pagination page={page} pageSize={PAGE_SIZE} total={list.data?.total ?? 0} onPageChange={setPage} />
           </>
@@ -385,9 +455,12 @@ export function ContactsPage({ type }: { type: ContactType }) {
         open={!!deleteTarget}
         title={`Delete ${copy.singular}`}
         message={
-          deleteTarget
-            ? `Delete “${deleteTarget.displayName}”? If this ${copy.singular} has ${copy.documentsLabel} they will be deactivated instead of deleted.`
-            : ''
+          <>
+            <FormError message={deleteSubmit.error} />
+            {deleteTarget
+              ? `Delete “${deleteTarget.displayName}”? If this ${copy.singular} has ${copy.documentsLabel} they will be deactivated instead of deleted.`
+              : ''}
+          </>
         }
         confirmLabel={`Delete ${copy.singular}`}
         busy={deleteSubmit.submitting}

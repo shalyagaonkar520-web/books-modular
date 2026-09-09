@@ -1,12 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Bell, ChevronDown, FileSpreadsheet, LogOut, Menu, Plus, Settings, User as UserIcon, X } from 'lucide-react';
+import {
+  Bell,
+  ChevronDown,
+  FileSpreadsheet,
+  LogOut,
+  Menu,
+  Plus,
+  X,
+} from 'lucide-react';
 
 import { dashboardApi } from '@/api/endpoints';
 import type { NotificationItem } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
 import { initials } from '@/utils/format';
 import { ExcelImportModal } from './ExcelImportModal';
+import '@/pages/settings/ProfilePage.css';
 
 const NOTIFICATION_ROUTES: Record<string, string> = {
   invoice: '/invoices',
@@ -33,7 +42,25 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const [, setDismissedIds] = useState<Set<string>>(getStoredDismissedIds);
   const [openMenu, setOpenMenu] = useState<'none' | 'profile' | 'bell' | 'create'>('none');
   const [excelModalOpen, setExcelModalOpen] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(() => {
+    if (!user?.id) return null;
+    return localStorage.getItem(`rooman_avatar_${user.id}`) || null;
+  });
   const headerRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const syncAvatar = () => {
+      if (user?.id) {
+        setAvatarUrl(localStorage.getItem(`rooman_avatar_${user.id}`) || null);
+      }
+    };
+    window.addEventListener('rooman_avatar_updated', syncAvatar);
+    window.addEventListener('storage', syncAvatar);
+    return () => {
+      window.removeEventListener('rooman_avatar_updated', syncAvatar);
+      window.removeEventListener('storage', syncAvatar);
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     let active = true;
@@ -240,27 +267,128 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
             onClick={() => setOpenMenu(openMenu === 'profile' ? 'none' : 'profile')}
             aria-expanded={openMenu === 'profile'}
           >
-            <span className="avatar">{initials(user?.name ?? '')}</span>
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={user?.name ?? ''}
+                style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
+              />
+            ) : (
+              <span className="avatar">{initials(user?.name ?? '')}</span>
+            )}
             <ChevronDown size={14} aria-hidden="true" />
           </button>
           {openMenu === 'profile' ? (
-            <div className="dropdown" role="menu">
-              <div className="dropdown-profile">
-                <strong>{user?.name}</strong>
-                <span>{user?.email}</span>
-                <span className="role-pill">{user?.role}</span>
-              </div>
-              <button type="button" role="menuitem" onClick={() => { setOpenMenu('none'); navigate('/profile'); }}>
-                <UserIcon size={14} /> My profile
-              </button>
-              {user?.role === 'admin' ? (
-                <button type="button" role="menuitem" onClick={() => { setOpenMenu('none'); navigate('/settings'); }}>
-                  <Settings size={14} /> Organization settings
+            <div className="dropdown zoho-header-dropdown" role="menu">
+              <div className="zoho-dropdown-header">
+                <div className="zoho-dropdown-avatar">
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt={user?.name ?? ''}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    initials(user?.name ?? '')
+                  )}
+                </div>
+                <div className="zoho-dropdown-user">
+                  <strong>{user?.name}</strong>
+                  <span>{user?.email}</span>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onClick={() => setOpenMenu('none')}
+                  style={{
+                    position: 'absolute',
+                    top: '14px',
+                    right: '14px',
+                    background: 'none',
+                    border: 'none',
+                    color: '#94a3b8',
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  <X size={15} />
                 </button>
-              ) : null}
-              <button type="button" role="menuitem" className="danger" onClick={() => void logout()}>
-                <LogOut size={14} /> Sign out
-              </button>
+              </div>
+
+              <div className="zoho-dropdown-meta">
+                User ID: {user?.id ? user.id.slice(0, 11) : '—'} • Org ID: {organization?.id ? organization.id.slice(0, 11) : 'Main'}
+              </div>
+
+              <div className="zoho-dropdown-nav">
+                <button
+                  type="button"
+                  className="zoho-my-account-link"
+                  onClick={() => {
+                    setOpenMenu('none');
+                    navigate('/profile');
+                  }}
+                >
+                  My Account
+                </button>
+                <button
+                  type="button"
+                  className="zoho-sign-out-btn"
+                  onClick={() => void logout()}
+                >
+                  <LogOut size={13} />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+
+              <div
+                style={{
+                  padding: '9px 16px',
+                  background: '#f8fafc',
+                  fontSize: '12px',
+                  color: '#475569',
+                  borderBottom: '1px solid #f1f5f9',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: '7px',
+                    height: '7px',
+                    borderRadius: '50%',
+                    background: '#059669',
+                  }}
+                />
+                <span>Active Books • {organization?.name ?? 'Rooman Books'}</span>
+              </div>
+
+              <div style={{ padding: '10px 16px', background: '#f8fafc' }}>
+                <button
+                  type="button"
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    background: '#ffffff',
+                    fontSize: '12px',
+                    color: '#334155',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => {
+                    setOpenMenu('none');
+                    navigate('/profile');
+                  }}
+                >
+                  <span>Accessibility & Theme</span>
+                  <ChevronDown size={13} style={{ transform: 'rotate(-90deg)' }} />
+                </button>
+              </div>
             </div>
           ) : null}
         </div>

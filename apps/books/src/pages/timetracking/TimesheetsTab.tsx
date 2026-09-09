@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { CheckboxField } from '@/components/ui/Field';
-import { EmptyState, ErrorBlock, SkeletonRows } from '@/components/ui/Feedback';
+import { EmptyState, ErrorBlock, FormError, SkeletonRows } from '@/components/ui/Feedback';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { FilterSelect, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
@@ -62,9 +62,6 @@ export function TimesheetsTab({ projects, onEntriesChanged }: { projects: Projec
   );
 
   const action = useSubmit();
-  useEffect(() => {
-    if (action.error) toast.error(action.error);
-  }, [action.error, toast]);
 
   const refresh = () => {
     entries.reload();
@@ -75,8 +72,8 @@ export function TimesheetsTab({ projects, onEntriesChanged }: { projects: Projec
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     const result = await action.run(() => projectsApi.removeTime(deleteTarget.id));
-    setDeleteTarget(null);
     if (result) {
+      setDeleteTarget(null);
       toast.success(result.message);
       refresh();
     }
@@ -244,14 +241,20 @@ export function TimesheetsTab({ projects, onEntriesChanged }: { projects: Projec
         open={!!deleteTarget}
         title="Delete time entry"
         message={
-          deleteTarget
-            ? `Delete the ${formatNumber(deleteTarget.hours)} hour entry on ${deleteTarget.projectName} dated ${formatDate(deleteTarget.date)}?`
-            : ''
+          <>
+            <FormError message={action.error} />
+            {deleteTarget
+              ? `Delete the ${formatNumber(deleteTarget.hours)} hour entry on ${deleteTarget.projectName} dated ${formatDate(deleteTarget.date)}?`
+              : ''}
+          </>
         }
         confirmLabel="Delete"
         busy={action.submitting}
         onConfirm={() => void confirmDelete()}
-        onCancel={() => setDeleteTarget(null)}
+        onCancel={() => {
+          setDeleteTarget(null);
+          action.reset();
+        }}
       />
     </>
   );

@@ -100,7 +100,7 @@ export function ManualJournalsTab({ accounts }: { accounts: Account[] }) {
       align: 'right',
       width: '80px',
       render: (entry) => (
-        <div className="row-actions">
+        <div className="row-actions" onClick={(event) => event.stopPropagation()}>
           <button type="button" className="action-btn" aria-label={`View journal ${entry.entryNumber}`} onClick={() => setDetail(entry)}>
             <Eye size={15} />
           </button>

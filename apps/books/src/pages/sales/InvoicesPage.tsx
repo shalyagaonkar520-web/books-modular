@@ -63,7 +63,33 @@ export function InvoicesPage() {
   const [mailInvoice, setMailInvoice] = useState<InvoiceListItem | null>(null);
   const [payOnlineInvoice, setPayOnlineInvoice] = useState<InvoiceListItem | null>(null);
   const [autoReminding, setAutoReminding] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const debouncedSearch = useDebounced(search);
+
+  async function confirmBulkDelete() {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Delete ${selectedIds.size} selected invoice(s)?`)) return;
+    setBulkDeleting(true);
+    let count = 0;
+    const failedIds = new Set<string>();
+    for (const id of selectedIds) {
+      try {
+        await invoicesApi.remove(id);
+        count++;
+      } catch {
+        failedIds.add(id);
+      }
+    }
+    setBulkDeleting(false);
+    if (failedIds.size > 0) {
+      toast.error(`Deleted ${count} of ${selectedIds.size} invoice(s); ${failedIds.size} could not be deleted.`);
+    } else {
+      toast.success(`Deleted ${count} invoice(s)`);
+    }
+    setSelectedIds(failedIds);
+    refresh();
+  }
 
   const customers = useAsync((signal) => contactsApi.list({ type: 'customer', page_size: 200 }, signal), []);
   const stats = useAsync(() => invoicesApi.stats(), []);
@@ -463,7 +489,57 @@ export function InvoicesPage() {
           />
         ) : (
           <>
-            <DataTable columns={columns} rows={rows} rowKey={(row) => row.id} caption="Invoices" />
+            <div style={{ padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--color-bg-subtle, #f8fafc)', borderBottom: '1px solid var(--color-border)', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    if (selectedIds.size === rows.length) {
+                      setSelectedIds(new Set());
+                    } else {
+                      setSelectedIds(new Set(rows.map((r) => r.id)));
+                    }
+                  }}
+                >
+                  {selectedIds.size === rows.length && rows.length > 0 ? 'Deselect All' : `Select All on Page (${rows.length})`}
+                </Button>
+                {selectedIds.size > 0 ? (
+                  <span className="small text-muted">{selectedIds.size} selected</span>
+                ) : null}
+              </div>
+              {selectedIds.size > 0 ? (
+                <IfCanWrite>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    loading={bulkDeleting}
+                    onClick={() => void confirmBulkDelete()}
+                    icon={<Trash2 size={13} />}
+                  >
+                    Delete Selected ({selectedIds.size})
+                  </Button>
+                </IfCanWrite>
+              ) : null}
+            </div>
+            <DataTable
+              columns={columns}
+              rows={rows}
+              rowKey={(row) => row.id}
+              caption="Invoices"
+              selectedKeys={selectedIds}
+              onSelectRow={(id) => {
+                const next = new Set(selectedIds);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                setSelectedIds(next);
+              }}
+              onSelectAll={() => {
+                if (selectedIds.size === rows.length) setSelectedIds(new Set());
+                else setSelectedIds(new Set(rows.map((r) => r.id)));
+              }}
+              isAllSelected={rows.length > 0 && selectedIds.size === rows.length}
+            />
             <Pagination page={page} pageSize={invoices.data?.pageSize ?? PAGE_SIZE} total={invoices.data?.total ?? 0} onPageChange={setPage} />
           </>
         )}
