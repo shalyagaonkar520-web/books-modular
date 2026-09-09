@@ -171,17 +171,22 @@ export function ItemsPage() {
     if (!window.confirm(`Delete ${selectedIds.size} selected item(s)?`)) return;
     setBulkDeleting(true);
     let count = 0;
+    const failedIds = new Set<string>();
     for (const id of selectedIds) {
       try {
         await itemsApi.remove(id);
         count++;
       } catch {
-        // continue
+        failedIds.add(id);
       }
     }
     setBulkDeleting(false);
-    toast.success(`Deleted ${count} item(s)`);
-    setSelectedIds(new Set());
+    if (failedIds.size > 0) {
+      toast.error(`Deleted ${count} of ${selectedIds.size} item(s); ${failedIds.size} could not be deleted.`);
+    } else {
+      toast.success(`Deleted ${count} item(s)`);
+    }
+    setSelectedIds(failedIds);
     reloadAll();
   }
 
@@ -213,7 +218,7 @@ export function ItemsPage() {
       header: 'Actions',
       align: 'right',
       render: (item) => (
-        <div className="row-actions">
+        <div className="row-actions" onClick={(event) => event.stopPropagation()}>
           <button type="button" className="action-btn" aria-label={`View ${item.name}`} onClick={() => setDetailsItem(item)}>
             <Eye size={15} />
           </button>
@@ -434,9 +439,12 @@ export function ItemsPage() {
         open={!!deleteItem}
         title="Delete item"
         message={
-          deleteItem
-            ? `Delete “${deleteItem.name}” (${deleteItem.sku})? If the item is used on invoices or bills it will be marked inactive instead.`
-            : ''
+          <>
+            <FormError message={deleteSubmit.error} />
+            {deleteItem
+              ? `Delete “${deleteItem.name}” (${deleteItem.sku})? If the item is used on invoices or bills it will be marked inactive instead.`
+              : ''}
+          </>
         }
         confirmLabel="Delete item"
         busy={deleteSubmit.submitting}

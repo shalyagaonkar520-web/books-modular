@@ -103,17 +103,22 @@ export function BillsPage() {
     if (!window.confirm(`Delete ${selectedIds.size} selected bill(s)?`)) return;
     setBulkDeleting(true);
     let count = 0;
+    const failedIds = new Set<string>();
     for (const id of selectedIds) {
       try {
         await billsApi.remove(id);
         count++;
       } catch {
-        // continue
+        failedIds.add(id);
       }
     }
     setBulkDeleting(false);
-    toast.success(`Deleted ${count} bill(s)`);
-    setSelectedIds(new Set());
+    if (failedIds.size > 0) {
+      toast.error(`Deleted ${count} of ${selectedIds.size} bill(s); ${failedIds.size} could not be deleted.`);
+    } else {
+      toast.success(`Deleted ${count} bill(s)`);
+    }
+    setSelectedIds(failedIds);
     refreshAll();
   };
 

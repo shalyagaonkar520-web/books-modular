@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, StatTile } from '@/components/ui/Card';
 import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { ConfirmDialog } from '@/components/ui/Modal';
-import { EmptyState, ErrorBlock, SkeletonRows } from '@/components/ui/Feedback';
+import { EmptyState, ErrorBlock, FormError, SkeletonRows } from '@/components/ui/Feedback';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, SearchInput, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
@@ -132,8 +132,8 @@ export function BankingPage() {
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     const result = await action.run(() => bankingApi.removeTransaction(deleteTarget.id));
-    setDeleteTarget(null);
     if (result) {
+      setDeleteTarget(null);
       toast.success(result.message);
       setSelectedRows([]);
       refresh();
@@ -420,14 +420,20 @@ export function BankingPage() {
         open={!!deleteTarget}
         title="Delete transaction"
         message={
-          deleteTarget
-            ? `Delete the ${deleteTarget.type} of ${formatCurrency(deleteTarget.amount)} dated ${formatDate(deleteTarget.date)}? The ledger entry will be reversed.`
-            : ''
+          <>
+            <FormError message={action.error} />
+            {deleteTarget
+              ? `Delete the ${deleteTarget.type} of ${formatCurrency(deleteTarget.amount)} dated ${formatDate(deleteTarget.date)}? The ledger entry will be reversed.`
+              : ''}
+          </>
         }
         confirmLabel="Delete"
         busy={action.submitting}
         onConfirm={() => void confirmDelete()}
-        onCancel={() => setDeleteTarget(null)}
+        onCancel={() => {
+          setDeleteTarget(null);
+          action.reset();
+        }}
       />
     </>
   );

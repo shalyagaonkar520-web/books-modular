@@ -101,17 +101,22 @@ export function ExpensesPage() {
     if (!window.confirm(`Delete ${selectedIds.size} selected expense(s)?`)) return;
     setBulkDeleting(true);
     let count = 0;
+    const failedIds = new Set<string>();
     for (const id of selectedIds) {
       try {
         await expensesApi.remove(id);
         count++;
       } catch {
-        // continue
+        failedIds.add(id);
       }
     }
     setBulkDeleting(false);
-    toast.success(`Deleted ${count} expense(s)`);
-    setSelectedIds(new Set());
+    if (failedIds.size > 0) {
+      toast.error(`Deleted ${count} of ${selectedIds.size} expense(s); ${failedIds.size} could not be deleted.`);
+    } else {
+      toast.success(`Deleted ${count} expense(s)`);
+    }
+    setSelectedIds(failedIds);
     refreshAll();
   };
 

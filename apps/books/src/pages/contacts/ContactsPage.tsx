@@ -137,17 +137,22 @@ export function ContactsPage({ type }: { type: ContactType }) {
     if (!window.confirm(`Delete ${selectedIds.size} selected ${copy.plural.toLowerCase()}?`)) return;
     setBulkDeleting(true);
     let count = 0;
+    const failedIds = new Set<string>();
     for (const id of selectedIds) {
       try {
         await contactsApi.remove(id);
         count++;
       } catch {
-        // continue
+        failedIds.add(id);
       }
     }
     setBulkDeleting(false);
-    toast.success(`Deleted ${count} ${copy.plural.toLowerCase()}`);
-    setSelectedIds(new Set());
+    if (failedIds.size > 0) {
+      toast.error(`Deleted ${count} of ${selectedIds.size} ${copy.plural.toLowerCase()}; ${failedIds.size} could not be deleted.`);
+    } else {
+      toast.success(`Deleted ${count} ${copy.plural.toLowerCase()}`);
+    }
+    setSelectedIds(failedIds);
     list.reload();
   }
 
@@ -450,9 +455,12 @@ export function ContactsPage({ type }: { type: ContactType }) {
         open={!!deleteTarget}
         title={`Delete ${copy.singular}`}
         message={
-          deleteTarget
-            ? `Delete “${deleteTarget.displayName}”? If this ${copy.singular} has ${copy.documentsLabel} they will be deactivated instead of deleted.`
-            : ''
+          <>
+            <FormError message={deleteSubmit.error} />
+            {deleteTarget
+              ? `Delete “${deleteTarget.displayName}”? If this ${copy.singular} has ${copy.documentsLabel} they will be deactivated instead of deleted.`
+              : ''}
+          </>
         }
         confirmLabel={`Delete ${copy.singular}`}
         busy={deleteSubmit.submitting}

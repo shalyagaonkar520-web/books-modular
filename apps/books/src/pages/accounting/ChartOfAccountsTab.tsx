@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
 
 import { accountingApi } from '@/api/endpoints';
@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { CheckboxField } from '@/components/ui/Field';
-import { EmptyState, ErrorBlock, SkeletonRows } from '@/components/ui/Feedback';
+import { EmptyState, ErrorBlock, FormError, SkeletonRows } from '@/components/ui/Feedback';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { FilterSelect, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
@@ -36,15 +36,12 @@ export function ChartOfAccountsTab() {
   );
 
   const action = useSubmit();
-  useEffect(() => {
-    if (action.error) toast.error(action.error);
-  }, [action.error, toast]);
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     const result = await action.run(() => accountingApi.removeAccount(deleteTarget.id));
-    setDeleteTarget(null);
     if (result) {
+      setDeleteTarget(null);
       toast.success(result.message);
       accounts.reload();
     }
@@ -139,14 +136,20 @@ export function ChartOfAccountsTab() {
         open={!!deleteTarget}
         title="Delete account"
         message={
-          deleteTarget
-            ? `Delete ${deleteTarget.code} · ${deleteTarget.name}? If the account already has journal lines it will be deactivated instead.`
-            : ''
+          <>
+            <FormError message={action.error} />
+            {deleteTarget
+              ? `Delete ${deleteTarget.code} · ${deleteTarget.name}? If the account already has journal lines it will be deactivated instead.`
+              : ''}
+          </>
         }
         confirmLabel="Delete"
         busy={action.submitting}
         onConfirm={() => void confirmDelete()}
-        onCancel={() => setDeleteTarget(null)}
+        onCancel={() => {
+          setDeleteTarget(null);
+          action.reset();
+        }}
       />
     </>
   );
