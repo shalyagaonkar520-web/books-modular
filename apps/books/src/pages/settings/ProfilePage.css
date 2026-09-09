@@ -1,0 +1,972 @@
+/* ==========================================================================
+   Zoho Accounts-inspired Profile Page Styles (Luxury Light / Dark Theme)
+   ========================================================================== */
+
+.zoho-profile-container {
+  display: flex;
+  min-height: calc(100vh - var(--header-h, 56px) - 60px);
+  background: var(--zp-bg, #f4f6f9);
+  border-radius: var(--radius-lg, 12px);
+  border: 1px solid var(--zp-border, #e5e9f0);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  transition: all 0.25s ease;
+  margin-top: 8px;
+}
+
+/* Luxury Theme Variables */
+.zoho-profile-container.theme-light {
+  --zp-bg: #f8fafc;
+  --zp-sidebar-bg: #1e293b;
+  --zp-sidebar-text: #94a3b8;
+  --zp-sidebar-text-active: #ffffff;
+  --zp-sidebar-active-bg: rgba(255, 255, 255, 0.1);
+  --zp-card-bg: #ffffff;
+  --zp-card-border: #e2e8f0;
+  --zp-text-primary: #0f172a;
+  --zp-text-secondary: #64748b;
+  --zp-accent: #059669; /* Zoho green accent */
+  --zp-accent-hover: #047857;
+  --zp-accent-soft: #ecfdf5;
+  --zp-gold: #d97706;
+  --zp-gold-soft: #fef3c7;
+}
+
+.zoho-profile-container.theme-dark {
+  --zp-bg: #0f172a;
+  --zp-sidebar-bg: #090e17;
+  --zp-sidebar-text: #64748b;
+  --zp-sidebar-text-active: #38bdf8;
+  --zp-sidebar-active-bg: rgba(56, 189, 248, 0.12);
+  --zp-card-bg: #1e293b;
+  --zp-card-border: #334155;
+  --zp-text-primary: #f8fafc;
+  --zp-text-secondary: #94a3b8;
+  --zp-accent: #10b981;
+  --zp-accent-hover: #34d399;
+  --zp-accent-soft: rgba(16, 185, 129, 0.15);
+  --zp-gold: #f59e0b;
+  --zp-gold-soft: rgba(245, 158, 11, 0.15);
+}
+
+.zoho-profile-container.theme-luxury {
+  --zp-bg: #fbfbf9;
+  --zp-sidebar-bg: #1c1917;
+  --zp-sidebar-text: #a8a29e;
+  --zp-sidebar-text-active: #f59e0b;
+  --zp-sidebar-active-bg: rgba(217, 119, 6, 0.15);
+  --zp-card-bg: #ffffff;
+  --zp-card-border: #e7e5e4;
+  --zp-text-primary: #1c1917;
+  --zp-text-secondary: #78716c;
+  --zp-accent: #b45309;
+  --zp-accent-hover: #92400e;
+  --zp-accent-soft: #fef3c7;
+  --zp-gold: #d97706;
+  --zp-gold-soft: #fffbeb;
+}
+
+/* Sidebar Navigation */
+.zp-sidebar {
+  width: 255px;
+  background: var(--zp-sidebar-bg);
+  color: var(--zp-sidebar-text);
+  padding: 24px 0;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.zp-sidebar-header {
+  padding: 0 20px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 16px;
+}
+
+.zp-brand-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--zp-accent);
+  color: #fff;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.zp-sidebar-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: -0.2px;
+}
+
+.zp-nav {
+  list-style: none;
+  padding: 0 12px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.zp-nav-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 13px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  color: var(--zp-sidebar-text);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.zp-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.zp-nav-btn.active {
+  background: var(--zp-sidebar-active-bg);
+  color: var(--zp-sidebar-text-active);
+  font-weight: 600;
+}
+
+.zp-nav-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--zp-accent);
+  margin-left: auto;
+}
+
+.zp-sidebar-footer {
+  margin-top: auto;
+  padding: 16px 20px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.zp-sidebar-theme-toggles {
+  display: flex;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 3px;
+  border-radius: 6px;
+  gap: 2px;
+}
+
+.zp-theme-btn {
+  flex: 1;
+  padding: 5px 0;
+  border: none;
+  background: transparent;
+  color: var(--zp-sidebar-text);
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.15s;
+}
+
+.zp-theme-btn.active {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+/* Main Content Body */
+.zp-main {
+  flex: 1;
+  padding: 32px 40px;
+  background: var(--zp-bg);
+  overflow-y: auto;
+}
+
+.zp-page-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--zp-text-primary);
+  margin: 0 0 24px;
+  letter-spacing: -0.3px;
+}
+
+/* Cards */
+.zp-card {
+  background: var(--zp-card-bg);
+  border: 1px solid var(--zp-card-border);
+  border-radius: 12px;
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  transition: border-color 0.2s;
+}
+
+.zp-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.zp-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--zp-text-primary);
+  margin: 0;
+}
+
+.zp-card-subtitle {
+  font-size: 13px;
+  color: var(--zp-text-secondary);
+  margin: 4px 0 0;
+}
+
+/* Profile Header Section */
+.zp-profile-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--zp-card-border);
+  margin-bottom: 24px;
+}
+
+.zp-avatar-section {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.zp-avatar-wrapper {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border: 3px solid var(--zp-card-bg);
+  flex-shrink: 0;
+}
+
+.zp-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.zp-avatar-initials {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #5b55b6; /* Zoho style purple avatar */
+  color: #fff;
+  font-size: 28px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zp-avatar-edit-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--zp-accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--zp-card-bg);
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  transition: transform 0.15s;
+}
+
+.zp-avatar-edit-badge:hover {
+  transform: scale(1.1);
+}
+
+.zp-user-summary h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--zp-text-primary);
+  margin: 0 0 4px;
+}
+
+.zp-user-summary p {
+  font-size: 13.5px;
+  color: var(--zp-text-secondary);
+  margin: 0;
+}
+
+.zp-edit-btn {
+  padding: 7px 18px;
+  background: var(--zp-accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.zp-edit-btn:hover {
+  background: var(--zp-accent-hover);
+}
+
+.zp-cancel-btn {
+  padding: 7px 14px;
+  background: transparent;
+  color: var(--zp-text-secondary);
+  border: 1px solid var(--zp-card-border);
+  border-radius: 6px;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* Detail Grid */
+.zp-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px 40px;
+}
+
+.zp-field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.zp-field-label {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--zp-text-secondary);
+}
+
+.zp-field-value {
+  font-size: 14.5px;
+  color: var(--zp-text-primary);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.zp-field-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--zp-card-border);
+  background: var(--zp-bg);
+  color: var(--zp-text-primary);
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.zp-field-input:focus {
+  border-color: var(--zp-accent);
+}
+
+/* Email & Linked Section */
+.zp-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--zp-card-border);
+}
+
+.zp-list-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.zp-badge-verified {
+  background: var(--zp-accent-soft);
+  color: var(--zp-accent);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Sessions Cards */
+.zp-session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: var(--zp-bg);
+  border-radius: 8px;
+  border: 1px solid var(--zp-card-border);
+  margin-bottom: 10px;
+}
+
+.zp-session-info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.zp-device-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: var(--zp-card-bg);
+  border: 1px solid var(--zp-card-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--zp-text-secondary);
+}
+
+/* Notification Toggles */
+.zp-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--zp-card-border);
+}
+
+.zp-toggle-row:last-child {
+  border-bottom: none;
+}
+
+.zp-toggle-label h4 {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--zp-text-primary);
+}
+
+.zp-toggle-label p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--zp-text-secondary);
+}
+
+/* Switch */
+.zp-switch {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.zp-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.zp-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #cbd5e1;
+  transition: 0.2s;
+  border-radius: 22px;
+}
+
+.zp-slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.2s;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+input:checked + .zp-slider {
+  background-color: var(--zp-accent);
+}
+
+input:checked + .zp-slider:before {
+  transform: translateX(20px);
+}
+
+/* Photo Upload Modal */
+.zp-modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.zp-modal-card {
+  width: 460px;
+  max-width: 92vw;
+  background: var(--zp-card-bg, #fff);
+  border-radius: 14px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--zp-card-border, #e2e8f0);
+  overflow: hidden;
+  animation: zpPop 0.2s ease-out;
+}
+
+@keyframes zpPop {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.zp-modal-header {
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--zp-card-border);
+}
+
+.zp-modal-body {
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.zp-upload-preview {
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid var(--zp-accent);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+}
+
+.zp-upload-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+}
+
+.zp-action-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 10px;
+  border: 1.5px dashed var(--zp-card-border);
+  background: var(--zp-bg);
+  color: var(--zp-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.zp-action-tile:hover {
+  border-color: var(--zp-accent);
+  background: var(--zp-accent-soft);
+  color: var(--zp-accent);
+}
+
+.zp-camera-video {
+  width: 100%;
+  height: 240px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #000;
+}
+
+/* Image Crop & Adjust Styles */
+.zp-crop-wrapper {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.zp-crop-stage {
+  width: 280px;
+  height: 280px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #0f172a;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.4);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.zp-crop-stage.is-dragging {
+  cursor: grabbing;
+}
+
+.zp-crop-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.zp-crop-circle-mask {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 50%;
+  box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.65);
+  border: 2px solid #ffffff;
+  width: 220px;
+  height: 220px;
+  margin: auto;
+}
+
+.zp-crop-grid-guide {
+  position: absolute;
+  inset: 0;
+  width: 220px;
+  height: 220px;
+  margin: auto;
+  border-radius: 50%;
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+}
+
+.zp-crop-tip {
+  font-size: 11.5px;
+  color: var(--zp-text-secondary);
+  text-align: center;
+  margin: -6px 0 0;
+}
+
+.zp-crop-slider-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px;
+}
+
+.zp-crop-slider {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  accent-color: var(--zp-accent);
+  cursor: pointer;
+}
+
+.zp-crop-tools {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.zp-crop-tool-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--zp-bg);
+  border: 1px solid var(--zp-card-border);
+  color: var(--zp-text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.15s;
+}
+
+.zp-crop-tool-btn:hover {
+  background: var(--zp-card-border);
+}
+
+.zp-crop-footer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--zp-card-border);
+}
+
+/* ==========================================================================
+   Groups & Roles, Two-Step MFA, and Terms & Privacy Styles
+   ========================================================================== */
+
+.zp-role-badge-admin {
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.zp-role-badge-staff {
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.zp-role-badge-viewer {
+  background: #f8fafc;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.zp-permissions-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 14px;
+  font-size: 13.5px;
+}
+
+.zp-permissions-table th {
+  text-align: left;
+  padding: 10px 12px;
+  background: var(--zp-bg);
+  color: var(--zp-text-secondary);
+  font-weight: 600;
+  border-bottom: 1px solid var(--zp-card-border);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.zp-permissions-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--zp-card-border);
+  color: var(--zp-text-primary);
+}
+
+.zp-permissions-table tr:last-child td {
+  border-bottom: none;
+}
+
+.zp-mfa-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.zp-mfa-card {
+  padding: 20px;
+  border-radius: 10px;
+  border: 1px solid var(--zp-card-border);
+  background: var(--zp-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.zp-mfa-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.zp-mfa-icon-wrap {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--zp-card-bg);
+  border: 1px solid var(--zp-card-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zp-terms-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.zp-terms-card {
+  padding: 16px 20px;
+  border-radius: 8px;
+  border: 1px solid var(--zp-card-border);
+  background: var(--zp-bg);
+}
+
+.zp-terms-card h4 {
+  margin: 0 0 6px;
+  font-size: 14.5px;
+  color: var(--zp-text-primary);
+}
+
+.zp-terms-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--zp-text-secondary);
+}
+
+/* Header Zoho Dropdown specific styles */
+.zoho-header-dropdown {
+  width: 320px !important;
+  padding: 0 !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12) !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.zoho-dropdown-header {
+  padding: 18px 20px;
+  background: #ffffff;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  border-bottom: 1px solid #f1f5f9;
+  position: relative;
+}
+
+.zoho-dropdown-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: #5b55b6;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 600;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.zoho-dropdown-user {
+  flex: 1;
+  min-width: 0;
+}
+
+.zoho-dropdown-user strong {
+  display: block;
+  font-size: 14.5px;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zoho-dropdown-user span {
+  display: block;
+  font-size: 12.5px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zoho-dropdown-meta {
+  padding: 8px 20px;
+  background: #f8fafc;
+  font-size: 11.5px;
+  color: #64748b;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.zoho-dropdown-nav {
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.zoho-my-account-link {
+  color: #0284c7;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.zoho-my-account-link:hover {
+  text-decoration: underline;
+}
+
+.zoho-sign-out-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #ef4444;
+  font-size: 13px;
+  font-weight: 500;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.zoho-sign-out-btn:hover {
+  background: #fef2f2;
+}
