@@ -35,21 +35,16 @@ from backend.models import (
     User,
     new_id,
 )
-from backend.services import audit, bank, ledger
+from backend.services import audit, bank, ledger, razorpay_matching, razorpay_posting, razorpay_sync
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.money import money
-from backend.services.numbering import next_number
-from backend.services import razorpay_matching, razorpay_posting, razorpay_sync
 from backend.services.razorpay_categorize import (
     CATEGORIES,
     MATCH_TYPES,
-    Categorisation,
     apply_categorisation,
     categorise,
 )
 from backend.services.razorpay_service import (
-    RazorpayNotConfigured,
-    RazorpayUnavailable,
     get_razorpay_service,
 )
 from backend.services.tenancy import Pagination, paginate
@@ -751,7 +746,7 @@ def list_payments(
         stmt = stmt.where(PaymentRecord.amount <= amount_max)
     if search:
         # Escape the LIKE wildcards so a search for "100%" is a literal search.
-        needle = search.strip().replace("\\", "\\\\").replace("%", "\%").replace("_", "\_")
+        needle = search.strip().replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
         pattern = f"%{needle}%"
         stmt = stmt.where(
             PaymentRecord.razorpay_payment_id.ilike(pattern, escape="\\")
@@ -1458,13 +1453,13 @@ class ConnectRazorpayRequest(BaseModel):
 @router.post("/integration/connect")
 def connect_razorpay(
     payload: ConnectRazorpayRequest,
-    user: User = Depends(require_write),
+    user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """Save Razorpay credentials, verify live connectivity, and update configuration."""
     key_id = payload.key_id.strip()
     key_secret = payload.key_secret.strip()
-    webhook_secret = (payload.webhook_secret or "").strip() or "rooman_books_webhook_secret_2026"
+    webhook_secret = (payload.webhook_secret or "").strip()
     mode = "live" if (payload.mode or "").lower().strip() == "live" else "test"
 
     if not key_id or not key_secret:
@@ -1486,6 +1481,7 @@ def connect_razorpay(
 
     # 2. Update .env file on disk
     from pathlib import Path
+
     from backend.config import get_settings
     from backend.services.razorpay_service import reset_razorpay_service
 
@@ -1494,9 +1490,13 @@ def connect_razorpay(
     updates = {
         "RAZORPAY_KEY_ID": key_id,
         "RAZORPAY_KEY_SECRET": key_secret,
-        "RAZORPAY_WEBHOOK_SECRET": webhook_secret,
         "RAZORPAY_MODE": mode,
     }
+    if webhook_secret:
+        # Leave the existing webhook secret untouched when none is supplied,
+        # rather than falling back to a hardcoded value known to anyone who
+        # reads the source.
+        updates["RAZORPAY_WEBHOOK_SECRET"] = webhook_secret
     updated_keys = set()
     new_lines = []
     for line in lines:
@@ -1549,11 +1549,12 @@ def connect_razorpay(
 
 @router.post("/integration/disconnect")
 def disconnect_razorpay(
-    user: User = Depends(require_write),
+    user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """Clear Razorpay credentials from .env and deactivate connection."""
     from pathlib import Path
+
     from backend.config import get_settings
     from backend.services.razorpay_service import reset_razorpay_service
 

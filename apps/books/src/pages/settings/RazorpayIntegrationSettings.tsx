@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 
 import { razorpaySyncApi, type IntegrationStatus, type SyncLog } from '@/api/razorpay';
+import { useAuth } from '@/auth/AuthContext';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -43,6 +44,7 @@ function LastSync({ log }: { log?: SyncLog | null }) {
 
 export function RazorpayIntegrationSettings() {
   const toast = useToast();
+  const { isAdmin } = useAuth();
   const [syncing, setSyncing] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -171,13 +173,13 @@ export function RazorpayIntegrationSettings() {
         subtitle="Accept online customer payments, process refunds, and automatically import Razorpay settlements into Rooman Books."
         actions={
           <div className="row" style={{ gap: '8px', flexWrap: 'wrap' }}>
-            {connected && !formOpen ? (
+            {connected && !formOpen && isAdmin ? (
               <Button variant="ghost" size="sm" icon={<KeyRound size={14} />} onClick={() => setFormOpen(true)}>
                 Edit Credentials
               </Button>
             ) : null}
 
-            {connected ? (
+            {connected && isAdmin ? (
               <Button
                 variant="ghost"
                 size="sm"
@@ -302,8 +304,15 @@ export function RazorpayIntegrationSettings() {
         ) : null}
       </Card>
 
+      {!isAdmin ? (
+        <div className="notification notification-info" role="status">
+          <AlertTriangle size={16} aria-hidden="true" />
+          <span>Only administrators can connect, edit, or disconnect the Razorpay integration.</span>
+        </div>
+      ) : null}
+
       {/* Connection Credentials Form Card */}
-      {(!connected || formOpen) && (
+      {(!connected || formOpen) && isAdmin && (
         <Card
           title="Connect Razorpay API Credentials"
           subtitle="Configure your Key ID and Secret from Razorpay Dashboard (Settings > API Keys) to activate checkout and payment reconciliation."
@@ -379,7 +388,7 @@ export function RazorpayIntegrationSettings() {
                   id="razorpay-webhook-secret"
                   type="text"
                   className="input input-block mono"
-                  placeholder="e.g. rooman_books_webhook_secret_2026"
+                  placeholder="Paste the webhook secret shown in Razorpay Dashboard"
                   value={webhookSecret}
                   onChange={(e) => setWebhookSecret(e.target.value)}
                 />

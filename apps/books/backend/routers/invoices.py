@@ -13,7 +13,18 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
-from backend.models import Contact, ExternalPaymentProof, Invoice, InvoiceLine, Organization, PaymentRefund, Project, RazorpayPayment, TimeEntry, User
+from backend.models import (
+    Contact,
+    ExternalPaymentProof,
+    Invoice,
+    InvoiceLine,
+    Organization,
+    PaymentRefund,
+    Project,
+    RazorpayPayment,
+    TimeEntry,
+    User,
+)
 from backend.schemas.common import Message, Page
 from backend.schemas.sales import (
     InvoiceCreate,

@@ -32,10 +32,10 @@ from backend.schemas.sales import CustomerPaymentCreate, CustomerPaymentOut
 from backend.services import audit, bank, export_service, ledger, numbering
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.email_service import (
-    sender_identity,
     send_customer_payment_email,
     send_payment_confirmation_request_email,
     send_vendor_payment_email,
+    sender_identity,
 )
 from backend.services.money import money
 from backend.services.tenancy import Pagination, get_or_404, paginate

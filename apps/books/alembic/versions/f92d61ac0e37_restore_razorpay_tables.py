@@ -6,7 +6,7 @@ the categorisation fields, the reconciliation state, and the unique constraint
 on ``razorpay_payment_id`` that makes importing a payment twice impossible.
 
 Revision ID: f92d61ac0e37
-Revises: e58c2f4a71b9
+Revises: d7b3e1c95a24
 Create Date: 2026-09-10
 """
 from __future__ import annotations
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "f92d61ac0e37"
-down_revision = "e58c2f4a71b9"
+down_revision = "d7b3e1c95a24"
 branch_labels = None
 depends_on = None
 

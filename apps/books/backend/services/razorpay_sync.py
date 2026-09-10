@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
@@ -72,7 +72,7 @@ def _epoch_to_dt(value: Any) -> Optional[datetime]:
     if value in (None, ""):
         return None
     try:
-        return datetime.fromtimestamp(int(value), tz=timezone.utc)
+        return datetime.fromtimestamp(int(value), tz=UTC)
     except (TypeError, ValueError, OSError):
         return None
 
@@ -154,7 +154,7 @@ def last_successful_sync(db: Session, org_id: str) -> Optional[RazorpaySyncLog]:
 def _sync_window(db: Session, org_id: str, full: bool) -> tuple[datetime, datetime, str]:
     """Decide which slice of history this run should ask Razorpay for."""
     settings = get_settings()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     previous = last_successful_sync(db, org_id)
 
     if full or previous is None:
@@ -163,7 +163,7 @@ def _sync_window(db: Session, org_id: str, full: bool) -> tuple[datetime, dateti
 
     cursor = previous.window_to or previous.started_at
     if cursor.tzinfo is None:
-        cursor = cursor.replace(tzinfo=timezone.utc)
+        cursor = cursor.replace(tzinfo=UTC)
     # Overlap the previous window so a payment captured just after the cursor
     # is not missed. Duplicates are harmless -- they are deduplicated on id.
     start = cursor - timedelta(minutes=settings.razorpay_sync_overlap_minutes)
@@ -222,7 +222,10 @@ def _upsert_payment(
     record.payment_method = (entity.get("method") or "other")[:40]
     record.method_detail = (_method_detail(entity) or "")[:160] or None
     record.payment_status = status
-    record.mode = get_razorpay_service().mode
+    if is_new:
+        # The mode reflects which keys the transaction actually ran under; it
+        # must not drift if the org later switches its configured mode and re-syncs.
+        record.mode = get_razorpay_service().mode
     record.customer_email = (entity.get("email") or None)
     record.customer_contact = (str(entity.get("contact")) if entity.get("contact") else None)
     record.description = (description or "")[:500] or None
@@ -235,8 +238,11 @@ def _upsert_payment(
     record.error_description = entity.get("error_description")
     record.raw_reference = json.dumps(raw, default=str)[:20000]
     record.last_synced_at = utcnow()
-    if is_new and created_at:
-        record.captured_at = created_at if status in ("captured", "refunded", "partially_refunded") else None
+    if created_at and record.captured_at is None and status in ("captured", "refunded", "partially_refunded"):
+        # Set once, the first time a sync observes the payment in a captured
+        # state - a payment first seen as authorized/pending must still get
+        # this stamped once it later transitions to captured.
+        record.captured_at = created_at
 
     # Link to a known customer where the payer can be identified with confidence.
     if not record.customer_id:
@@ -304,7 +310,7 @@ def _sync_refunds(db: Session, org_id: str, from_ts: int, to_ts: int, outcome: S
             ).scalars().first()
             amount = _paise_to_inr(entity.get("amount"))
             created_at = _epoch_to_dt(entity.get("created_at"))
-            refund_date = created_at.date() if created_at else datetime.now(timezone.utc).date()
+            refund_date = created_at.date() if created_at else datetime.now(UTC).date()
 
             if existing is None:
                 db.add(

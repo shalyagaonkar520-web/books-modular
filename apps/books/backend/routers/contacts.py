@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
-from backend.models import Bill, Contact, Invoice, Organization, User
+from backend.models import Bill, Contact, CustomerPayment, Expense, Invoice, Organization, User, VendorPayment
 from backend.schemas.common import Message, Page
 from backend.schemas.contacts import ContactCreate, ContactOut, ContactSummary, ContactUpdate
 from backend.services import audit, export_service
@@ -208,8 +208,20 @@ def bulk_delete_contacts(
         if not payload.ids:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "No contact IDs provided")
         stmt = stmt.where(Contact.id.in_(payload.ids))
-    elif not payload.include_inactive:
-        stmt = stmt.where(Contact.is_active.is_(True))
+    else:
+        if not payload.include_inactive:
+            stmt = stmt.where(Contact.is_active.is_(True))
+        if payload.search and payload.search.strip():
+            q = f"%{payload.search.strip().lower()}%"
+            stmt = stmt.where(
+                or_(
+                    func.lower(Contact.display_name).like(q),
+                    func.lower(Contact.company_name).like(q),
+                    func.lower(Contact.email).like(q),
+                    func.lower(Contact.phone).like(q),
+                    func.lower(Contact.gstin).like(q),
+                )
+            )
 
     contacts = db.execute(stmt).scalars().all()
     if not contacts:
@@ -228,7 +240,22 @@ def bulk_delete_contacts(
     bills_contact_ids = set(
         db.execute(select(Bill.vendor_id).where(Bill.vendor_id.in_(contact_ids))).scalars().all()
     )
-    has_transactions_ids = invoices_contact_ids | bills_contact_ids
+    customer_payment_ids = set(
+        db.execute(select(CustomerPayment.customer_id).where(CustomerPayment.customer_id.in_(contact_ids))).scalars().all()
+    )
+    vendor_payment_ids = set(
+        db.execute(select(VendorPayment.vendor_id).where(VendorPayment.vendor_id.in_(contact_ids))).scalars().all()
+    )
+    expense_vendor_ids = set(
+        db.execute(select(Expense.vendor_id).where(Expense.vendor_id.in_(contact_ids))).scalars().all()
+    )
+    expense_customer_ids = set(
+        db.execute(select(Expense.customer_id).where(Expense.customer_id.in_(contact_ids))).scalars().all()
+    )
+    has_transactions_ids = (
+        invoices_contact_ids | bills_contact_ids | customer_payment_ids | vendor_payment_ids
+        | expense_vendor_ids | expense_customer_ids
+    )
 
     deleted_count = 0
     deactivated_count = 0
@@ -272,9 +299,14 @@ def bulk_delete_contacts(
 @router.delete("/{contact_id}", response_model=Message)
 def delete_contact(contact_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
     contact = get_or_404(db, Contact, contact_id, user.organization_id, "Contact")
-    has_docs = db.execute(select(Invoice.id).where(Invoice.customer_id == contact.id).limit(1)).first() or db.execute(
-        select(Bill.id).where(Bill.vendor_id == contact.id).limit(1)
-    ).first()
+    has_docs = (
+        db.execute(select(Invoice.id).where(Invoice.customer_id == contact.id).limit(1)).first()
+        or db.execute(select(Bill.id).where(Bill.vendor_id == contact.id).limit(1)).first()
+        or db.execute(select(CustomerPayment.id).where(CustomerPayment.customer_id == contact.id).limit(1)).first()
+        or db.execute(select(VendorPayment.id).where(VendorPayment.vendor_id == contact.id).limit(1)).first()
+        or db.execute(select(Expense.id).where(Expense.vendor_id == contact.id).limit(1)).first()
+        or db.execute(select(Expense.id).where(Expense.customer_id == contact.id).limit(1)).first()
+    )
     if has_docs:
         contact.is_active = False
         audit.record(db, user, "update", "contact", contact.id, f"Deactivated {contact.display_name} (has transactions)")
