@@ -97,6 +97,14 @@ export const contactsApi = {
   create: (body: Partial<Contact>) => api.post<Contact>('/contacts', body),
   update: (id: string, body: Partial<Contact>) => api.put<Contact>(`/contacts/${id}`, body),
   remove: (id: string) => api.delete<Message>(`/contacts/${id}`),
+  bulkDelete: (body: { ids?: string[]; all_matching?: boolean; type?: string; search?: string; include_inactive?: boolean }) =>
+    api.post<{
+      success: boolean;
+      message: string;
+      processed: number;
+      deleted: number;
+      deactivated: number;
+    }>('/contacts/bulk-delete', body),
   exportPdf: (query?: Query) => downloadFile(`/contacts/export/pdf${buildExportQs(query)}`, 'contacts_directory.pdf'),
   exportExcel: (query?: Query) => downloadFile(`/contacts/export/excel${buildExportQs(query)}`, 'contacts_directory.xlsx'),
   sendGmail: (id: string, body: { to_email: string; subject: string; message: string }) =>

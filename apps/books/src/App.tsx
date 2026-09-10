@@ -3,6 +3,9 @@ import { Route, Routes } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { RequireAuth, RequireGuest, RequireRole } from '@/auth/RouteGuards';
 import { AccountingPage } from '@/pages/accounting/AccountingPage';
+import { FinancialDashboardPage } from '@/pages/financial/FinancialDashboardPage';
+import { ReceivablesPayablesDashboard } from '@/pages/financial/ReceivablesPayablesDashboard';
+import { RazorpayPaymentsPage } from '@/pages/payments/RazorpayPaymentsPage';
 import { BankingPage } from '@/pages/banking/BankingPage';
 import { BillFormPage } from '@/pages/purchases/BillFormPage';
 import { BillsPage } from '@/pages/purchases/BillsPage';
@@ -11,7 +14,6 @@ import { DashboardPage } from '@/pages/dashboard/DashboardPage';
 import { DocumentsPage } from '@/pages/documents/DocumentsPage';
 import { ExpenseDashboardPage } from '@/pages/expenses/ExpenseDashboardPage';
 import { ExpensesPage } from '@/pages/purchases/ExpensesPage';
-import { FinancialDashboardPage } from '@/pages/financial/FinancialDashboardPage';
 import { InvoiceFormPage } from '@/pages/sales/InvoiceFormPage';
 import { InvoiceViewPage } from '@/pages/sales/InvoiceViewPage';
 import { InvoicesPage } from '@/pages/sales/InvoicesPage';
@@ -67,7 +69,9 @@ export function App() {
             <Route path="/payments-made" element={<PaymentsMadePage />} />
 
             <Route path="/financial-dashboard" element={<FinancialDashboardPage />} />
+            <Route path="/receivables-payables" element={<ReceivablesPayablesDashboard />} />
             <Route path="/banking" element={<BankingPage />} />
+            <Route path="/razorpay-payments" element={<RazorpayPaymentsPage />} />
             <Route path="/time-tracking" element={<TimeTrackingPage />} />
             <Route path="/accounting" element={<AccountingPage />} />
             <Route path="/reports" element={<ReportsPage />} />

@@ -326,6 +326,11 @@ def import_excel_commit(
     db: Session = Depends(get_db),
 ):
     """Commit categorized Excel extracted records into Rooman Books accounts, customers, bills, invoices, and expenses."""
+    # Imported late: the routers import each other's services, and importing at
+    # module level here would create a circular import.
+    from backend.routers.bills import post_bill
+    from backend.routers.invoices import post_invoice
+
     org_id = user.organization_id
     counts: Dict[str, int] = {"customers": 0, "vendors": 0, "invoices": 0, "bills": 0, "expenses": 0}
 
@@ -443,6 +448,8 @@ def import_excel_commit(
                 )
             )
             db.add(inv)
+            db.flush()
+            post_invoice(db, inv, user)
             counts["invoices"] += 1
 
         elif cat == "bills":
@@ -479,6 +486,8 @@ def import_excel_commit(
                 )
             )
             db.add(bill)
+            db.flush()
+            post_bill(db, bill, user)
             counts["bills"] += 1
 
     db.commit()

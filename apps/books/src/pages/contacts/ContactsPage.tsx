@@ -68,6 +68,7 @@ export function ContactsPage({ type }: { type: ContactType }) {
   const [emailContact, setEmailContact] = useState<Contact | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectAllPages, setSelectAllPages] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const deleteSubmit = useSubmit();
 
@@ -77,7 +78,15 @@ export function ContactsPage({ type }: { type: ContactType }) {
     setIncludeInactive(false);
     setPage(1);
     setSelectedIds(new Set());
+    setSelectAllPages(false);
   }, [type]);
+
+  // Reset selection when page changes
+  useEffect(() => {
+    if (!selectAllPages) {
+      setSelectedIds(new Set());
+    }
+  }, [page, selectAllPages]);
 
   const list = useAsync(
     (signal) =>
@@ -132,28 +141,41 @@ export function ContactsPage({ type }: { type: ContactType }) {
     list.reload();
   }
 
-  async function confirmBulkDelete() {
-    if (selectedIds.size === 0) return;
-    if (!window.confirm(`Delete ${selectedIds.size} selected ${copy.plural.toLowerCase()}?`)) return;
+  async function confirmBulkDelete(allPages = false) {
+    const isAll = allPages || selectAllPages;
+    const totalCount = list.data?.total ?? 0;
+    const count = isAll ? totalCount : selectedIds.size;
+    if (count === 0) return;
+
+    const promptMsg = isAll
+      ? `Are you sure you want to delete ALL ${totalCount} ${copy.plural.toLowerCase()} across ALL pages? Contacts with existing transactions will be safely marked inactive.`
+      : `Delete ${selectedIds.size} selected ${copy.plural.toLowerCase()}?`;
+
+    if (!window.confirm(promptMsg)) return;
+
     setBulkDeleting(true);
-    let count = 0;
-    const failedIds = new Set<string>();
-    for (const id of selectedIds) {
-      try {
-        await contactsApi.remove(id);
-        count++;
-      } catch {
-        failedIds.add(id);
+    try {
+      const res = await contactsApi.bulkDelete({
+        all_matching: isAll,
+        ids: isAll ? undefined : Array.from(selectedIds),
+        type,
+        search: debouncedSearch.trim() || undefined,
+        include_inactive: includeInactive,
+      });
+      if (res.deactivated > 0) {
+        toast.notify(res.message, 'warning');
+      } else {
+        toast.success(res.message);
       }
+      setSelectedIds(new Set());
+      setSelectAllPages(false);
+      list.reload();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : `Failed to delete ${copy.plural.toLowerCase()}`;
+      toast.error(msg);
+    } finally {
+      setBulkDeleting(false);
     }
-    setBulkDeleting(false);
-    if (failedIds.size > 0) {
-      toast.error(`Deleted ${count} of ${selectedIds.size} ${copy.plural.toLowerCase()}; ${failedIds.size} could not be deleted.`);
-    } else {
-      toast.success(`Deleted ${count} ${copy.plural.toLowerCase()}`);
-    }
-    setSelectedIds(failedIds);
-    list.reload();
   }
 
   const columns: Array<Column<Contact>> = [
@@ -355,35 +377,85 @@ export function ContactsPage({ type }: { type: ContactType }) {
         ) : (
           <>
             <div style={{ padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--color-bg-subtle, #f8fafc)', borderBottom: '1px solid var(--color-border)', flexWrap: 'wrap', gap: '8px' }}>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={() => {
-                    if (selectedIds.size === rows.length) {
+                    if (selectAllPages || selectedIds.size === rows.length) {
                       setSelectedIds(new Set());
+                      setSelectAllPages(false);
                     } else {
                       setSelectedIds(new Set(rows.map((r) => r.id)));
+                      setSelectAllPages(false);
                     }
                   }}
                 >
-                  {selectedIds.size === rows.length && rows.length > 0 ? 'Deselect All' : `Select All on Page (${rows.length})`}
+                  {selectAllPages
+                    ? 'Clear All Selection'
+                    : selectedIds.size === rows.length && rows.length > 0
+                    ? 'Deselect Page'
+                    : `Select All on Page (${rows.length})`}
                 </Button>
-                {selectedIds.size > 0 ? (
-                  <span className="small text-muted">{selectedIds.size} selected</span>
+
+                {(list.data?.total ?? 0) > rows.length && (
+                  <Button
+                    size="sm"
+                    variant={selectAllPages ? 'primary' : 'secondary'}
+                    onClick={() => {
+                      if (selectAllPages) {
+                        setSelectAllPages(false);
+                        setSelectedIds(new Set());
+                      } else {
+                        setSelectAllPages(true);
+                        setSelectedIds(new Set(rows.map((r) => r.id)));
+                      }
+                    }}
+                  >
+                    {selectAllPages
+                      ? `✓ All ${list.data?.total} Across All Pages Selected`
+                      : `Select All ${list.data?.total} Across All Pages`}
+                  </Button>
+                )}
+
+                {selectAllPages ? (
+                  <span className="small font-medium" style={{ color: 'var(--color-primary, #2563eb)' }}>
+                    All {list.data?.total} {copy.plural.toLowerCase()} selected across all pages
+                  </span>
+                ) : selectedIds.size > 0 ? (
+                  <span className="small text-muted">{selectedIds.size} selected on this page</span>
                 ) : null}
               </div>
-              {selectedIds.size > 0 && canWrite ? (
-                <Button
-                  size="sm"
-                  variant="danger"
-                  loading={bulkDeleting}
-                  onClick={() => void confirmBulkDelete()}
-                  icon={<Trash2 size={13} />}
-                >
-                  Delete Selected ({selectedIds.size})
-                </Button>
-              ) : null}
+
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                {canWrite && (list.data?.total ?? 0) > 0 && !selectedIds.size && !selectAllPages && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    loading={bulkDeleting}
+                    onClick={() => void confirmBulkDelete(true)}
+                    icon={<Trash2 size={13} />}
+                    style={{ color: 'var(--color-danger, #dc2626)' }}
+                    title={`Delete all ${list.data?.total} ${copy.plural.toLowerCase()} across all pages at once`}
+                  >
+                    Delete All {copy.plural} ({list.data?.total} all pages)
+                  </Button>
+                )}
+
+                {(selectAllPages || selectedIds.size > 0) && canWrite ? (
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    loading={bulkDeleting}
+                    onClick={() => void confirmBulkDelete()}
+                    icon={<Trash2 size={13} />}
+                  >
+                    {selectAllPages
+                      ? `Delete All ${list.data?.total} ${copy.plural} (All Pages)`
+                      : `Delete Selected (${selectedIds.size})`}
+                  </Button>
+                ) : null}
+              </div>
             </div>
             <DataTable
               columns={columns}

@@ -20,8 +20,8 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatDate, formatPercent, formatQuantity } from '@/utils/format';
 import { PAYMENT_MODES, statusLabel, statusTone } from '@/utils/status';
 
-import { RecordPaymentModal, type PaymentInvoiceContext } from './RecordPaymentModal';
 import { PayOnlineModal } from './PayOnlineModal';
+import { RecordPaymentModal, type PaymentInvoiceContext } from './RecordPaymentModal';
 
 type Pending = { kind: 'send' | 'void' } | { kind: 'deletePayment'; payment: CustomerPayment };
 

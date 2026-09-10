@@ -13,7 +13,18 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
-from backend.models import Contact, Invoice, InvoiceLine, Organization, Project, TimeEntry, User
+from backend.models import (
+    Contact,
+    ExternalPaymentProof,
+    Invoice,
+    InvoiceLine,
+    Organization,
+    PaymentRefund,
+    Project,
+    RazorpayPayment,
+    TimeEntry,
+    User,
+)
 from backend.schemas.common import Message, Page
 from backend.schemas.sales import (
     InvoiceCreate,
@@ -595,14 +606,21 @@ def change_status(invoice_id: str, payload: InvoiceStatusUpdate, user: User = De
 @router.delete("/{invoice_id}", response_model=Message)
 def delete_invoice(invoice_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
     inv = get_or_404(db, Invoice, invoice_id, user.organization_id, "Invoice")
-    if inv.status not in ("draft", "void"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only draft or void invoices can be deleted. Void the invoice first.")
     if inv.amount_paid > 0:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invoice has payments recorded")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invoice has payments recorded. Delete recorded payments first.")
+    if inv.status not in ("draft", "void"):
+        unpost_invoice(db, inv, user, "Invoice deleted")
     for entry in db.execute(select(TimeEntry).where(TimeEntry.invoice_id == inv.id)).scalars():
         entry.invoice_id = None
+    for rz in db.execute(select(RazorpayPayment).where(RazorpayPayment.invoice_id == inv.id)).scalars():
+        rz.invoice_id = None
+    for ref in db.execute(select(PaymentRefund).where(PaymentRefund.invoice_id == inv.id)).scalars():
+        ref.invoice_id = None
+    for ep in db.execute(select(ExternalPaymentProof).where(ExternalPaymentProof.invoice_id == inv.id)).scalars():
+        ep.invoice_id = None
     number = inv.invoice_number
     db.delete(inv)
     audit.record(db, user, "delete", "invoice", invoice_id, f"Deleted invoice {number}")
     db.commit()
     return Message(message=f"Invoice {number} deleted")
+

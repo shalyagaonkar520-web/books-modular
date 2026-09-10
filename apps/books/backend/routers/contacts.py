@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
-from backend.models import Bill, Contact, Invoice, Organization, User
+from backend.models import Bill, Contact, CustomerPayment, Expense, Invoice, Organization, User, VendorPayment
 from backend.schemas.common import Message, Page
 from backend.schemas.contacts import ContactCreate, ContactOut, ContactSummary, ContactUpdate
 from backend.services import audit, export_service
@@ -28,6 +28,14 @@ class SendContactEmailRequest(BaseModel):
     to_email: Optional[str] = None
     subject: str
     message: str
+
+
+class BulkDeleteContactsRequest(BaseModel):
+    ids: Optional[List[str]] = None
+    all_matching: bool = False
+    type: Optional[str] = None
+    search: Optional[str] = None
+    include_inactive: bool = False
 
 
 OPEN_INVOICE = ("sent", "partially_paid")
@@ -185,12 +193,120 @@ def update_contact(contact_id: str, payload: ContactUpdate, user: User = Depends
     return to_out(contact, outstanding)
 
 
+@router.post("/bulk-delete")
+def bulk_delete_contacts(
+    payload: BulkDeleteContactsRequest,
+    user: User = Depends(require_write),
+    db: Session = Depends(get_db),
+):
+    """Delete or deactivate multiple contacts across single or all pages."""
+    stmt = select(Contact).where(Contact.organization_id == user.organization_id)
+    if payload.type:
+        stmt = stmt.where(Contact.type == payload.type)
+
+    if not payload.all_matching:
+        if not payload.ids:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "No contact IDs provided")
+        stmt = stmt.where(Contact.id.in_(payload.ids))
+    else:
+        if not payload.include_inactive:
+            stmt = stmt.where(Contact.is_active.is_(True))
+        if payload.search and payload.search.strip():
+            q = f"%{payload.search.strip().lower()}%"
+            stmt = stmt.where(
+                or_(
+                    func.lower(Contact.display_name).like(q),
+                    func.lower(Contact.company_name).like(q),
+                    func.lower(Contact.email).like(q),
+                    func.lower(Contact.phone).like(q),
+                    func.lower(Contact.gstin).like(q),
+                )
+            )
+
+    contacts = db.execute(stmt).scalars().all()
+    if not contacts:
+        return {
+            "success": True,
+            "message": "No contacts matched for deletion",
+            "processed": 0,
+            "deleted": 0,
+            "deactivated": 0,
+        }
+
+    contact_ids = [c.id for c in contacts]
+    invoices_contact_ids = set(
+        db.execute(select(Invoice.customer_id).where(Invoice.customer_id.in_(contact_ids))).scalars().all()
+    )
+    bills_contact_ids = set(
+        db.execute(select(Bill.vendor_id).where(Bill.vendor_id.in_(contact_ids))).scalars().all()
+    )
+    customer_payment_ids = set(
+        db.execute(select(CustomerPayment.customer_id).where(CustomerPayment.customer_id.in_(contact_ids))).scalars().all()
+    )
+    vendor_payment_ids = set(
+        db.execute(select(VendorPayment.vendor_id).where(VendorPayment.vendor_id.in_(contact_ids))).scalars().all()
+    )
+    expense_vendor_ids = set(
+        db.execute(select(Expense.vendor_id).where(Expense.vendor_id.in_(contact_ids))).scalars().all()
+    )
+    expense_customer_ids = set(
+        db.execute(select(Expense.customer_id).where(Expense.customer_id.in_(contact_ids))).scalars().all()
+    )
+    has_transactions_ids = (
+        invoices_contact_ids | bills_contact_ids | customer_payment_ids | vendor_payment_ids
+        | expense_vendor_ids | expense_customer_ids
+    )
+
+    deleted_count = 0
+    deactivated_count = 0
+
+    for c in contacts:
+        if c.id in has_transactions_ids:
+            c.is_active = False
+            deactivated_count += 1
+        else:
+            db.delete(c)
+            deleted_count += 1
+
+    total_affected = deleted_count + deactivated_count
+    msg_type = payload.type or "contact"
+    audit.record(
+        db,
+        user,
+        "delete",
+        "contact",
+        user.organization_id,
+        f"Bulk processed {total_affected} {msg_type}(s): deleted {deleted_count}, deactivated {deactivated_count}",
+    )
+    db.commit()
+
+    parts = []
+    if deleted_count > 0:
+        parts.append(f"{deleted_count} deleted")
+    if deactivated_count > 0:
+        parts.append(f"{deactivated_count} marked inactive due to existing transactions")
+    summary = f"Processed {total_affected} {msg_type}(s): " + (", ".join(parts) if parts else "0 affected")
+
+    return {
+        "success": True,
+        "message": summary,
+        "processed": total_affected,
+        "deleted": deleted_count,
+        "deactivated": deactivated_count,
+    }
+
+
 @router.delete("/{contact_id}", response_model=Message)
 def delete_contact(contact_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
     contact = get_or_404(db, Contact, contact_id, user.organization_id, "Contact")
-    has_docs = db.execute(select(Invoice.id).where(Invoice.customer_id == contact.id).limit(1)).first() or db.execute(
-        select(Bill.id).where(Bill.vendor_id == contact.id).limit(1)
-    ).first()
+    has_docs = (
+        db.execute(select(Invoice.id).where(Invoice.customer_id == contact.id).limit(1)).first()
+        or db.execute(select(Bill.id).where(Bill.vendor_id == contact.id).limit(1)).first()
+        or db.execute(select(CustomerPayment.id).where(CustomerPayment.customer_id == contact.id).limit(1)).first()
+        or db.execute(select(VendorPayment.id).where(VendorPayment.vendor_id == contact.id).limit(1)).first()
+        or db.execute(select(Expense.id).where(Expense.vendor_id == contact.id).limit(1)).first()
+        or db.execute(select(Expense.id).where(Expense.customer_id == contact.id).limit(1)).first()
+    )
     if has_docs:
         contact.is_active = False
         audit.record(db, user, "update", "contact", contact.id, f"Deactivated {contact.display_name} (has transactions)")

@@ -285,6 +285,9 @@ class Invoice(TimestampMixin, OrgScopedMixin, Base):
     terms: Mapped[Optional[str]] = mapped_column(Text)
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[Optional[str]] = mapped_column(String(32))
+    # Set by the automated overdue chaser so it never mails the same customer twice in a day.
+    last_reminder_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    reminder_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     customer: Mapped[Contact] = relationship()
     lines: Mapped[List[InvoiceLine]] = relationship(
@@ -617,12 +620,21 @@ Index("ix_bills_org_status_due", Bill.organization_id, Bill.status, Bill.due_dat
 # Razorpay, Refunds, Settlements & Financial Ledger
 # --------------------------------------------------------------------------- #
 class PaymentRecord(TimestampMixin, OrgScopedMixin, Base):
-    """Razorpay payments record linked to internal payments and invoices."""
+    """Razorpay payments record linked to internal payments and invoices.
+
+    ``razorpay_payment_id`` is globally unique: the same Razorpay payment can
+    never be imported twice, whichever path (checkout, webhook or sync) sees it
+    first.
+    """
     __tablename__ = "payments"
+    __table_args__ = (
+        UniqueConstraint("razorpay_payment_id", name="uq_payments_razorpay_payment_id"),
+    )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     razorpay_order_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
-    razorpay_payment_id: Mapped[str] = mapped_column(String(64), index=True)
+    razorpay_payment_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    razorpay_invoice_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
     razorpay_signature: Mapped[Optional[str]] = mapped_column(String(255))
     customer_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("contacts.id"), index=True)
     sales_order_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
@@ -644,10 +656,48 @@ class PaymentRecord(TimestampMixin, OrgScopedMixin, Base):
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_by: Mapped[Optional[str]] = mapped_column(String(32))
 
+    # --- Synchronisation & bookkeeping metadata ---------------------------- #
+    # Contact details as Razorpay reported them. Kept alongside customer_id so a
+    # payment stays readable even when it could not be linked to a Contact.
+    customer_name: Mapped[Optional[str]] = mapped_column(String(200))
+    customer_email: Mapped[Optional[str]] = mapped_column(String(255))
+    customer_contact: Mapped[Optional[str]] = mapped_column(String(40))
+    description: Mapped[Optional[str]] = mapped_column(String(500))
+    # Instrument hints only. Never a full card number, CVV, OTP or credential.
+    method_detail: Mapped[Optional[str]] = mapped_column(String(160))
+    transaction_date: Mapped[Optional[date]] = mapped_column(Date, index=True)
+    source: Mapped[str] = mapped_column(String(20), default="checkout", nullable=False)  # checkout | webhook | sync
+    category: Mapped[Optional[str]] = mapped_column(String(60), index=True)
+    category_source: Mapped[Optional[str]] = mapped_column(String(20))  # rule | invoice | description | auto | manual
+    category_confidence: Mapped[Optional[Decimal]] = mapped_column(Numeric(4, 3))
+    category_status: Mapped[str] = mapped_column(String(20), default="suggested", nullable=False)  # suggested | accepted
+    ledger_account_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("accounts.id"))
+    reconciliation_status: Mapped[str] = mapped_column(
+        String(20), default="unmatched", nullable=False, index=True
+    )  # unmatched | matched | partially_matched | needs_review | ignored
+    invoice_match_confidence: Mapped[Optional[Decimal]] = mapped_column(Numeric(4, 3))
+    posted_entry_id: Mapped[Optional[str]] = mapped_column(String(32))
+    raw_reference: Mapped[Optional[str]] = mapped_column(Text)  # sanitised Razorpay payload for audit
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
     customer: Mapped[Optional[Contact]] = relationship()
     invoice: Mapped[Optional[Invoice]] = relationship()
     customer_payment: Mapped[Optional[CustomerPayment]] = relationship()
+    ledger_account: Mapped[Optional[Account]] = relationship()
     refunds: Mapped[List[PaymentRefund]] = relationship(back_populates="payment", cascade="all, delete-orphan")
+
+    @property
+    def net_amount(self) -> Decimal:
+        """Amount actually settled: gross less gateway fee, tax on fee and refunds."""
+        return (
+            (self.amount or Decimal("0"))
+            - (self.razorpay_fee or Decimal("0"))
+            - (self.tax_on_fee or Decimal("0"))
+            - (self.refund_amount or Decimal("0"))
+        )
+
+
+RazorpayPayment = PaymentRecord
 
 
 class PaymentEvent(TimestampMixin, Base):
@@ -746,9 +796,65 @@ class FinancialTransactionRecord(TimestampMixin, OrgScopedMixin, Base):
     created_by: Mapped[Optional[str]] = mapped_column(String(32))
 
 
+class RazorpaySyncLog(TimestampMixin, OrgScopedMixin, Base):
+    """One row per synchronisation run — the audit trail for every import.
+
+    A run is never silently dropped: it starts as ``running`` and always ends as
+    ``completed``, ``partial`` or ``failed`` with a human readable message.
+    """
+    __tablename__ = "razorpay_sync_logs"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    sync_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # initial | incremental | manual | scheduled
+    status: Mapped[str] = mapped_column(String(20), default="running", nullable=False, index=True)  # running | completed | partial | failed
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    window_from: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    window_to: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    records_fetched: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    records_created: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    records_updated: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    records_skipped: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    records_failed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    refunds_synced: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    pages_fetched: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    mode: Mapped[str] = mapped_column(String(10), default="test", nullable=False)
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    triggered_by: Mapped[Optional[str]] = mapped_column(String(32))
+
+    @property
+    def duration_seconds(self) -> Optional[float]:
+        if not self.completed_at:
+            return None
+        return (self.completed_at - self.started_at).total_seconds()
+
+
+class RazorpayCategoryRule(TimestampMixin, OrgScopedMixin, Base):
+    """User-maintained categorisation rules, applied before any automatic guess."""
+    __tablename__ = "razorpay_category_rules"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    # description_contains | method_is | email_contains | notes_contains | status_is
+    match_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    match_value: Mapped[str] = mapped_column(String(200), nullable=False)
+    category: Mapped[str] = mapped_column(String(60), nullable=False)
+    ledger_account_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("accounts.id"))
+    priority: Mapped[int] = mapped_column(Integer, default=100, nullable=False, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by: Mapped[Optional[str]] = mapped_column(String(32))
+
+    ledger_account: Mapped[Optional[Account]] = relationship()
+
+
+
+# --------------------------------------------------------------------------- #
+# External payment intake
+# --------------------------------------------------------------------------- #
 class ExternalPayment(TimestampMixin, OrgScopedMixin, Base):
-    """External payment received from any outside platform (UPI, Stripe, Razorpay, PhonePe, Bank, etc.)
-    awaiting or confirmed via Gmail SMTP YES/NO confirmation flow.
+    """External payment received from any outside platform (UPI, bank transfer,
+    a card gateway, a wallet, and so on), awaiting or confirmed through the
+    email YES/NO confirmation flow.
     """
     __tablename__ = "external_payments"
 
@@ -779,4 +885,8 @@ class ExternalPayment(TimestampMixin, OrgScopedMixin, Base):
     customer: Mapped[Optional[Contact]] = relationship()
     customer_payment: Mapped[Optional[CustomerPayment]] = relationship()
     bank_account: Mapped[Optional[BankAccount]] = relationship()
+
+
+ExternalPaymentProof = ExternalPayment
+
 

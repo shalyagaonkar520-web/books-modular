@@ -19,7 +19,12 @@ os.environ["DATA_DIR"] = _TMP
 os.environ["SECRET_KEY"] = "test-secret-key-not-for-production"
 os.environ["AUTO_CREATE_TABLES"] = "true"
 os.environ["LOGIN_RATE_LIMIT_PER_MINUTE"] = "1000"
-
+# Tests must not depend on whatever a developer's local .env happens to
+# contain (real Gmail credentials, a leftover webhook secret, ...). Fix these
+# so the suite behaves identically here and in CI, where no .env exists.
+os.environ["SMTP_USER"] = "test-sender@example.com"
+os.environ["SMTP_PASSWORD"] = "test-smtp-app-password"
+os.environ["RAZORPAY_WEBHOOK_SECRET"] = "test-razorpay-webhook-secret"
 from fastapi.testclient import TestClient  # noqa: E402
 
 from backend.db import Base, engine  # noqa: E402

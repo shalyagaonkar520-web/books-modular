@@ -149,7 +149,7 @@ def generate_invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -
             Paragraph(f"<b>{cust_name}</b><br/>{cust_addr}<br/>Email: {cust_email}<br/>GSTIN: {cust_gstin}", value_style),
             Paragraph(
                 f"Reference: {invoice.reference or 'N/A'}<br/>"
-                f"Payment Mode: Bank / UPI / Razorpay<br/>"
+                f"Payment Mode: Bank / UPI<br/>"
                 f"Bank: HDFC Bank - A/C 50200012345678<br/>"
                 f"IFSC: HDFC0001234",
                 value_style,
