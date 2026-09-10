@@ -29,6 +29,13 @@ services:
       ALLOW_PUBLIC_SIGNUP: ${ALLOW_PUBLIC_SIGNUP:-true}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+      # Outbound email: read from .env on the host, never baked
+      # into the image.
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_SENDER_NAME: ${SMTP_SENDER_NAME:-Rooman Books Accounts}
     volumes:
       - api_data:/app/data
     depends_on:

@@ -33,9 +33,11 @@ interface StatTileProps {
   sublabel?: string;
   tone?: 'neutral' | 'positive' | 'negative' | 'warning';
   icon?: ReactNode;
+  chart?: ReactNode;
+  children?: ReactNode;
 }
 
-export function StatTile({ label, value, sublabel, tone = 'neutral', icon }: StatTileProps) {
+export function StatTile({ label, value, sublabel, tone = 'neutral', icon, chart, children }: StatTileProps) {
   return (
     <div className={`stat-tile tone-${tone}`}>
       <div className="stat-tile-head">
@@ -44,6 +46,8 @@ export function StatTile({ label, value, sublabel, tone = 'neutral', icon }: Sta
       </div>
       <div className="stat-value">{value}</div>
       {sublabel ? <div className="stat-sublabel">{sublabel}</div> : null}
+      {chart ? <div className="stat-chart">{chart}</div> : null}
+      {children}
     </div>
   );
 }

@@ -9,20 +9,16 @@ import {
   Download,
   FileCheck,
   Image as ImageIcon,
-  Key,
   KeyRound,
   Laptop,
   Lock,
   Mail,
-  MessageSquare,
   Moon,
   Palette,
   Phone,
-  QrCode,
   RotateCw,
   RotateCcw,
   Shield,
-  ShieldCheck,
   Sun,
   Trash2,
   User as UserIcon,
@@ -42,7 +38,7 @@ import { initials } from '@/utils/format';
 import { PASSWORD_HINT, validatePassword } from './passwordRules';
 import './ProfilePage.css';
 
-type ActiveTab = 'personal' | 'security' | 'mfa' | 'groups' | 'sessions' | 'notifications' | 'preferences' | 'terms';
+type ActiveTab = 'personal' | 'security' | 'groups' | 'sessions' | 'notifications' | 'preferences' | 'terms';
 type ThemeMode = 'light' | 'dark' | 'luxury';
 type PhotoModalMode = 'select' | 'camera' | 'crop';
 
@@ -115,13 +111,6 @@ export function ProfilePage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordProblem, setPasswordProblem] = useState<string | null>(null);
-
-  // Two-Step Authentication / MFA State
-  const [mfaEnabled, setMfaEnabled] = useState(() => {
-    return localStorage.getItem('rooman_mfa_enabled') === 'true';
-  });
-  const [showQrModal, setShowQrModal] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
 
   // Notification preferences
   const [notifications, setNotifications] = useState({
@@ -350,29 +339,6 @@ export function ProfilePage() {
     }
   };
 
-  // Toggle Two-Step Authentication
-  const handleToggleMfa = () => {
-    if (!mfaEnabled) {
-      setShowQrModal(true);
-    } else {
-      setMfaEnabled(false);
-      localStorage.setItem('rooman_mfa_enabled', 'false');
-      toast.success('Two-Step Authentication disabled');
-    }
-  };
-
-  const handleVerifyOtp = () => {
-    if (otpCode.trim().length !== 6) {
-      toast.error('Please enter a 6-digit verification code');
-      return;
-    }
-    setMfaEnabled(true);
-    localStorage.setItem('rooman_mfa_enabled', 'true');
-    setShowQrModal(false);
-    setOtpCode('');
-    toast.success('Two-Step Authentication successfully configured and enabled!');
-  };
-
   // Export Account Data
   const exportAccountData = () => {
     const backupData = {
@@ -437,17 +403,6 @@ export function ProfilePage() {
               <Shield size={16} />
               <span>Security & Password</span>
               {activeTab === 'security' && <span className="zp-nav-indicator" />}
-            </button>
-          </li>
-          <li>
-            <button
-              type="button"
-              className={`zp-nav-btn ${activeTab === 'mfa' ? 'active' : ''}`}
-              onClick={() => setActiveTab('mfa')}
-            >
-              <Key size={16} />
-              <span>Two-Step Authentication</span>
-              {activeTab === 'mfa' && <span className="zp-nav-indicator" />}
             </button>
           </li>
           <li>
@@ -821,136 +776,6 @@ export function ProfilePage() {
           </div>
         )}
 
-        {/* TAB 3: Two-Step Authentication / MFA */}
-        {activeTab === 'mfa' && (
-          <div>
-            <h1 className="zp-page-title">Two-Step Authentication</h1>
-
-            <div className="zp-card">
-              <div className="zp-card-header">
-                <div>
-                  <h3 className="zp-card-title">Two-Step Verification (MFA)</h3>
-                  <p className="zp-card-subtitle">
-                    Enforce an extra authentication factor during sign-in to safeguard your books against credential theft.
-                  </p>
-                </div>
-                <label className="zp-switch">
-                  <input
-                    type="checkbox"
-                    checked={mfaEnabled}
-                    onChange={handleToggleMfa}
-                  />
-                  <span className="zp-slider" />
-                </label>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-                <span className={mfaEnabled ? 'zp-role-badge-admin' : 'zp-role-badge-viewer'}>
-                  {mfaEnabled ? <CheckCircle2 size={13} /> : <Shield size={13} />}
-                  {mfaEnabled ? 'Protection Active' : 'Currently Disabled'}
-                </span>
-                <span style={{ fontSize: '12.5px', color: 'var(--zp-text-secondary)' }}>
-                  {mfaEnabled
-                    ? 'Your account requires an authenticator code or SMS OTP on every sign-in.'
-                    : 'Toggle switch to set up Zoho OneAuth or Google Authenticator.'}
-                </span>
-              </div>
-
-              <div className="zp-mfa-grid">
-                {/* Method 1: Authenticator App */}
-                <div className="zp-mfa-card">
-                  <div className="zp-mfa-card-top">
-                    <div className="zp-mfa-icon-wrap">
-                      <QrCode size={20} style={{ color: 'var(--zp-accent)' }} />
-                    </div>
-                    {mfaEnabled && (
-                      <span className="zp-badge-verified">
-                        <Check size={11} /> Primary
-                      </span>
-                    )}
-                  </div>
-                  <div>
-                    <h4 style={{ margin: '0 0 4px', fontSize: '15px', color: 'var(--zp-text-primary)' }}>
-                      Authenticator App
-                    </h4>
-                    <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--zp-text-secondary)' }}>
-                      Generate dynamic time-based codes via Zoho OneAuth, Google Authenticator, or Microsoft Authenticator.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="zp-crop-tool-btn"
-                    style={{ alignSelf: 'flex-start', marginTop: 'auto' }}
-                    onClick={() => setShowQrModal(true)}
-                  >
-                    {mfaEnabled ? 'Reconfigure App' : 'Set Up Authenticator'}
-                  </button>
-                </div>
-
-                {/* Method 2: SMS OTP */}
-                <div className="zp-mfa-card">
-                  <div className="zp-mfa-card-top">
-                    <div className="zp-mfa-icon-wrap">
-                      <MessageSquare size={20} style={{ color: 'var(--zp-gold)' }} />
-                    </div>
-                  </div>
-                  <div>
-                    <h4 style={{ margin: '0 0 4px', fontSize: '15px', color: 'var(--zp-text-primary)' }}>
-                      SMS / Mobile Verification
-                    </h4>
-                    <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--zp-text-secondary)' }}>
-                      Receive one-time passcodes via SMS to your registered recovery number ({extras.phone || '+91 98765 43210'}).
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="zp-crop-tool-btn"
-                    style={{ alignSelf: 'flex-start', marginTop: 'auto' }}
-                    onClick={() => toast.success(`Test verification SMS sent to ${extras.phone || '+91 98765 43210'}`)}
-                  >
-                    Send Test SMS
-                  </button>
-                </div>
-
-                {/* Method 3: Backup Recovery Codes */}
-                <div className="zp-mfa-card">
-                  <div className="zp-mfa-card-top">
-                    <div className="zp-mfa-icon-wrap">
-                      <ShieldCheck size={20} style={{ color: '#0284c7' }} />
-                    </div>
-                  </div>
-                  <div>
-                    <h4 style={{ margin: '0 0 4px', fontSize: '15px', color: 'var(--zp-text-primary)' }}>
-                      Emergency Backup Codes
-                    </h4>
-                    <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--zp-text-secondary)' }}>
-                      Download single-use codes to access your account if you ever lose your phone or security device.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="zp-crop-tool-btn"
-                    style={{ alignSelf: 'flex-start', marginTop: 'auto' }}
-                    onClick={() => {
-                      const codes = ['7821-9943', '1209-4482', '9938-1120', '4839-2910', '5521-8849'];
-                      const blob = new Blob([codes.join('\n')], { type: 'text/plain' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `rooman_backup_codes_${user.name}.txt`;
-                      a.click();
-                      URL.revokeObjectURL(url);
-                      toast.success('Backup codes downloaded');
-                    }}
-                  >
-                    <Download size={13} /> Download Codes
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* TAB 4: Groups & Roles */}
         {activeTab === 'groups' && (
           <div>
@@ -1093,16 +918,6 @@ export function ProfilePage() {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
               <h1 className="zp-page-title" style={{ margin: 0 }}>Active Sessions</h1>
-              <button
-                type="button"
-                className="zp-cancel-btn"
-                style={{ color: '#ef4444', borderColor: '#fca5a5' }}
-                onClick={() => {
-                  toast.success('All other sessions terminated');
-                }}
-              >
-                Terminate All Other Sessions
-              </button>
             </div>
 
             <div className="zp-card">
@@ -1444,78 +1259,6 @@ export function ProfilePage() {
           </div>
         )}
       </main>
-
-      {/* Two-Step Verification (MFA) Setup QR Dialog */}
-      {showQrModal && (
-        <div className="zp-modal-overlay" onClick={() => setShowQrModal(false)}>
-          <div className="zp-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="zp-modal-header">
-              <strong style={{ color: 'var(--zp-text-primary)', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <QrCode size={18} style={{ color: 'var(--zp-accent)' }} /> Set Up Authenticator App
-              </strong>
-              <button
-                type="button"
-                onClick={() => setShowQrModal(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--zp-text-secondary)' }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="zp-modal-body">
-              <p style={{ fontSize: '13px', color: 'var(--zp-text-secondary)', textAlign: 'center', margin: 0 }}>
-                Scan the QR code below using your mobile authenticator app (Zoho OneAuth, Google Authenticator, or Microsoft Authenticator).
-              </p>
-
-              {/* Mock Authenticator QR Canvas */}
-              <div
-                style={{
-                  width: '160px',
-                  height: '160px',
-                  background: '#ffffff',
-                  border: '2px solid var(--zp-card-border)',
-                  borderRadius: '12px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '10px',
-                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.06)',
-                }}
-              >
-                <QrCode size={110} style={{ color: '#0f172a' }} />
-                <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600, marginTop: '4px' }}>
-                  KEY: RM-BOOK-7721
-                </span>
-              </div>
-
-              <div style={{ width: '100%' }}>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--zp-text-secondary)', display: 'block', marginBottom: '6px' }}>
-                  Enter 6-Digit Authenticator Code
-                </label>
-                <input
-                  type="text"
-                  maxLength={6}
-                  value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                  placeholder="123456"
-                  className="zp-field-input"
-                  style={{ textAlign: 'center', fontSize: '20px', letterSpacing: '4px', fontWeight: 700 }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', width: '100%', justifyContent: 'flex-end', marginTop: '6px' }}>
-                <button type="button" className="zp-cancel-btn" onClick={() => setShowQrModal(false)}>
-                  Cancel
-                </button>
-                <button type="button" className="zp-edit-btn" onClick={handleVerifyOtp}>
-                  <Check size={14} /> Verify & Activate
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Photo Upload, Camera & Interactive Crop Modal */}
       {photoModalOpen && (

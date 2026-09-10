@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { CheckCircle2, FileSpreadsheet, Layers, Upload, Eye, Trash2 } from 'lucide-react';
 
 import { documentsApi } from '@/api/endpoints';
@@ -151,7 +152,9 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
 
   const activeSection = categorized?.sections[selectedSectionIndex];
 
-  return (
+  if (!open) return null;
+
+  return createPortal(
     <Modal
       open={open}
       size="xl"
@@ -515,6 +518,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
           ) : null}
         </div>
       )}
-    </Modal>
+    </Modal>,
+    document.body
   );
 }

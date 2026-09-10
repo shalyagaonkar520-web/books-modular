@@ -60,8 +60,8 @@ export function InvoicesPage() {
   const [page, setPage] = useState(1);
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [paymentFor, setPaymentFor] = useState<PaymentInvoiceContext | null>(null);
-  const [mailInvoice, setMailInvoice] = useState<InvoiceListItem | null>(null);
   const [payOnlineInvoice, setPayOnlineInvoice] = useState<InvoiceListItem | null>(null);
+  const [mailInvoice, setMailInvoice] = useState<InvoiceListItem | null>(null);
   const [autoReminding, setAutoReminding] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);

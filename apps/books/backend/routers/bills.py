@@ -20,7 +20,7 @@ from backend.schemas.sales import LineOut
 from backend.services import audit, export_service, inventory, ledger, numbering
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.documents import compute_lines, group_by_account, totals
-from backend.services.email_service import SENDER_NAME, SMTP_USER, get_smtp_connection
+from backend.services.email_service import get_smtp_connection, sender_identity
 from backend.services.money import money
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
@@ -315,7 +315,8 @@ def send_bill_via_gmail(
 
     msg = MIMEMultipart("mixed") if pdf_bytes else MIMEMultipart("alternative")
     msg["Subject"] = f"Purchase Bill Voucher {bill.bill_number} - Rooman Technologies"
-    msg["From"] = f"{SENDER_NAME} <{SMTP_USER}>"
+    sender_name, sender_email = sender_identity()
+    msg["From"] = f"{sender_name} <{sender_email}>"
     msg["To"] = payload.to_email
 
     vendor_name = bill.vendor.display_name if bill.vendor else "Vendor"
@@ -341,7 +342,7 @@ def send_bill_via_gmail(
 
     try:
         server = get_smtp_connection()
-        server.sendmail(SMTP_USER, payload.to_email, msg.as_string())
+        server.sendmail(sender_email, payload.to_email, msg.as_string())
         server.quit()
     except Exception as e:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Gmail SMTP error: {e}")

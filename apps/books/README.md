@@ -88,6 +88,8 @@ Settings are read from environment variables, or from `.env`. See `.env.example`
 | `LOGIN_RATE_LIMIT_PER_MINUTE` | `10` | Per-IP limit on login and registration attempts. |
 | `MAX_UPLOAD_SIZE_MB` | `25` | Largest accepted document upload. |
 | `WEB_CONCURRENCY` | `2` | Gunicorn worker count in the container. |
+| `SMTP_USER` | *(empty)* | Mailbox used for outbound email. Empty disables email; reminders then report themselves as skipped. |
+| `SMTP_PASSWORD` | *(empty)* | App password for that mailbox. Server-side only, never sent to the browser. |
 
 ---
 

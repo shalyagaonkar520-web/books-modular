@@ -19,7 +19,6 @@ os.environ["DATA_DIR"] = _TMP
 os.environ["SECRET_KEY"] = "test-secret-key-not-for-production"
 os.environ["AUTO_CREATE_TABLES"] = "true"
 os.environ["LOGIN_RATE_LIMIT_PER_MINUTE"] = "1000"
-
 from fastapi.testclient import TestClient  # noqa: E402
 
 from backend.db import Base, engine  # noqa: E402

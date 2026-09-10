@@ -226,3 +226,285 @@ export const razorpayApi = {
     return downloadFile(`/razorpay/reports/export?${params.toString()}`, `${reportType}_report.csv`);
   },
 };
+
+/* -------------------------------------------------------------------------- */
+/* Integration status, transaction sync and categorisation                     */
+/* -------------------------------------------------------------------------- */
+
+export interface SyncLog {
+  id: string;
+  sync_type: 'initial' | 'incremental' | 'manual' | 'scheduled';
+  status: 'running' | 'completed' | 'partial' | 'failed';
+  started_at: string;
+  completed_at?: string | null;
+  duration_seconds?: number | null;
+  window_from?: string | null;
+  window_to?: string | null;
+  records_fetched: number;
+  records_created: number;
+  records_updated: number;
+  records_skipped: number;
+  records_failed: number;
+  refunds_synced: number;
+  pages_fetched: number;
+  mode: string;
+  error_message?: string | null;
+  triggered_by?: string | null;
+}
+
+export interface IntegrationStatus {
+  configured: boolean;
+  connected: boolean;
+  reachable: boolean | null;
+  mode: 'test' | 'live';
+  /** Masked for display, e.g. rzp_test_ABCD...WXYZ. The secret is never sent. */
+  key_id_masked: string;
+  webhook_configured: boolean;
+  error?: string | null;
+  auto_sync_enabled: boolean;
+  sync_interval_minutes: number;
+  initial_import_days: number;
+  webhook_path: string;
+  transactions_imported: number;
+  ever_synced: boolean;
+  last_successful_sync?: SyncLog | null;
+  last_sync?: SyncLog | null;
+}
+
+export interface SyncResponse {
+  success: boolean;
+  message: string;
+  sync: SyncLog;
+}
+
+export type ReconciliationStatus =
+  | 'matched'
+  | 'unmatched'
+  | 'partially_matched'
+  | 'needs_review'
+  | 'ignored';
+
+export interface RazorpayTransaction {
+  id: string;
+  razorpay_order_id?: string | null;
+  razorpay_payment_id: string;
+  razorpay_invoice_id?: string | null;
+  customer_id?: string | null;
+  customer_name?: string | null;
+  customer_email?: string | null;
+  customer_contact?: string | null;
+  invoice_id?: string | null;
+  invoice_number?: string | null;
+  description?: string | null;
+  amount: number;
+  currency: string;
+  payment_method: string;
+  method_detail?: string | null;
+  payment_status: string;
+  mode: string;
+  source: string;
+  transaction_date?: string | null;
+  captured_at?: string | null;
+  refund_amount: number;
+  razorpay_fee: number;
+  tax_on_fee: number;
+  net_settlement: number;
+  net_amount: number;
+  category: string;
+  category_label: string;
+  category_source?: string | null;
+  category_confidence?: number | null;
+  category_status: 'suggested' | 'accepted';
+  ledger_account_id?: string | null;
+  reconciliation_status: ReconciliationStatus;
+  invoice_match_confidence?: number | null;
+  error_code?: string | null;
+  error_description?: string | null;
+  last_synced_at?: string | null;
+  created_at: string;
+}
+
+export interface TransactionDetail extends RazorpayTransaction {
+  ledger_account_name?: string | null;
+  ledger_account_code?: string | null;
+  refunds: Array<{
+    id: string;
+    razorpay_refund_id: string;
+    amount: number;
+    refund_date: string;
+    status: string;
+    speed: string;
+    reason: string;
+  }>;
+  accounting_entries: Array<{
+    id: string;
+    entry_number: string;
+    date: string;
+    total: number;
+    lines: Array<{ account_id: string; description?: string | null; debit: number; credit: number }>;
+  }>;
+  raw_reference?: Record<string, unknown> | null;
+}
+
+export interface PaymentsOverview {
+  total_payments: number;
+  total_payments_count: number;
+  successful_payments: number;
+  successful_count: number;
+  failed_payments: number;
+  failed_count: number;
+  refunds: number;
+  gateway_fees: number;
+  net_revenue: number;
+  todays_payments: number;
+  this_month_payments: number;
+  by_status: Record<string, { count: number; amount: number }>;
+  by_method: Array<{ method: string; count: number; amount: number }>;
+  by_reconciliation: Record<string, number>;
+}
+
+export interface InvoiceCandidate {
+  invoice_id: string;
+  invoice_number: string;
+  invoice_date: string;
+  due_date: string;
+  customer_id: string;
+  customer_name?: string | null;
+  total: number;
+  balance_due: number;
+  status: string;
+  confidence: number;
+  reasons: string[];
+}
+
+export interface InvoiceMatchResult {
+  ambiguous: boolean;
+  reason: string;
+  can_auto_book: boolean;
+  candidates: InvoiceCandidate[];
+}
+
+export interface CategoryOption {
+  value: string;
+  label: string;
+  account_code?: string | null;
+}
+
+export interface CategoryRule {
+  id: string;
+  name: string;
+  match_type: string;
+  match_value: string;
+  category: string;
+  category_label: string;
+  ledger_account_id?: string | null;
+  priority: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface CategoryRulePayload {
+  name: string;
+  match_type: string;
+  match_value: string;
+  category: string;
+  ledger_account_id?: string | null;
+  priority: number;
+  is_active: boolean;
+}
+
+export interface TransactionFilters extends QueryParams {
+  status?: string;
+  method?: string;
+  customer_id?: string;
+  category?: string;
+  reconciliation_status?: string;
+  date_from?: string;
+  date_to?: string;
+  amount_min?: number;
+  amount_max?: number;
+  search?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface PagedResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ConnectRazorpayPayload {
+  key_id: string;
+  key_secret: string;
+  webhook_secret?: string;
+  mode?: 'test' | 'live';
+}
+
+export interface ConnectRazorpayResponse {
+  success: boolean;
+  connected: boolean;
+  reachable?: boolean;
+  message: string;
+  status: IntegrationStatus;
+}
+
+export const razorpaySyncApi = {
+  getIntegrationStatus: () => api.get<IntegrationStatus>('/razorpay/integration/status'),
+
+  connectIntegration: (payload: ConnectRazorpayPayload) =>
+    api.post<ConnectRazorpayResponse>('/razorpay/integration/connect', payload),
+
+  disconnectIntegration: () =>
+    api.post<{ success: boolean; connected: boolean; message: string; status: IntegrationStatus }>(
+      '/razorpay/integration/disconnect',
+    ),
+
+  /** Import new transactions. `full` re-scans the whole initial history window. */
+  sync: (full = false) => api.post<SyncResponse>('/razorpay/sync', { full }),
+
+  listSyncLogs: (params?: QueryParams) => api.get<PagedResult<SyncLog>>('/razorpay/sync/logs', params),
+
+  getOverview: (params?: QueryParams) => api.get<PaymentsOverview>('/razorpay/overview', params),
+
+  listTransactions: (params?: TransactionFilters) =>
+    api.get<PagedResult<RazorpayTransaction>>('/razorpay/payments', params),
+
+  getTransaction: (id: string) => api.get<TransactionDetail>(`/razorpay/payments/${id}`),
+
+  setCategory: (id: string, category: string, acceptSuggestion = false) =>
+    api.post<RazorpayTransaction>(`/razorpay/payments/${id}/category`, {
+      category,
+      accept_suggestion: acceptSuggestion,
+    }),
+
+  getInvoiceMatches: (id: string) => api.get<InvoiceMatchResult>(`/razorpay/payments/${id}/invoice-matches`),
+
+  matchInvoice: (id: string, invoiceId: string) =>
+    api.post<{
+      success: boolean;
+      message: string;
+      invoice_status: string;
+      amount_paid: number;
+      balance_due: number;
+      payment: RazorpayTransaction;
+    }>(`/razorpay/payments/${id}/match-invoice`, { invoice_id: invoiceId, confirm: true }),
+
+  setReconciliation: (id: string, status: ReconciliationStatus, note?: string) =>
+    api.post<RazorpayTransaction>(`/razorpay/payments/${id}/reconciliation`, { status, note }),
+
+  listCategories: () => api.get<{ items: CategoryOption[]; match_types: string[] }>('/razorpay/categories'),
+
+  listRules: () => api.get<{ items: CategoryRule[]; total: number }>('/razorpay/category-rules'),
+
+  createRule: (payload: CategoryRulePayload) => api.post<CategoryRule>('/razorpay/category-rules', payload),
+
+  updateRule: (id: string, payload: CategoryRulePayload) =>
+    api.put<CategoryRule>(`/razorpay/category-rules/${id}`, payload),
+
+  deleteRule: (id: string) => api.delete<void>(`/razorpay/category-rules/${id}`),
+
+  reapplyRules: () =>
+    api.post<{ success: boolean; evaluated: number; recategorised: number }>('/razorpay/category-rules/reapply'),
+};

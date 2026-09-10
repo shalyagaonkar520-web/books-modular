@@ -14,6 +14,7 @@ from sqlalchemy import text
 
 from backend.config import get_settings
 from backend.db import SessionLocal, create_all
+from backend.services import razorpay_scheduler
 
 settings = get_settings()
 logger = logging.getLogger("roomanbooks")
@@ -26,7 +27,11 @@ async def lifespan(_app: FastAPI):
     if settings.auto_create_tables:
         create_all()
     logger.info("Rooman Books API started (env=%s, db=%s)", settings.environment, "sqlite" if settings.is_sqlite else "postgresql")
-    yield
+    razorpay_scheduler.start()
+    try:
+        yield
+    finally:
+        await razorpay_scheduler.stop()
 
 
 def create_app() -> FastAPI:

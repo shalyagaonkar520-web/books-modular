@@ -32,7 +32,7 @@ from backend.schemas.sales import CustomerPaymentCreate, CustomerPaymentOut
 from backend.services import audit, bank, export_service, ledger, numbering
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.email_service import (
-    SMTP_USER,
+    sender_identity,
     send_customer_payment_email,
     send_payment_confirmation_request_email,
     send_vendor_payment_email,
@@ -722,7 +722,7 @@ def receive_external_payment(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    """Universal intake endpoint for payments from ANY outside platform (UPI, Stripe, Razorpay, PhonePe, Paytm, Bank, etc.).
+    """Universal intake endpoint for payments from ANY outside platform (UPI, bank transfer, card gateway, wallet, etc.).
     Records payment in pending confirmation state and dispatches confirmation email via Gmail SMTP.
     """
     # 1. Resolve Organization
@@ -783,7 +783,7 @@ def receive_external_payment(
         req_base = str(request.base_url).rstrip("/")
         base_url = req_base if req_base else "http://localhost:8000"
 
-    recipient = payload.recipient_email or SMTP_USER or "shalya@rooman.com"
+    recipient = payload.recipient_email or sender_identity()[1]
     email_result = send_payment_confirmation_request_email(
         to_email=recipient,
         payment_id=ext_payment.id,
@@ -1008,7 +1008,7 @@ def resend_external_payment_confirmation_email(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment is already {ext_pay.status}")
 
     base_url = str(request.base_url).rstrip("/") or "http://localhost:8000"
-    recipient = ext_pay.confirmation_email_recipient or SMTP_USER or "shalya@rooman.com"
+    recipient = ext_pay.confirmation_email_recipient or sender_identity()[1]
 
     inv_num = ext_pay.invoice.invoice_number if ext_pay.invoice else None
     result = send_payment_confirmation_request_email(

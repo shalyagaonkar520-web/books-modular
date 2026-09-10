@@ -4,17 +4,37 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any, Dict, Optional
 
-SMTP_HOST = "smtp.gmail.com"
-SMTP_PORT = 587
-SMTP_USER = "shalya@rooman.com"
-SMTP_PASSWORD = "***REMOVED***"
-SENDER_NAME = "Rooman Technologies Accounts"
+from backend.config import get_settings
+
+
+class SmtpNotConfigured(RuntimeError):
+    """Raised when an email is requested but no SMTP credentials are set."""
+
+
+def _smtp():
+    """Current SMTP settings. Read at call time so tests can override them."""
+    return get_settings()
+
+
+def smtp_configured() -> bool:
+    return _smtp().smtp_configured
+
+
+def sender_identity() -> tuple[str, str]:
+    """(sender name, sender address) for the From header. Never the password."""
+    settings = _smtp()
+    return settings.smtp_sender_name, settings.smtp_user
 
 
 def get_smtp_connection():
-    server = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
+    settings = _smtp()
+    if not settings.smtp_configured:
+        raise SmtpNotConfigured(
+            "Email is not configured. Set SMTP_USER and SMTP_PASSWORD in the server environment."
+        )
+    server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30)
     server.starttls()
-    server.login(SMTP_USER, SMTP_PASSWORD)
+    server.login(settings.smtp_user, settings.smtp_password)
     return server
 
 
@@ -33,7 +53,7 @@ def send_due_reminder_email(
     try:
         msg = MIMEMultipart("mixed") if pdf_bytes else MIMEMultipart("alternative")
         msg["Subject"] = f"Payment Reminder: Invoice {invoice_id} is Overdue - Rooman Technologies"
-        msg["From"] = f"{SENDER_NAME} <{SMTP_USER}>"
+        msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
         msg["To"] = to_email
 
         formatted_amount = f"₹{amount:,.2f}"
@@ -126,7 +146,7 @@ def send_due_reminder_email(
             msg.attach(part)
 
         server = get_smtp_connection()
-        server.sendmail(SMTP_USER, to_email, msg.as_string())
+        server.sendmail(_smtp().smtp_user, to_email, msg.as_string())
         server.quit()
 
         return {
@@ -159,7 +179,7 @@ def send_invoice_email(
     try:
         msg = MIMEMultipart("mixed") if pdf_bytes else MIMEMultipart("alternative")
         msg["Subject"] = f"Tax Invoice {invoice_id} from Rooman Technologies Pvt Ltd"
-        msg["From"] = f"{SENDER_NAME} <{SMTP_USER}>"
+        msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
         msg["To"] = to_email
 
         formatted_amount = f"₹{amount:,.2f}"
@@ -217,7 +237,7 @@ def send_invoice_email(
             msg.attach(part)
 
         server = get_smtp_connection()
-        server.sendmail(SMTP_USER, to_email, msg.as_string())
+        server.sendmail(_smtp().smtp_user, to_email, msg.as_string())
         server.quit()
 
         return {
@@ -243,7 +263,7 @@ def send_custom_message_email(
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = f"{SENDER_NAME} <{SMTP_USER}>"
+        msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
         msg["To"] = to_email
 
         formatted_msg = message.replace("\n", "<br/>")
@@ -288,7 +308,7 @@ def send_custom_message_email(
         msg.attach(MIMEText(html_body, "html"))
 
         server = get_smtp_connection()
-        server.sendmail(SMTP_USER, to_email, msg.as_string())
+        server.sendmail(_smtp().smtp_user, to_email, msg.as_string())
         server.quit()
 
         return {
@@ -324,7 +344,7 @@ def send_payment_confirmation_request_email(
         display_platform = platform.upper()
 
         msg["Subject"] = f"⚡ ACTION REQUIRED: Confirm {display_platform} Payment of {formatted_amount} from {payer_name or 'Customer'}"
-        msg["From"] = f"{SENDER_NAME} <{SMTP_USER}>"
+        msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
         msg["To"] = to_email
 
         yes_url = f"{base_url}/api/payments/external/confirm?token={approval_token}&decision=yes"
@@ -423,7 +443,7 @@ def send_payment_confirmation_request_email(
         msg.attach(MIMEText(html_body, "html"))
 
         server = get_smtp_connection()
-        server.sendmail(SMTP_USER, to_email, msg.as_string())
+        server.sendmail(_smtp().smtp_user, to_email, msg.as_string())
         server.quit()
 
         return {
@@ -456,7 +476,7 @@ def send_customer_payment_email(
     try:
         msg = MIMEMultipart("mixed") if pdf_bytes else MIMEMultipart("alternative")
         msg["Subject"] = f"Official Payment Receipt: {payment_number} - Rooman Technologies"
-        msg["From"] = f"{SENDER_NAME} <{SMTP_USER}>"
+        msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
         msg["To"] = to_email
 
         formatted_amount = f"₹{amount:,.2f}"
@@ -505,7 +525,7 @@ def send_customer_payment_email(
             msg.attach(part)
 
         server = get_smtp_connection()
-        server.sendmail(SMTP_USER, to_email, msg.as_string())
+        server.sendmail(_smtp().smtp_user, to_email, msg.as_string())
         server.quit()
         return {"success": True, "message": f"Payment receipt {payment_number} emailed to {to_email}"}
     except Exception as e:
@@ -528,7 +548,7 @@ def send_vendor_payment_email(
     try:
         msg = MIMEMultipart("mixed") if pdf_bytes else MIMEMultipart("alternative")
         msg["Subject"] = f"Payment Remittance Advice: Voucher {payment_number} - Rooman Technologies"
-        msg["From"] = f"{SENDER_NAME} <{SMTP_USER}>"
+        msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
         msg["To"] = to_email
 
         formatted_amount = f"₹{amount:,.2f}"
@@ -577,7 +597,7 @@ def send_vendor_payment_email(
             msg.attach(part)
 
         server = get_smtp_connection()
-        server.sendmail(SMTP_USER, to_email, msg.as_string())
+        server.sendmail(_smtp().smtp_user, to_email, msg.as_string())
         server.quit()
         return {"success": True, "message": f"Remittance advice {payment_number} emailed to {to_email}"}
     except Exception as e:
@@ -600,7 +620,7 @@ def send_expense_email(
     try:
         msg = MIMEMultipart("mixed") if pdf_bytes else MIMEMultipart("alternative")
         msg["Subject"] = f"Expense Voucher: {expense_number} ({category}) - Rooman Technologies"
-        msg["From"] = f"{SENDER_NAME} <{SMTP_USER}>"
+        msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
         msg["To"] = to_email
 
         formatted_amount = f"₹{amount:,.2f}"
@@ -647,7 +667,7 @@ def send_expense_email(
             msg.attach(part)
 
         server = get_smtp_connection()
-        server.sendmail(SMTP_USER, to_email, msg.as_string())
+        server.sendmail(_smtp().smtp_user, to_email, msg.as_string())
         server.quit()
         return {"success": True, "message": f"Expense notification {expense_number} emailed to {to_email}"}
     except Exception as e:

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
+  ArrowLeftRight,
   BarChart3,
   Building2,
   ChevronDown,
@@ -8,6 +9,7 @@ import {
   FileText,
   FolderOpen,
   Home,
+  IndianRupee,
   Landmark,
   Package,
   Receipt,
@@ -65,7 +67,9 @@ const SINGLE_LINKS: NavEntry[] = [
 
 const LOWER_LINKS: NavEntry[] = [
   { to: '/financial-dashboard', label: 'Financial Hub', icon: CreditCard },
+  { to: '/receivables-payables', label: 'Receivables & Payables', icon: ArrowLeftRight },
   { to: '/banking', label: 'Banking', icon: Landmark },
+  { to: '/razorpay-payments', label: 'Razorpay payments', icon: IndianRupee },
   { to: '/time-tracking', label: 'Time tracking', icon: FolderOpen },
   { to: '/accounting', label: 'Accountant', icon: BarChart3 },
   { to: '/reports', label: 'Reports', icon: BarChart3 },
