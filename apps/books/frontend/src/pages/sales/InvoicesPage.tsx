@@ -167,6 +167,10 @@ export function InvoicesPage() {
 
   const today = todayIso();
 
+  // Anything with no payments against it can be deleted; the API reverses
+  // the ledger entries for a posted invoice on the way out.
+  const isInvoiceDeletable = (invoice: InvoiceListItem) => invoice.amountPaid <= 0;
+
   const columns: Array<Column<InvoiceListItem>> = [
     {
       key: 'invoiceNumber',
@@ -308,7 +312,7 @@ export function InvoicesPage() {
                   <Ban size={15} />
                 </button>
               ) : null}
-              {row.status === 'draft' || row.status === 'void' ? (
+              {isInvoiceDeletable(row) ? (
                 <button
                   type="button"
                   className="action-btn is-danger"
@@ -329,7 +333,6 @@ export function InvoicesPage() {
   ];
 
   const rows = invoices.data?.items ?? [];
-  const isInvoiceDeletable = (invoice: InvoiceListItem) => invoice.status === 'draft' || invoice.status === 'void';
   const deletableRows = rows.filter(isInvoiceDeletable);
   const hasFilters = Boolean(debouncedSearch || customerId || startDate || endDate || status !== 'all');
 
@@ -553,7 +556,7 @@ export function InvoicesPage() {
               }}
               isAllSelected={deletableRows.length > 0 && selectedIds.size === deletableRows.length}
               isRowSelectable={isInvoiceDeletable}
-              rowNotSelectableReason={() => 'Only draft or void invoices can be deleted.'}
+              rowNotSelectableReason={() => 'This invoice has payments recorded against it. Delete those payments first.'}
             />
             <Pagination page={page} pageSize={invoices.data?.pageSize ?? PAGE_SIZE} total={invoices.data?.total ?? 0} onPageChange={setPage} />
           </>

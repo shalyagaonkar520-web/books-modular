@@ -115,3 +115,34 @@ def test_unapplied_customer_advance(client, org):
     res = client.post("/api/customer-payments", headers=h, json={"customerId": org["customer"]["id"], "bankAccountId": org["bank"]["id"], "date": "2026-09-02", "amount": 1500})
     assert res.status_code == 201 and res.json()["invoiceId"] is None
     assert trial_balance_ok(client, h)
+
+
+def test_unpaid_sent_invoice_can_be_deleted_and_reverses_the_ledger(client, org):
+    """The Invoices page only let you select draft/void rows, so with sent
+    invoices the bulk-delete had nothing to act on and looked broken. The API
+    has always unposted a sent-but-unpaid invoice on the way out."""
+    h = org["h"]
+    sent = client.post("/api/invoices", headers=h, json={
+        "customerId": org["customer"]["id"], "date": "2026-09-01", "dueDate": "2026-09-20", "status": "sent",
+        "lines": [{"itemId": org["service"]["id"], "description": "Work", "quantity": 1, "rate": 10000, "taxRate": 18}],
+    }).json()
+    assert sent["status"] == "sent" and sent["amountPaid"] == 0
+
+    removed = client.delete(f"/api/invoices/{sent['id']}", headers=h)
+    assert removed.status_code == 200, removed.text
+    assert client.get(f"/api/invoices/{sent['id']}", headers=h).status_code == 404
+    assert trial_balance_ok(client, h)
+
+    # One with a payment against it is still refused.
+    paid = client.post("/api/invoices", headers=h, json={
+        "customerId": org["customer"]["id"], "date": "2026-09-02", "dueDate": "2026-09-20", "status": "sent",
+        "lines": [{"itemId": org["service"]["id"], "description": "Work", "quantity": 1, "rate": 8000, "taxRate": 0}],
+    }).json()
+    payment = client.post("/api/customer-payments", headers=h, json={
+        "customerId": org["customer"]["id"], "invoiceId": paid["id"], "bankAccountId": org["bank"]["id"],
+        "date": "2026-09-05", "amount": 2000, "mode": "bank_transfer"})
+    assert payment.status_code == 201, payment.text
+    refused = client.delete(f"/api/invoices/{paid['id']}", headers=h)
+    assert refused.status_code == 400
+    assert "payments" in refused.json()["detail"].lower()
+    assert trial_balance_ok(client, h)
