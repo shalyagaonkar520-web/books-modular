@@ -1,7 +1,7 @@
 import io
 from datetime import date, timedelta
 
-from tests.conftest import trial_balance_ok
+from tests.conftest import invite_and_accept, trial_balance_ok
 
 
 def test_projects_time_and_invoicing(client, org):
@@ -73,7 +73,7 @@ def test_payroll_cycle(client, org):
 
 def test_payroll_requires_admin(client, org):
     h = org["h"]
-    client.post("/api/users", headers=h, json={"name": "Staffer", "email": "staff@rooman.example.com", "role": "staff", "password": "Staff12345"})
+    invite_and_accept(client, h, "Staffer", "staff@rooman.example.com", "staff", "Staff12345")
     login = client.post("/api/auth/login", json={"email": "staff@rooman.example.com", "password": "Staff12345"}).json()
     sh = {"Authorization": f"Bearer {login['accessToken']}"}
     assert client.get("/api/payroll/employees", headers=sh).status_code == 200

@@ -47,7 +47,7 @@ services:
   web:
     build:
       context: .
-      dockerfile: Dockerfile.frontend
+      dockerfile: frontend/Dockerfile
     restart: unless-stopped
     depends_on:
       - api

@@ -7,7 +7,7 @@ PORT="${PORT:-8000}"
 
 if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
   echo "Applying database migrations…"
-  alembic upgrade head
+  alembic -c database/alembic.ini upgrade head
 fi
 
 case "${1:-serve}" in

@@ -84,10 +84,14 @@ class User(TimestampMixin, OrgScopedMixin, Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[str] = mapped_column(String(20), default="staff", nullable=False)  # admin | staff | viewer
+    # Null while an email invite is pending acceptance - the invitee has no
+    # password yet and cannot log in until they set one via the invite link.
+    password_hash: Mapped[Optional[str]] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(20), default="staff", nullable=False)  # admin | staff | viewer | employee
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    invite_token_hash: Mapped[Optional[str]] = mapped_column(String(64), unique=True, index=True)
+    invite_token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     organization: Mapped[Organization] = relationship(back_populates="users")
 
@@ -102,6 +106,7 @@ class RefreshToken(Base):
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     user_agent: Mapped[Optional[str]] = mapped_column(String(255))
+    ip_address: Mapped[Optional[str]] = mapped_column(String(64))
 
 
 class DocumentSequence(Base):
@@ -570,6 +575,14 @@ class Employee(TimestampMixin, OrgScopedMixin, Base):
     professional_tax: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
     tds: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Set once this employee has been invited to the self-service portal and
+    # accepted - lets them log in (role=employee) and see only their own
+    # payslips and profile. Null until then; SET NULL if that login is removed.
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(32), ForeignKey("users.id", ondelete="SET NULL"), unique=True, index=True
+    )
+
+    user: Mapped[Optional[User]] = relationship()
 
 
 class PayRun(TimestampMixin, OrgScopedMixin, Base):

@@ -4,10 +4,10 @@
 
 ```bash
 python -m pip install -r requirements-dev.txt
-npm install
+(cd frontend && npm install)
 cp .env.example .env
 python -c "import secrets; print('SECRET_KEY=' + secrets.token_urlsafe(48))" >> .env
-alembic upgrade head
+alembic -c database/alembic.ini upgrade head
 ./scripts/dev.sh
 ```
 
@@ -44,24 +44,25 @@ alembic upgrade head
 2. Add the handler to the matching module in `backend/routers/`, depending on
    `get_current_user` for reads and `require_write` or `require_admin` for writes.
 3. Record an audit entry for mutations with `backend/services/audit.record`.
-4. Add a typed wrapper to `src/api/endpoints.ts` and the response type to `src/api/types.ts`.
+4. Add a typed wrapper to `frontend/src/api/endpoints.ts` and the response type to `frontend/src/api/types.ts`.
 5. Cover it in `tests/`, then run the commands in the pull request template.
 
 ## Changing the schema
 
 ```bash
 # edit backend/models.py, then:
-alembic revision --autogenerate -m "describe the change"
+alembic -c database/alembic.ini revision --autogenerate -m "describe the change"
 # review the generated file, then:
-alembic upgrade head
-alembic check     # must report no new operations
+alembic -c database/alembic.ini upgrade head
+alembic -c database/alembic.ini check     # must report no new operations
 ```
 
 ## Code style
 
 - Python: `ruff check backend tests` must be clean. Type hints on public functions, and
   docstrings where the intent is not obvious from the name.
-- TypeScript: strict mode with no `any`, and `npm run lint` must report zero warnings.
-  Reuse the components in `src/components/ui/` rather than adding new styling.
-- CSS: extend `src/styles/index.css` using the existing custom properties. No inline style
-  objects except for values computed at runtime.
+- TypeScript: strict mode with no `any`, and `npm run lint` (run from `frontend/`) must report
+  zero warnings. Reuse the components in `frontend/src/components/ui/` rather than adding new
+  styling.
+- CSS: extend `frontend/src/styles/index.css` using the existing custom properties. No inline
+  style objects except for values computed at runtime.

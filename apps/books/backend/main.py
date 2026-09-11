@@ -7,7 +7,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -73,6 +73,7 @@ def create_app() -> FastAPI:
         logger.exception("Unhandled error on %s %s", request.method, request.url.path)
         return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
+    from backend.deps import require_full_app_access
     from backend.routers import (
         accounting,
         auth,
@@ -81,6 +82,7 @@ def create_app() -> FastAPI:
         contacts,
         dashboard,
         documents,
+        employee_portal,
         expenses,
         invoices,
         items,
@@ -92,13 +94,28 @@ def create_app() -> FastAPI:
         reports,
     )
 
+    # auth (login, /me, change-password, sessions) and the employee portal
+    # stay reachable by every role, including the restricted "employee"
+    # portal-only login. Most other routers require require_full_app_access
+    # (admin/staff/viewer) at the router level, so a new endpoint that only
+    # checks get_current_user is safe by default rather than accidentally
+    # exposing company data to that role.
+    #
+    # payments and razorpay are excluded from that blanket gate because each
+    # mixes in a handful of endpoints that must stay reachable with no user
+    # session at all - the Razorpay webhook (server-to-server, signature
+    # verified) and the external-payment email confirmation links a customer
+    # clicks without ever logging in. Their other, authenticated endpoints
+    # are individually guarded in those files instead. email is excluded
+    # because every endpoint in it is already unauthenticated by design
+    # (pre-existing behaviour, unrelated to this change).
+    app.include_router(auth.router)
+    app.include_router(employee_portal.router)
     for module in (
-        auth,
         organization,
         items,
         contacts,
         invoices,
-        payments,
         bills,
         expenses,
         banking,
@@ -108,12 +125,13 @@ def create_app() -> FastAPI:
         payroll,
         reports,
         dashboard,
-        razorpay,
     ):
-        app.include_router(module.router)
+        app.include_router(module.router, dependencies=[Depends(require_full_app_access)])
+    app.include_router(payments.router)
+    app.include_router(razorpay.router)
     from backend.routes import email
     app.include_router(email.router)
-    app.include_router(items.adjustments_router)
+    app.include_router(items.adjustments_router, dependencies=[Depends(require_full_app_access)])
 
     @app.get("/api/health", tags=["Health"])
     def health():

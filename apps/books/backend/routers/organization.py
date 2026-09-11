@@ -1,15 +1,18 @@
 """Organization profile, user management, audit log."""
 from __future__ import annotations
 
+import secrets
+from datetime import UTC, datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.config import get_settings
 from backend.db import get_db
 from backend.deps import get_current_user, require_admin
-from backend.models import AuditLog, User
+from backend.models import AuditLog, Employee, User
 from backend.schemas.auth import (
     AuditLogOut,
     InviteUserRequest,
@@ -19,9 +22,15 @@ from backend.schemas.auth import (
     UserOut,
 )
 from backend.schemas.common import Message, Page
-from backend.security import hash_password
+from backend.security import hash_password, hash_token
 from backend.services import audit
-from backend.services.tenancy import Pagination, paginate
+from backend.services.email_service import send_invite_email, smtp_configured
+from backend.services.tenancy import Pagination, get_or_404, paginate
+
+settings = get_settings()
+
+# How long an invite link stays valid before the admin has to resend it.
+INVITE_TOKEN_EXPIRE_DAYS = 7
 
 router = APIRouter(prefix="/api", tags=["Organization"])
 
@@ -55,16 +64,52 @@ def invite_user(payload: InviteUserRequest, user: User = Depends(require_admin),
     email = payload.email.lower()
     if db.execute(select(User.id).where(User.email == email)).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "A user with this email already exists")
+    if not smtp_configured():
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Outbound email is not configured on the server, so invite links cannot be delivered. "
+            "Set SMTP_USER and SMTP_PASSWORD, or ask an administrator to.",
+        )
+
+    employee: Employee | None = None
+    if payload.role == "employee":
+        if not payload.employee_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Select which employee this portal login is for.")
+        employee = get_or_404(db, Employee, payload.employee_id, user.organization_id, "Employee")
+        if employee.user_id:
+            raise HTTPException(status.HTTP_409_CONFLICT, "This employee already has portal access.")
+
+    raw_token = secrets.token_urlsafe(32)
     new_user = User(
         organization_id=user.organization_id,
         name=payload.name,
         email=email,
         role=payload.role,
-        password_hash=hash_password(payload.password),
+        password_hash=None,
+        is_active=True,
+        invite_token_hash=hash_token(raw_token),
+        invite_token_expires_at=datetime.now(UTC) + timedelta(days=INVITE_TOKEN_EXPIRE_DAYS),
     )
     db.add(new_user)
     db.flush()
-    audit.record(db, user, "create", "user", new_user.id, f"Invited {email} as {payload.role}")
+    if employee is not None:
+        employee.user_id = new_user.id
+
+    accept_url = f"{settings.frontend_url}/accept-invite?token={raw_token}"
+    result = send_invite_email(
+        to_email=email,
+        name=payload.name,
+        organization_name=user.organization.name,
+        role=payload.role,
+        inviter_name=user.name,
+        accept_url=accept_url,
+    )
+    if not result.get("success"):
+        db.rollback()
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Could not send the invite email: {result.get('error', 'unknown error')}")
+
+    detail = f"Invited {email} as {payload.role}" + (f", linked to employee {employee.name}" if employee else "")
+    audit.record(db, user, "create", "user", new_user.id, detail)
     db.commit()
     return UserOut.model_validate(new_user)
 

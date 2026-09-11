@@ -38,18 +38,18 @@ Python 3.11 or newer and Node.js 20 or newer. PostgreSQL is optional locally, si
 ```bash
 # 1. Install dependencies
 python -m pip install -r requirements-dev.txt
-npm install
+cd frontend && npm install && cd ..
 
 # 2. Create your environment file and a signing key
 cp .env.example .env
 python -c "import secrets; print('SECRET_KEY=' + secrets.token_urlsafe(48))" >> .env
 
 # 3. Create the database schema
-alembic upgrade head
+alembic -c database/alembic.ini upgrade head
 
 # 4. Run both services
 uvicorn backend.main:app --reload --port 8000     # terminal 1
-npm run dev                                        # terminal 2
+cd frontend && npm run dev                         # terminal 2
 ```
 
 `./scripts/dev.sh` does all of the above in one command.
@@ -78,8 +78,8 @@ Settings are read from environment variables, or from `.env`. See `.env.example`
 | --- | --- | --- |
 | `SECRET_KEY` | *(required in production)* | Signs access tokens. The app refuses to start in production without it. |
 | `ENVIRONMENT` | `development` | `development`, `test` or `production`. Production disables `/docs` and automatic table creation. |
-| `DATABASE_URL` | `sqlite:///./data/roomanbooks.db` | SQLAlchemy URL. Use `postgresql+psycopg://…` for PostgreSQL. |
-| `DATA_DIR` | `./data` | Where the SQLite file and uploaded documents live. |
+| `DATABASE_URL` | `sqlite:///./database/data/roomanbooks.db` | SQLAlchemy URL. Use `postgresql+psycopg://…` for PostgreSQL. |
+| `DATA_DIR` | `./database/data` | Where the SQLite file and uploaded documents live. |
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated list of browser origins allowed to call the API. |
 | `COOKIE_SECURE` | `false` | Set `true` behind HTTPS so the refresh cookie is marked `Secure`. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Access token lifetime. |
@@ -218,10 +218,10 @@ Alembic owns the schema. In production `AUTO_CREATE_TABLES` is forced off, so mi
 only way the schema changes.
 
 ```bash
-alembic upgrade head                              # apply migrations
-alembic revision --autogenerate -m "add x"        # create a migration after editing models
-alembic downgrade -1                              # roll back one revision
-alembic check                                     # fail if models and migrations disagree
+alembic -c database/alembic.ini upgrade head                       # apply migrations
+alembic -c database/alembic.ini revision --autogenerate -m "add x" # create a migration after editing models
+alembic -c database/alembic.ini downgrade -1                       # roll back one revision
+alembic -c database/alembic.ini check                              # fail if models and migrations disagree
 ```
 
 CI runs `alembic upgrade head` followed by `alembic check` against PostgreSQL on every pull
@@ -234,9 +234,13 @@ request, so a model change without a migration cannot merge.
 ```bash
 pytest -q                    # backend suite, SQLite by default
 pytest -q --cov=backend      # with coverage
+
+cd frontend
 npm run test                 # frontend unit tests
 npm run lint                 # ESLint, zero warnings tolerated
 npx tsc -b                   # TypeScript project check
+cd ..
+
 bash scripts/smoke_api.sh http://localhost:8000   # end to end against a running API
 ```
 
@@ -290,23 +294,35 @@ year, and never caches the app shell.
 ## Project layout
 
 ```
-backend/
-  main.py              FastAPI app, middleware, health check
-  config.py  db.py     settings and the SQLAlchemy engine and session
-  models.py            ORM models for every table
-  security.py deps.py  hashing, JWTs, current-user and role dependencies
-  routers/             one module per API area
-  schemas/             pydantic request and response models
-  services/            ledger, inventory, banking, numbering and report helpers
-alembic/               migration environment and versions
-tests/                 pytest suite
-src/
-  api/                 typed client and endpoint wrappers
-  auth/                auth context and route guards
-  components/          UI kit and app layout
-  pages/               one folder per module
-  hooks/ utils/        data-fetching hooks and formatting helpers
-  styles/index.css     the design system
-scripts/               dev runner and end-to-end smoke test
-docker/                container entrypoint and the nginx rate-limit include
+backend/                 FastAPI application (Python)
+  main.py                app, middleware, health check
+  config.py  db.py       settings and the SQLAlchemy engine and session
+  models.py              ORM models for every table
+  security.py deps.py    hashing, JWTs, current-user and role dependencies
+  routers/               one module per API area
+  schemas/               pydantic request and response models
+  services/              ledger, inventory, banking, numbering and report helpers
+tests/                   pytest suite (backend)
+
+database/                schema and data (invoked with -c database/alembic.ini)
+  alembic.ini  alembic/  migration environment and versions
+  data/                  gitignored: the SQLite file and uploaded documents
+
+frontend/                Vite + React application (TypeScript)
+  src/
+    api/                 typed client and endpoint wrappers
+    auth/                auth context and route guards
+    components/          UI kit and app layout
+    pages/               one folder per module
+    hooks/ utils/        data-fetching hooks and formatting helpers
+    styles/index.css     the design system
+  public/                static assets served as-is (favicon, sample import files)
+  index.html  vite.config.ts  tsconfig*.json  package.json   build/tooling config
+  Dockerfile             builds the production web image (nginx + static build)
+
+scripts/                 dev runner and end-to-end smoke test
+docker/                  container entrypoint and the nginx rate-limit include
 ```
+
+Backend commands (`uvicorn`, `alembic`, `pytest`) run from the repo root; frontend
+commands (`npm ...`) run from `frontend/`. `./scripts/dev.sh` starts both for you.

@@ -1,7 +1,8 @@
-# Node / frontend
+# Node / frontend (patterns below match at any depth, e.g. frontend/node_modules/)
 node_modules/
 dist/
 .vite/
+coverage/
 *.local
 
 # Python
@@ -12,15 +13,23 @@ venv/
 env/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
 .coverage
 coverage.xml
 htmlcov/
 *.egg-info/
 
-# Application data (databases and uploaded files)
+# Application data (databases and uploaded files) - covers database/data/
 data/
 *.db
+*.db-shm
+*.db-wal
 *.sqlite3
+
+# Backup / scratch files someone might drop in the data dir
+*.bak
+*.save
+*.orig
 
 # Environment and secrets
 .env
@@ -38,3 +47,6 @@ Thumbs.db
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# Logs
+*.log

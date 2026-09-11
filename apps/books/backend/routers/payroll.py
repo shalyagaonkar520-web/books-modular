@@ -16,6 +16,7 @@ from backend.models import BankAccount, Employee, PayRun, Payslip, User
 from backend.schemas.common import Message
 from backend.schemas.payroll import (
     EmployeeCreate,
+    EmployeeOptionOut,
     EmployeeOut,
     EmployeeUpdate,
     PayRunCreate,
@@ -39,7 +40,7 @@ def employee_out(e: Employee) -> EmployeeOut:
         date_of_joining=e.date_of_joining, pan=e.pan, bank_account_number_masked=mask_number(e.bank_account_number), bank_ifsc=e.bank_ifsc,
         basic_salary=e.basic_salary, hra=e.hra, other_allowances=e.other_allowances, pf_employee=e.pf_employee,
         professional_tax=e.professional_tax, tds=e.tds, gross_salary=gross, net_salary=money(gross - deductions), is_active=e.is_active,
-        created_at=e.created_at,
+        created_at=e.created_at, has_login=bool(e.user_id),
     )
 
 
@@ -70,6 +71,20 @@ def list_employees(include_inactive: bool = False, user: User = Depends(get_curr
     return [employee_out(e) for e in db.execute(stmt.order_by(Employee.employee_code)).scalars()]
 
 
+@router.get("/employees/unlinked", response_model=List[EmployeeOptionOut])
+def list_unlinked_employees(user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Active employees with no portal login yet - the picker shown when inviting someone as Employee."""
+    stmt = (
+        select(Employee)
+        .where(Employee.organization_id == user.organization_id, Employee.is_active.is_(True), Employee.user_id.is_(None))
+        .order_by(Employee.name)
+    )
+    return [
+        EmployeeOptionOut(id=e.id, employee_code=e.employee_code, name=e.name, email=e.email)
+        for e in db.execute(stmt).scalars()
+    ]
+
+
 @router.post("/employees", response_model=EmployeeOut, status_code=status.HTTP_201_CREATED)
 def create_employee(payload: EmployeeCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
     data = payload.model_dump()
@@ -89,6 +104,9 @@ def update_employee(employee_id: str, payload: EmployeeUpdate, user: User = Depe
     emp = get_or_404(db, Employee, employee_id, user.organization_id, "Employee")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(emp, field, value)
+    if emp.is_active is False and emp.user:
+        # Deactivating the employee record locks their portal login too.
+        emp.user.is_active = False
     audit.record(db, user, "update", "employee", emp.id, f"Updated employee {emp.name}")
     db.commit()
     return employee_out(emp)
@@ -100,8 +118,12 @@ def delete_employee(employee_id: str, user: User = Depends(require_admin), db: S
     has_slips = db.execute(select(Payslip.id).where(Payslip.employee_id == emp.id).limit(1)).first()
     if has_slips:
         emp.is_active = False
+        if emp.user:
+            emp.user.is_active = False
         db.commit()
         return Message(message="Employee has payslips and was marked inactive instead of deleted")
+    if emp.user:
+        emp.user.is_active = False
     db.delete(emp)
     audit.record(db, user, "delete", "employee", employee_id, f"Deleted employee {emp.name}")
     db.commit()

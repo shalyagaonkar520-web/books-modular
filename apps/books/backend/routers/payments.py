@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
-from backend.deps import get_current_user, require_write
+from backend.deps import require_full_app_access, require_write
 from backend.models import (
     BankAccount,
     Bill,
@@ -104,7 +104,7 @@ def list_customer_payments(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     pagination: Pagination = Depends(),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_full_app_access),
     db: Session = Depends(get_db),
 ):
     stmt = select(CustomerPayment).where(CustomerPayment.organization_id == user.organization_id).options(
@@ -128,7 +128,7 @@ def export_customer_payments_pdf(
     customer_id: Optional[str] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_full_app_access),
     db: Session = Depends(get_db),
 ):
     """Export Customer Payments Received registry to PDF."""
@@ -157,7 +157,7 @@ def export_customer_payments_excel(
     customer_id: Optional[str] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_full_app_access),
     db: Session = Depends(get_db),
 ):
     """Export Customer Payments Received registry to Excel."""
@@ -250,7 +250,7 @@ def delete_customer_payment(payment_id: str, user: User = Depends(require_write)
 
 
 @router.get("/customer-payments/{payment_id}/pdf")
-def download_customer_payment_pdf(payment_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def download_customer_payment_pdf(payment_id: str, user: User = Depends(require_full_app_access), db: Session = Depends(get_db)):
     """Download single Customer Payment receipt as PDF."""
     stmt = select(CustomerPayment).where(CustomerPayment.id == payment_id, CustomerPayment.organization_id == user.organization_id).options(
         selectinload(CustomerPayment.customer), selectinload(CustomerPayment.invoice), selectinload(CustomerPayment.bank_account)
@@ -332,7 +332,7 @@ def list_vendor_payments(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     pagination: Pagination = Depends(),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_full_app_access),
     db: Session = Depends(get_db),
 ):
     stmt = select(VendorPayment).where(VendorPayment.organization_id == user.organization_id).options(
@@ -356,7 +356,7 @@ def export_vendor_payments_pdf(
     vendor_id: Optional[str] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_full_app_access),
     db: Session = Depends(get_db),
 ):
     """Export Vendor Payments Made registry to PDF."""
@@ -385,7 +385,7 @@ def export_vendor_payments_excel(
     vendor_id: Optional[str] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_full_app_access),
     db: Session = Depends(get_db),
 ):
     """Export Vendor Payments Made registry to Excel."""
@@ -478,7 +478,7 @@ def delete_vendor_payment(payment_id: str, user: User = Depends(require_write), 
 
 
 @router.get("/vendor-payments/{payment_id}/pdf")
-def download_vendor_payment_pdf(payment_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def download_vendor_payment_pdf(payment_id: str, user: User = Depends(require_full_app_access), db: Session = Depends(get_db)):
     """Download single Vendor Payment remittance advice as PDF."""
     stmt = select(VendorPayment).where(VendorPayment.id == payment_id, VendorPayment.organization_id == user.organization_id).options(
         selectinload(VendorPayment.vendor), selectinload(VendorPayment.bill), selectinload(VendorPayment.bank_account)
@@ -981,7 +981,7 @@ def list_external_payments(
     status_filter: Optional[str] = Query(None, alias="status"),
     platform: Optional[str] = None,
     pagination: Pagination = Depends(),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_full_app_access),
     db: Session = Depends(get_db),
 ):
     """List all external payments received from outside platforms."""

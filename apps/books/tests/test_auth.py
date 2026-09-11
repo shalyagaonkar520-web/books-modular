@@ -1,4 +1,15 @@
+import re
+from unittest.mock import MagicMock, patch
+
 from tests.conftest import auth, register_org
+
+
+def _extract_invite_token(mock_server) -> str:
+    """Pulls the invite token out of the accept-invite link in the mocked email body."""
+    _, _, msg_string = mock_server.sendmail.call_args[0]
+    match = re.search(r"token=([\w\-]+)", msg_string)
+    assert match, "invite email did not contain an accept-invite link"
+    return match.group(1)
 
 
 def test_register_creates_org_admin_and_bootstrap(client):
@@ -68,17 +79,30 @@ def test_change_password_revokes_other_sessions(client):
     assert client.post("/api/auth/login", json={"email": ctx["email"], "password": "NewStr0ngPass!"}).status_code == 200
 
 
-def test_user_management_and_roles(client):
+@patch("backend.services.email_service.smtplib.SMTP")
+def test_user_management_and_roles(mock_smtp, client):
+    mock_server = MagicMock()
+    mock_smtp.return_value = mock_server
+
     ctx = register_org(client, "Roles")
     h = auth(ctx["token"])
-    viewer = client.post("/api/users", headers=h, json={"name": "View Only", "email": "viewer@roles.example.com", "role": "viewer", "password": "Viewer1234"})
+    viewer = client.post("/api/users", headers=h, json={"name": "View Only", "email": "viewer@roles.example.com", "role": "viewer"})
     assert viewer.status_code == 201
+    # An invited user has no password yet - they must accept the emailed invite first.
+    assert client.post("/api/auth/login", json={"email": "viewer@roles.example.com", "password": "whatever"}).status_code == 401
+    invite_token = _extract_invite_token(mock_server)
+    assert client.get(f"/api/auth/invite/{invite_token}").json()["email"] == "viewer@roles.example.com"
+    accepted = client.post("/api/auth/accept-invite", json={"token": invite_token, "password": "Viewer1234"})
+    assert accepted.status_code == 200
+    # The link is single-use.
+    assert client.post("/api/auth/accept-invite", json={"token": invite_token, "password": "Viewer1234"}).status_code == 404
+
     login = client.post("/api/auth/login", json={"email": "viewer@roles.example.com", "password": "Viewer1234"}).json()
     vh = auth(login["accessToken"])
     assert client.get("/api/items", headers=vh).status_code == 200
     denied = client.post("/api/contacts", headers=vh, json={"type": "customer", "displayName": "Nope"})
     assert denied.status_code == 403
-    assert client.post("/api/users", headers=vh, json={"name": "X", "email": "x@roles.example.com", "role": "staff", "password": "Staff12345"}).status_code == 403
+    assert client.post("/api/users", headers=vh, json={"name": "X", "email": "x@roles.example.com", "role": "staff"}).status_code == 403
     # promote to staff -> can write
     promoted = client.patch(f"/api/users/{viewer.json()['id']}", headers=h, json={"role": "staff"})
     assert promoted.status_code == 200

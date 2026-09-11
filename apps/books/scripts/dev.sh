@@ -9,12 +9,12 @@ if [ ! -f .env ]; then
   cp .env.example .env
   {
     printf '\nENVIRONMENT=development\n'
-    printf 'DATABASE_URL=sqlite:///./data/roomanbooks.db\n'
+    printf 'DATABASE_URL=sqlite:///./database/data/roomanbooks.db\n'
     printf 'SECRET_KEY=%s\n' "$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
   } >> .env
 fi
 
-mkdir -p data
+mkdir -p database/data
 
 cleanup() {
   echo
@@ -24,12 +24,12 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "Applying database migrations…"
-alembic upgrade head
+alembic -c database/alembic.ini upgrade head
 
 echo "Starting API on http://127.0.0.1:8000 (API docs at /docs)"
 uvicorn backend.main:app --reload --port 8000 &
 
 echo "Starting web app on http://localhost:3000"
-npm run dev &
+(cd frontend && npm run dev) &
 
 wait

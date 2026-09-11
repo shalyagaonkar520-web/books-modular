@@ -1131,3 +1131,271 @@ def generate_contacts_list_excel(contacts: List[Contact], contact_type: str = "c
     wb.save(buf)
     return buf.getvalue()
 
+
+def generate_overall_dashboard_report_pdf(summary_data: any, org: Optional[Organization] = None, period_label: str = "This Fiscal Year") -> bytes:
+    """Generate a comprehensive Executive Financial & Operations Overall Report PDF."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=36,
+        leftMargin=36,
+        topMargin=36,
+        bottomMargin=36,
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "ReportTitle",
+        parent=styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        leading=22,
+        textColor=colors.HexColor("#0f172a"),
+    )
+    subtitle_style = ParagraphStyle(
+        "ReportSubtitle",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        leading=15,
+        textColor=colors.HexColor("#2563eb"),
+    )
+    sec_heading = ParagraphStyle(
+        "SectionHeading",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=12,
+        leading=16,
+        textColor=colors.HexColor("#1e293b"),
+    )
+    value_style = ParagraphStyle(
+        "ValueStyle",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=8.5,
+        leading=12,
+        textColor=colors.HexColor("#334155"),
+    )
+    header_th = ParagraphStyle(
+        "THStyle",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=8.5,
+        leading=11,
+        textColor=colors.white,
+    )
+    cell_style = ParagraphStyle(
+        "CellStyle",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=8,
+        leading=11,
+        textColor=colors.HexColor("#1e293b"),
+    )
+    cell_bold = ParagraphStyle(
+        "CellBold",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        leading=11,
+        textColor=colors.HexColor("#0f172a"),
+    )
+    cell_right = ParagraphStyle(
+        "CellRight",
+        parent=cell_style,
+        alignment=2,
+    )
+    cell_right_bold = ParagraphStyle(
+        "CellRightBold",
+        parent=cell_bold,
+        alignment=2,
+    )
+
+    story = []
+
+    org_name = (org.name if org else None) or "Rooman Technologies Pvt Ltd"
+    org_addr = (org.address if org else None) or "Rooman House, #12 Rajajinagar"
+    org_city_state = ", ".join(filter(None, [org.city if org else "Bengaluru", org.state if org else "Karnataka", org.postal_code if org else "560010"]))
+    org_gstin = (org.gstin if org else None) or "29AABCR1234F1Z5"
+    org_email = (org.email if org else None) or "shalya@rooman.com"
+
+    header_table_data = [
+        [
+            Paragraph(f"<b>{org_name}</b>", title_style),
+            Paragraph("<b>OVERALL FINANCIAL REPORT</b>", subtitle_style),
+        ],
+        [
+            Paragraph(f"{org_addr}<br/>{org_city_state}<br/>GSTIN: {org_gstin}<br/>Email: {org_email}", value_style),
+            Paragraph(
+                f"<b>Period:</b> {period_label}<br/>"
+                f"<b>Generated:</b> {datetime.now().strftime('%d %b %Y, %I:%M %p')}<br/>"
+                f"<b>Scope:</b> Live Executive Dashboard Position",
+                value_style,
+            ),
+        ],
+    ]
+    header_table = Table(header_table_data, colWidths=[330, 210])
+    header_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(header_table)
+    story.append(Spacer(1, 10))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#2563eb"), spaceAfter=14))
+
+    # Helper to read attr or dict
+    def _g(obj, attr, default=None):
+        if hasattr(obj, attr):
+            return getattr(obj, attr)
+        if isinstance(obj, dict):
+            return obj.get(attr, default)
+        return default
+
+    # Key Performance Indicators Table
+    story.append(Paragraph("Executive Financial Summary", sec_heading))
+    story.append(Spacer(1, 6))
+
+    rec = _g(summary_data, "receivables")
+    pay = _g(summary_data, "payables")
+    ie = _g(summary_data, "income_expense")
+    inv = _g(summary_data, "inventory")
+
+    tot_cash = float(_g(summary_data, "total_cash") or 0.0)
+    tot_rec = float(_g(rec, "total_receivables") or 0.0)
+    overdue_rec = float(_g(rec, "overdue_amount") or 0.0)
+    tot_pay = float(_g(pay, "total_payables") or 0.0)
+    overdue_pay = float(_g(pay, "overdue_amount") or 0.0)
+    tot_inc = float(_g(ie, "total_income") or 0.0)
+    tot_exp = float(_g(ie, "total_expense") or 0.0)
+    net_val = float(_g(ie, "net") or 0.0)
+    inv_val = float(_g(inv, "total_inventory_valuation") or 0.0)
+
+    kpi_data = [
+        [
+            Paragraph("Metric", header_th),
+            Paragraph("Amount (INR)", ParagraphStyle("THRight", parent=header_th, alignment=2)),
+            Paragraph("Context / Breakdown", header_th),
+        ],
+        [
+            Paragraph("Cash on Hand", cell_bold),
+            Paragraph(_fmt_curr(tot_cash), cell_right_bold),
+            Paragraph("Active liquid funds across bank and cash accounts", cell_style),
+        ],
+        [
+            Paragraph("Accounts Receivable", cell_bold),
+            Paragraph(_fmt_curr(tot_rec), cell_right_bold),
+            Paragraph(f"Overdue: {_fmt_curr(overdue_rec)} ({_g(rec, 'total_unpaid_invoices', 0)} open invoices)", cell_style),
+        ],
+        [
+            Paragraph("Accounts Payable", cell_bold),
+            Paragraph(_fmt_curr(tot_pay), cell_right_bold),
+            Paragraph(f"Overdue: {_fmt_curr(overdue_pay)} ({_g(pay, 'total_unpaid_bills', 0)} open bills)", cell_style),
+        ],
+        [
+            Paragraph("Total Revenue / Income", cell_bold),
+            Paragraph(_fmt_curr(tot_inc), cell_right_bold),
+            Paragraph("Operating & sales revenues recorded in period", cell_style),
+        ],
+        [
+            Paragraph("Total Operating Expenses", cell_bold),
+            Paragraph(_fmt_curr(tot_exp), cell_right_bold),
+            Paragraph("Expenses and direct operating costs", cell_style),
+        ],
+        [
+            Paragraph("<b>Net Position (Profit / Loss)</b>", cell_bold),
+            Paragraph(f"<b>{_fmt_curr(net_val)}</b>", cell_right_bold),
+            Paragraph("Net operational surplus for selected period" if net_val >= 0 else "Net operational deficit for selected period", cell_style),
+        ],
+        [
+            Paragraph("Inventory Valuation", cell_bold),
+            Paragraph(_fmt_curr(inv_val), cell_right_bold),
+            Paragraph(f"{_g(inv, 'total_items_count', 0)} items ({_g(inv, 'low_stock_items_count', 0)} low stock)", cell_style),
+        ],
+    ]
+
+    kpi_table = Table(kpi_data, colWidths=[160, 130, 250])
+    kpi_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    story.append(kpi_table)
+    story.append(Spacer(1, 14))
+
+    # Bank Accounts Section
+    bank_balances = _g(summary_data, "bank_balances") or []
+    if bank_balances:
+        story.append(Paragraph("Bank & Cash Accounts Position", sec_heading))
+        story.append(Spacer(1, 5))
+        bank_data = [
+            [
+                Paragraph("Account Name", header_th),
+                Paragraph("Account Type", header_th),
+                Paragraph("Current Balance", ParagraphStyle("THRight", parent=header_th, alignment=2)),
+            ]
+        ]
+        for b in bank_balances:
+            b_name = _g(b, "name") or "Account"
+            b_type = (_g(b, "type") or "bank").replace("_", " ").title()
+            b_bal = float(_g(b, "balance") or 0.0)
+            bank_data.append([
+                Paragraph(b_name, cell_style),
+                Paragraph(b_type, cell_style),
+                Paragraph(_fmt_curr(b_bal), cell_right),
+            ])
+        bank_table = Table(bank_data, colWidths=[240, 150, 150])
+        bank_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(bank_table)
+        story.append(Spacer(1, 14))
+
+    # Top Customers Section
+    top_custs = _g(summary_data, "top_customers") or []
+    if top_custs:
+        story.append(Paragraph("Top Customers by Sales Volume", sec_heading))
+        story.append(Spacer(1, 5))
+        cust_data = [
+            [
+                Paragraph("Customer Name", header_th),
+                Paragraph("Total Billed Volume", ParagraphStyle("THRight", parent=header_th, alignment=2)),
+            ]
+        ]
+        for tc in top_custs:
+            c_name = _g(tc, "contact_name") or "Customer"
+            c_amt = float(_g(tc, "amount") or 0.0)
+            cust_data.append([
+                Paragraph(c_name, cell_style),
+                Paragraph(_fmt_curr(c_amt), cell_right),
+            ])
+        cust_table = Table(cust_data, colWidths=[360, 180])
+        cust_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(cust_table)
+        story.append(Spacer(1, 14))
+
+    # Footer note
+    story.append(Spacer(1, 10))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#94a3b8"), spaceAfter=8))
+    footer_text = f"Generated by Rooman Books Cloud Accounting &bull; {org_name} &bull; Confidential Management Report"
+    story.append(Paragraph(footer_text, ParagraphStyle("FooterStyle", parent=value_style, alignment=1, textColor=colors.HexColor("#64748b"))))
+
+    doc.build(story)
+    return buffer.getvalue()
+
+

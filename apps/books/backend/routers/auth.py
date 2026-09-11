@@ -12,11 +12,14 @@ from backend.db import get_db
 from backend.deps import get_current_user
 from backend.models import BankAccount, Organization, RefreshToken, User
 from backend.schemas.auth import (
+    AcceptInviteRequest,
     AuthResponse,
     ChangePasswordRequest,
+    InviteInfo,
     LoginRequest,
     OrganizationOut,
     RegisterRequest,
+    SessionOut,
     TokenResponse,
     UpdateProfileRequest,
     UserOut,
@@ -32,6 +35,7 @@ from backend.security import (
 from backend.services import audit
 from backend.services.chart_of_accounts import bootstrap_accounts
 from backend.services.ratelimit import RateLimiter, client_ip
+from backend.services.user_agent import parse_user_agent
 
 settings = get_settings()
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
@@ -49,6 +53,7 @@ def _issue_tokens(db: Session, user: User, response: Response, request: Request)
             token_hash=hash_token(raw_refresh),
             expires_at=datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days),
             user_agent=(request.headers.get("user-agent") or "")[:255],
+            ip_address=client_ip(request)[:64],
         )
     )
     response.set_cookie(
@@ -121,10 +126,39 @@ def register(payload: RegisterRequest, request: Request, response: Response, db:
     return _auth_response(access, user)
 
 
+@router.get("/invite/{token}", response_model=InviteInfo)
+def get_invite(token: str, db: Session = Depends(get_db)):
+    """Looked up by the accept-invite page before it asks for a password."""
+    user = db.execute(select(User).where(User.invite_token_hash == hash_token(token))).scalar_one_or_none()
+    if user is None or user.password_hash is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This invite link is invalid or has already been used")
+    if user.invite_token_expires_at is None or user.invite_token_expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
+        raise HTTPException(status.HTTP_410_GONE, "This invite link has expired. Ask an administrator to resend it.")
+    return InviteInfo(name=user.name, email=user.email, organization_name=user.organization.name)
+
+
+@router.post("/accept-invite", response_model=Message)
+def accept_invite(payload: AcceptInviteRequest, db: Session = Depends(get_db)):
+    """Sets the invitee's own password. They then sign in normally at /login."""
+    user = db.execute(select(User).where(User.invite_token_hash == hash_token(payload.token))).scalar_one_or_none()
+    if user is None or user.password_hash is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This invite link is invalid or has already been used")
+    if user.invite_token_expires_at is None or user.invite_token_expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
+        raise HTTPException(status.HTTP_410_GONE, "This invite link has expired. Ask an administrator to resend it.")
+    user.password_hash = hash_password(payload.password)
+    user.invite_token_hash = None
+    user.invite_token_expires_at = None
+    audit.record(db, user, "update", "user", user.id, f"{user.email} accepted their invite and set a password")
+    db.commit()
+    return Message(message="Password set. You can now sign in.")
+
+
 @router.post("/login", response_model=AuthResponse)
 def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     login_limiter.check(f"login:{client_ip(request)}")
     user = db.execute(select(User).where(User.email == payload.email.lower())).scalar_one_or_none()
+    if user and user.password_hash is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "This invitation hasn't been accepted yet. Check your email for the setup link.")
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
     if not user.is_active:
@@ -196,3 +230,55 @@ def change_password(
     audit.record(db, user, "update", "user", user.id, "Password changed")
     db.commit()
     return Message(message="Password updated. Other sessions have been signed out.")
+
+
+@router.get("/sessions", response_model=list[SessionOut])
+def list_sessions(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Every device/browser the user is currently signed in on.
+
+    One row per active (unrevoked, unexpired) refresh token - which is issued
+    fresh on every login and every token refresh - so a login from another
+    device or browser shows up here as soon as it happens.
+    """
+    now = datetime.now(UTC)
+    current_raw = request.cookies.get(REFRESH_COOKIE)
+    current_hash = hash_token(current_raw) if current_raw else None
+    rows = db.execute(
+        select(RefreshToken)
+        .where(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None))
+        .order_by(RefreshToken.created_at.desc())
+    ).scalars()
+    out: list[SessionOut] = []
+    for token in rows:
+        # Compare in Python (not SQL) since SQLite stores this column as a
+        # naive timestamp - see the same pattern in refresh() above.
+        if token.expires_at.replace(tzinfo=UTC) < now:
+            continue
+        info = parse_user_agent(token.user_agent)
+        out.append(
+            SessionOut(
+                id=token.id,
+                device=info.device,
+                browser=info.browser,
+                ip_address=token.ip_address,
+                created_at=token.created_at,
+                expires_at=token.expires_at,
+                is_current=current_hash is not None and token.token_hash == current_hash,
+            )
+        )
+    return out
+
+
+@router.delete("/sessions/{session_id}", response_model=Message)
+def revoke_session(session_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Sign a single device/browser out remotely."""
+    token = db.execute(
+        select(RefreshToken).where(RefreshToken.id == session_id, RefreshToken.user_id == user.id)
+    ).scalar_one_or_none()
+    if token is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
+    if token.revoked_at is None:
+        token.revoked_at = datetime.now(UTC)
+        audit.record(db, user, "update", "user", user.id, "Signed out a device from Active Sessions")
+        db.commit()
+    return Message(message="Session signed out")

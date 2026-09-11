@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
-from backend.deps import get_current_user, require_write
+from backend.deps import require_financial_read, require_financial_write
 from backend.models import Account, BankAccount, BankTransaction, User
 from backend.schemas.banking import (
     BankAccountCreate,
@@ -58,7 +58,7 @@ def tx_out(tx: BankTransaction, running: Optional[Decimal] = None) -> BankTransa
 
 
 @router.get("/accounts", response_model=List[BankAccountOut])
-def list_accounts(include_inactive: bool = False, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_accounts(include_inactive: bool = False, user: User = Depends(require_financial_read), db: Session = Depends(get_db)):
     stmt = select(BankAccount).where(BankAccount.organization_id == user.organization_id)
     if not include_inactive:
         stmt = stmt.where(BankAccount.is_active.is_(True))
@@ -68,14 +68,14 @@ def list_accounts(include_inactive: bool = False, user: User = Depends(get_curre
 
 
 @router.get("/summary", response_model=BankingSummary)
-def banking_summary(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def banking_summary(user: User = Depends(require_financial_read), db: Session = Depends(get_db)):
     accounts = list_accounts(False, user, db)
     total = sum((a.current_balance if a.type != "credit_card" else -a.current_balance for a in accounts), Decimal("0"))
     return BankingSummary(total_balance=money(total), accounts=accounts, unreconciled_count=sum(a.unreconciled_count for a in accounts))
 
 
 @router.post("/accounts", response_model=BankAccountOut, status_code=status.HTTP_201_CREATED)
-def create_account(payload: BankAccountCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def create_account(payload: BankAccountCreate, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     org_id = user.organization_id
     ledger_account = bank.create_ledger_account(db, org_id, payload.name, payload.type)
     acct = BankAccount(
@@ -96,7 +96,7 @@ def create_account(payload: BankAccountCreate, user: User = Depends(require_writ
 
 
 @router.put("/accounts/{account_id}", response_model=BankAccountOut)
-def update_account(account_id: str, payload: BankAccountUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def update_account(account_id: str, payload: BankAccountUpdate, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     acct = get_or_404(db, BankAccount, account_id, user.organization_id, "Bank account")
     data = payload.model_dump(exclude_unset=True)
     if data.get("is_primary"):
@@ -121,7 +121,7 @@ def list_transactions(
     end_date: Optional[date] = None,
     search: Optional[str] = None,
     pagination: Pagination = Depends(),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     stmt = select(BankTransaction).where(BankTransaction.organization_id == user.organization_id).options(selectinload(BankTransaction.bank_account))
@@ -148,7 +148,7 @@ def list_transactions(
 
 
 @router.post("/accounts/{account_id}/transactions", response_model=BankTransactionOut, status_code=status.HTTP_201_CREATED)
-def create_transaction(account_id: str, payload: BankTransactionCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def create_transaction(account_id: str, payload: BankTransactionCreate, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     org_id = user.organization_id
     acct = get_or_404(db, BankAccount, account_id, org_id, "Bank account")
     counter = get_or_404(db, Account, payload.counter_account_id, org_id, "Account")
@@ -172,7 +172,7 @@ def create_transaction(account_id: str, payload: BankTransactionCreate, user: Us
 
 
 @router.post("/transfers", response_model=Message, status_code=status.HTTP_201_CREATED)
-def transfer(payload: TransferCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def transfer(payload: TransferCreate, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     org_id = user.organization_id
     if payload.from_account_id == payload.to_account_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose two different accounts")
@@ -194,7 +194,7 @@ def transfer(payload: TransferCreate, user: User = Depends(require_write), db: S
 
 
 @router.delete("/transactions/{transaction_id}", response_model=Message)
-def delete_transaction(transaction_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def delete_transaction(transaction_id: str, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     tx = get_or_404(db, BankTransaction, transaction_id, user.organization_id, "Transaction")
     if tx.source_type not in ("manual", "transfer"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"This transaction was created by a {tx.source_type.replace('_', ' ')}. Delete that record instead.")
@@ -209,7 +209,7 @@ def delete_transaction(transaction_id: str, user: User = Depends(require_write),
 
 
 @router.post("/transactions/reconcile", response_model=Message)
-def reconcile(payload: ReconcileRequest, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def reconcile(payload: ReconcileRequest, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     rows = db.execute(
         select(BankTransaction).where(BankTransaction.organization_id == user.organization_id, BankTransaction.id.in_(payload.transaction_ids))
     ).scalars().all()

@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import datetime
 import os
+import re
 import shutil
 import tempfile
 from datetime import date
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -70,6 +72,32 @@ def register_org(client: TestClient, name_hint: str = "Org") -> dict:
 
 def auth(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
+
+
+def invite_and_accept(
+    client: TestClient, h: dict, name: str, email: str, role: str, password: str, employee_id: str | None = None
+) -> dict:
+    """Invites a user by email (SMTP mocked) and immediately accepts on their behalf.
+
+    Invited users have no password until they follow the link in that email,
+    so tests that just need a working staff/viewer/employee account use this
+    instead of talking to /api/auth/accept-invite directly. Pass employee_id
+    when role="employee" - it is required by the invite endpoint.
+    """
+    payload = {"name": name, "email": email, "role": role}
+    if employee_id is not None:
+        payload["employeeId"] = employee_id
+    with patch("backend.services.email_service.smtplib.SMTP") as mock_smtp:
+        mock_server = MagicMock()
+        mock_smtp.return_value = mock_server
+        res = client.post("/api/users", headers=h, json=payload)
+        assert res.status_code == 201, res.text
+        _, _, msg_string = mock_server.sendmail.call_args[0]
+    match = re.search(r"token=([\w\-]+)", msg_string)
+    assert match, "invite email did not contain an accept-invite link"
+    accepted = client.post("/api/auth/accept-invite", json={"token": match.group(1), "password": password})
+    assert accepted.status_code == 200, accepted.text
+    return res.json()
 
 
 @pytest.fixture(scope="session")

@@ -674,4 +674,205 @@ def send_expense_email(
         return {"success": False, "error": str(e)}
 
 
+def send_overall_report_email(
+    to_email: str,
+    recipient_name: Optional[str] = "Finance & Management Team",
+    organization_name: str = "Rooman Technologies Pvt Ltd",
+    period_label: str = "This Fiscal Year",
+    total_cash: float = 0.0,
+    receivables_total: float = 0.0,
+    receivables_overdue: float = 0.0,
+    payables_total: float = 0.0,
+    payables_overdue: float = 0.0,
+    total_income: float = 0.0,
+    total_expense: float = 0.0,
+    net_profit: float = 0.0,
+    inventory_valuation: float = 0.0,
+    custom_notes: Optional[str] = None,
+    pdf_bytes: Optional[bytes] = None,
+    pdf_filename: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Dispatch an Executive Overall Financial & Operations Report via Gmail SMTP."""
+    try:
+        msg = MIMEMultipart("mixed") if pdf_bytes else MIMEMultipart("alternative")
+        msg["Subject"] = f"Executive Overall Financial Report ({period_label}) - {organization_name}"
+        msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
+        msg["To"] = to_email
 
+        net_tone = "#059669" if net_profit >= 0 else "#dc2626"
+        net_bg = "#ecfdf5" if net_profit >= 0 else "#fef2f2"
+        net_border = "#a7f3d0" if net_profit >= 0 else "#fecaca"
+        net_label = "Net Operating Profit" if net_profit >= 0 else "Net Operating Loss"
+
+        note_block = f"""<div style="background:#f8fafc; border-left:4px solid #3b82f6; padding:12px 16px; margin:20px 0; border-radius:4px; font-size:13.5px; color:#334155;">
+        <strong style="color:#1e293b;">Executive Notes:</strong><br/>{custom_notes}
+        </div>""" if custom_notes else ""
+
+        pdf_badge = f"""<div style="margin:16px 0; padding:10px 14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; font-size:13px; color:#1e40af;">
+        📎 <strong>Attached:</strong> Complete Executive Financial &amp; Operations PDF Report ({pdf_filename or 'Overall_Report.pdf'})
+        </div>""" if pdf_bytes else ""
+
+        html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 24px; color: #0f172a;">
+  <div style="max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px 32px; color: #ffffff;">
+      <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #38bdf8; font-weight: 700;">Executive Financial Dispatch</div>
+      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 700;">{organization_name}</h1>
+      <p style="margin: 6px 0 0 0; opacity: 0.85; font-size: 13.5px;">Overall Performance Report &bull; <strong>{period_label}</strong></p>
+    </div>
+
+    <div style="padding: 28px 32px;">
+      <p style="font-size: 15px; margin-top: 0;">Hello <strong>{recipient_name or 'Team'}</strong>,</p>
+      <p style="font-size: 14px; color: #475569; line-height: 1.5;">
+        Here is the live executive summary report derived from posted accounting transactions for <strong>{period_label}</strong> in Rooman Books.
+      </p>
+
+      <!-- Highlight Net Profit Card -->
+      <div style="background: {net_bg}; border: 1px solid {net_border}; border-radius: 8px; padding: 18px 22px; text-align: center; margin: 20px 0;">
+        <div style="font-size: 11px; color: {net_tone}; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">{net_label}</div>
+        <div style="font-size: 30px; font-weight: 800; color: {net_tone}; margin-top: 4px;">₹{abs(net_profit):,.2f}</div>
+        <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Revenue: <strong>₹{total_income:,.2f}</strong> &bull; Expenses: <strong>₹{total_expense:,.2f}</strong></div>
+      </div>
+
+      <!-- Financial Metric Grid -->
+      <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13.5px;">
+        <thead>
+          <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0;">
+            <th style="padding: 10px 12px; text-align: left; font-size: 12px; text-transform: uppercase; color: #475569;">Financial Area</th>
+            <th style="padding: 10px 12px; text-align: right; font-size: 12px; text-transform: uppercase; color: #475569;">Live Position</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom: 1px solid #f1f5f9;">
+            <td style="padding: 10px 12px; color: #334155;"><strong>Cash on Hand</strong> (Liquid Bank &amp; Cash)</td>
+            <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #0f172a;">₹{total_cash:,.2f}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #f1f5f9;">
+            <td style="padding: 10px 12px; color: #334155;">
+              <strong>Accounts Receivable</strong>
+              <div style="font-size: 12px; color: #ef4444;">Overdue: ₹{receivables_overdue:,.2f}</div>
+            </td>
+            <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #0f172a;">₹{receivables_total:,.2f}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #f1f5f9;">
+            <td style="padding: 10px 12px; color: #334155;">
+              <strong>Accounts Payable</strong>
+              <div style="font-size: 12px; color: #f59e0b;">Overdue: ₹{payables_overdue:,.2f}</div>
+            </td>
+            <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #0f172a;">₹{payables_total:,.2f}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #f1f5f9;">
+            <td style="padding: 10px 12px; color: #334155;"><strong>Total Inventory Valuation</strong></td>
+            <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #0f172a;">₹{inventory_valuation:,.2f}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {note_block}
+      {pdf_badge}
+
+      <div style="margin-top: 30px; padding-top: 18px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b;">
+        <p style="margin: 0 0 4px 0;">Dispatched directly from <strong>Rooman Books Cloud Accounting</strong> via Gmail SMTP.</p>
+        <p style="margin: 0; font-size: 12px; color: #94a3b8;">Email: shalya@rooman.com &bull; Accounts Operations</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>"""
+        msg.attach(MIMEText(html, "html"))
+
+        if pdf_bytes:
+            filename = pdf_filename or f"Executive_Report_{period_label.replace(' ', '_')}.pdf"
+            part = MIMEApplication(pdf_bytes, _subtype="pdf")
+            part.add_header("Content-Disposition", "attachment", filename=filename)
+            msg.attach(part)
+
+        server = get_smtp_connection()
+        server.sendmail(_smtp().smtp_user, to_email, msg.as_string())
+        server.quit()
+        return {
+            "success": True,
+            "message": f"Overall executive report ({period_label}) emailed successfully to {to_email}",
+            "recipient": to_email,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+
+
+
+
+def send_invite_email(
+    to_email: str,
+    name: str,
+    organization_name: str,
+    role: str,
+    inviter_name: str,
+    accept_url: str,
+) -> Dict[str, Any]:
+    """Invite a new user by email with a link to set their own password via Gmail SMTP."""
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"You're invited to {organization_name} on Rooman Books"
+        msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
+        msg["To"] = to_email
+
+        role_label = {"admin": "Administrator", "staff": "Staff", "viewer": "Viewer"}.get(role, role.title())
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #1e293b; }}
+    .container {{ max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }}
+    .header {{ background: #0f172a; padding: 28px 32px; color: #fff; }}
+    .header h1 {{ margin: 0; font-size: 20px; font-weight: 700; }}
+    .header p {{ color: #94a3b8; margin: 4px 0 0 0; font-size: 13px; }}
+    .content {{ padding: 32px; line-height: 1.6; font-size: 15px; color: #334155; }}
+    .role-badge {{ display: inline-block; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; border-radius: 999px; padding: 4px 14px; font-size: 12.5px; font-weight: 600; margin: 4px 0 20px 0; }}
+    .cta {{ display: inline-block; background: #2563eb; color: #ffffff !important; text-decoration: none; padding: 13px 28px; border-radius: 8px; font-weight: 600; font-size: 14.5px; margin: 12px 0; }}
+    .link-fallback {{ word-break: break-all; font-size: 12.5px; color: #64748b; margin-top: 18px; }}
+    .footer {{ background: #f8fafc; padding: 20px 32px; font-size: 12px; color: #64748b; text-align: center; border-top: 1px solid #e2e8f0; }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>{organization_name}</h1>
+      <p>You've been invited to Rooman Books</p>
+    </div>
+    <div class="content">
+      <p><strong>Hello {name},</strong></p>
+      <p>{inviter_name} has invited you to join <strong>{organization_name}</strong> on Rooman Books.</p>
+      <div><span class="role-badge">Role: {role_label}</span></div>
+      <p>Click the button below to create your password. You'll then return here and sign in with your email and new password.</p>
+      <p style="text-align:center; margin: 28px 0;">
+        <a href="{accept_url}" class="cta">Set your password</a>
+      </p>
+      <p class="link-fallback">Or paste this link into your browser:<br>{accept_url}</p>
+      <p style="margin-top:24px; font-size:13px; color:#64748b;">This link expires in 7 days. If you weren't expecting this invitation, you can safely ignore this email.</p>
+    </div>
+    <div class="footer">
+      Rooman House, #12 Rajajinagar, Bengaluru, Karnataka 560010
+    </div>
+  </div>
+</body>
+</html>
+"""
+        msg.attach(MIMEText(html_body, "html"))
+
+        server = get_smtp_connection()
+        server.sendmail(_smtp().smtp_user, to_email, msg.as_string())
+        server.quit()
+
+        return {
+            "success": True,
+            "message": f"Invite email sent to {to_email}",
+            "recipient": to_email,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}

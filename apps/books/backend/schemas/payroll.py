@@ -66,6 +66,9 @@ class EmployeeOut(APIModel):
     net_salary: Decimal
     is_active: bool
     created_at: datetime
+    # Whether this employee already has (or has been invited to) portal
+    # access - drives whether "Invite to portal" or "Portal access" shows.
+    has_login: bool = False
 
 
 class PayRunCreate(APIModel):
@@ -115,3 +118,12 @@ class PayRunOut(APIModel):
     employee_count: int
     payslips: List[PayslipOut] = []
     created_at: datetime
+
+
+class EmployeeOptionOut(APIModel):
+    """A minimal, salary-free row for the "which employee is this?" invite picker."""
+
+    id: str
+    employee_code: str
+    name: str
+    email: Optional[str] = None

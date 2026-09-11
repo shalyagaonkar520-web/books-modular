@@ -120,7 +120,23 @@ class TokenResponse(APIModel):
 class InviteUserRequest(APIModel):
     name: str = Field(min_length=2, max_length=120)
     email: EmailStr
-    role: str = Field(default="staff", pattern="^(admin|staff|viewer)$")
+    role: str = Field(default="staff", pattern="^(admin|staff|viewer|employee)$")
+    # Required when role is "employee": which Payroll employee record this
+    # login belongs to. That employee will then see only their own payslips
+    # and profile - never anyone else's, and nothing else in the app.
+    employee_id: Optional[str] = None
+
+
+class InviteInfo(APIModel):
+    """What the accept-invite page needs before the invitee sets a password."""
+
+    name: str
+    email: str
+    organization_name: str
+
+
+class AcceptInviteRequest(APIModel):
+    token: str
     password: str
 
     @field_validator("password")
@@ -131,7 +147,7 @@ class InviteUserRequest(APIModel):
 
 class UpdateUserRequest(APIModel):
     name: Optional[str] = Field(default=None, min_length=2, max_length=120)
-    role: Optional[str] = Field(default=None, pattern="^(admin|staff|viewer)$")
+    role: Optional[str] = Field(default=None, pattern="^(admin|staff|viewer|employee)$")
     is_active: Optional[bool] = None
 
 
@@ -148,3 +164,13 @@ class AuditLogOut(APIModel):
 
 class UsersList(APIModel):
     items: List[UserOut]
+
+
+class SessionOut(APIModel):
+    id: str
+    device: str
+    browser: str
+    ip_address: Optional[str] = None
+    created_at: datetime
+    expires_at: datetime
+    is_current: bool

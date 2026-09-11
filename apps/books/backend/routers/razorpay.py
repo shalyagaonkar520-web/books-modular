@@ -16,7 +16,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
-from backend.deps import get_current_user, require_admin, require_write
+from backend.deps import (
+    require_admin,
+    require_financial_read,
+    require_financial_write,
+    require_full_app_access,
+    require_write,
+)
 from backend.models import (
     Account,
     BankAccount,
@@ -111,7 +117,7 @@ def _record_financial_txn(
 # Public Config & Order Creation
 # --------------------------------------------------------------------------- #
 @router.get("/config")
-def get_config(user: User = Depends(get_current_user)):
+def get_config(user: User = Depends(require_full_app_access)):
     """Returns safe frontend configuration. Secrets are NEVER returned."""
     service = get_razorpay_service()
     cfg = service.get_public_config()
@@ -476,7 +482,7 @@ async def handle_webhook(
 @router.post("/refund")
 def create_refund(
     payload: RefundRequest,
-    user: User = Depends(require_write),
+    user: User = Depends(require_financial_write),
     db: Session = Depends(get_db),
 ):
     """Initiates a partial or full refund for a captured payment,
@@ -612,7 +618,7 @@ def create_refund(
 def list_refunds(
     payment_id: Optional[str] = None,
     pagination: Pagination = Depends(),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     stmt = (
@@ -709,7 +715,7 @@ def list_payments(
     amount_max: Optional[Decimal] = None,
     search: Optional[str] = Query(None, max_length=120),
     pagination: Pagination = Depends(),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     """Razorpay transactions for the accounting table, with the full filter set."""
@@ -771,7 +777,7 @@ def list_payments(
 @router.get("/settlements")
 def list_settlements(
     pagination: Pagination = Depends(),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     stmt = (
@@ -807,7 +813,7 @@ def list_settlements(
 
 @router.post("/reconcile")
 def run_reconciliation(
-    user: User = Depends(require_write),
+    user: User = Depends(require_financial_write),
     db: Session = Depends(get_db),
 ):
     """Runs three-way comparison between internal customer payments, Razorpay payments,
@@ -892,7 +898,7 @@ def run_reconciliation(
 def list_reconciliations(
     status_filter: Optional[str] = Query(None, alias="status"),
     pagination: Pagination = Depends(),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     stmt = (
@@ -935,7 +941,7 @@ def list_reconciliations(
 def get_analytics(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     """Calculates payment success/failure rates, methods breakdown, and metrics."""
@@ -1005,7 +1011,7 @@ def get_financial_dashboard(
     customer_id: Optional[str] = None,
     category: Optional[str] = None,
     payment_method: Optional[str] = None,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     """Computes high-level financial tracking metrics:
@@ -1174,7 +1180,7 @@ def list_transactions(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     pagination: Pagination = Depends(),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     stmt = (
@@ -1225,7 +1231,7 @@ def export_reports(
     report_type: str = Query("payments", description="payments | expenses | revenue | refunds | settlements | pnl | cashflow"),
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     """Exports structured financial reports in CSV format."""
@@ -1409,7 +1415,7 @@ def _sync_log_row(log: RazorpaySyncLog) -> Dict[str, Any]:
 
 @router.get("/integration/status")
 def integration_status(
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     """Connection state for Settings -> Integrations -> Razorpay."""
@@ -1589,7 +1595,7 @@ def disconnect_razorpay(
 @router.post("/sync")
 def run_sync(
     payload: Optional[SyncRequest] = None,
-    user: User = Depends(require_write),
+    user: User = Depends(require_financial_write),
     db: Session = Depends(get_db),
 ):
     """Import new Razorpay transactions. Safe to run repeatedly and concurrently.
@@ -1624,7 +1630,7 @@ def run_sync(
 @router.get("/sync/logs")
 def list_sync_logs(
     pagination: Pagination = Depends(),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     stmt = (
@@ -1644,7 +1650,7 @@ def list_sync_logs(
 @router.get("/sync/logs/{log_id}")
 def get_sync_log(
     log_id: str,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     log = db.get(RazorpaySyncLog, log_id)
@@ -1660,7 +1666,7 @@ def get_sync_log(
 def payments_overview(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     """Dashboard figures, computed from the transaction table -- never hardcoded."""
@@ -1756,7 +1762,7 @@ def payments_overview(
 @router.get("/payments/{payment_id}")
 def get_payment_detail(
     payment_id: str,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     """Full transaction detail, including the Razorpay reference kept for audit."""
@@ -1830,7 +1836,7 @@ def get_payment_detail(
 
 
 @router.get("/categories")
-def list_categories(user: User = Depends(get_current_user)):
+def list_categories(user: User = Depends(require_financial_read)):
     """The categories a transaction can be assigned to."""
     return {
         "items": [
@@ -1845,7 +1851,7 @@ def list_categories(user: User = Depends(get_current_user)):
 def set_payment_category(
     payment_id: str,
     payload: CategoryUpdateRequest,
-    user: User = Depends(require_write),
+    user: User = Depends(require_financial_write),
     db: Session = Depends(get_db),
 ):
     """Accept the suggested category, or replace it with a manual choice."""
@@ -1878,7 +1884,7 @@ def set_payment_category(
 @router.get("/payments/{payment_id}/invoice-matches")
 def suggest_invoice_matches(
     payment_id: str,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     """Rank open invoices that could correspond to this payment."""
@@ -1899,7 +1905,7 @@ def suggest_invoice_matches(
 def match_payment_to_invoice(
     payment_id: str,
     payload: MatchInvoiceRequest,
-    user: User = Depends(require_write),
+    user: User = Depends(require_financial_write),
     db: Session = Depends(get_db),
 ):
     """Link a payment to an invoice and post the resulting accounting entries.
@@ -1985,7 +1991,7 @@ def match_payment_to_invoice(
 def set_reconciliation_status(
     payment_id: str,
     payload: ReconciliationUpdateRequest,
-    user: User = Depends(require_write),
+    user: User = Depends(require_financial_write),
     db: Session = Depends(get_db),
 ):
     """Mark a transaction as reviewed, ignored or needing attention."""
@@ -2030,7 +2036,7 @@ def _rule_row(rule: RazorpayCategoryRule) -> Dict[str, Any]:
 
 @router.get("/category-rules")
 def list_category_rules(
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     rules = db.execute(
@@ -2044,7 +2050,7 @@ def list_category_rules(
 @router.post("/category-rules", status_code=status.HTTP_201_CREATED)
 def create_category_rule(
     payload: CategoryRuleRequest,
-    user: User = Depends(require_write),
+    user: User = Depends(require_financial_write),
     db: Session = Depends(get_db),
 ):
     if payload.match_type not in MATCH_TYPES:
@@ -2078,7 +2084,7 @@ def create_category_rule(
 def update_category_rule(
     rule_id: str,
     payload: CategoryRuleRequest,
-    user: User = Depends(require_write),
+    user: User = Depends(require_financial_write),
     db: Session = Depends(get_db),
 ):
     rule = db.get(RazorpayCategoryRule, rule_id)
@@ -2104,7 +2110,7 @@ def update_category_rule(
 @router.delete("/category-rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_category_rule(
     rule_id: str,
-    user: User = Depends(require_write),
+    user: User = Depends(require_financial_write),
     db: Session = Depends(get_db),
 ):
     rule = db.get(RazorpayCategoryRule, rule_id)
@@ -2116,7 +2122,7 @@ def delete_category_rule(
 
 @router.post("/category-rules/reapply")
 def reapply_category_rules(
-    user: User = Depends(require_write),
+    user: User = Depends(require_financial_write),
     db: Session = Depends(get_db),
 ):
     """Re-run categorisation over transactions that nobody has decided on yet."""

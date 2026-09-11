@@ -84,8 +84,8 @@ jobs:
           SECRET_KEY: ci-secret-key-for-tests-only
           DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/roomanbooks_test
         run: |
-          alembic upgrade head
-          alembic check
+          alembic -c database/alembic.ini upgrade head
+          alembic -c database/alembic.ini check
       - name: Run pytest against PostgreSQL
         env:
           ENVIRONMENT: test
@@ -96,12 +96,16 @@ jobs:
   frontend:
     name: Frontend lint, types, tests, build
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - name: Typecheck
         run: npx tsc -b
@@ -115,7 +119,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
-          path: dist
+          path: frontend/dist
           retention-days: 7
 
   docker:
@@ -138,7 +142,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile.frontend
+          file: ./frontend/Dockerfile
           push: false
           load: true
           tags: roomanbooks-web:ci
@@ -169,15 +173,18 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - run: pip install -r requirements-dev.txt
       - run: npm ci
+        working-directory: frontend
       - name: Build frontend
         run: npm run build
+        working-directory: frontend
       - name: Start API and exercise a real workflow
         env:
           ENVIRONMENT: development
           SECRET_KEY: ci-integration-secret
-          DATABASE_URL: sqlite:///./data/ci.db
+          DATABASE_URL: sqlite:///./database/data/ci.db
         run: |
           uvicorn backend.main:app --port 8000 &
           for i in $(seq 1 30); do curl -fsS http://localhost:8000/api/health && break; sleep 2; done

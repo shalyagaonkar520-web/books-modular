@@ -1,0 +1,72 @@
+name: Deploy
+
+# Runs only after the CI workflow succeeds on main, so a failing test
+# never reaches production.
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to books.futureacad.ae
+    # workflow_dispatch has no workflow_run payload, so allow it through too.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: [self-hosted, roomanbooks]
+    timeout-minutes: 20
+
+    steps:
+      - name: Record the currently deployed commit
+        id: current
+        run: echo "sha=$(git -C /opt/roomanbooks rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch latest main
+        run: |
+          cd /opt/roomanbooks
+          git fetch origin main
+          git reset --hard origin/main
+          echo "Now at: $(git rev-parse --short HEAD) - $(git log -1 --pretty=%s)"
+
+      - name: Build and restart the stack
+        run: |
+          cd /opt/roomanbooks
+          docker compose up -d --build
+
+      - name: Wait for health
+        run: |
+          cd /opt/roomanbooks
+          for i in $(seq 1 30); do
+            if curl -fsS -m 5 http://127.0.0.1:8000/api/health > /dev/null \
+               && curl -fsS -m 5 http://127.0.0.1/healthz > /dev/null; then
+              echo "Healthy after ${i} attempt(s)."
+              curl -s http://127.0.0.1:8000/api/health; echo
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Service did not become healthy within 150s"
+          docker compose ps
+          docker compose logs --tail 60 api
+          exit 1
+
+      - name: Roll back if the deploy failed
+        if: failure()
+        run: |
+          cd /opt/roomanbooks
+          echo "::warning::Rolling back to ${{ steps.current.outputs.sha }}"
+          git reset --hard "${{ steps.current.outputs.sha }}"
+          docker compose up -d --build
+          sleep 20
+          docker compose ps
+
+      - name: Prune old images
+        if: success()
+        run: docker image prune -f

@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     debug: bool = False
 
     # Persistence
-    database_url: str = Field(default="sqlite:///./data/roomanbooks.db")
-    data_dir: str = Field(default="./data", description="Directory for SQLite DB and uploaded files")
+    database_url: str = Field(default="sqlite:///./database/data/roomanbooks.db")
+    data_dir: str = Field(default="./database/data", description="Directory for SQLite DB and uploaded files")
     auto_create_tables: bool = Field(
         default=True,
         description="Create tables on startup (dev/test). Production should rely on Alembic migrations.",
@@ -111,6 +111,16 @@ class Settings(BaseSettings):
     def smtp_configured(self) -> bool:
         """True when outbound email can actually be sent."""
         return bool(self.smtp_user.strip() and self.smtp_password.strip())
+
+    @property
+    def frontend_url(self) -> str:
+        """Base URL of the web app, for links sent by email (e.g. invite links).
+
+        Reuses the first configured CORS origin rather than a separate setting,
+        since that is already exactly the deployed web origin.
+        """
+        origins = self.cors_origins if isinstance(self.cors_origins, list) else [self.cors_origins]
+        return origins[0].rstrip("/") if origins else "http://localhost:3000"
 
     @property
     def is_sqlite(self) -> bool:

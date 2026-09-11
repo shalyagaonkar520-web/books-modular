@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
-from backend.deps import get_current_user, require_write
+from backend.deps import require_financial_read, require_financial_write
 from backend.models import Account, JournalEntry, JournalLine, User
 from backend.schemas.accounting import (
     AccountCreate,
@@ -43,7 +43,7 @@ def list_accounts(
     type: Optional[str] = Query(None, pattern="^(asset|liability|equity|income|expense)$"),
     include_inactive: bool = False,
     as_of: Optional[date] = None,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     stmt = select(Account).where(Account.organization_id == user.organization_id)
@@ -61,7 +61,7 @@ def list_accounts(
 
 
 @router.post("/accounts", response_model=AccountOut, status_code=status.HTTP_201_CREATED)
-def create_account(payload: AccountCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def create_account(payload: AccountCreate, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     exists = db.execute(select(Account.id).where(Account.organization_id == user.organization_id, Account.code == payload.code)).first()
     if exists:
         raise HTTPException(status.HTTP_409_CONFLICT, f"Account code {payload.code} already exists")
@@ -74,7 +74,7 @@ def create_account(payload: AccountCreate, user: User = Depends(require_write), 
 
 
 @router.put("/accounts/{account_id}", response_model=AccountOut)
-def update_account(account_id: str, payload: AccountUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def update_account(account_id: str, payload: AccountUpdate, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     acct = get_or_404(db, Account, account_id, user.organization_id, "Account")
     data = payload.model_dump(exclude_unset=True)
     if acct.is_system and data.get("is_active") is False:
@@ -88,7 +88,7 @@ def update_account(account_id: str, payload: AccountUpdate, user: User = Depends
 
 
 @router.delete("/accounts/{account_id}", response_model=Message)
-def delete_account(account_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def delete_account(account_id: str, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     acct = get_or_404(db, Account, account_id, user.organization_id, "Account")
     if acct.is_system:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "System accounts cannot be deleted")
@@ -123,7 +123,7 @@ def list_journals(
     end_date: Optional[date] = None,
     search: Optional[str] = None,
     pagination: Pagination = Depends(),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     stmt = select(JournalEntry).where(JournalEntry.organization_id == user.organization_id).options(selectinload(JournalEntry.lines).selectinload(JournalLine.account))
@@ -142,13 +142,13 @@ def list_journals(
 
 
 @router.get("/journals/{entry_id}", response_model=JournalOut)
-def get_journal(entry_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_journal(entry_id: str, user: User = Depends(require_financial_read), db: Session = Depends(get_db)):
     entry = get_or_404(db, JournalEntry, entry_id, user.organization_id, "Journal entry")
     return journal_out(entry)
 
 
 @router.post("/journals", response_model=JournalOut, status_code=status.HTTP_201_CREATED)
-def create_journal(payload: JournalCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def create_journal(payload: JournalCreate, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     lines = [(ln.account_id, ln.debit, ln.credit, ln.description, ln.contact_id) for ln in payload.lines]
     entry = ledger.post_entry(db, user.organization_id, payload.date, lines, "manual", None, reference=payload.reference, notes=payload.notes, created_by=user.id)
     entry.source_id = entry.id
@@ -159,7 +159,7 @@ def create_journal(payload: JournalCreate, user: User = Depends(require_write), 
 
 
 @router.post("/journals/{entry_id}/reverse", response_model=JournalOut)
-def reverse_journal(entry_id: str, reversal_date: Optional[date] = None, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def reverse_journal(entry_id: str, reversal_date: Optional[date] = None, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     entry = get_or_404(db, JournalEntry, entry_id, user.organization_id, "Journal entry")
     if entry.source_type != "manual":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only manual journals can be reversed here. Void the source document instead.")
@@ -178,7 +178,7 @@ def general_ledger(
     account_id: str,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     acct = get_or_404(db, Account, account_id, user.organization_id, "Account")
@@ -207,7 +207,7 @@ def general_ledger(
 
 
 @router.get("/trial-balance", response_model=TrialBalance)
-def trial_balance(as_of: Optional[date] = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def trial_balance(as_of: Optional[date] = None, user: User = Depends(require_financial_read), db: Session = Depends(get_db)):
     as_of = as_of or date.today()
     accounts = db.execute(select(Account).where(Account.organization_id == user.organization_id).order_by(Account.code)).scalars().all()
     balances = ledger.account_balances(db, user.organization_id, end=as_of)

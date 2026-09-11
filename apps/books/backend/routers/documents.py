@@ -503,10 +503,8 @@ def import_excel_commit(
 @router.get("/download-sample-excel")
 def download_sample_excel(type: str = "indian"):
     filename = "Rooman_Books_Indian_Data.xlsx" if type == "indian" else "Rooman_Books_Import_Template.xlsx"
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    file_path = os.path.join(base_dir, filename)
-    if not os.path.exists(file_path):
-        file_path = os.path.join(base_dir, "public", filename)
+    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    file_path = os.path.join(repo_root, "frontend", "public", filename)
     if not os.path.exists(file_path):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Sample Excel file not found")
     return FileResponse(
