@@ -1699,6 +1699,10 @@ th.sortable {
   width: 100%;
   min-width: 320px;
   height: auto;
+  /* The SVG keeps its viewBox aspect while filling the card width, so without
+     a ceiling a wide screen stretches the graph to several hundred pixels
+     tall. Cap it and let the drawing scale down inside. */
+  max-height: 300px;
 }
 
 .chart-grid {

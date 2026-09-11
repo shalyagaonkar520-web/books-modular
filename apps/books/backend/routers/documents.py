@@ -391,10 +391,20 @@ def import_excel_commit(
             if not name:
                 skipped.append(f"Row {index} ({cat}): no name")
                 continue
+            kind = "customer" if cat == "customers" else "vendor"
+            # Re-importing the same sheet must not pile up duplicates.
+            already = db.execute(
+                select(Contact.id).where(
+                    Contact.organization_id == org_id, Contact.type == kind, Contact.display_name == name[:100]
+                )
+            ).first()
+            if already:
+                skipped.append(f"Row {index} ({cat}): '{name}' already exists")
+                continue
             db.add(
                 Contact(
                     organization_id=org_id,
-                    type="customer" if cat == "customers" else "vendor",
+                    type=kind,
                     display_name=name[:100],
                     company_name=str(d.get("company_name") or "")[:100] or None,
                     email=str(d.get("email") or "")[:100] or None,
@@ -408,29 +418,36 @@ def import_excel_commit(
             counts[cat] += 1
 
         elif cat == "expenses":
-            amount, when = _amount(d), _date_of(d) or date.today()
-            if amount is None:
-                skipped.append(f"Row {index} (expense): missing amount")
+            # No falling back to today: the sheet's Date column is required, and
+            # silently dating an expense "now" files it in the wrong period.
+            amount, when = _amount(d), _date_of(d)
+            if amount is None or when is None:
+                skipped.append(f"Row {index} (expense): missing {'amount' if amount is None else 'date'}")
                 continue
             if not expense_acct or not bank_acct:
                 skipped.append(f"Row {index} (expense): no expense or bank account set up yet")
                 continue
             payee = str(d.get("payee") or "").strip()
-            db.add(
-                Expense(
-                    organization_id=org_id,
-                    expense_number=numbering.next_number(db, org_id, "expense"),
-                    date=when,
-                    account_id=expense_acct.id,
-                    paid_through_account_id=bank_acct.id,
-                    amount=amount,
-                    total=amount,
-                    tax_rate=Decimal("0"),
-                    category=str(d.get("category") or "Imported")[:50],
-                    notes=str(d.get("notes") or "") or (f"Payee: {payee}" if payee else None),
-                    created_by=user.id,
-                )
+            expense = Expense(
+                organization_id=org_id,
+                expense_number=numbering.next_number(db, org_id, "expense"),
+                date=when,
+                account_id=expense_acct.id,
+                paid_through_account_id=bank_acct.id,
+                amount=amount,
+                total=amount,
+                tax_rate=Decimal("0"),
+                notes=str(d.get("notes") or "").strip() or None,
+                created_by=user.id,
             )
+            # Only set what the sheet actually provided; anything it does not
+            # carry is left alone rather than filled with placeholder text.
+            category = str(d.get("category") or "").strip()
+            if category:
+                expense.category = category[:50]
+            if payee:
+                expense.vendor_id = _find_or_create_contact(payee, "vendor", None).id
+            db.add(expense)
             counts["expenses"] += 1
 
         elif cat in ("invoices", "bills"):
@@ -439,8 +456,12 @@ def import_excel_commit(
                 missing = "customer/vendor name" if not name else ("amount" if amount is None else "date")
                 skipped.append(f"Row {index} ({cat[:-1]}): missing {missing}")
                 continue
+            # due_date is NOT NULL on the model; with no Due Date column the
+            # document's own date is the only non-invented value available.
             due = _date_of(d, "due_date") or when
-            description = str(d.get("notes") or "").strip() or "Imported from spreadsheet"
+            # No placeholder text: if the sheet has no Notes column the line
+            # description stays empty rather than saying something untrue.
+            description = str(d.get("notes") or "").strip()
 
             if cat == "invoices":
                 customer = _find_or_create_contact(name, "customer", d.get("email"))

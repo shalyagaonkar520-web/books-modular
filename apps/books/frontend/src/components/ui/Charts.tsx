@@ -28,7 +28,9 @@ export function GroupedBarChart({
   currency = 'INR',
 }: GroupedBarChartProps) {
   const titleId = useId();
-  const width = Math.max(320, data.length * 64);
+  // Minimum is wide, not square: the SVG scales to the card width, so a
+  // near-square viewBox on a wide screen renders hundreds of pixels tall.
+  const width = Math.max(760, data.length * 64);
   const padding = { top: 16, right: 8, bottom: 34, left: 8 };
   const plotHeight = height - padding.top - padding.bottom;
   const max = Math.max(1, ...data.flatMap((point) => [point.incoming, point.outgoing]));
@@ -52,7 +54,7 @@ export function GroupedBarChart({
         </span>
       </figcaption>
       <div className="chart-scroll">
-        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby={titleId} className="chart-svg" preserveAspectRatio="xMinYMid meet">
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby={titleId} className="chart-svg" preserveAspectRatio="xMidYMid meet">
           <title id={titleId}>
             {incomingLabel} versus {outgoingLabel} by period
           </title>
@@ -155,7 +157,7 @@ export function LineChart({
   showArea = false,
 }: LineChartProps) {
   const chartId = useId().replace(/:/g, '');
-  const width = Math.max(340, data.length * 64);
+  const width = Math.max(760, data.length * 64);
   const padding = { top: 20, right: 24, bottom: 36, left: 24 };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
@@ -197,7 +199,7 @@ export function LineChart({
         </span>
       </figcaption>
       <div className="chart-scroll">
-        <svg viewBox={`0 0 ${width} ${height}`} role="img" className="chart-svg" preserveAspectRatio="xMinYMid meet">
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" className="chart-svg" preserveAspectRatio="xMidYMid meet">
           <defs>
             <linearGradient id={`grad-in-${chartId}`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#059669" stopOpacity="0.32" />
@@ -287,7 +289,7 @@ export function NetTrendChart({
   currency = 'INR',
 }: NetTrendChartProps) {
   const chartId = useId().replace(/:/g, '');
-  const width = Math.max(340, data.length * 64);
+  const width = Math.max(760, data.length * 64);
   const padding = { top: 20, right: 24, bottom: 36, left: 24 };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
@@ -322,7 +324,7 @@ export function NetTrendChart({
         </span>
       </figcaption>
       <div className="chart-scroll">
-        <svg viewBox={`0 0 ${width} ${height}`} role="img" className="chart-svg" preserveAspectRatio="xMinYMid meet">
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" className="chart-svg" preserveAspectRatio="xMidYMid meet">
           <defs>
             <linearGradient id={`grad-net-${chartId}`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#2563eb" stopOpacity="0.25" />

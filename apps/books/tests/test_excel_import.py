@@ -185,3 +185,44 @@ def test_currency_formatted_amounts_do_not_crash_the_import(client, org):
     }
     assert totals["Comma Amount Co"] == 125000
     assert totals["Currency Prefix Co"] == 3500.50
+
+
+def test_reimporting_the_same_sheet_does_not_duplicate_contacts(client, org):
+    sheet = {"Customers": [["Display Name", "Email"], ["Repeat Co", "repeat@x.com"]]}
+
+    first = _upload(client, org["h"], sheet).json()
+    c1 = client.post("/api/documents/import-excel-commit", headers=org["h"], json={"sections": first["sections"]})
+    assert c1.json()["imported_counts"]["customers"] == 1
+
+    second = _upload(client, org["h"], sheet).json()
+    c2 = client.post("/api/documents/import-excel-commit", headers=org["h"], json={"sections": second["sections"]})
+    assert c2.json()["imported_counts"]["customers"] == 0
+    assert "already exists" in c2.json()["skipped"][0]
+
+    names = [c["displayName"] for c in client.get(
+        "/api/contacts", headers=org["h"], params={"type": "customer", "page_size": 200}).json()["items"]]
+    assert names.count("Repeat Co") == 1
+
+
+def test_columns_absent_from_the_sheet_are_left_empty(client, org):
+    """No placeholder text for fields the spreadsheet does not carry."""
+    res = _upload(client, org["h"], {
+        # No Notes column, and no Category column on the expense.
+        "Invoices": [["Customer Name", "Amount", "Date"], ["Bare Invoice Co", "1000", "2026-09-01"]],
+        "Expenses": [["Amount", "Date"], ["250", "2026-09-02"]],
+    }).json()
+    commit = client.post("/api/documents/import-excel-commit", headers=org["h"], json={"sections": res["sections"]})
+    assert commit.status_code == 200, commit.text
+
+    invoice_id = next(
+        i["id"] for i in client.get("/api/invoices", headers=org["h"], params={"page_size": 200}).json()["items"]
+        if i["customerName"] == "Bare Invoice Co"
+    )
+    invoice = client.get(f"/api/invoices/{invoice_id}", headers=org["h"]).json()
+    assert invoice["lines"][0]["description"] == ""
+
+    expense = next(
+        e for e in client.get("/api/expenses", headers=org["h"], params={"page_size": 200}).json()["items"]
+        if e["total"] == 250
+    )
+    assert not expense["notes"]

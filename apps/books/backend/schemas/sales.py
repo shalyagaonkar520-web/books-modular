@@ -28,6 +28,11 @@ class LineOut(LineInput):
     tax_amount: Decimal
     item_name: Optional[str] = None
     account_name: Optional[str] = None
+    # Relaxed from the input rule above. Entry still requires a description,
+    # but an output model must be able to render whatever is stored - an
+    # imported row with no description column would otherwise make the whole
+    # invoice fail to serialise instead of just showing a blank cell.
+    description: str = Field(default="", max_length=500)
 
 
 class InvoiceCreate(APIModel):
