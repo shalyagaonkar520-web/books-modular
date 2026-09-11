@@ -250,12 +250,10 @@ export const documentsApi = {
   remove: (id: string) => api.delete<Message>(`/documents/${id}`),
   importExcelCategorize: (formData: FormData) =>
     api.upload<ExcelCategorizeResponse>('/documents/import-excel-categorize', formData),
-  importExcelCommit: (sections: ExcelCategorizeSection[]) => {
-    const items = sections.flatMap((sec) =>
-      sec.rows.map((row) => ({ category: sec.category, data: row }))
-    );
-    return api.post<ExcelCommitResponse>('/documents/import-excel-commit', { sections, items });
-  },
+  // Send only `sections`. Posting an `items` copy of the same rows alongside
+  // it made the server import every record twice.
+  importExcelCommit: (sections: ExcelCategorizeSection[]) =>
+    api.post<ExcelCommitResponse>('/documents/import-excel-commit', { sections }),
 };
 
 export const payrollApi = {

@@ -101,3 +101,26 @@ def test_contact_names_reject_digits_but_company_name_allows_them(client, org):
     # The same rule applies on update.
     renamed = client.put(f"/api/contacts/{ok.json()['id']}", headers=h, json={"displayName": "Acme 2"})
     assert renamed.status_code == 422
+
+
+def test_existing_names_with_digits_can_still_be_read_back(client, org):
+    """The no-digits rule is an input rule only.
+
+    It was first added to ContactBase, which ContactOut also extends, so a row
+    whose name contained a digit (imported data, or anything created before the
+    rule) made the whole contacts list fail to serialise with a 500.
+    """
+    from backend.db import SessionLocal
+    from backend.models import Contact
+
+    with SessionLocal() as db:
+        db.add(Contact(organization_id=org["org"]["id"], type="customer", display_name="Flipkart Wholesale B2B", email="b2b@x.com"))
+        db.commit()
+
+    listing = client.get("/api/contacts", headers=org["h"], params={"type": "customer", "page_size": 200})
+    assert listing.status_code == 200, listing.text
+    assert "Flipkart Wholesale B2B" in [c["displayName"] for c in listing.json()["items"]]
+
+    # Creating one through the API is still rejected.
+    assert client.post("/api/contacts", headers=org["h"], json={
+        "type": "customer", "displayName": "Typed 123", "email": "t123@x.com"}).status_code == 422

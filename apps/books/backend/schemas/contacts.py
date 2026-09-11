@@ -40,6 +40,12 @@ class ContactBase(APIModel):
     payment_terms_days: int = Field(default=30, ge=0, le=365)
     notes: Optional[str] = None
 
+
+class ContactCreate(ContactBase):
+    # Deliberately on the input models only. ContactOut also extends
+    # ContactBase, and validating on the way out would make any existing row
+    # whose name contains a digit unreadable - a bulk import or older record
+    # would break the whole contacts list instead of just being flagged here.
     @field_validator("display_name")
     @classmethod
     def _name(cls, value: str) -> str:
@@ -49,10 +55,6 @@ class ContactBase(APIModel):
     @classmethod
     def _contact_person(cls, value: Optional[str]) -> Optional[str]:
         return _validate_person_name(value, "Contact person name")
-
-
-class ContactCreate(ContactBase):
-    pass
 
 
 class ContactUpdate(APIModel):

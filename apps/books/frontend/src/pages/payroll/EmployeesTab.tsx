@@ -4,7 +4,6 @@ import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, StatTile } from '@/components/ui/Card';
-import { CheckboxField } from '@/components/ui/Field';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
@@ -23,13 +22,12 @@ export function EmployeesTab() {
   const toast = useToast();
   const { isAdmin, organization } = useAuth();
   const currency = organization?.currency ?? 'INR';
-  const [includeInactive, setIncludeInactive] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
   const [deleting, setDeleting] = useState<Employee | null>(null);
   const remove = useSubmit();
 
-  const { data, loading, error, reload } = useAsync(() => payrollApi.employees({ include_inactive: includeInactive }), [includeInactive]);
+  const { data, loading, error, reload } = useAsync(() => payrollApi.employees(), []);
 
   const employees = data ?? [];
   const activeEmployees = employees.filter((employee) => employee.isActive);
@@ -113,22 +111,19 @@ export function EmployeesTab() {
         title="Employees"
         subtitle="Salary structure used to build each pay run"
         actions={
-          <div className="row">
-            <CheckboxField label="Show inactive" checked={includeInactive} onChange={(event) => setIncludeInactive(event.target.checked)} />
-            <IfCanWrite>
-              <Button
-                variant="primary"
-                size="sm"
-                icon={<Plus size={15} />}
-                onClick={() => {
-                  setEditing(null);
-                  setFormOpen(true);
-                }}
-              >
-                Add employee
-              </Button>
-            </IfCanWrite>
-          </div>
+          <IfCanWrite>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Plus size={15} />}
+              onClick={() => {
+                setEditing(null);
+                setFormOpen(true);
+              }}
+            >
+              Add employee
+            </Button>
+          </IfCanWrite>
         }
       >
         {loading ? <LoadingBlock label="Loading employees…" /> : null}

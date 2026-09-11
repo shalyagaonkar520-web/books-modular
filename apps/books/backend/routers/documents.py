@@ -344,9 +344,12 @@ def import_excel_commit(
     expense_acct = db.execute(select(Account).where(Account.organization_id == org_id, Account.type == "expense")).scalars().first()
     bank_acct = db.execute(select(BankAccount).where(BankAccount.organization_id == org_id)).scalars().first()
 
+    # Exactly one source of rows. Callers have sent both `sections` and an
+    # `items` copy of the same rows, and appending both imported everything
+    # twice. `sections` wins because only that path carries the sheet's
+    # required-column check - taking `items` alongside it would also let a
+    # sheet that failed validation slip in through the back door.
     all_items: List[ExcelCommitItem] = []
-    if payload.items:
-        all_items.extend(payload.items)
     if payload.sections:
         for sec in payload.sections:
             if sec.missing_required:
@@ -354,6 +357,8 @@ def import_excel_commit(
                 continue
             for row in sec.rows:
                 all_items.append(ExcelCommitItem(category=sec.category, data=row))
+    elif payload.items:
+        all_items.extend(payload.items)
 
     def _amount(d: Dict[str, Any]) -> Optional[Decimal]:
         return excel_import.coerce_amount(d.get("amount"))
