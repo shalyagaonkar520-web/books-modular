@@ -8,11 +8,13 @@ import type { InviteInfo } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/Field';
 import { FormError, LoadingBlock } from '@/components/ui/Feedback';
+import { useAuth } from '@/auth/AuthContext';
 import { useSubmit } from '@/hooks/useSubmit';
 import { PASSWORD_HINT, validatePassword } from '@/pages/settings/passwordRules';
 
 /** Where an invitee lands from the link in their invite email, to set a password and then sign in normally. */
 export function AcceptInvitePage() {
+  const { login, isEmployee } = useAuth();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get('token') ?? '';
@@ -60,8 +62,23 @@ export function AcceptInvitePage() {
       setError('The two passwords do not match.');
       return;
     }
-    const result = await run(() => authApi.acceptInvite({ token, password }));
-    if (result) setDone(true);
+    const result = await run(async () => {
+      await authApi.acceptInvite({ token, password });
+      if (invite?.email) {
+        try {
+          await login(invite.email, password);
+          return 'logged_in';
+        } catch {
+          // If auto-login fails, fallback to manual login screen
+        }
+      }
+      return 'done';
+    });
+    if (result === 'logged_in') {
+      navigate(isEmployee ? '/portal' : '/dashboard', { replace: true });
+    } else if (result === 'done') {
+      setDone(true);
+    }
   };
 
   if (loading) return <LoadingBlock label="Checking your invite…" />;
@@ -87,7 +104,12 @@ export function AcceptInvitePage() {
               <CheckCircle2 size={16} style={{ verticalAlign: 'text-bottom', marginRight: 6, color: 'var(--color-success, #16a34a)' }} />
               Your password is set. Sign in with {invite?.email} to continue.
             </p>
-            <Button variant="primary" size="md" className="btn-block" onClick={() => navigate('/login', { replace: true })}>
+            <Button
+              variant="primary"
+              size="md"
+              className="btn-block"
+              onClick={() => navigate('/login', { replace: true, state: { email: invite?.email } })}
+            >
               Go to sign in
             </Button>
           </>

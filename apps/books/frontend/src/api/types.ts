@@ -16,6 +16,8 @@ export interface User {
   organizationId: string;
   lastLoginAt?: string | null;
   createdAt: string;
+  /** True while an emailed invite is still waiting to be accepted. */
+  pendingInvite?: boolean;
 }
 
 /** What the accept-invite page shows before asking the invitee to set a password. */
@@ -737,3 +739,12 @@ export interface ExcelCommitResponse {
   message: string;
 }
 
+
+/** Outbound email (SMTP) configuration. The password is never returned by the API. */
+export interface SmtpSettings {
+  host: string;
+  port: number;
+  username: string;
+  senderName: string;
+  configured: boolean;
+}

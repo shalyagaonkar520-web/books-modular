@@ -876,3 +876,52 @@ def send_invite_email(
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+def verify_smtp_credentials(host: str, port: int, username: str, password: str) -> None:
+    """Log in to the mail server with these details. Raises if they are rejected."""
+    server = smtplib.SMTP(host, port, timeout=20)
+    try:
+        server.starttls()
+        server.login(username, password)
+    finally:
+        try:
+            server.quit()
+        except Exception:
+            pass
+
+
+def send_test_email(to_email: str, organization_name: str) -> Dict[str, Any]:
+    """Confirmation message an admin sends to themselves after configuring SMTP."""
+    try:
+        settings = _smtp()
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Rooman Books — outbound email is working"
+        msg["From"] = f"{settings.smtp_sender_name} <{settings.smtp_user}>"
+        msg["To"] = to_email
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background:#f8fafc; margin:0; padding:24px; color:#1e293b;">
+  <div style="max-width:560px; margin:0 auto; background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">
+    <div style="background:#0f172a; padding:24px 28px; color:#fff;">
+      <h1 style="margin:0; font-size:18px;">{organization_name}</h1>
+      <p style="margin:4px 0 0; color:#94a3b8; font-size:13px;">Rooman Books</p>
+    </div>
+    <div style="padding:28px; font-size:15px; line-height:1.6; color:#334155;">
+      <p style="margin-top:0;"><strong>Outbound email is configured correctly.</strong></p>
+      <p>This test was sent from <strong>{settings.smtp_user}</strong> via {settings.smtp_host}.
+         Invites, invoices and payment reminders will be delivered from this address.</p>
+    </div>
+  </div>
+</body>
+</html>
+"""
+        msg.attach(MIMEText(html_body, "html"))
+        server = get_smtp_connection()
+        server.sendmail(settings.smtp_user, to_email, msg.as_string())
+        server.quit()
+        return {"success": True, "message": f"Test email sent to {to_email}", "recipient": to_email}
+    except Exception as e:
+        return {"success": False, "error": str(e)}

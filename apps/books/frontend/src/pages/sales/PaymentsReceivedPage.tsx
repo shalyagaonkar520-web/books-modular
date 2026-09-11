@@ -16,6 +16,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
+import { useDownload } from '@/hooks/useDownload';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatDate, formatNumber, round2 } from '@/utils/format';
 import { PAYMENT_MODES } from '@/utils/status';
@@ -60,6 +61,7 @@ async function loadRangeTotals(query: { customer_id?: string; start_date?: strin
 
 export function PaymentsReceivedPage() {
   const toast = useToast();
+  const { download } = useDownload();
   const { submitting, error: actionError, run, reset } = useSubmit();
 
   const [customerId, setCustomerId] = useState('');
@@ -188,11 +190,11 @@ export function PaymentsReceivedPage() {
               variant="secondary"
               icon={<FileDown size={15} />}
               onClick={() =>
-                customerPaymentsApi.exportPdf({
+                void download(() => customerPaymentsApi.exportPdf({
                   customer_id: customerId || undefined,
                   start_date: startDate || undefined,
                   end_date: endDate || undefined,
-                })
+                }))
               }
             >
               Extract PDF
@@ -201,11 +203,11 @@ export function PaymentsReceivedPage() {
               variant="secondary"
               icon={<FileSpreadsheet size={15} />}
               onClick={() =>
-                customerPaymentsApi.exportExcel({
+                void download(() => customerPaymentsApi.exportExcel({
                   customer_id: customerId || undefined,
                   start_date: startDate || undefined,
                   end_date: endDate || undefined,
-                })
+                }))
               }
             >
               Extract Excel

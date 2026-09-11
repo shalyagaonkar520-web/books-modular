@@ -95,6 +95,11 @@ class User(TimestampMixin, OrgScopedMixin, Base):
 
     organization: Mapped[Organization] = relationship(back_populates="users")
 
+    @property
+    def pending_invite(self) -> bool:
+        """No password yet: the emailed invite has not been accepted."""
+        return self.password_hash is None
+
 
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"

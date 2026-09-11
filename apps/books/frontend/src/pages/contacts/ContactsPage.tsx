@@ -1,12 +1,13 @@
 /** Customers and vendors share this page; every label follows the `type` prop. */
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { FileDown, FileSpreadsheet, FileText, Mail, Pencil, Plus, Send, Trash2, Users } from 'lucide-react';
+import { FileDown, FileSpreadsheet, FileText, Mail, Pencil, Plus, Trash2, Users } from 'lucide-react';
 
 import { contactsApi, emailApi } from '@/api/endpoints';
 import type { Contact, ContactType, GstTreatment } from '@/api/types';
 import { useAsync } from '@/hooks/useAsync';
 import { useDebounced } from '@/hooks/useDebounced';
+import { useDownload } from '@/hooks/useDownload';
 import { useSubmit } from '@/hooks/useSubmit';
 import { useAuth } from '@/auth/AuthContext';
 import { IfCanWrite } from '@/auth/RouteGuards';
@@ -53,6 +54,7 @@ function balanceTone(amount: number): string {
 
 export function ContactsPage({ type }: { type: ContactType }) {
   const toast = useToast();
+  const { download } = useDownload();
   const copy = copyFor(type);
   const { canWrite } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -190,7 +192,7 @@ export function ContactsPage({ type }: { type: ContactType }) {
         </div>
       ),
     },
-    { key: 'contactPerson', header: 'Contact person', render: (contact) => contact.contactPerson || <span className="text-muted">—</span> },
+    { key: 'contactPerson', header: 'Contact person name', render: (contact) => contact.contactPerson || <span className="text-muted">—</span> },
     {
       key: 'email',
       header: 'Email',
@@ -212,16 +214,6 @@ export function ContactsPage({ type }: { type: ContactType }) {
             >
               <Mail size={15} />
             </button>
-            <a
-              href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(contact.email)}&su=${encodeURIComponent(`Communication from Rooman Technologies - ${contact.displayName}`)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="action-btn"
-              title="Open directly in Gmail web"
-              aria-label={`Open Gmail web compose for ${contact.displayName}`}
-            >
-              <Send size={13} />
-            </a>
           </div>
         ) : (
           <span className="text-muted">—</span>
@@ -282,11 +274,11 @@ export function ContactsPage({ type }: { type: ContactType }) {
               variant="secondary"
               icon={<FileDown size={15} />}
               onClick={() =>
-                contactsApi.exportPdf({
+                void download(() => contactsApi.exportPdf({
                   type,
                   include_inactive: includeInactive,
                   search: debouncedSearch.trim() || undefined,
-                })
+                }))
               }
             >
               Extract PDF
@@ -295,11 +287,11 @@ export function ContactsPage({ type }: { type: ContactType }) {
               variant="secondary"
               icon={<FileSpreadsheet size={15} />}
               onClick={() =>
-                contactsApi.exportExcel({
+                void download(() => contactsApi.exportExcel({
                   type,
                   include_inactive: includeInactive,
                   search: debouncedSearch.trim() || undefined,
-                })
+                }))
               }
             >
               Extract Excel
@@ -605,6 +597,16 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
       toast.error('Customer email is required for invoices and payment notifications');
       return;
     }
+    // Names are people, not codes. Company name is deliberately exempt so
+    // businesses like "3M" can still be recorded.
+    if (/\d/.test(form.displayName)) {
+      toast.error('Display name cannot contain numbers');
+      return;
+    }
+    if (/\d/.test(form.contactPerson)) {
+      toast.error('Contact person name cannot contain numbers');
+      return;
+    }
     if (form.phone.trim() && form.phone.trim().length !== 10) {
       setPhoneError('Phone number must be exactly 10 digits');
       return;
@@ -653,7 +655,7 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
         <div className="form-grid">
           <TextField label="Display name" required value={form.displayName} error={fieldErrors.displayName} onChange={(event) => set('displayName', event.target.value)} />
           <TextField label="Company name" value={form.companyName} error={fieldErrors.companyName} onChange={(event) => set('companyName', event.target.value)} />
-          <TextField label="Contact person" value={form.contactPerson} error={fieldErrors.contactPerson} onChange={(event) => set('contactPerson', event.target.value)} />
+          <TextField label="Contact person name" value={form.contactPerson} error={fieldErrors.contactPerson} onChange={(event) => set('contactPerson', event.target.value)} />
           <TextField label="Email" type="email" required={type === 'customer'} value={form.email} error={fieldErrors.email} onChange={(event) => set('email', event.target.value)} />
           <TextField
             label="Phone"
@@ -775,7 +777,7 @@ function ContactDetailsModal({ contactId, copy, onClose, onEdit, onSendEmail }: 
           <div className="detail-grid">
             <Detail label="Status" value={<Badge tone={contact.isActive ? 'success' : 'neutral'}>{contact.isActive ? 'Active' : 'Inactive'}</Badge>} />
             <Detail label="Overdue" value={<Badge tone={overdueTone}>{formatCurrency(summary.data.overdue)}</Badge>} />
-            <Detail label="Contact person" value={contact.contactPerson || dash} />
+            <Detail label="Contact person name" value={contact.contactPerson || dash} />
             <Detail
               label="Email"
               value={
@@ -850,8 +852,6 @@ function SendContactEmailModal({ contact, onClose, onSent }: SendContactEmailMod
     }
   }
 
-  const gmailWebUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(contact.email ?? '')}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
-
   return (
     <Modal
       open
@@ -861,16 +861,6 @@ function SendContactEmailModal({ contact, onClose, onSent }: SendContactEmailMod
       onClose={onClose}
       footer={
         <>
-          <a
-            href={gmailWebUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn btn-secondary btn-md"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-          >
-            <Send size={14} />
-            <span>Open in Gmail Web</span>
-          </a>
           <Button onClick={onClose} disabled={submitting}>
             Cancel
           </Button>

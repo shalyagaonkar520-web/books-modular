@@ -15,6 +15,7 @@ import { useToast } from '@/components/ui/Toast';
 import { IfCanWrite } from '@/auth/RouteGuards';
 import { useAuth } from '@/auth/AuthContext';
 import { useAsync } from '@/hooks/useAsync';
+import { useDownload } from '@/hooks/useDownload';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatDate, round2, titleCase, todayIso } from '@/utils/format';
 import { PAYMENT_MODES } from '@/utils/status';
@@ -34,6 +35,7 @@ function monthStart(): string {
 
 export function PaymentsMadePage() {
   const toast = useToast();
+  const { download } = useDownload();
   const { canWrite } = useAuth();
 
   const [vendorId, setVendorId] = useState('');
@@ -167,11 +169,11 @@ export function PaymentsMadePage() {
               variant="secondary"
               icon={<FileDown size={15} />}
               onClick={() =>
-                vendorPaymentsApi.exportPdf({
+                void download(() => vendorPaymentsApi.exportPdf({
                   vendor_id: vendorId || undefined,
                   start_date: startDate || undefined,
                   end_date: endDate || undefined,
-                })
+                }))
               }
             >
               Extract PDF
@@ -180,11 +182,11 @@ export function PaymentsMadePage() {
               variant="secondary"
               icon={<FileSpreadsheet size={15} />}
               onClick={() =>
-                vendorPaymentsApi.exportExcel({
+                void download(() => vendorPaymentsApi.exportExcel({
                   vendor_id: vendorId || undefined,
                   start_date: startDate || undefined,
                   end_date: endDate || undefined,
-                })
+                }))
               }
             >
               Extract Excel

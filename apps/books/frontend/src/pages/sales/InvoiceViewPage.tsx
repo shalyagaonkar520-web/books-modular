@@ -451,17 +451,6 @@ function SendInvoiceDetailGmailModal({ invoice, onClose, onSent }: SendInvoiceDe
     }
   }
 
-  const gmailWebUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}&su=${encodeURIComponent(
-    sendAsOverdue
-      ? `Payment Reminder: Invoice ${invoice.invoiceNumber} is Overdue - Rooman Technologies`
-      : `Tax Invoice ${invoice.invoiceNumber} from Rooman Technologies`
-  )}&body=${encodeURIComponent(
-    `Dear ${invoice.customerName},\n\n${
-      sendAsOverdue
-        ? `This is an urgent reminder regarding overdue invoice ${invoice.invoiceNumber}. Outstanding balance: ${formatCurrency(invoice.balanceDue)}.`
-        : `Please find details of Tax Invoice ${invoice.invoiceNumber}.\nAmount: ${formatCurrency(invoice.total)}\nDue Date: ${formatDate(invoice.dueDate)}.`
-    }\n\nWarm regards,\nRooman Technologies Accounts Desk`
-  )}`;
 
   return (
     <Modal
@@ -472,16 +461,6 @@ function SendInvoiceDetailGmailModal({ invoice, onClose, onSent }: SendInvoiceDe
       onClose={onClose}
       footer={
         <>
-          <a
-            href={gmailWebUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn btn-secondary btn-md"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-          >
-            <Send size={14} />
-            <span>Open in Gmail Web</span>
-          </a>
           <Button onClick={onClose} disabled={submitting}>
             Cancel
           </Button>

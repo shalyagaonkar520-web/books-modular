@@ -65,6 +65,9 @@ class UserOut(APIModel):
     organization_id: str
     last_login_at: Optional[datetime] = None
     created_at: datetime
+    # True while an emailed invite is still waiting to be accepted - the user
+    # has no password yet and cannot sign in.
+    pending_invite: bool = False
 
 
 class OrganizationOut(APIModel):
@@ -174,3 +177,27 @@ class SessionOut(APIModel):
     created_at: datetime
     expires_at: datetime
     is_current: bool
+
+
+class SmtpSettingsOut(APIModel):
+    """Current outbound-email configuration. The password is never returned."""
+
+    host: str
+    port: int
+    username: str
+    sender_name: str
+    configured: bool
+
+
+class SmtpSettingsUpdate(APIModel):
+    host: str = Field(min_length=1, max_length=255)
+    port: int = Field(ge=1, le=65535)
+    username: EmailStr
+    # Optional so an admin can change the sender name or host without having to
+    # retype the app password; blank means "keep the stored one".
+    password: Optional[str] = Field(default=None, max_length=255)
+    sender_name: str = Field(min_length=1, max_length=120)
+
+
+class SmtpTestRequest(APIModel):
+    to_email: EmailStr

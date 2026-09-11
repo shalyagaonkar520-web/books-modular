@@ -17,6 +17,7 @@ import { useToast } from '@/components/ui/Toast';
 import { IfCanWrite } from '@/auth/RouteGuards';
 import { useAuth } from '@/auth/AuthContext';
 import { useAsync } from '@/hooks/useAsync';
+import { useDownload } from '@/hooks/useDownload';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatDate, formatPercent, round2, todayIso } from '@/utils/format';
 
@@ -31,6 +32,7 @@ function monthStart(): string {
 
 export function ExpensesPage() {
   const toast = useToast();
+  const { download } = useDownload();
   const { canWrite } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -220,12 +222,12 @@ export function ExpensesPage() {
               variant="secondary"
               icon={<FileDown size={15} />}
               onClick={() =>
-                expensesApi.exportPdf({
+                void download(() => expensesApi.exportPdf({
                   account_id: accountId || undefined,
                   vendor_id: vendorId || undefined,
                   start_date: startDate || undefined,
                   end_date: endDate || undefined,
-                })
+                }))
               }
             >
               Extract PDF
@@ -234,12 +236,12 @@ export function ExpensesPage() {
               variant="secondary"
               icon={<FileSpreadsheet size={15} />}
               onClick={() =>
-                expensesApi.exportExcel({
+                void download(() => expensesApi.exportExcel({
                   account_id: accountId || undefined,
                   vendor_id: vendorId || undefined,
                   start_date: startDate || undefined,
                   end_date: endDate || undefined,
-                })
+                }))
               }
             >
               Extract Excel

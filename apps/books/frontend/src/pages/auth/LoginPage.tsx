@@ -19,12 +19,12 @@ import { FormError } from '@/components/ui/Feedback';
 import { useSubmit } from '@/hooks/useSubmit';
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, isEmployee } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { submitting, error, fieldErrors, run } = useSubmit();
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState((location.state as { email?: string } | null)?.email ?? '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
@@ -36,7 +36,8 @@ export function LoginPage() {
     });
     if (result) {
       const from = (location.state as { from?: string } | null)?.from;
-      navigate(from && from !== '/login' ? from : '/dashboard', { replace: true });
+      const destination = from && from !== '/login' ? from : isEmployee ? '/portal' : '/dashboard';
+      navigate(destination, { replace: true });
     }
   };
 

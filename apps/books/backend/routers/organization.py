@@ -18,13 +18,22 @@ from backend.schemas.auth import (
     InviteUserRequest,
     OrganizationOut,
     OrganizationUpdate,
+    SmtpSettingsOut,
+    SmtpSettingsUpdate,
+    SmtpTestRequest,
     UpdateUserRequest,
     UserOut,
 )
 from backend.schemas.common import Message, Page
 from backend.security import hash_password, hash_token
 from backend.services import audit
-from backend.services.email_service import send_invite_email, smtp_configured
+from backend.services.email_service import (
+    send_invite_email,
+    send_test_email,
+    smtp_configured,
+    verify_smtp_credentials,
+)
+from backend.services.env_config import update_env_values
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
 settings = get_settings()
@@ -166,3 +175,68 @@ def audit_logs(
     stmt = stmt.order_by(AuditLog.created_at.desc())
     rows, total = paginate(db, stmt, pagination)
     return Page(items=[AuditLogOut.model_validate(r) for r in rows], total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.get("/settings/smtp", response_model=SmtpSettingsOut)
+def get_smtp_settings(user: User = Depends(require_admin)):
+    """Current outbound-email configuration. Never returns the password."""
+    current = get_settings()
+    return SmtpSettingsOut(
+        host=current.smtp_host,
+        port=current.smtp_port,
+        username=current.smtp_user,
+        sender_name=current.smtp_sender_name,
+        configured=current.smtp_configured,
+    )
+
+
+@router.put("/settings/smtp", response_model=SmtpSettingsOut)
+def update_smtp_settings(payload: SmtpSettingsUpdate, user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Save the sender account used for invites, invoices and reminders.
+
+    The credentials are verified against the server before being written, so a
+    bad app password is rejected here rather than silently breaking every
+    outbound email later.
+    """
+    password = (payload.password or "").strip() or get_settings().smtp_password
+    if not password:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A password (Gmail app password) is required the first time you configure this.")
+
+    try:
+        verify_smtp_credentials(payload.host, payload.port, str(payload.username), password)
+    except Exception as exc:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Those details were rejected by the mail server: {exc}",
+        ) from exc
+
+    update_env_values({
+        "SMTP_HOST": payload.host.strip(),
+        "SMTP_PORT": str(payload.port),
+        "SMTP_USER": str(payload.username).strip(),
+        "SMTP_PASSWORD": password,
+        "SMTP_SENDER_NAME": payload.sender_name.strip(),
+    })
+
+    audit.record(db, user, "update", "organization", user.organization_id, f"Outbound email sender set to {payload.username}")
+    db.commit()
+
+    current = get_settings()
+    return SmtpSettingsOut(
+        host=current.smtp_host,
+        port=current.smtp_port,
+        username=current.smtp_user,
+        sender_name=current.smtp_sender_name,
+        configured=current.smtp_configured,
+    )
+
+
+@router.post("/settings/smtp/test", response_model=Message)
+def send_smtp_test(payload: SmtpTestRequest, user: User = Depends(require_admin)):
+    """Send a test message so an admin can confirm delivery actually works."""
+    if not smtp_configured():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Configure the sender account first.")
+    result = send_test_email(str(payload.to_email), user.organization.name)
+    if not result.get("success"):
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Could not send the test email: {result.get('error', 'unknown error')}")
+    return Message(message=f"Test email sent to {payload.to_email}.")

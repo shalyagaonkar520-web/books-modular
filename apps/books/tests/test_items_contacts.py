@@ -75,3 +75,29 @@ def test_contacts_crud_and_filters(client, org):
     assert summary["documentCount"] == 0
     assert client.delete(f"/api/contacts/{created['id']}", headers=h).status_code == 200
     assert client.get(f"/api/contacts/{created['id']}", headers=h).status_code == 404
+
+
+def test_contact_names_reject_digits_but_company_name_allows_them(client, org):
+    """Names are people, not codes - but "3M" is a legitimate company name."""
+    h = org["h"]
+    bad_name = client.post("/api/contacts", headers=h, json={"type": "customer", "displayName": "Shivani 123", "email": "s1@x.com"})
+    assert bad_name.status_code == 422
+    assert "cannot contain numbers" in bad_name.text
+
+    bad_person = client.post(
+        "/api/contacts", headers=h,
+        json={"type": "customer", "displayName": "Acme Traders", "contactPerson": "Ravi 99", "email": "s2@x.com"},
+    )
+    assert bad_person.status_code == 422
+    assert "cannot contain numbers" in bad_person.text
+
+    ok = client.post(
+        "/api/contacts", headers=h,
+        json={"type": "customer", "displayName": "Acme Traders", "companyName": "3M India", "contactPerson": "Ravi Kumar", "email": "s3@x.com"},
+    )
+    assert ok.status_code == 201, ok.text
+    assert ok.json()["companyName"] == "3M India"
+
+    # The same rule applies on update.
+    renamed = client.put(f"/api/contacts/{ok.json()['id']}", headers=h, json={"displayName": "Acme 2"})
+    assert renamed.status_code == 422

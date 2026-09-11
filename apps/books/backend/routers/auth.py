@@ -155,7 +155,7 @@ def accept_invite(payload: AcceptInviteRequest, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=AuthResponse)
 def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
-    login_limiter.check(f"login:{client_ip(request)}")
+    login_limiter.check(f"login:{client_ip(request)}:{payload.email.lower()}")
     user = db.execute(select(User).where(User.email == payload.email.lower())).scalar_one_or_none()
     if user and user.password_hash is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "This invitation hasn't been accepted yet. Check your email for the setup link.")

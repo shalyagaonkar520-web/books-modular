@@ -202,7 +202,10 @@ export async function downloadFile(path: string, filename: string): Promise<void
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  // Revoking synchronously here races the browser: it can tear the blob down
+  // before the download has actually started reading it, so the file silently
+  // never arrives. Give the download a moment to latch on first.
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 export const emptyPage = <T>(): Page<T> => ({ items: [], total: 0, page: 1, pageSize: 25 });

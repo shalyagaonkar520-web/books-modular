@@ -416,9 +416,17 @@ def change_status(bill_id: str, payload: BillStatusUpdate, user: User = Depends(
 @router.delete("/{bill_id}", response_model=Message)
 def delete_bill(bill_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
     bill = get_or_404(db, Bill, bill_id, user.organization_id, "Bill")
-    if bill.status not in ("draft", "void") or bill.amount_paid > 0:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only draft or void bills can be deleted. Void the bill first.")
+    if bill.amount_paid > 0:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This bill has payments recorded against it. Delete those payments first, then delete the bill.",
+        )
     number = bill.bill_number
+    # A posted (open/overdue) bill still has ledger entries and stock movements
+    # behind it, so reverse those before removing the row - otherwise deleting
+    # it would silently leave the books unbalanced.
+    if bill.status not in ("draft", "void"):
+        unpost_bill(db, bill, user, "Bill deleted")
     db.delete(bill)
     audit.record(db, user, "delete", "bill", bill_id, f"Deleted bill {number}")
     db.commit()

@@ -4,12 +4,25 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal, Optional
 
-from pydantic import EmailStr, Field
+from pydantic import EmailStr, Field, field_validator
 
 from backend.schemas.common import APIModel
 
 ContactType = Literal["customer", "vendor"]
 GstTreatment = Literal["registered_business", "unregistered", "consumer", "overseas", "sez"]
+
+
+def _validate_person_name(value: Optional[str], label: str) -> Optional[str]:
+    """Names are people, not codes - reject digits so "Shivani 123" is caught at entry.
+
+    Only applies to the name fields; company_name is left alone so businesses
+    that genuinely contain digits (3M, 7-Eleven) can still be recorded.
+    """
+    if value is None:
+        return value
+    if any(ch.isdigit() for ch in value):
+        raise ValueError(f"{label} cannot contain numbers")
+    return value
 
 
 class ContactBase(APIModel):
@@ -26,6 +39,16 @@ class ContactBase(APIModel):
     shipping_address: Optional[str] = None
     payment_terms_days: int = Field(default=30, ge=0, le=365)
     notes: Optional[str] = None
+
+    @field_validator("display_name")
+    @classmethod
+    def _name(cls, value: str) -> str:
+        return _validate_person_name(value, "Name")
+
+    @field_validator("contact_person")
+    @classmethod
+    def _contact_person(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_person_name(value, "Contact person name")
 
 
 class ContactCreate(ContactBase):
@@ -46,6 +69,16 @@ class ContactUpdate(APIModel):
     payment_terms_days: Optional[int] = Field(default=None, ge=0, le=365)
     notes: Optional[str] = None
     is_active: Optional[bool] = None
+
+    @field_validator("display_name")
+    @classmethod
+    def _name(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_person_name(value, "Name")
+
+    @field_validator("contact_person")
+    @classmethod
+    def _contact_person(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_person_name(value, "Contact person name")
 
 
 class ContactOut(ContactBase):

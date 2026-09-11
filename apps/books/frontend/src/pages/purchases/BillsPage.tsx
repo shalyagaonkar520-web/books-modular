@@ -19,6 +19,7 @@ import { IfCanWrite } from '@/auth/RouteGuards';
 import { useAuth } from '@/auth/AuthContext';
 import { useAsync } from '@/hooks/useAsync';
 import { useDebounced } from '@/hooks/useDebounced';
+import { useDownload } from '@/hooks/useDownload';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatDate } from '@/utils/format';
 import { statusLabel, statusTone } from '@/utils/status';
@@ -47,6 +48,7 @@ function isPayable(bill: BillListItem): boolean {
 export function BillsPage() {
   const navigate = useNavigate();
   const toast = useToast();
+  const { download } = useDownload();
   const { canWrite } = useAuth();
   const [searchParams] = useSearchParams();
 
@@ -136,7 +138,9 @@ export function BillsPage() {
   };
 
   const rows = list.data?.items ?? [];
-  const isBillDeletable = (bill: BillListItem) => bill.status === 'draft' || bill.status === 'void';
+  // Anything with no payments against it can be deleted; the API reverses the
+  // ledger entries for a posted bill on the way out.
+  const isBillDeletable = (bill: BillListItem) => bill.amountPaid <= 0;
   const deletableRows = rows.filter(isBillDeletable);
 
   const columns: Array<Column<BillListItem>> = [
@@ -254,7 +258,7 @@ export function BillsPage() {
                   <Ban size={15} />
                 </button>
               ) : null}
-              {bill.status === 'draft' || bill.status === 'void' ? (
+              {isBillDeletable(bill) ? (
                 <button
                   type="button"
                   className="action-btn is-danger"
@@ -282,13 +286,13 @@ export function BillsPage() {
               variant="secondary"
               icon={<FileDown size={15} />}
               onClick={() =>
-                billsApi.exportPdf({
+                void download(() => billsApi.exportPdf({
                   status: statusTab === 'all' ? undefined : statusTab,
                   vendor_id: vendorId || undefined,
                   search: debouncedSearch.trim() || undefined,
                   start_date: startDate || undefined,
                   end_date: endDate || undefined,
-                })
+                }))
               }
             >
               Extract PDF
@@ -297,13 +301,13 @@ export function BillsPage() {
               variant="secondary"
               icon={<FileSpreadsheet size={15} />}
               onClick={() =>
-                billsApi.exportExcel({
+                void download(() => billsApi.exportExcel({
                   status: statusTab === 'all' ? undefined : statusTab,
                   vendor_id: vendorId || undefined,
                   search: debouncedSearch.trim() || undefined,
                   start_date: startDate || undefined,
                   end_date: endDate || undefined,
-                })
+                }))
               }
             >
               Extract Excel
@@ -459,7 +463,7 @@ export function BillsPage() {
               }}
               isAllSelected={deletableRows.length > 0 && selectedIds.size === deletableRows.length}
               isRowSelectable={isBillDeletable}
-              rowNotSelectableReason={() => 'Only draft or void bills can be deleted. Void the bill first.'}
+              rowNotSelectableReason={() => 'This bill has payments recorded against it. Delete those payments first.'}
             />
             <Pagination page={list.data?.page ?? page} pageSize={list.data?.pageSize ?? PAGE_SIZE} total={list.data?.total ?? 0} onPageChange={setPage} />
           </>

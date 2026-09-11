@@ -53,6 +53,36 @@ def test_bill_validation(client, org):
     assert wrong_vendor_payment.status_code == 400
 
 
+def test_unpaid_bill_can_be_deleted_and_reverses_the_ledger(client, org):
+    """Deleting a posted-but-unpaid bill unposts it first, so the books stay balanced.
+
+    Previously only draft/void bills could be deleted at all, which left the
+    bulk-select delete on the Bills page with nothing it was allowed to remove.
+    """
+    h = org["h"]
+    bill = client.post("/api/bills", headers=h, json=_bill_payload(org, qty=1, rate=1000)).json()
+    assert bill["status"] == "open"
+
+    removed = client.delete(f"/api/bills/{bill['id']}", headers=h)
+    assert removed.status_code == 200, removed.text
+    assert client.get(f"/api/bills/{bill['id']}", headers=h).status_code == 404
+    assert trial_balance_ok(client, h)
+
+    # A bill with payments against it is still refused - those must go first.
+    paid = client.post("/api/bills", headers=h, json=_bill_payload(org, qty=1, rate=2000)).json()
+    payment = client.post(
+        "/api/vendor-payments",
+        headers=h,
+        json={"vendorId": org["vendor"]["id"], "billId": paid["id"], "bankAccountId": org["bank"]["id"],
+              "date": "2026-09-05", "amount": 500, "method": "bank_transfer"},
+    )
+    assert payment.status_code == 201, payment.text
+    refused = client.delete(f"/api/bills/{paid['id']}", headers=h)
+    assert refused.status_code == 400
+    assert "payments" in refused.json()["detail"].lower()
+    assert trial_balance_ok(client, h)
+
+
 def test_expense_lifecycle(client, org):
     h = org["h"]
     rent = org["accounts"]["6300"]["id"]

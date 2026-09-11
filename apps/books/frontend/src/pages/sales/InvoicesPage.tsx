@@ -18,6 +18,7 @@ import { FilterSelect, SearchInput, Tabs, Toolbar } from '@/components/ui/Toolba
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useDebounced } from '@/hooks/useDebounced';
+import { useDownload } from '@/hooks/useDownload';
 import { useSubmit } from '@/hooks/useSubmit';
 import { daysBetween, formatCurrency, formatDate, todayIso } from '@/utils/format';
 import { statusLabel, statusTone } from '@/utils/status';
@@ -51,6 +52,7 @@ export function InvoicesPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const toast = useToast();
+  const { download } = useDownload();
   const { submitting, error: actionError, run, reset } = useSubmit();
 
   const [status, setStatus] = useState('all');
@@ -342,13 +344,13 @@ export function InvoicesPage() {
               variant="secondary"
               icon={<FileDown size={15} />}
               onClick={() =>
-                invoicesApi.exportPdf({
+                void download(() => invoicesApi.exportPdf({
                   status: status === 'all' ? undefined : status,
                   customer_id: customerId || undefined,
                   search: debouncedSearch.trim() || undefined,
                   start_date: startDate || undefined,
                   end_date: endDate || undefined,
-                })
+                }))
               }
             >
               Extract PDF
@@ -357,13 +359,13 @@ export function InvoicesPage() {
               variant="secondary"
               icon={<FileSpreadsheet size={15} />}
               onClick={() =>
-                invoicesApi.exportExcel({
+                void download(() => invoicesApi.exportExcel({
                   status: status === 'all' ? undefined : status,
                   customer_id: customerId || undefined,
                   search: debouncedSearch.trim() || undefined,
                   start_date: startDate || undefined,
                   end_date: endDate || undefined,
-                })
+                }))
               }
             >
               Extract Excel
@@ -675,17 +677,6 @@ function SendInvoiceModal({ invoice, onClose, onSent }: SendInvoiceModalProps) {
     }
   }
 
-  const gmailWebUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}&su=${encodeURIComponent(
-    sendAsOverdue
-      ? `Payment Reminder: Invoice ${invoice.invoiceNumber} is Overdue - Rooman Technologies`
-      : `Tax Invoice ${invoice.invoiceNumber} from Rooman Technologies`
-  )}&body=${encodeURIComponent(
-    `Dear ${invoice.customerName},\n\n${
-      sendAsOverdue
-        ? `This is an urgent reminder regarding overdue invoice ${invoice.invoiceNumber}. Outstanding balance: ${formatCurrency(invoice.balanceDue)}.`
-        : `Please find details of Tax Invoice ${invoice.invoiceNumber}.\nAmount: ${formatCurrency(invoice.total)}\nDue Date: ${formatDate(invoice.dueDate)}.`
-    }\n\nWarm regards,\nRooman Technologies Accounts Desk`
-  )}`;
 
   return (
     <Modal
@@ -696,16 +687,6 @@ function SendInvoiceModal({ invoice, onClose, onSent }: SendInvoiceModalProps) {
       onClose={onClose}
       footer={
         <>
-          <a
-            href={gmailWebUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn btn-secondary btn-md"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-          >
-            <Send size={14} />
-            <span>Open in Gmail Web</span>
-          </a>
           <Button onClick={onClose} disabled={submitting}>
             Cancel
           </Button>

@@ -21,6 +21,7 @@ const ROLE_OPTIONS: Array<{ value: Role; label: string }> = [
   { value: 'admin', label: 'Administrator' },
   { value: 'staff', label: 'Staff' },
   { value: 'viewer', label: 'Viewer' },
+  { value: 'employee', label: 'Employee (portal only)' },
 ];
 
 export function UsersSettings() {
@@ -91,12 +92,23 @@ export function UsersSettings() {
     {
       key: 'status',
       header: 'Status',
-      render: (row) => <Badge tone={row.isActive ? 'success' : 'neutral'}>{row.isActive ? 'Active' : 'Deactivated'}</Badge>,
+      render: (row) => {
+        if (!row.isActive) return <Badge tone="neutral">Deactivated</Badge>;
+        // An invited user exists but has no password yet, so "Active" alone
+        // reads as though they can already sign in.
+        if (row.pendingInvite) return <Badge tone="warning">Invite sent</Badge>;
+        return <Badge tone="success">Active</Badge>;
+      },
     },
     {
       key: 'lastLogin',
       header: 'Last login',
-      render: (row) => (row.lastLoginAt ? formatDateTime(row.lastLoginAt) : <span className="text-muted">Never</span>),
+      render: (row) =>
+        row.lastLoginAt ? (
+          formatDateTime(row.lastLoginAt)
+        ) : (
+          <span className="text-muted">{row.pendingInvite ? 'Awaiting invite' : 'Never'}</span>
+        ),
     },
     { key: 'created', header: 'Added', render: (row) => formatDate(row.createdAt) },
     {
