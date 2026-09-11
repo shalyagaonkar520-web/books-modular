@@ -265,6 +265,7 @@ export const payrollApi = {
 export const employeePortalApi = {
   myEmployee: () => api.get<Employee>('/me/employee'),
   myPayslips: () => api.get<Payslip[]>('/me/payslips'),
+  myTimeEntries: () => api.get<TimeEntry[]>('/me/time-entries'),
 };
 
 export const reportsApi = {

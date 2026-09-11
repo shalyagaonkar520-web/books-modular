@@ -1,8 +1,9 @@
 import { Route, Routes } from 'react-router-dom';
 
 import { AppLayout } from '@/components/layout/AppLayout';
-import { RequireAuth, RequireGuest, RequireRole } from '@/auth/RouteGuards';
+import { RequireAuth, RequireEmployeePortal, RequireGuest, RequireMainApp, RequireRole } from '@/auth/RouteGuards';
 import { AcceptInvitePage } from '@/pages/auth/AcceptInvitePage';
+import { EmployeePortalPage } from '@/pages/portal/EmployeePortalPage';
 import { AccountingPage } from '@/pages/accounting/AccountingPage';
 import { FinancialDashboardPage } from '@/pages/financial/FinancialDashboardPage';
 import { ReceivablesPayablesDashboard } from '@/pages/financial/ReceivablesPayablesDashboard';
@@ -50,7 +51,13 @@ export function App() {
 
         {/* Protected app routes — redirect to / if not logged in */}
         <Route element={<RequireAuth />}>
-          <Route element={<AppLayout />}>
+          {/* Employee is a portal-only role; every other route below redirects it to /portal instead */}
+          <Route element={<RequireEmployeePortal />}>
+            <Route path="/portal" element={<EmployeePortalPage />} />
+          </Route>
+
+          <Route element={<RequireMainApp />}>
+            <Route element={<AppLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/items" element={<ItemsPage />} />
 
@@ -117,6 +124,7 @@ export function App() {
                 </RequireRole>
               }
             />
+          </Route>
           </Route>
         </Route>
 

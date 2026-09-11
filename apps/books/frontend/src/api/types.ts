@@ -516,6 +516,11 @@ export interface Payslip {
   lossOfPayAmount: number;
   totalDeductions: number;
   netPay: number;
+  periodYear?: number | null;
+  periodMonth?: number | null;
+  periodLabel?: string | null;
+  payRunStatus?: string | null;
+  payDate?: string | null;
 }
 
 export interface PayRun {

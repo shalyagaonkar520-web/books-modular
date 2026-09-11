@@ -46,11 +46,14 @@ def employee_out(e: Employee) -> EmployeeOut:
 
 def payslip_out(p: Payslip) -> PayslipOut:
     e = p.employee
+    run = p.pay_run
     return PayslipOut(
         id=p.id, employee_id=p.employee_id, employee_code=e.employee_code, employee_name=e.name, designation=e.designation, department=e.department,
         pan=e.pan, bank_account_number_masked=mask_number(e.bank_account_number), basic_salary=p.basic_salary, hra=p.hra,
         other_allowances=p.other_allowances, gross=p.gross, pf_employee=p.pf_employee, professional_tax=p.professional_tax, tds=p.tds,
         loss_of_pay_days=p.loss_of_pay_days, loss_of_pay_amount=p.loss_of_pay_amount, total_deductions=p.total_deductions, net_pay=p.net_pay,
+        period_year=run.period_year, period_month=run.period_month,
+        period_label=f"{calendar.month_name[run.period_month]} {run.period_year}", pay_run_status=run.status, pay_date=run.pay_date,
     )
 
 

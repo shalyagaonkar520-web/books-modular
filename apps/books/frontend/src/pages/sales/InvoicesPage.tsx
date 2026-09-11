@@ -345,6 +345,7 @@ export function InvoicesPage() {
                 invoicesApi.exportPdf({
                   status: status === 'all' ? undefined : status,
                   customer_id: customerId || undefined,
+                  search: debouncedSearch.trim() || undefined,
                   start_date: startDate || undefined,
                   end_date: endDate || undefined,
                 })
@@ -359,6 +360,7 @@ export function InvoicesPage() {
                 invoicesApi.exportExcel({
                   status: status === 'all' ? undefined : status,
                   customer_id: customerId || undefined,
+                  search: debouncedSearch.trim() || undefined,
                   start_date: startDate || undefined,
                   end_date: endDate || undefined,
                 })

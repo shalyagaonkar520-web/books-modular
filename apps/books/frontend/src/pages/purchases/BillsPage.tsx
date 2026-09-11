@@ -284,7 +284,10 @@ export function BillsPage() {
               onClick={() =>
                 billsApi.exportPdf({
                   status: statusTab === 'all' ? undefined : statusTab,
+                  vendor_id: vendorId || undefined,
                   search: debouncedSearch.trim() || undefined,
+                  start_date: startDate || undefined,
+                  end_date: endDate || undefined,
                 })
               }
             >
@@ -296,7 +299,10 @@ export function BillsPage() {
               onClick={() =>
                 billsApi.exportExcel({
                   status: statusTab === 'all' ? undefined : statusTab,
+                  vendor_id: vendorId || undefined,
                   search: debouncedSearch.trim() || undefined,
+                  start_date: startDate || undefined,
+                  end_date: endDate || undefined,
                 })
               }
             >

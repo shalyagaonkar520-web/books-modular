@@ -102,6 +102,14 @@ class PayslipOut(APIModel):
     loss_of_pay_amount: Decimal
     total_deductions: Decimal
     net_pay: Decimal
+    # Which pay run this belongs to - was previously only known from context
+    # (the parent PayRun), so a payslip returned on its own (e.g. the
+    # employee portal) had no way to say which month it was for.
+    period_year: Optional[int] = None
+    period_month: Optional[int] = None
+    period_label: Optional[str] = None
+    pay_run_status: Optional[str] = None
+    pay_date: Optional[date] = None
 
 
 class PayRunOut(APIModel):
