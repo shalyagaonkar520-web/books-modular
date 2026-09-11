@@ -718,12 +718,32 @@ export interface Session {
   isCurrent: boolean;
 }
 
+export interface ExcelRowIssue {
+  row_number: number;
+  errors: string[];
+}
+
+export interface ExcelColumnRule {
+  label: string;
+  accepts: string[];
+  type: string;
+}
+
 export interface ExcelCategorizeSection {
   category: string;
   sheet_name: string;
   headers: string[];
   count: number;
   rows: Array<Record<string, unknown>>;
+  /** field -> the spreadsheet header it was read from. */
+  mapped_columns: Record<string, string>;
+  /** Required columns this sheet does not have; blocks the import. */
+  missing_required: string[];
+  /** Headers that matched no known field and were ignored rather than guessed. */
+  unmapped_headers: string[];
+  skipped_count: number;
+  issues: ExcelRowIssue[];
+  rules: { required: ExcelColumnRule[]; optional: ExcelColumnRule[] };
 }
 
 export interface ExcelCategorizeResponse {
@@ -731,12 +751,15 @@ export interface ExcelCategorizeResponse {
   total_sheets: number;
   total_rows: number;
   sections: ExcelCategorizeSection[];
+  ready: boolean;
+  blocking_problems: string[];
 }
 
 export interface ExcelCommitResponse {
   success: boolean;
   imported_counts: Record<string, number>;
   message: string;
+  skipped: string[];
 }
 
 
@@ -747,4 +770,20 @@ export interface SmtpSettings {
   username: string;
   senderName: string;
   configured: boolean;
+}
+
+export interface UserStats {
+  totalActions: number;
+  totalHoursLogged: number;
+  totalPayslips: number;
+  lastActive?: string | null;
+}
+
+export interface UserDashboardSummary {
+  user: User;
+  employee?: Employee | null;
+  payslips: Payslip[];
+  timeEntries: TimeEntry[];
+  auditLogs: AuditLog[];
+  stats: UserStats;
 }

@@ -5,14 +5,14 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from backend.config import get_settings
 from backend.db import get_db
 from backend.deps import get_current_user, require_admin
-from backend.models import AuditLog, Employee, User
+from backend.models import AuditLog, Employee, PayRun, Payslip, Project, TimeEntry, User
 from backend.schemas.auth import (
     AuditLogOut,
     InviteUserRequest,
@@ -22,11 +22,13 @@ from backend.schemas.auth import (
     SmtpSettingsUpdate,
     SmtpTestRequest,
     UpdateUserRequest,
+    UserDashboardOut,
     UserOut,
+    UserStats,
 )
 from backend.schemas.common import Message, Page
 from backend.security import hash_password, hash_token
-from backend.services import audit
+from backend.services import audit, export_service
 from backend.services.email_service import (
     send_invite_email,
     send_test_email,
@@ -160,6 +162,141 @@ def reset_password(
     audit.record(db, user, "update", "user", target.id, f"Password reset for {target.email}")
     db.commit()
     return Message(message="Password reset")
+
+
+@router.get("/users/{user_id}/dashboard", response_model=UserDashboardOut)
+def get_user_dashboard(
+    user_id: str,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from backend.routers.payroll import employee_out, payslip_out
+    from backend.routers.projects import entry_out
+
+    target = db.get(User, user_id)
+    if target is None or target.organization_id != user.organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+
+    employee = db.execute(
+        select(Employee).where(
+            Employee.organization_id == user.organization_id,
+            (Employee.user_id == target.id) | (Employee.email == target.email),
+        )
+    ).scalars().first()
+
+    emp_data = employee_out(employee).model_dump() if employee else None
+
+    payslips_data = []
+    if employee:
+        stmt = (
+            select(Payslip)
+            .join(PayRun, PayRun.id == Payslip.pay_run_id)
+            .where(Payslip.employee_id == employee.id)
+            .options(selectinload(Payslip.employee), selectinload(Payslip.pay_run))
+            .order_by(PayRun.period_year.desc(), PayRun.period_month.desc())
+        )
+        payslips = db.execute(stmt).scalars().all()
+        payslips_data = [payslip_out(p).model_dump() for p in payslips]
+
+    time_stmt = (
+        select(TimeEntry)
+        .where(TimeEntry.organization_id == user.organization_id, TimeEntry.user_id == target.id)
+        .options(selectinload(TimeEntry.project).selectinload(Project.customer), selectinload(TimeEntry.user))
+        .order_by(TimeEntry.date.desc(), TimeEntry.created_at.desc())
+    )
+    time_entries = db.execute(time_stmt).scalars().all()
+    time_data = [entry_out(t).model_dump() for t in time_entries]
+
+    audit_stmt = (
+        select(AuditLog)
+        .where(
+            AuditLog.organization_id == user.organization_id,
+            (AuditLog.user_id == target.id) | (AuditLog.user_name == target.name),
+        )
+        .order_by(AuditLog.created_at.desc())
+        .limit(50)
+    )
+    audit_logs = db.execute(audit_stmt).scalars().all()
+
+    total_hours = sum(float(t.hours or 0) for t in time_entries)
+    last_act = target.last_login_at or (audit_logs[0].created_at if audit_logs else None)
+
+    return UserDashboardOut(
+        user=UserOut.model_validate(target),
+        employee=emp_data,
+        payslips=payslips_data,
+        time_entries=time_data,
+        audit_logs=[AuditLogOut.model_validate(a) for a in audit_logs],
+        stats=UserStats(
+            total_actions=len(audit_logs),
+            total_hours_logged=round(total_hours, 2),
+            total_payslips=len(payslips_data),
+            last_active=last_act,
+        ),
+    )
+
+
+@router.get("/users/{user_id}/pdf")
+def export_user_dashboard_pdf(
+    user_id: str,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    target = db.get(User, user_id)
+    if target is None or target.organization_id != user.organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+
+    employee = db.execute(
+        select(Employee).where(
+            Employee.organization_id == user.organization_id,
+            (Employee.user_id == target.id) | (Employee.email == target.email),
+        )
+    ).scalars().first()
+
+    payslips = []
+    if employee:
+        stmt = (
+            select(Payslip)
+            .join(PayRun, PayRun.id == Payslip.pay_run_id)
+            .where(Payslip.employee_id == employee.id)
+            .options(selectinload(Payslip.employee), selectinload(Payslip.pay_run))
+            .order_by(PayRun.period_year.desc(), PayRun.period_month.desc())
+        )
+        payslips = db.execute(stmt).scalars().all()
+
+    time_stmt = (
+        select(TimeEntry)
+        .where(TimeEntry.organization_id == user.organization_id, TimeEntry.user_id == target.id)
+        .options(selectinload(TimeEntry.project).selectinload(Project.customer), selectinload(TimeEntry.user))
+        .order_by(TimeEntry.date.desc(), TimeEntry.created_at.desc())
+    )
+    time_entries = db.execute(time_stmt).scalars().all()
+
+    audit_stmt = (
+        select(AuditLog)
+        .where(
+            AuditLog.organization_id == user.organization_id,
+            (AuditLog.user_id == target.id) | (AuditLog.user_name == target.name),
+        )
+        .order_by(AuditLog.created_at.desc())
+        .limit(30)
+    )
+    audit_logs = db.execute(audit_stmt).scalars().all()
+
+    pdf_bytes = export_service.generate_user_dashboard_pdf(
+        target_user=target,
+        org=user.organization,
+        employee=employee,
+        payslips=payslips,
+        time_entries=time_entries,
+        audit_logs=audit_logs,
+    )
+    safe_name = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in target.name)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="User_{safe_name}_Dashboard.pdf"'},
+    )
 
 
 @router.get("/audit-logs", response_model=Page[AuditLogOut])

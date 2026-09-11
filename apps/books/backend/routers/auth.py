@@ -1,6 +1,7 @@
 """Registration, login, token refresh, profile."""
 from __future__ import annotations
 
+import logging
 from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -37,6 +38,7 @@ from backend.services.chart_of_accounts import bootstrap_accounts
 from backend.services.ratelimit import RateLimiter, client_ip
 from backend.services.user_agent import parse_user_agent
 
+logger = logging.getLogger("roomanbooks.auth")
 settings = get_settings()
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 login_limiter = RateLimiter(limit=settings.login_rate_limit_per_minute, window_seconds=60)
@@ -155,11 +157,17 @@ def accept_invite(payload: AcceptInviteRequest, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=AuthResponse)
 def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
-    login_limiter.check(f"login:{client_ip(request)}:{payload.email.lower()}")
-    user = db.execute(select(User).where(User.email == payload.email.lower())).scalar_one_or_none()
+    email_clean = payload.email.strip().lower()
+    login_limiter.check(f"login:{client_ip(request)}:{email_clean}")
+    user = db.execute(select(User).where(User.email == email_clean)).scalar_one_or_none()
     if user and user.password_hash is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "This invitation hasn't been accepted yet. Check your email for the setup link.")
-    if not user or not verify_password(payload.password, user.password_hash):
+    password_ok = user is not None and (
+        verify_password(payload.password, user.password_hash)
+        or verify_password(payload.password.strip(), user.password_hash)
+    )
+    if not user or not password_ok:
+        logger.warning("Login failed for email '%s' (user_found: %s)", email_clean, user is not None)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
     if not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has been deactivated")

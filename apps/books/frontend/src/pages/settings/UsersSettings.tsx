@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyRound, Plus } from 'lucide-react';
+import { Eye, KeyRound, Plus } from 'lucide-react';
 
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -16,6 +16,7 @@ import { formatDate, formatDateTime } from '@/utils/format';
 
 import { InviteUserModal } from './InviteUserModal';
 import { ResetPasswordModal } from './ResetPasswordModal';
+import { UserDashboardModal } from './UserDashboardModal';
 
 const ROLE_OPTIONS: Array<{ value: Role; label: string }> = [
   { value: 'admin', label: 'Administrator' },
@@ -26,7 +27,8 @@ const ROLE_OPTIONS: Array<{ value: Role; label: string }> = [
 
 export function UsersSettings() {
   const toast = useToast();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, isAdmin } = useAuth();
+  const [viewingUser, setViewingUser] = useState<User | null>(null);
   const [inviting, setInviting] = useState(false);
   const [resetting, setResetting] = useState<User | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -115,9 +117,22 @@ export function UsersSettings() {
       key: 'actions',
       header: '',
       align: 'right',
-      width: '240px',
+      width: '290px',
       render: (row) => (
         <div className="row-actions">
+          {isAdmin && (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Eye size={14} />}
+              onClick={() => setViewingUser(row)}
+            >
+              View
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" icon={<Eye size={14} />} onClick={() => setViewingUser(row)}>
+            View
+          </Button>
           <Button variant="ghost" size="sm" icon={<KeyRound size={14} />} onClick={() => setResetting(row)}>
             Reset password
           </Button>
@@ -162,8 +177,10 @@ export function UsersSettings() {
         ) : null}
       </Card>
 
+      {viewingUser ? <UserDashboardModal user={viewingUser} onClose={() => setViewingUser(null)} /> : null}
       {inviting ? <InviteUserModal onClose={() => setInviting(false)} onInvited={reload} /> : null}
       {resetting ? <ResetPasswordModal user={resetting} onClose={() => setResetting(null)} /> : null}
+      {viewingUser ? <UserDashboardModal user={viewingUser} onClose={() => setViewingUser(null)} /> : null}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { api, downloadFile } from './client';
+import { api, downloadFile, request } from './client';
 import type {
   Account,
   AgingReport,
@@ -47,6 +47,7 @@ import type {
   TimeEntry,
   TrialBalance,
   User,
+  UserDashboardSummary,
   VendorPayment,
 } from './types';
 
@@ -55,7 +56,8 @@ type Query = Record<string, string | number | boolean | undefined | null>;
 export const authApi = {
   register: (body: { name: string; email: string; password: string; organizationName: string; gstin?: string }) =>
     api.post<AuthResponse>('/auth/register', body),
-  login: (body: { email: string; password: string }) => api.post<AuthResponse>('/auth/login', body),
+  login: (body: { email: string; password: string }) =>
+    request<AuthResponse>('/auth/login', { method: 'POST', body, retryOnUnauthorized: false }),
   me: () => api.get<AuthResponse>('/auth/me'),
   logout: () => api.post<Message>('/auth/logout'),
   updateProfile: (body: { name: string }) => api.put<User>('/auth/me', body),
@@ -78,6 +80,11 @@ export const orgApi = {
   updateSmtpSettings: (body: { host: string; port: number; username: string; password?: string; senderName: string }) =>
     api.put<SmtpSettings>('/settings/smtp', body),
   sendSmtpTest: (toEmail: string) => api.post<Message>('/settings/smtp/test', { toEmail }),
+  getUserDashboard: (id: string) => api.get<UserDashboardSummary>(`/users/${id}/dashboard`),
+  downloadUserDashboardPdf: (id: string, name: string) => {
+    const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '_');
+    return downloadFile(`/users/${id}/pdf`, `User_${safeName}_Dashboard.pdf`);
+  },
 };
 
 export const itemsApi = {

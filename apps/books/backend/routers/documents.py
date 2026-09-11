@@ -32,7 +32,7 @@ from backend.models import (
 )
 from backend.schemas.common import Message, Page
 from backend.schemas.documents import DocumentOut, DocumentUpdate
-from backend.services import audit, numbering
+from backend.services import audit, excel_import, numbering
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
 settings = get_settings()
@@ -136,12 +136,28 @@ async def upload_document(
 # ---------------------------------------------------------------------------
 # Excel / CSV Auto-Categorization & Data Input Engine
 # ---------------------------------------------------------------------------
+class ExcelRowIssue(BaseModel):
+    row_number: int
+    errors: List[str]
+
+
 class ExcelCategorizeSection(BaseModel):
     category: str
     sheet_name: str
     headers: List[str]
     count: int
     rows: List[Dict[str, Any]]
+    # What the preview needs to show before anything is written.
+    mapped_columns: Dict[str, str] = {}
+    missing_required: List[str] = []
+    unmapped_headers: List[str] = []
+    skipped_count: int = 0
+    issues: List[ExcelRowIssue] = []
+    rules: Dict[str, Any] = {}
+
+    @property
+    def importable(self) -> bool:
+        return not self.missing_required and self.count > 0
 
 
 class ExcelCategorizeResponse(BaseModel):
@@ -149,6 +165,10 @@ class ExcelCategorizeResponse(BaseModel):
     total_sheets: int
     total_rows: int
     sections: List[ExcelCategorizeSection]
+    # True when every sheet has the columns it needs, so the UI can block the
+    # extract button rather than importing half-understood data.
+    ready: bool = True
+    blocking_problems: List[str] = []
 
 
 class ExcelCommitItem(BaseModel):
@@ -165,6 +185,8 @@ class ExcelCommitResponse(BaseModel):
     success: bool
     imported_counts: Dict[str, int]
     message: str
+    # Rows that could not be imported, with the reason - never silently dropped.
+    skipped: List[str] = []
 
 
 def _cell_to_str(val: Any) -> str:
@@ -175,65 +197,56 @@ def _cell_to_str(val: Any) -> str:
     return str(val).strip()
 
 
-def _categorize_table(headers: List[str], sheet_name: str) -> str:
-    s_lower = sheet_name.lower()
-    h_lower = " ".join(headers).lower()
+def _rows_to_section(
+    sheet_name: str,
+    raw_rows: List[List[str]],
+    default_first_data_row: int = 2,
+) -> Optional[ExcelCategorizeSection]:
+    """Build one preview section from a sheet's raw rows, or None if unusable."""
+    if len(raw_rows) < 2:
+        return None
+    # Keep blank header cells in place: dropping them shifts every later column
+    # and silently files values under the wrong heading.
+    headers = [h.strip() for h in raw_rows[0]]
+    if not any(headers):
+        return None
 
-    if "invoice" in s_lower or "sale" in s_lower:
-        return "invoices"
-    if "bill" in s_lower or "purchase" in s_lower:
-        return "bills"
-    if "expense" in s_lower or "cost" in s_lower or "spending" in s_lower:
-        return "expenses"
-    if "customer" in s_lower or "client" in s_lower:
-        return "customers"
-    if "vendor" in s_lower or "supplier" in s_lower:
-        return "vendors"
+    category = excel_import.detect_category(sheet_name, headers)
+    if category is None:
+        return None
 
-    if "invoice" in h_lower or "inv_no" in h_lower or ("customer" in h_lower and ("rate" in h_lower or "total" in h_lower or "due_date" in h_lower or "invoice_number" in h_lower)):
-        return "invoices"
-    if "bill" in h_lower or "bill_number" in h_lower or ("vendor" in h_lower and ("amount" in h_lower or "due_date" in h_lower or "rate" in h_lower)):
-        return "bills"
-    if "expense" in h_lower or "payee" in h_lower or ("category" in h_lower and "amount" in h_lower):
-        return "expenses"
-    if "customer" in h_lower or ("email" in h_lower and ("gstin" in h_lower or "pan" in h_lower or "company" in h_lower or "display_name" in h_lower)):
-        return "customers"
-    if "vendor" in h_lower or "supplier" in h_lower:
-        return "vendors"
+    mapping = excel_import.map_columns(headers, category, sheet_name)
+    parsed = excel_import.parse_rows(raw_rows[1:], headers, mapping, first_data_row=default_first_data_row)
 
-    return "customers"
+    good = [row for row in parsed if row.ok]
+    bad = [row for row in parsed if not row.ok]
+
+    return ExcelCategorizeSection(
+        category=category,
+        sheet_name=sheet_name,
+        headers=headers,
+        count=len(good),
+        rows=[_jsonable(row.data) for row in good],
+        mapped_columns=mapping.mapped,
+        missing_required=mapping.missing_required,
+        unmapped_headers=mapping.unmapped_headers,
+        skipped_count=len(bad),
+        issues=[ExcelRowIssue(row_number=row.row_number, errors=row.errors) for row in bad[:25]],
+        rules=excel_import.rules_for_display(category),
+    )
 
 
-def _normalize_row(row_dict: Dict[str, str], category: str) -> Dict[str, Any]:
-    res: Dict[str, Any] = {}
-    for k, v in row_dict.items():
-        k_clean = re.sub(r"[^a-zA-Z0-9]+", "_", k).strip("_").lower()
-        res[k_clean] = v
-
-    for k, v in list(res.items()):
-        if any(x in k for x in ["name", "customer", "vendor", "party", "client"]) and "display_name" not in res:
-            res["display_name"] = str(v)
-        if "mail" in k and "email" not in res:
-            res["email"] = str(v)
-        if any(x in k for x in ["phone", "mobile", "contact"]) and "phone" not in res:
-            res["phone"] = str(v)
-        if "gst" in k and "gstin" not in res:
-            res["gstin"] = str(v)
-        if "pan" in k and "pan" not in res:
-            res["pan"] = str(v)
-        if any(x in k for x in ["amount", "total", "rate", "subtotal", "cost", "price"]) and "amount" not in res:
-            try:
-                val_str = re.sub(r"[^\d.]", "", str(v))
-                if val_str:
-                    res["amount"] = float(val_str)
-            except Exception:
-                pass
-        if any(x in k for x in ["date", "due_date"]) and "date" not in res:
-            res["date"] = str(v)
-        if any(x in k for x in ["desc", "note", "item", "service", "particular", "category"]) and "description" not in res:
-            res["description"] = str(v)
-
-    return res
+def _jsonable(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Dates/Decimals -> JSON-safe values that survive the round trip to commit."""
+    out: Dict[str, Any] = {}
+    for key, value in data.items():
+        if isinstance(value, (date, datetime)):
+            out[key] = value.isoformat()[:10]
+        elif isinstance(value, Decimal):
+            out[key] = float(value)
+        else:
+            out[key] = value
+    return out
 
 
 @router.post("/import-excel-categorize", response_model=ExcelCategorizeResponse)
@@ -241,81 +254,68 @@ async def import_excel_categorize(
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
 ):
-    """Upload Excel/CSV file, automatically inspect sheets/headers, extract rows and categorize into Rooman Books modules."""
+    """Inspect an uploaded Excel/CSV file and show exactly what would be imported.
+
+    Nothing is written here. The response carries the column mapping that was
+    recognised, any required columns that are missing, and the rows that could
+    not be read - so the user reviews a real preview before committing.
+    """
     filename = file.filename or "import.xlsx"
     contents = await file.read()
     if not contents:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File is empty")
 
     sections: List[ExcelCategorizeSection] = []
-    total_rows = 0
 
-    if filename.lower().endswith(".csv") or filename.lower().endswith(".txt"):
+    if filename.lower().endswith((".csv", ".txt")):
         try:
             text = contents.decode("utf-8")
         except UnicodeDecodeError:
             text = contents.decode("latin-1", errors="ignore")
         reader = csv.reader(io.StringIO(text))
         raw_rows = [[col.strip() for col in row] for row in reader if any(c.strip() for c in row)]
-        if len(raw_rows) >= 2:
-            headers = raw_rows[0]
-            category = _categorize_table(headers, "Sheet1")
-            items = []
-            for r in raw_rows[1:]:
-                row_dict = {headers[i] if i < len(headers) else f"col_{i}": (r[i] if i < len(r) else "") for i in range(len(r))}
-                items.append(_normalize_row(row_dict, category))
-            total_rows += len(items)
-            sections.append(
-                ExcelCategorizeSection(
-                    category=category,
-                    sheet_name="CSV Data",
-                    headers=headers,
-                    count=len(items),
-                    rows=items,
-                )
-            )
+        section = _rows_to_section("CSV Data", raw_rows)
+        if section:
+            sections.append(section)
     else:
         try:
             wb = openpyxl.load_workbook(io.BytesIO(contents), data_only=True)
-            for sheet_name in wb.sheetnames:
-                s_lower = sheet_name.strip().lower()
-                if any(x in s_lower for x in ["overview", "guide", "readme", "instruction", "notes", "legend"]):
-                    continue
-                ws = wb[sheet_name]
-                raw_rows = []
-                for row_vals in ws.iter_rows(values_only=True):
-                    if any(row_vals):
-                        raw_rows.append([_cell_to_str(c) for c in row_vals])
-                if len(raw_rows) >= 2:
-                    headers = [h for h in raw_rows[0] if h]
-                    if not headers:
-                        continue
-                    category = _categorize_table(headers, sheet_name)
-                    items = []
-                    for r in raw_rows[1:]:
-                        row_dict = {headers[i] if i < len(headers) else f"col_{i}": (r[i] if i < len(r) else "") for i in range(len(r))}
-                        items.append(_normalize_row(row_dict, category))
-                    total_rows += len(items)
-                    sections.append(
-                        ExcelCategorizeSection(
-                            category=category,
-                            sheet_name=sheet_name,
-                            headers=headers,
-                            count=len(items),
-                            rows=items,
-                        )
-                    )
         except Exception as e:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Failed to parse Excel workbook: {str(e)}")
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Failed to parse Excel workbook: {e}") from e
+        for sheet_name in wb.sheetnames:
+            s_lower = sheet_name.strip().lower()
+            if any(x in s_lower for x in ["overview", "guide", "readme", "instruction", "legend"]):
+                continue
+            ws = wb[sheet_name]
+            raw_rows = [
+                [_cell_to_str(c) for c in row_vals]
+                for row_vals in ws.iter_rows(values_only=True)
+                if any(v is not None and str(v).strip() for v in row_vals)
+            ]
+            section = _rows_to_section(sheet_name, raw_rows)
+            if section:
+                sections.append(section)
 
     if not sections:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No readable tabular rows found in uploaded file")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "No importable sheets found. Name each sheet after what it holds "
+            "(Customers, Vendors, Invoices, Bills or Expenses) and give it a header row.",
+        )
 
+    problems: List[str] = []
+    for section in sections:
+        if section.missing_required:
+            problems.append(
+                f"'{section.sheet_name}' is missing required column(s): {', '.join(section.missing_required)}."
+            )
     return ExcelCategorizeResponse(
         filename=filename,
         total_sheets=len(sections),
-        total_rows=total_rows,
+        total_rows=sum(s.count for s in sections),
         sections=sections,
+        ready=not problems,
+        blocking_problems=problems,
     )
 
 
@@ -325,7 +325,13 @@ def import_excel_commit(
     user: User = Depends(require_write),
     db: Session = Depends(get_db),
 ):
-    """Commit categorized Excel extracted records into Rooman Books accounts, customers, bills, invoices, and expenses."""
+    """Write the previewed rows into the books.
+
+    Only values actually present in the sheet are used. A row missing a
+    required value is skipped and reported rather than being filled in with an
+    invented amount, date or email - importing a spreadsheet must never
+    fabricate accounting data.
+    """
     # Imported late: the routers import each other's services, and importing at
     # module level here would create a circular import.
     from backend.routers.bills import post_bill
@@ -333,8 +339,8 @@ def import_excel_commit(
 
     org_id = user.organization_id
     counts: Dict[str, int] = {"customers": 0, "vendors": 0, "invoices": 0, "bills": 0, "expenses": 0}
+    skipped: List[str] = []
 
-    # Cache default accounts
     expense_acct = db.execute(select(Account).where(Account.organization_id == org_id, Account.type == "expense")).scalars().first()
     bank_acct = db.execute(select(BankAccount).where(BankAccount.organization_id == org_id)).scalars().first()
 
@@ -343,160 +349,156 @@ def import_excel_commit(
         all_items.extend(payload.items)
     if payload.sections:
         for sec in payload.sections:
+            if sec.missing_required:
+                skipped.append(f"Sheet '{sec.sheet_name}' skipped: missing {', '.join(sec.missing_required)}")
+                continue
             for row in sec.rows:
                 all_items.append(ExcelCommitItem(category=sec.category, data=row))
 
-    for item in all_items:
+    def _amount(d: Dict[str, Any]) -> Optional[Decimal]:
+        return excel_import.coerce_amount(d.get("amount"))
+
+    def _date_of(d: Dict[str, Any], key: str = "date") -> Optional[date]:
+        return excel_import.coerce_date(d.get(key))
+
+    def _find_or_create_contact(name: str, kind: str, email: Optional[Any]) -> Contact:
+        existing = db.execute(
+            select(Contact).where(Contact.organization_id == org_id, Contact.type == kind, Contact.display_name == name)
+        ).scalars().first()
+        if existing:
+            return existing
+        created = Contact(
+            organization_id=org_id,
+            type=kind,
+            display_name=name[:100],
+            email=(str(email)[:100] if email else None),
+        )
+        db.add(created)
+        db.flush()
+        return created
+
+    for index, item in enumerate(all_items, start=1):
         cat = item.category.lower()
         d = item.data
+        name = str(d.get("display_name") or "").strip()
 
-        if cat == "customers":
-            name = (d.get("display_name") or d.get("company_name") or d.get("name") or "").strip()
-            if not name or any(x in name.lower() for x in ["rooman books", "overview", "template", "sheet name", "required fields"]):
+        if cat in ("customers", "vendors"):
+            if not name:
+                skipped.append(f"Row {index} ({cat}): no name")
                 continue
-            email = d.get("email") or f"client_{uuid.uuid4().hex[:6]}@example.com"
-            contact = Contact(
-                organization_id=org_id,
-                type="customer",
-                display_name=str(name)[:100],
-                company_name=str(d.get("company_name") or "")[:100] or None,
-                email=str(email)[:100],
-                phone=str(d.get("phone") or "")[:20] or None,
-                gstin=str(d.get("gstin") or "")[:15] or None,
-                pan=str(d.get("pan") or "")[:10] or None,
-                billing_address=str(d.get("billing_address") or d.get("address") or "")[:255] or None,
+            db.add(
+                Contact(
+                    organization_id=org_id,
+                    type="customer" if cat == "customers" else "vendor",
+                    display_name=name[:100],
+                    company_name=str(d.get("company_name") or "")[:100] or None,
+                    email=str(d.get("email") or "")[:100] or None,
+                    phone=str(d.get("phone") or "")[:20] or None,
+                    gstin=str(d.get("gstin") or "")[:15] or None,
+                    pan=str(d.get("pan") or "")[:10] or None,
+                    billing_address=str(d.get("billing_address") or "")[:255] or None,
+                )
             )
-            db.add(contact)
             db.flush()
-            counts["customers"] += 1
-
-        elif cat == "vendors":
-            name = (d.get("display_name") or d.get("vendor_name") or d.get("name") or "").strip()
-            if not name or any(x in name.lower() for x in ["rooman books", "overview", "template", "sheet name", "required fields"]):
-                continue
-            contact = Contact(
-                organization_id=org_id,
-                type="vendor",
-                display_name=str(name)[:100],
-                company_name=str(d.get("company_name") or "")[:100] or None,
-                email=str(d.get("email") or "")[:100] or None,
-                phone=str(d.get("phone") or "")[:20] or None,
-                gstin=str(d.get("gstin") or "")[:15] or None,
-                pan=str(d.get("pan") or "")[:10] or None,
-                billing_address=str(d.get("billing_address") or d.get("address") or "")[:255] or None,
-            )
-            db.add(contact)
-            db.flush()
-            counts["vendors"] += 1
+            counts[cat] += 1
 
         elif cat == "expenses":
-            if not expense_acct or not bank_acct:
+            amount, when = _amount(d), _date_of(d) or date.today()
+            if amount is None:
+                skipped.append(f"Row {index} (expense): missing amount")
                 continue
-            amt = Decimal(str(d.get("amount") or 100.0))
-            exp = Expense(
-                organization_id=org_id,
-                expense_number=numbering.next_number(db, org_id, "expense"),
-                date=date.today(),
-                account_id=expense_acct.id,
-                paid_through_account_id=bank_acct.id,
-                amount=amt,
-                total=amt,
-                tax_rate=Decimal("0"),
-                category=str(d.get("category") or d.get("description") or "Operating Expense")[:50],
-                notes=str(d.get("notes") or f"Payee: {d.get('payee') or d.get('display_name') or 'Vendor'} (Imported via Excel Data Input)"),
-                created_by=user.id,
+            if not expense_acct or not bank_acct:
+                skipped.append(f"Row {index} (expense): no expense or bank account set up yet")
+                continue
+            payee = str(d.get("payee") or "").strip()
+            db.add(
+                Expense(
+                    organization_id=org_id,
+                    expense_number=numbering.next_number(db, org_id, "expense"),
+                    date=when,
+                    account_id=expense_acct.id,
+                    paid_through_account_id=bank_acct.id,
+                    amount=amount,
+                    total=amount,
+                    tax_rate=Decimal("0"),
+                    category=str(d.get("category") or "Imported")[:50],
+                    notes=str(d.get("notes") or "") or (f"Payee: {payee}" if payee else None),
+                    created_by=user.id,
+                )
             )
-            db.add(exp)
             counts["expenses"] += 1
 
-        elif cat == "invoices":
-            # Find or create customer
-            cust_name = str(d.get("display_name") or d.get("customer_name") or "Customer")[:100]
-            cust = db.execute(select(Contact).where(Contact.organization_id == org_id, Contact.type == "customer", Contact.display_name == cust_name)).scalars().first()
-            if not cust:
-                cust = Contact(
-                    organization_id=org_id,
-                    type="customer",
-                    display_name=cust_name,
-                    email=str(d.get("email") or f"client_{uuid.uuid4().hex[:6]}@example.com"),
-                )
-                db.add(cust)
-                db.flush()
-            amt = Decimal(str(d.get("amount") or 500.0))
-            inv = Invoice(
-                organization_id=org_id,
-                invoice_number=numbering.next_number(db, org_id, "invoice"),
-                customer_id=cust.id,
-                date=date.today(),
-                due_date=date.today(),
-                subtotal=amt,
-                tax_total=Decimal("0"),
-                total=amt,
-                amount_paid=Decimal("0"),
-                status="sent",
-                created_by=user.id,
-            )
-            inv.lines.append(
-                InvoiceLine(
-                    position=0,
-                    description=str(d.get("description") or "Professional Services"),
-                    quantity=Decimal("1"),
-                    rate=amt,
-                    tax_rate=Decimal("0"),
-                    amount=amt,
-                    tax_amount=Decimal("0"),
-                )
-            )
-            db.add(inv)
-            db.flush()
-            post_invoice(db, inv, user)
-            counts["invoices"] += 1
+        elif cat in ("invoices", "bills"):
+            amount, when = _amount(d), _date_of(d)
+            if not name or amount is None or when is None:
+                missing = "customer/vendor name" if not name else ("amount" if amount is None else "date")
+                skipped.append(f"Row {index} ({cat[:-1]}): missing {missing}")
+                continue
+            due = _date_of(d, "due_date") or when
+            description = str(d.get("notes") or "").strip() or "Imported from spreadsheet"
 
-        elif cat == "bills":
-            # Find or create vendor
-            vnd_name = str(d.get("display_name") or d.get("vendor_name") or "Vendor")[:100]
-            vnd = db.execute(select(Contact).where(Contact.organization_id == org_id, Contact.type == "vendor", Contact.display_name == vnd_name)).scalars().first()
-            if not vnd:
-                vnd = Contact(organization_id=org_id, type="vendor", display_name=vnd_name, email=str(d.get("email") or ""))
-                db.add(vnd)
-                db.flush()
-            amt = Decimal(str(d.get("amount") or 500.0))
-            bill = Bill(
-                organization_id=org_id,
-                bill_number=numbering.next_number(db, org_id, "bill"),
-                vendor_id=vnd.id,
-                date=date.today(),
-                due_date=date.today(),
-                subtotal=amt,
-                tax_total=Decimal("0"),
-                total=amt,
-                amount_paid=Decimal("0"),
-                status="open",
-                created_by=user.id,
-            )
-            bill.lines.append(
-                BillLine(
-                    position=0,
-                    description=str(d.get("description") or "Purchased Goods/Services"),
-                    quantity=Decimal("1"),
-                    rate=amt,
-                    tax_rate=Decimal("0"),
-                    amount=amt,
-                    tax_amount=Decimal("0"),
+            if cat == "invoices":
+                customer = _find_or_create_contact(name, "customer", d.get("email"))
+                invoice = Invoice(
+                    organization_id=org_id,
+                    invoice_number=numbering.next_number(db, org_id, "invoice"),
+                    customer_id=customer.id,
+                    date=when,
+                    due_date=due,
+                    reference=str(d.get("invoice_number") or "")[:50] or None,
+                    subtotal=amount,
+                    tax_total=Decimal("0"),
+                    total=amount,
+                    amount_paid=Decimal("0"),
+                    status="sent",
+                    created_by=user.id,
                 )
-            )
-            db.add(bill)
-            db.flush()
-            post_bill(db, bill, user)
-            counts["bills"] += 1
+                invoice.lines.append(
+                    InvoiceLine(position=0, description=description, quantity=Decimal("1"), rate=amount,
+                                tax_rate=Decimal("0"), amount=amount, tax_amount=Decimal("0"))
+                )
+                db.add(invoice)
+                db.flush()
+                post_invoice(db, invoice, user)
+                counts["invoices"] += 1
+            else:
+                vendor = _find_or_create_contact(name, "vendor", d.get("email"))
+                bill = Bill(
+                    organization_id=org_id,
+                    bill_number=numbering.next_number(db, org_id, "bill"),
+                    vendor_bill_number=str(d.get("bill_number") or "")[:50] or None,
+                    vendor_id=vendor.id,
+                    date=when,
+                    due_date=due,
+                    subtotal=amount,
+                    tax_total=Decimal("0"),
+                    total=amount,
+                    amount_paid=Decimal("0"),
+                    status="open",
+                    created_by=user.id,
+                )
+                bill.lines.append(
+                    BillLine(position=0, description=description, quantity=Decimal("1"), rate=amount,
+                             tax_rate=Decimal("0"), amount=amount, tax_amount=Decimal("0"))
+                )
+                db.add(bill)
+                db.flush()
+                post_bill(db, bill, user)
+                counts["bills"] += 1
 
     db.commit()
     total_saved = sum(counts.values())
     audit.record(db, user, "import", "excel_input", user.id, f"Imported {total_saved} records: {counts}")
+    db.commit()
+
+    message = f"Imported {total_saved} record(s)."
+    if skipped:
+        message += f" {len(skipped)} row(s) were skipped."
     return ExcelCommitResponse(
         success=True,
         imported_counts=counts,
-        message=f"Successfully categorized and imported {total_saved} records into Rooman Books.",
+        message=message,
+        skipped=skipped[:50],
     )
 
 

@@ -236,8 +236,10 @@ def test_excel_data_input_categorize_and_commit(client, org):
     ws1.append(["Infosys BPO", "finance@infosys.example.com", "9876543211", "29BBBBB0000B1Z6"])
 
     ws2 = wb.create_sheet(title="Expenses")
-    ws2.append(["Category", "Amount", "Description"])
-    ws2.append(["Internet & Broadband", 2500.0, "Office fiber high speed"])
+    # Date is a required column: an expense with no date used to be silently
+    # posted under today's date, which put it in the wrong period.
+    ws2.append(["Category", "Amount", "Date", "Description"])
+    ws2.append(["Internet & Broadband", 2500.0, "2026-09-01", "Office fiber high speed"])
 
     buf = io.BytesIO()
     wb.save(buf)

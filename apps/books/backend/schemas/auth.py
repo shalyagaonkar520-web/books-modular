@@ -201,3 +201,19 @@ class SmtpSettingsUpdate(APIModel):
 
 class SmtpTestRequest(APIModel):
     to_email: EmailStr
+
+
+class UserStats(APIModel):
+    total_actions: int = 0
+    total_hours_logged: float = 0.0
+    total_payslips: int = 0
+    last_active: Optional[datetime] = None
+
+
+class UserDashboardOut(APIModel):
+    user: UserOut
+    employee: Optional[dict] = None
+    payslips: List[dict] = []
+    time_entries: List[dict] = []
+    audit_logs: List[AuditLogOut] = []
+    stats: UserStats

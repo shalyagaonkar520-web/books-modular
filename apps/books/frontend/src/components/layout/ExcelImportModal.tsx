@@ -189,6 +189,8 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                 variant="primary"
                 loading={commitSubmit.submitting}
                 onClick={handleCommit}
+                disabled={!categorized.ready}
+                title={categorized.ready ? undefined : 'Fix the missing columns listed above first'}
                 icon={<CheckCircle2 size={16} />}
               >
                 Import Categorized Data to Books
@@ -283,11 +285,33 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                 <span>{categorized.filename}</span>
               </div>
               <small className="text-muted">
-                {categorized.total_rows} total rows extracted across {categorized.total_sheets} sheet(s)
+                {categorized.total_rows} row(s) ready across {categorized.total_sheets} sheet(s)
               </small>
             </div>
-            <Badge tone="success">Ready for Import</Badge>
+            {categorized.ready ? <Badge tone="success">Ready for Import</Badge> : <Badge tone="danger">Columns missing</Badge>}
           </div>
+
+          {/* Nothing has been written yet - this is the preview of what would be. */}
+          {categorized.blocking_problems.length > 0 ? (
+            <div
+              style={{
+                marginBottom: '16px',
+                padding: '12px 16px',
+                border: '1px solid #fecaca',
+                background: '#fef2f2',
+                borderRadius: '8px',
+              }}
+            >
+              <div style={{ fontWeight: 600, color: '#991b1b', marginBottom: '6px' }}>
+                Fix these before importing
+              </div>
+              <ul style={{ margin: 0, paddingLeft: '18px', color: '#991b1b', fontSize: '0.875rem' }}>
+                {categorized.blocking_problems.map((problem) => (
+                  <li key={problem}>{problem}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
           <div style={{ marginBottom: '12px' }}>
             <label style={{ fontSize: '0.875rem', fontWeight: 500, marginBottom: '8px', display: 'block' }}>
@@ -348,6 +372,60 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
 
           {activeSection ? (
             <div style={{ marginTop: '16px' }}>
+              {/* What this sheet must contain, and what we actually read from it. */}
+              <div
+                style={{
+                  marginBottom: '12px',
+                  padding: '12px 14px',
+                  border: '1px solid var(--color-border, #e2e8f0)',
+                  borderRadius: '8px',
+                  background: 'var(--color-bg-subtle, #f8fafc)',
+                  fontSize: '0.8125rem',
+                }}
+              >
+                <div style={{ fontWeight: 600, marginBottom: '6px' }}>
+                  Columns for {activeSection.category}
+                </div>
+                <div style={{ marginBottom: '4px' }}>
+                  <strong>Required:</strong>{' '}
+                  {activeSection.rules.required.map((rule) => rule.label).join(', ') || '—'}
+                </div>
+                <div style={{ marginBottom: '4px' }}>
+                  <strong>Optional:</strong>{' '}
+                  {activeSection.rules.optional.map((rule) => rule.label).join(', ') || '—'}
+                </div>
+                <div style={{ marginBottom: activeSection.unmapped_headers.length || activeSection.skipped_count ? '4px' : 0 }}>
+                  <strong>Read from your file:</strong>{' '}
+                  {Object.entries(activeSection.mapped_columns).length
+                    ? Object.entries(activeSection.mapped_columns)
+                        .map(([field, header]) => `${header} → ${field}`)
+                        .join(', ')
+                    : '—'}
+                </div>
+                {activeSection.unmapped_headers.length > 0 ? (
+                  <div style={{ color: '#92400e' }}>
+                    <strong>Ignored (not recognised):</strong> {activeSection.unmapped_headers.join(', ')}
+                  </div>
+                ) : null}
+                {activeSection.missing_required.length > 0 ? (
+                  <div style={{ color: '#991b1b', marginTop: '4px' }}>
+                    <strong>Missing required:</strong> {activeSection.missing_required.join(', ')}
+                  </div>
+                ) : null}
+                {activeSection.skipped_count > 0 ? (
+                  <div style={{ marginTop: '6px', color: '#92400e' }}>
+                    <strong>{activeSection.skipped_count} row(s) will be skipped:</strong>
+                    <ul style={{ margin: '4px 0 0', paddingLeft: '18px' }}>
+                      {activeSection.issues.map((issue) => (
+                        <li key={issue.row_number}>
+                          Row {issue.row_number}: {issue.errors.join('; ')}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
                 <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Eye size={15} />
@@ -402,9 +480,11 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                           aria-label="Select all rows"
                         />
                       </th>
-                      {activeSection.headers.map((h, i) => (
-                        <th key={i} style={{ whiteSpace: 'nowrap', padding: '8px 12px' }}>
-                          {h}
+                      {/* Show the fields that will actually be imported, not
+                          every raw header - unrecognised columns are ignored. */}
+                      {Object.entries(activeSection.mapped_columns).map(([field, header]) => (
+                        <th key={field} style={{ whiteSpace: 'nowrap', padding: '8px 12px' }}>
+                          {header}
                         </th>
                       ))}
                     </tr>
@@ -422,9 +502,9 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                               aria-label={`Select row ${rIdx + 1}`}
                             />
                           </td>
-                          {activeSection.headers.map((h, cIdx) => (
-                            <td key={cIdx} style={{ whiteSpace: 'nowrap', padding: '6px 12px' }}>
-                              {String(row[h] ?? '')}
+                          {Object.keys(activeSection.mapped_columns).map((field) => (
+                            <td key={field} style={{ whiteSpace: 'nowrap', padding: '6px 12px' }}>
+                              {String(row[field] ?? '')}
                             </td>
                           ))}
                         </tr>

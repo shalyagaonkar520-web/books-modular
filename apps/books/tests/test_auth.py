@@ -134,3 +134,23 @@ def test_organization_profile_update(client):
     assert res.json()["gstin"] == "29ABCDE1234F1Z5"
     logs = client.get("/api/audit-logs", headers=h).json()
     assert any(entry["entityType"] == "organization" for entry in logs["items"])
+
+
+def test_user_dashboard_and_pdf(client):
+    ctx = register_org(client, "UserDashboardTest")
+    h = auth(ctx["token"])
+    user_id = ctx["user"]["id"]
+
+    # 1. Admin gets user dashboard summary
+    res = client.get(f"/api/users/{user_id}/dashboard", headers=h)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["user"]["id"] == user_id
+    assert "stats" in data
+    assert "auditLogs" in data
+
+    # 2. Admin downloads user dashboard PDF
+    pdf_res = client.get(f"/api/users/{user_id}/pdf", headers=h)
+    assert pdf_res.status_code == 200
+    assert pdf_res.headers["content-type"] == "application/pdf"
+    assert pdf_res.content.startswith(b"%PDF")
