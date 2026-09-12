@@ -74,7 +74,7 @@ export function DashboardPage() {
   const [payablesView, setPayablesView] = useState<'bar' | 'donut'>('bar');
   const [topCustomersChartType, setTopCustomersChartType] = useState<'donut' | 'hbar'>('donut');
   const [inventoryView, setInventoryView] = useState<'overview' | 'donut'>('overview');
-  const [activityView, setActivityView] = useState<'table' | 'chart' | 'donut'>('table');
+  const [activityView, setActivityView] = useState<'table' | 'chart'>('table');
   const currency = organization?.currency ?? 'INR';
 
   const { data, loading, error, reload } = useAsync(() => dashboardApi.summary(period), [period]);
@@ -553,14 +553,6 @@ export function DashboardPage() {
               >
                 <span>Bar</span>
               </button>
-              <button
-                type="button"
-                className={`chart-pill ${activityView === 'donut' ? 'active' : ''}`}
-                onClick={() => setActivityView('donut')}
-                title="Activity volume donut"
-              >
-                <span>Donut</span>
-              </button>
             </div>
           )}
         </div>
@@ -585,22 +577,6 @@ export function DashboardPage() {
                 sublabel: `${stats.count} transaction(s)`,
               }))}
               currency={currency}
-            />
-          </div>
-        ) : activityView === 'donut' ? (
-          <div className="card-body">
-            <DonutChart
-              slices={Object.entries(
-                recentActivity.reduce<Record<string, number>>((acc, item) => {
-                  const key = titleCase(item.type);
-                  acc[key] = (acc[key] ?? 0) + 1;
-                  return acc;
-                }, {})
-              ).map(([type, count]) => ({
-                label: type,
-                value: count,
-              }))}
-              currency=""
             />
           </div>
         ) : (
