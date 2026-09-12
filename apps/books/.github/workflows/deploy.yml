@@ -38,7 +38,7 @@ jobs:
       - name: Build and restart the stack
         run: |
           cd /opt/roomanbooks
-          docker compose up -d --build
+          docker compose -p roomanbooks -f deployment/docker-compose.yml --env-file .env up -d --build
 
       - name: Wait for health
         run: |
@@ -53,8 +53,8 @@ jobs:
             sleep 5
           done
           echo "::error::Service did not become healthy within 150s"
-          docker compose ps
-          docker compose logs --tail 60 api
+          docker compose -p roomanbooks -f deployment/docker-compose.yml --env-file .env ps
+          docker compose -p roomanbooks -f deployment/docker-compose.yml --env-file .env logs --tail 60 api
           exit 1
 
       - name: Roll back if the deploy failed
@@ -63,9 +63,9 @@ jobs:
           cd /opt/roomanbooks
           echo "::warning::Rolling back to ${{ steps.current.outputs.sha }}"
           git reset --hard "${{ steps.current.outputs.sha }}"
-          docker compose up -d --build
+          docker compose -p roomanbooks -f deployment/docker-compose.yml --env-file .env up -d --build
           sleep 20
-          docker compose ps
+          docker compose -p roomanbooks -f deployment/docker-compose.yml --env-file .env ps
 
       - name: Prune old images
         if: success()

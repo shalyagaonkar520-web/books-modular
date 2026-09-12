@@ -15,8 +15,8 @@ RUN npm run build
 FROM nginx:1.27-alpine
 
 RUN rm /etc/nginx/conf.d/default.conf
-COPY docker/nginx-ratelimit.conf /etc/nginx/conf.d/00-ratelimit.conf
-COPY nginx.conf /etc/nginx/conf.d/roomanbooks.conf
+COPY deployment/nginx-ratelimit.conf /etc/nginx/conf.d/00-ratelimit.conf
+COPY deployment/nginx.conf /etc/nginx/conf.d/roomanbooks.conf
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 EXPOSE 80

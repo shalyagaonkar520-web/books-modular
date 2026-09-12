@@ -74,6 +74,7 @@ export const orgApi = {
   users: () => api.get<User[]>('/users'),
   inviteUser: (body: { name: string; email: string; role: string; employeeId?: string }) => api.post<User>('/users', body),
   updateUser: (id: string, body: { name?: string; role?: string; isActive?: boolean }) => api.patch<User>(`/users/${id}`, body),
+  deleteUser: (id: string) => api.delete<Message>(`/users/${id}`),
   resetUserPassword: (id: string, newPassword: string) => api.post<Message>(`/users/${id}/reset-password`, undefined, { new_password: newPassword }),
   auditLogs: (query?: Query) => api.get<Page<AuditLog>>('/audit-logs', query),
   smtpSettings: () => api.get<SmtpSettings>('/settings/smtp'),

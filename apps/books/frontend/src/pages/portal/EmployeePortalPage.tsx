@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, LogOut, User as UserIcon, Wallet } from 'lucide-react';
 
@@ -23,6 +23,28 @@ export function EmployeePortalPage() {
   const employee = useAsync(() => employeePortalApi.myEmployee(), []);
   const payslips = useAsync(() => employeePortalApi.myPayslips(), []);
   const timeEntries = useAsync(() => employeePortalApi.myTimeEntries(), []);
+
+  // useAsync only fetches once on mount, so an admin editing this employee's
+  // salary or approving a pay run never reached an already-open portal tab
+  // until a hard refresh. Re-pull whenever the tab becomes active again -
+  // returning from another app, or switching back from another browser tab.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      employee.reload();
+      payslips.reload();
+      timeEntries.reload();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+    // Intentionally run once: the reload() functions from useAsync are stable
+    // across renders (memoised on mount), so this listener never goes stale.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onSignOut = async () => {
     await logout();

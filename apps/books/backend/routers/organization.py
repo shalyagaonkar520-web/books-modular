@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.config import get_settings
 from backend.db import get_db
 from backend.deps import get_current_user, require_admin
-from backend.models import AuditLog, Employee, PayRun, Payslip, Project, TimeEntry, User
+from backend.models import AuditLog, Document, Employee, PayRun, Payslip, Project, TimeEntry, User
 from backend.schemas.auth import (
     AuditLogOut,
     InviteUserRequest,
@@ -146,6 +146,40 @@ def update_user(
     audit.record(db, user, "update", "user", target.id, f"Updated user {target.email}")
     db.commit()
     return UserOut.model_validate(target)
+
+
+@router.delete("/users/{user_id}", response_model=Message)
+def delete_user(
+    user_id: str, user: User = Depends(require_admin), db: Session = Depends(get_db)
+):
+    target = db.get(User, user_id)
+    if target is None or target.organization_id != user.organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    if target.id == user.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot delete your own account")
+    if target.role == "admin":
+        admins = db.execute(
+            select(User.id).where(User.organization_id == user.organization_id, User.role == "admin", User.is_active.is_(True))
+        ).scalars().all()
+        if len(admins) <= 1:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "The organization needs at least one administrator")
+
+    has_time = db.execute(select(TimeEntry.id).where(TimeEntry.user_id == target.id).limit(1)).first()
+    has_docs = db.execute(select(Document.id).where(Document.uploaded_by == target.id).limit(1)).first()
+    if has_time or has_docs:
+        target.is_active = False
+        audit.record(db, user, "update", "user", target.id, f"Deactivated user {target.email} instead of deleting (has linked records)")
+        db.commit()
+        return Message(message="User has recorded data and has been marked inactive instead of deleted")
+
+    employee = db.execute(select(Employee).where(Employee.user_id == target.id)).scalar_one_or_none()
+    if employee:
+        employee.user_id = None
+
+    audit.record(db, user, "delete", "user", target.id, f"Deleted user {target.email}")
+    db.delete(target)
+    db.commit()
+    return Message(message="User deleted")
 
 
 @router.post("/users/{user_id}/reset-password", response_model=Message)

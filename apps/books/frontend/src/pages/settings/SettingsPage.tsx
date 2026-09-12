@@ -4,12 +4,11 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Tabs } from '@/components/ui/Toolbar';
 
 import { ActivityLogSettings } from './ActivityLogSettings';
-import { EmailSettings } from './EmailSettings';
 import { OrganizationSettings } from './OrganizationSettings';
 import { RazorpayIntegrationSettings } from './RazorpayIntegrationSettings';
 import { UsersSettings } from './UsersSettings';
 
-type SettingsTab = 'organization' | 'users' | 'email' | 'integrations' | 'activity';
+type SettingsTab = 'organization' | 'users' | 'integrations' | 'activity';
 
 export function SettingsPage() {
   const [tab, setTab] = useState<SettingsTab>('organization');
@@ -21,7 +20,6 @@ export function SettingsPage() {
         tabs={[
           { id: 'organization', label: 'Organization' },
           { id: 'users', label: 'Users' },
-          { id: 'email', label: 'Email' },
           { id: 'integrations', label: 'Integrations' },
           { id: 'activity', label: 'Activity log' },
         ]}
@@ -30,7 +28,6 @@ export function SettingsPage() {
       />
       {tab === 'organization' ? <OrganizationSettings /> : null}
       {tab === 'users' ? <UsersSettings /> : null}
-      {tab === 'email' ? <EmailSettings /> : null}
       {tab === 'integrations' ? <RazorpayIntegrationSettings /> : null}
       {tab === 'activity' ? <ActivityLogSettings /> : null}
     </div>

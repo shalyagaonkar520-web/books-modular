@@ -16,8 +16,11 @@ services:
 
   api:
     build:
-      context: .
-      dockerfile: Dockerfile
+      # Resolved relative to this file's own location - one level up is the
+      # repo root, which the Dockerfile needs as its build context (it COPYs
+      # backend/ and database/ by their repo-root-relative paths).
+      context: ..
+      dockerfile: deployment/Dockerfile
     restart: unless-stopped
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-production}
@@ -46,7 +49,7 @@ services:
 
   web:
     build:
-      context: .
+      context: ..
       dockerfile: frontend/Dockerfile
     restart: unless-stopped
     depends_on:

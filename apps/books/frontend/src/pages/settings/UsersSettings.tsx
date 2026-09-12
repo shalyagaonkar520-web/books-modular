@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Eye, KeyRound, Plus } from 'lucide-react';
+import { Eye, KeyRound, Plus, Trash2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
+import { ConfirmDialog } from '@/components/ui/Modal';
 import { orgApi } from '@/api/endpoints';
 import type { Role, User } from '@/api/types';
 import { useAsync } from '@/hooks/useAsync';
@@ -31,11 +32,25 @@ export function UsersSettings() {
   const [viewingUser, setViewingUser] = useState<User | null>(null);
   const [inviting, setInviting] = useState(false);
   const [resetting, setResetting] = useState<User | null>(null);
+  const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const action = useSubmit();
+  const deleteSubmit = useSubmit();
 
   const { data, loading, error, reload } = useAsync(() => orgApi.users(), []);
   const users = data ?? [];
+
+  const confirmDeleteUser = async () => {
+    if (!deletingUser) return;
+    const result = await deleteSubmit.run(() => orgApi.deleteUser(deletingUser.id));
+    if (result) {
+      toast.success(result.message);
+      setDeletingUser(null);
+      reload();
+    } else if (deleteSubmit.error) {
+      toast.error(deleteSubmit.error);
+    }
+  };
 
   const updateUser = async (target: User, body: { role?: string; isActive?: boolean }, successMessage: string) => {
     setBusyId(target.id);
@@ -117,7 +132,7 @@ export function UsersSettings() {
       key: 'actions',
       header: '',
       align: 'right',
-      width: '290px',
+      width: '360px',
       render: (row) => (
         <div className="row-actions">
           {isAdmin && (
@@ -150,6 +165,16 @@ export function UsersSettings() {
           >
             {row.isActive ? 'Deactivate' : 'Activate'}
           </Button>
+          {isAdmin && row.id !== currentUser?.id && (
+            <Button
+              variant="danger"
+              size="sm"
+              icon={<Trash2 size={14} />}
+              onClick={() => setDeletingUser(row)}
+            >
+              Delete
+            </Button>
+          )}
         </div>
       ),
     },
@@ -181,6 +206,25 @@ export function UsersSettings() {
       {inviting ? <InviteUserModal onClose={() => setInviting(false)} onInvited={reload} /> : null}
       {resetting ? <ResetPasswordModal user={resetting} onClose={() => setResetting(null)} /> : null}
       {viewingUser ? <UserDashboardModal user={viewingUser} onClose={() => setViewingUser(null)} /> : null}
+
+      <ConfirmDialog
+        open={!!deletingUser}
+        title="Delete user"
+        message={
+          deletingUser ? (
+            <>
+              Are you sure you want to delete <strong>{deletingUser.name}</strong> ({deletingUser.email})?
+              If they have recorded activity, their account will be marked inactive instead.
+            </>
+          ) : (
+            ''
+          )
+        }
+        confirmLabel="Delete"
+        busy={deleteSubmit.submitting}
+        onConfirm={confirmDeleteUser}
+        onCancel={() => setDeletingUser(null)}
+      />
     </div>
   );
 }

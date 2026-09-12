@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend ./backend
 COPY database/alembic ./database/alembic
 COPY database/alembic.ini ./database/alembic.ini
-COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY deployment/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Run as a non-root user and keep the data volume writable by it.

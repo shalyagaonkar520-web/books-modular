@@ -61,8 +61,8 @@ of a fresh set of books. Interactive API documentation is at <http://127.0.0.1:8
 
 ```bash
 cp .env.example .env
-# set SECRET_KEY and POSTGRES_PASSWORD in .env, then:
-docker compose up --build
+# set SECRET_KEY and POSTGRES_PASSWORD in .env, then, from the repo root:
+docker compose -f deployment/docker-compose.yml --env-file .env up --build
 ```
 
 The web app is served on <http://localhost:3000> and proxies `/api` to the API container.
@@ -279,8 +279,9 @@ require branches to be up to date before merging, and use squash merges.
 1. Provision PostgreSQL and set `DATABASE_URL`.
 2. Set `SECRET_KEY` to a 48-byte random value, `ENVIRONMENT=production`, `COOKIE_SECURE=true`,
    and `CORS_ORIGINS` to your web origin.
-3. Build and run the images, or use `docker compose up -d --build`. The API entrypoint applies
-   migrations before starting Gunicorn with Uvicorn workers as a non-root user.
+3. Build and run the images, or use `docker compose -f deployment/docker-compose.yml --env-file .env up -d --build`
+   from the repo root. The API entrypoint applies migrations before starting Gunicorn with
+   Uvicorn workers as a non-root user.
 4. Terminate TLS at your load balancer or ingress and forward to the web container on port 80.
 5. Monitor `GET /api/health`, which returns 503 when the database is unreachable.
 6. Back up PostgreSQL and the `DATA_DIR` volume, which holds uploaded documents.
@@ -321,7 +322,21 @@ frontend/                Vite + React application (TypeScript)
   Dockerfile             builds the production web image (nginx + static build)
 
 scripts/                 dev runner and end-to-end smoke test
-docker/                  container entrypoint and the nginx rate-limit include
+
+deployment/               everything needed to build and run the stack
+  docker-compose.yml      db + api + web, built with this repo root as context
+  Dockerfile              builds the production API image (Gunicorn + Uvicorn)
+  entrypoint.sh           applies migrations, then starts the API
+  nginx.conf  nginx-ratelimit.conf   copied into the web image (see frontend/Dockerfile)
+```
+
+Build contexts stay at the repo root even though the Dockerfiles moved: `docker-compose.yml`
+sets `context: ..` for both services, and CI passes `context: .` with `file: ./deployment/Dockerfile`
+directly to `docker/build-push-action`. Running Compose by hand from the repo root needs both
+flags together so it finds the file and reads the right `.env`:
+
+```bash
+docker compose -f deployment/docker-compose.yml --env-file .env up -d --build
 ```
 
 Backend commands (`uvicorn`, `alembic`, `pytest`) run from the repo root; frontend
