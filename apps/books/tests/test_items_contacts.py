@@ -28,6 +28,28 @@ def test_item_filters_sort_and_pagination(client, org):
     assert res["pageSize"] == 1 and len(res["items"]) == 1
 
 
+def test_item_low_stock_threshold_visible_sortable_and_filterable(client, org):
+    h = org["h"]
+    low = client.post(
+        "/api/items", headers=h,
+        json={"name": "Low Stock Widget", "sku": "LOW-1", "sellingPrice": 100, "trackInventory": True, "openingStock": 2, "reorderLevel": 10},
+    ).json()
+    assert low["reorderLevel"] == 10
+
+    ok = client.post(
+        "/api/items", headers=h,
+        json={"name": "Well Stocked Widget", "sku": "OK-1", "sellingPrice": 100, "trackInventory": True, "openingStock": 50, "reorderLevel": 5},
+    ).json()
+
+    low_stock = client.get("/api/items", headers=h, params={"inventory_filter": "low-stock"}).json()
+    low_stock_skus = {i["sku"] for i in low_stock["items"]}
+    assert low["sku"] in low_stock_skus and ok["sku"] not in low_stock_skus
+
+    sorted_desc = client.get("/api/items", headers=h, params={"sort_by": "reorderLevel", "sort_order": "desc", "page_size": 200}).json()
+    levels = [i["reorderLevel"] for i in sorted_desc["items"]]
+    assert levels == sorted(levels, reverse=True)
+
+
 def test_item_validation(client, org):
     h = org["h"]
     assert client.post("/api/items", headers=h, json={"name": "", "sku": "X"}).status_code == 422

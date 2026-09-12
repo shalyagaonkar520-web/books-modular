@@ -33,6 +33,7 @@ SORT_FIELDS = {
     "costPrice": Item.cost_price,
     "createdAt": Item.created_at,
     "stockOnHand": Item.stock_on_hand,
+    "reorderLevel": Item.reorder_level,
 }
 
 

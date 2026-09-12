@@ -217,6 +217,20 @@ export function ItemsPage() {
     { key: 'sellingPrice', header: 'Selling price', align: 'right', sortable: true, render: (item) => <span className="num">{formatCurrency(item.sellingPrice)}</span> },
     { key: 'costPrice', header: 'Cost price', align: 'right', sortable: true, render: (item) => <span className="num">{formatCurrency(item.costPrice)}</span> },
     { key: 'stockOnHand', header: 'Stock', align: 'right', sortable: true, render: (item) => <StockCell item={item} /> },
+    {
+      key: 'reorderLevel',
+      header: 'Low stock at',
+      align: 'right',
+      sortable: true,
+      render: (item) =>
+        item.type === 'service' || !item.trackInventory ? (
+          <span className="text-muted">—</span>
+        ) : (
+          <span className="num text-muted">
+            {formatQuantity(item.reorderLevel)} {item.unit}
+          </span>
+        ),
+    },
     { key: 'createdAt', header: 'Added', sortable: true, render: (item) => <span className="text-muted small">{formatDate(item.createdAt)}</span> },
     {
       key: 'actions',
@@ -696,13 +710,14 @@ function ItemFormModal({ item, options, optionsError, onClose, onSaved }: ItemFo
                 onChange={(event) => set('openingStockRate', event.target.value)}
               />
               <TextField
-                label="Reorder level"
+                label="Low stock threshold"
                 type="number"
                 min="0"
                 step="0.001"
                 value={form.reorderLevel}
                 error={fieldErrors.reorderLevel}
                 onChange={(event) => set('reorderLevel', event.target.value)}
+                hint="Stock at or below this triggers the low-stock warning and filter"
               />
               <TextField
                 label="Warehouse location"
@@ -747,7 +762,7 @@ function ItemDetailsModal({ item, onClose }: { item: Item; onClose: () => void }
         {item.trackInventory ? (
           <>
             <Detail label="Stock on hand" value={<Badge tone={stockTone(item)}>{`${formatQuantity(item.stockOnHand)} ${item.unit}`}</Badge>} />
-            <Detail label="Reorder level" value={`${formatQuantity(item.reorderLevel)} ${item.unit}`} />
+            <Detail label="Low stock threshold" value={`${formatQuantity(item.reorderLevel)} ${item.unit}`} />
             <Detail label="Opening stock" value={`${formatQuantity(item.openingStock)} ${item.unit}`} />
             <Detail label="Opening stock rate" value={formatCurrency(item.openingStockRate)} />
             <Detail label="Stock valuation" value={<span className="strong">{formatCurrency(item.stockOnHand * item.costPrice)}</span>} />
