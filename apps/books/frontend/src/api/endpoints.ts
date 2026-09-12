@@ -19,6 +19,7 @@ import type {
   DocumentStats,
   Employee,
   EmployeeOption,
+  LeaveRecord,
   ExcelCategorizeResponse,
   ExcelCategorizeSection,
   ExcelCommitResponse,
@@ -270,6 +271,9 @@ export const payrollApi = {
   payPayRun: (id: string, body: unknown) => api.post<PayRun>(`/payroll/pay-runs/${id}/pay`, body),
   removePayRun: (id: string) => api.delete<Message>(`/payroll/pay-runs/${id}`),
   payslip: (id: string) => api.get<Payslip>(`/payroll/payslips/${id}`),
+  leaves: (employeeId: string) => api.get<LeaveRecord[]>(`/payroll/employees/${employeeId}/leaves`),
+  createLeave: (employeeId: string, body: unknown) => api.post<LeaveRecord>(`/payroll/employees/${employeeId}/leaves`, body),
+  removeLeave: (id: string) => api.delete<Message>(`/payroll/leaves/${id}`),
 };
 
 /** The employee portal: an invited employee's own profile and payslips only. */
@@ -277,6 +281,7 @@ export const employeePortalApi = {
   myEmployee: () => api.get<Employee>('/me/employee'),
   myPayslips: () => api.get<Payslip[]>('/me/payslips'),
   myTimeEntries: () => api.get<TimeEntry[]>('/me/time-entries'),
+  myLeaves: () => api.get<LeaveRecord[]>('/me/leaves'),
 };
 
 export const reportsApi = {

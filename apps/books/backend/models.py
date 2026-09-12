@@ -570,6 +570,10 @@ class Employee(TimestampMixin, OrgScopedMixin, Base):
     designation: Mapped[Optional[str]] = mapped_column(String(120))
     department: Mapped[Optional[str]] = mapped_column(String(120))
     date_of_joining: Mapped[date] = mapped_column(Date, nullable=False)
+    # Day of the month salary is paid (1-31; a value past the month's actual
+    # length clamps to its last day). Null means "the last day of the month" -
+    # the common default - so existing employees need no backfill.
+    salary_day: Mapped[Optional[int]] = mapped_column(Integer)
     pan: Mapped[Optional[str]] = mapped_column(String(20))
     bank_account_number: Mapped[Optional[str]] = mapped_column(String(40))
     bank_ifsc: Mapped[Optional[str]] = mapped_column(String(20))
@@ -588,6 +592,24 @@ class Employee(TimestampMixin, OrgScopedMixin, Base):
     )
 
     user: Mapped[Optional[User]] = relationship()
+
+
+class LeaveRecord(TimestampMixin, OrgScopedMixin, Base):
+    """One day an employee was on leave. Feeds loss-of-pay when a pay run is
+    created for the period it falls in, unless the admin overrides that
+    employee's LOP days by hand."""
+
+    __tablename__ = "leave_records"
+    __table_args__ = (UniqueConstraint("employee_id", "date", name="uq_leave_employee_date"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    employee_id: Mapped[str] = mapped_column(String(32), ForeignKey("employees.id", ondelete="CASCADE"), index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    leave_type: Mapped[str] = mapped_column(String(20), default="unpaid", nullable=False)  # paid | unpaid
+    notes: Mapped[Optional[str]] = mapped_column(String(255))
+    created_by: Mapped[Optional[str]] = mapped_column(String(32))
+
+    employee: Mapped[Employee] = relationship()
 
 
 class PayRun(TimestampMixin, OrgScopedMixin, Base):

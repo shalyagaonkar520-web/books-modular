@@ -16,10 +16,10 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user
-from backend.models import Employee, PayRun, Payslip, Project, TimeEntry, User
-from backend.routers.payroll import employee_out, payslip_out
+from backend.models import Employee, LeaveRecord, PayRun, Payslip, Project, TimeEntry, User
+from backend.routers.payroll import employee_out, leave_out, payslip_out
 from backend.routers.projects import entry_out
-from backend.schemas.payroll import EmployeeOut, PayslipOut
+from backend.schemas.payroll import EmployeeOut, LeaveRecordOut, PayslipOut
 from backend.schemas.timetracking import TimeEntryOut
 
 router = APIRouter(prefix="/api/me", tags=["Employee Portal"])
@@ -50,6 +50,13 @@ def list_my_payslips(user: User = Depends(get_current_user), db: Session = Depen
         .order_by(PayRun.period_year.desc(), PayRun.period_month.desc())
     )
     return [payslip_out(p) for p in db.execute(stmt).scalars()]
+
+
+@router.get("/leaves", response_model=List[LeaveRecordOut])
+def list_my_leaves(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    employee = _my_employee(user, db)
+    stmt = select(LeaveRecord).where(LeaveRecord.employee_id == employee.id).order_by(LeaveRecord.date.desc())
+    return [leave_out(rec) for rec in db.execute(stmt).scalars()]
 
 
 @router.get("/time-entries", response_model=List[TimeEntryOut])

@@ -16,6 +16,9 @@ class EmployeeCreate(APIModel):
     designation: Optional[str] = Field(default=None, max_length=120)
     department: Optional[str] = Field(default=None, max_length=120)
     date_of_joining: date
+    # Day of the month salary is paid. Left unset, the last day of the month
+    # is used - the common default in India.
+    salary_day: Optional[int] = Field(default=None, ge=1, le=31)
     pan: Optional[str] = Field(default=None, max_length=20)
     bank_account_number: Optional[str] = Field(default=None, max_length=40)
     bank_ifsc: Optional[str] = Field(default=None, max_length=20)
@@ -33,6 +36,7 @@ class EmployeeUpdate(APIModel):
     designation: Optional[str] = None
     department: Optional[str] = None
     date_of_joining: Optional[date] = None
+    salary_day: Optional[int] = Field(default=None, ge=1, le=31)
     pan: Optional[str] = None
     bank_account_number: Optional[str] = None
     bank_ifsc: Optional[str] = None
@@ -53,6 +57,7 @@ class EmployeeOut(APIModel):
     designation: Optional[str] = None
     department: Optional[str] = None
     date_of_joining: date
+    salary_day: Optional[int] = None
     pan: Optional[str] = None
     bank_account_number_masked: Optional[str] = None
     bank_ifsc: Optional[str] = None
@@ -69,6 +74,14 @@ class EmployeeOut(APIModel):
     # Whether this employee already has (or has been invited to) portal
     # access - drives whether "Invite to portal" or "Portal access" shows.
     has_login: bool = False
+    # When this employee will next be paid, and a rough per-day breakdown of
+    # this month's gross so they can see it accruing day by day. Informational
+    # only - the actual payslip is always the pay run's own calculation.
+    next_pay_date: Optional[date] = None
+    daily_rate: Decimal = Decimal("0")
+    days_elapsed_this_period: int = 0
+    days_in_period: int = 0
+    accrued_this_period: Decimal = Decimal("0")
 
 
 class PayRunCreate(APIModel):
@@ -135,3 +148,19 @@ class EmployeeOptionOut(APIModel):
     employee_code: str
     name: str
     email: Optional[str] = None
+
+
+class LeaveRecordCreate(APIModel):
+    date: date
+    leave_type: str = Field(default="unpaid", pattern="^(paid|unpaid)$")
+    notes: Optional[str] = Field(default=None, max_length=255)
+
+
+class LeaveRecordOut(APIModel):
+    id: str
+    employee_id: str
+    employee_name: str
+    date: date
+    leave_type: str
+    notes: Optional[str] = None
+    created_at: datetime

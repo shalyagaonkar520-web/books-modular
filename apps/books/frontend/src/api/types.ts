@@ -473,6 +473,8 @@ export interface Employee {
   designation?: string | null;
   department?: string | null;
   dateOfJoining: string;
+  /** Day of the month salary is paid; unset means the last day of the month. */
+  salaryDay?: number | null;
   pan?: string | null;
   bankAccountNumberMasked?: string | null;
   bankIfsc?: string | null;
@@ -488,6 +490,23 @@ export interface Employee {
   createdAt: string;
   /** Whether this employee already has (or has been invited to) portal access. */
   hasLogin: boolean;
+  /** When this employee will next be paid, and a day-by-day estimate of this
+   * month's gross - informational only, the pay run is the real number. */
+  nextPayDate?: string | null;
+  dailyRate: number;
+  daysElapsedThisPeriod: number;
+  daysInPeriod: number;
+  accruedThisPeriod: number;
+}
+
+export interface LeaveRecord {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  date: string;
+  leaveType: 'paid' | 'unpaid';
+  notes?: string | null;
+  createdAt: string;
 }
 
 /** A salary-free row for the "which employee is this?" invite picker. */

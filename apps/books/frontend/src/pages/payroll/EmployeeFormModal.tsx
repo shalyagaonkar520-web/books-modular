@@ -24,6 +24,7 @@ interface FormState {
   designation: string;
   department: string;
   dateOfJoining: string;
+  salaryDay: string;
   pan: string;
   bankAccountNumber: string;
   bankIfsc: string;
@@ -45,6 +46,7 @@ function initialState(employee: Employee | null): FormState {
     designation: employee?.designation ?? '',
     department: employee?.department ?? '',
     dateOfJoining: employee?.dateOfJoining ?? todayIso(),
+    salaryDay: employee?.salaryDay ? String(employee.salaryDay) : '',
     pan: employee?.pan ?? '',
     bankAccountNumber: '',
     bankIfsc: employee?.bankIfsc ?? '',
@@ -80,6 +82,7 @@ export function EmployeeFormModal({ employee, onClose, onSaved }: EmployeeFormMo
       designation: form.designation.trim() || null,
       department: form.department.trim() || null,
       dateOfJoining: form.dateOfJoining,
+      salaryDay: form.salaryDay.trim() ? Number(form.salaryDay) : null,
       pan: form.pan.trim().toUpperCase() || null,
       bankIfsc: form.bankIfsc.trim().toUpperCase() || null,
       basicSalary: basic,
@@ -143,6 +146,16 @@ export function EmployeeFormModal({ employee, onClose, onSaved }: EmployeeFormMo
             onChange={set('dateOfJoining')}
             error={fieldErrors.dateOfJoining}
             required
+          />
+          <TextField
+            label="Salary day"
+            type="number"
+            min={1}
+            max={31}
+            value={form.salaryDay}
+            onChange={set('salaryDay')}
+            error={fieldErrors.salaryDay}
+            hint="Day of the month salary is paid. Leave blank for the last day of the month."
           />
         </div>
 

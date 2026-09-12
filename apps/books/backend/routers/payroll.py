@@ -12,13 +12,15 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_admin, require_write
-from backend.models import BankAccount, Employee, PayRun, Payslip, User
+from backend.models import BankAccount, Employee, LeaveRecord, PayRun, Payslip, User
 from backend.schemas.common import Message
 from backend.schemas.payroll import (
     EmployeeCreate,
     EmployeeOptionOut,
     EmployeeOut,
     EmployeeUpdate,
+    LeaveRecordCreate,
+    LeaveRecordOut,
     PayRunCreate,
     PayRunOut,
     PayRunPay,
@@ -32,15 +34,62 @@ from backend.services.tenancy import get_or_404, mask_number
 router = APIRouter(prefix="/api/payroll", tags=["Payroll"])
 
 
-def employee_out(e: Employee) -> EmployeeOut:
+def _next_pay_date(salary_day: int | None, today: date) -> date:
+    """The next occurrence of ``salary_day`` on or after today (clamped to each
+    month's actual length), rolling into next month once this month's has passed."""
+    year, month = today.year, today.month
+    days_this_month = calendar.monthrange(year, month)[1]
+    day = min(salary_day, days_this_month) if salary_day else days_this_month
+    candidate = date(year, month, day)
+    if candidate >= today:
+        return candidate
+    year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    days_next_month = calendar.monthrange(year, month)[1]
+    day = min(salary_day, days_next_month) if salary_day else days_next_month
+    return date(year, month, day)
+
+
+def _salary_accrual(e: Employee, today: date) -> dict:
+    """A day-by-day informational estimate of this month's pay so an employee can
+    see it building up. Purely a display aid - the real number always comes from
+    the pay run's own calculation once one is created for the period."""
+    year, month = today.year, today.month
+    days_in_period = calendar.monthrange(year, month)[1]
+    gross = money(e.basic_salary + e.hra + e.other_allowances)
+    daily_rate = money(gross / Decimal(days_in_period))
+    period_start = date(year, month, 1)
+    if e.date_of_joining > period_start:
+        period_start = e.date_of_joining
+    if period_start.year != year or period_start.month != month or period_start > today:
+        days_elapsed = 0
+    else:
+        days_elapsed = (today - period_start).days + 1
+    return {
+        "next_pay_date": _next_pay_date(e.salary_day, today),
+        "daily_rate": daily_rate,
+        "days_elapsed_this_period": days_elapsed,
+        "days_in_period": days_in_period,
+        "accrued_this_period": money(daily_rate * Decimal(days_elapsed)),
+    }
+
+
+def employee_out(e: Employee, today: date | None = None) -> EmployeeOut:
     gross = money(e.basic_salary + e.hra + e.other_allowances)
     deductions = money(e.pf_employee + e.professional_tax + e.tds)
+    accrual = _salary_accrual(e, today or date.today())
     return EmployeeOut(
         id=e.id, employee_code=e.employee_code, name=e.name, email=e.email, designation=e.designation, department=e.department,
-        date_of_joining=e.date_of_joining, pan=e.pan, bank_account_number_masked=mask_number(e.bank_account_number), bank_ifsc=e.bank_ifsc,
-        basic_salary=e.basic_salary, hra=e.hra, other_allowances=e.other_allowances, pf_employee=e.pf_employee,
+        date_of_joining=e.date_of_joining, salary_day=e.salary_day, pan=e.pan, bank_account_number_masked=mask_number(e.bank_account_number),
+        bank_ifsc=e.bank_ifsc, basic_salary=e.basic_salary, hra=e.hra, other_allowances=e.other_allowances, pf_employee=e.pf_employee,
         professional_tax=e.professional_tax, tds=e.tds, gross_salary=gross, net_salary=money(gross - deductions), is_active=e.is_active,
-        created_at=e.created_at, has_login=bool(e.user_id),
+        created_at=e.created_at, has_login=bool(e.user_id), **accrual,
+    )
+
+
+def leave_out(rec: LeaveRecord) -> LeaveRecordOut:
+    return LeaveRecordOut(
+        id=rec.id, employee_id=rec.employee_id, employee_name=rec.employee.name, date=rec.date,
+        leave_type=rec.leave_type, notes=rec.notes, created_at=rec.created_at,
     )
 
 
@@ -133,6 +182,39 @@ def delete_employee(employee_id: str, user: User = Depends(require_admin), db: S
     return Message(message="Employee deleted")
 
 
+@router.get("/employees/{employee_id}/leaves", response_model=List[LeaveRecordOut])
+def list_employee_leaves(employee_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    emp = get_or_404(db, Employee, employee_id, user.organization_id, "Employee")
+    stmt = select(LeaveRecord).where(LeaveRecord.employee_id == emp.id).order_by(LeaveRecord.date.desc())
+    return [leave_out(rec) for rec in db.execute(stmt).scalars()]
+
+
+@router.post("/employees/{employee_id}/leaves", response_model=LeaveRecordOut, status_code=status.HTTP_201_CREATED)
+def create_employee_leave(employee_id: str, payload: LeaveRecordCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+    emp = get_or_404(db, Employee, employee_id, user.organization_id, "Employee")
+    if db.execute(select(LeaveRecord.id).where(LeaveRecord.employee_id == emp.id, LeaveRecord.date == payload.date)).first():
+        raise HTTPException(status.HTTP_409_CONFLICT, "A leave record already exists for this employee on this date")
+    rec = LeaveRecord(
+        organization_id=user.organization_id, employee_id=emp.id, date=payload.date,
+        leave_type=payload.leave_type, notes=payload.notes, created_by=user.id,
+    )
+    db.add(rec)
+    db.flush()
+    audit.record(db, user, "create", "leave_record", rec.id, f"Recorded {payload.leave_type} leave for {emp.name} on {payload.date}")
+    db.commit()
+    return leave_out(rec)
+
+
+@router.delete("/leaves/{leave_id}", response_model=Message)
+def delete_leave(leave_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
+    rec = get_or_404(db, LeaveRecord, leave_id, user.organization_id, "Leave record")
+    description = f"Removed leave record for {rec.employee.name} on {rec.date}"
+    db.delete(rec)
+    audit.record(db, user, "delete", "leave_record", leave_id, description)
+    db.commit()
+    return Message(message="Leave record deleted")
+
+
 @router.get("/pay-runs", response_model=List[PayRunOut])
 def list_pay_runs(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     rows = db.execute(
@@ -159,6 +241,7 @@ def create_pay_run(payload: PayRunCreate, user: User = Depends(require_admin), d
     exists = db.execute(select(PayRun.id).where(PayRun.organization_id == org_id, PayRun.period_year == payload.period_year, PayRun.period_month == payload.period_month)).first()
     if exists:
         raise HTTPException(status.HTTP_409_CONFLICT, "A pay run already exists for this period")
+    period_start = date(payload.period_year, payload.period_month, 1)
     period_end = date(payload.period_year, payload.period_month, calendar.monthrange(payload.period_year, payload.period_month)[1])
     employees = db.execute(
         select(Employee).where(Employee.organization_id == org_id, Employee.is_active.is_(True), Employee.date_of_joining <= period_end)
@@ -166,10 +249,25 @@ def create_pay_run(payload: PayRunCreate, user: User = Depends(require_admin), d
     if not employees:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No active employees for this period")
     days_in_month = Decimal(calendar.monthrange(payload.period_year, payload.period_month)[1])
+    # An admin's explicit loss_of_pay entry always wins; otherwise, count each
+    # employee's unpaid LeaveRecord days that fall inside this period so leave
+    # already applied in Payroll automatically shows up as LOP.
+    auto_lop_counts: dict[str, int] = {}
+    leave_rows = db.execute(
+        select(LeaveRecord.employee_id, LeaveRecord.date).where(
+            LeaveRecord.organization_id == org_id, LeaveRecord.leave_type == "unpaid",
+            LeaveRecord.date >= period_start, LeaveRecord.date <= period_end,
+        )
+    ).all()
+    for employee_id, _ in leave_rows:
+        auto_lop_counts[employee_id] = auto_lop_counts.get(employee_id, 0) + 1
     run = PayRun(organization_id=org_id, period_year=payload.period_year, period_month=payload.period_month, status="draft", created_by=user.id)
     total_gross = total_ded = total_net = Decimal("0")
     for emp in employees:
-        lop_days = Decimal(str(payload.loss_of_pay.get(emp.id, 0)))
+        if emp.id in payload.loss_of_pay:
+            lop_days = Decimal(str(payload.loss_of_pay[emp.id]))
+        else:
+            lop_days = Decimal(auto_lop_counts.get(emp.id, 0))
         if lop_days < 0 or lop_days > days_in_month:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Invalid loss-of-pay days for {emp.name}")
         full_gross = money(emp.basic_salary + emp.hra + emp.other_allowances)

@@ -11,9 +11,9 @@ import { EmptyState, ErrorBlock, SkeletonRows } from '@/components/ui/Feedback';
 import { Tabs } from '@/components/ui/Toolbar';
 import { useAsync } from '@/hooks/useAsync';
 import { formatCurrency, formatDate } from '@/utils/format';
-import type { Payslip, TimeEntry } from '@/api/types';
+import type { LeaveRecord, Payslip, TimeEntry } from '@/api/types';
 
-type PortalTab = 'payslips' | 'profile' | 'time';
+type PortalTab = 'payslips' | 'profile' | 'time' | 'leave';
 
 export function EmployeePortalPage() {
   const { user, organization, logout } = useAuth();
@@ -23,6 +23,7 @@ export function EmployeePortalPage() {
   const employee = useAsync(() => employeePortalApi.myEmployee(), []);
   const payslips = useAsync(() => employeePortalApi.myPayslips(), []);
   const timeEntries = useAsync(() => employeePortalApi.myTimeEntries(), []);
+  const leaves = useAsync(() => employeePortalApi.myLeaves(), []);
 
   // useAsync only fetches once on mount, so an admin editing this employee's
   // salary or approving a pay run never reached an already-open portal tab
@@ -34,6 +35,7 @@ export function EmployeePortalPage() {
       employee.reload();
       payslips.reload();
       timeEntries.reload();
+      leaves.reload();
     };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
@@ -67,6 +69,12 @@ export function EmployeePortalPage() {
     { key: 'billable', header: 'Billable', render: (t) => (t.isBillable ? 'Yes' : 'No') },
   ];
 
+  const leaveColumns: Array<Column<LeaveRecord>> = [
+    { key: 'date', header: 'Date', render: (l) => formatDate(l.date) },
+    { key: 'type', header: 'Type', render: (l) => (l.leaveType === 'unpaid' ? 'Unpaid' : 'Paid') },
+    { key: 'notes', header: 'Notes', render: (l) => l.notes ?? '—' },
+  ];
+
   return (
     <div className="auth-shell" style={{ alignItems: 'flex-start', paddingTop: '32px' }}>
       <div style={{ width: '100%', maxWidth: '960px', margin: '0 auto' }}>
@@ -88,6 +96,7 @@ export function EmployeePortalPage() {
             tabs={[
               { id: 'payslips', label: 'My Payslips' },
               { id: 'profile', label: 'My Profile' },
+              { id: 'leave', label: 'My Leave' },
               { id: 'time', label: 'My Time Entries' },
             ]}
             active={tab}
@@ -121,6 +130,23 @@ export function EmployeePortalPage() {
                     <StatTile label="Net salary" value={formatCurrency(employee.data.netSalary)} icon={<Wallet size={16} />} />
                     <StatTile label="Employee code" value={employee.data.employeeCode} icon={<UserIcon size={16} />} />
                   </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                    <StatTile
+                      label="Next pay date"
+                      value={employee.data.nextPayDate ? formatDate(employee.data.nextPayDate) : '—'}
+                      icon={<Wallet size={16} />}
+                    />
+                    <StatTile label="Daily rate" value={`${formatCurrency(employee.data.dailyRate)}/day`} icon={<Wallet size={16} />} />
+                    <StatTile
+                      label="Accrued this period"
+                      value={formatCurrency(employee.data.accruedThisPeriod)}
+                      sublabel={`${employee.data.daysElapsedThisPeriod} of ${employee.data.daysInPeriod} days so far`}
+                      icon={<Wallet size={16} />}
+                    />
+                  </div>
+                  <p className="small text-muted">
+                    This is an estimate based on today's date and your monthly gross — your actual payslip is finalised when payroll runs.
+                  </p>
                   <dl className="detail-grid">
                     <div><dt>Name</dt><dd>{employee.data.name}</dd></div>
                     <div><dt>Email</dt><dd>{employee.data.email ?? '—'}</dd></div>
@@ -133,6 +159,20 @@ export function EmployeePortalPage() {
                   </dl>
                 </div>
               ) : null}
+            </Card>
+          ) : null}
+
+          {tab === 'leave' ? (
+            <Card title="Leave" subtitle="Days recorded against you by an administrator">
+              {leaves.loading ? (
+                <SkeletonRows rows={3} />
+              ) : leaves.error ? (
+                <ErrorBlock message={leaves.error} onRetry={leaves.reload} />
+              ) : !leaves.data || leaves.data.length === 0 ? (
+                <EmptyState title="No leave recorded" />
+              ) : (
+                <DataTable columns={leaveColumns} rows={leaves.data} rowKey={(l) => l.id} caption="Leave" />
+              )}
             </Card>
           ) : null}
 

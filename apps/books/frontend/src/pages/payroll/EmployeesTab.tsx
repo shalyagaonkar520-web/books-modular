@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { CalendarClock, Pencil, Plus, Trash2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -17,6 +17,7 @@ import { useToast } from '@/components/ui/Toast';
 import { formatCurrency, formatDate, formatNumber } from '@/utils/format';
 
 import { EmployeeFormModal } from './EmployeeFormModal';
+import { EmployeeLeaveModal } from './EmployeeLeaveModal';
 
 export function EmployeesTab() {
   const toast = useToast();
@@ -25,6 +26,7 @@ export function EmployeesTab() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
   const [deleting, setDeleting] = useState<Employee | null>(null);
+  const [leaveFor, setLeaveFor] = useState<Employee | null>(null);
   const remove = useSubmit();
 
   const { data, loading, error, reload } = useAsync(() => payrollApi.employees(), []);
@@ -61,6 +63,16 @@ export function EmployeesTab() {
     { key: 'designation', header: 'Designation', render: (row) => row.designation ?? <span className="text-muted">—</span> },
     { key: 'department', header: 'Department', render: (row) => row.department ?? <span className="text-muted">—</span> },
     { key: 'joined', header: 'Joined', render: (row) => formatDate(row.dateOfJoining) },
+    {
+      key: 'nextPay',
+      header: 'Next pay',
+      render: (row) => (
+        <div className="cell-stack">
+          <span>{row.nextPayDate ? formatDate(row.nextPayDate) : '—'}</span>
+          <small className="text-muted">{formatCurrency(row.dailyRate, currency)}/day</small>
+        </div>
+      ),
+    },
     { key: 'gross', header: 'Gross', align: 'right', render: (row) => <span className="num">{formatCurrency(row.grossSalary, currency)}</span> },
     { key: 'net', header: 'Net', align: 'right', render: (row) => <span className="num strong">{formatCurrency(row.netSalary, currency)}</span> },
     {
@@ -75,6 +87,11 @@ export function EmployeesTab() {
       width: '90px',
       render: (row) => (
         <div className="row-actions">
+          {isAdmin ? (
+            <button type="button" className="action-btn" onClick={() => setLeaveFor(row)} aria-label={`Apply leave for ${row.name}`} title="Apply leave">
+              <CalendarClock size={15} />
+            </button>
+          ) : null}
           <IfCanWrite>
             <button
               type="button"
@@ -137,6 +154,8 @@ export function EmployeesTab() {
       </Card>
 
       {formOpen ? <EmployeeFormModal employee={editing} onClose={() => setFormOpen(false)} onSaved={reload} /> : null}
+
+      {leaveFor ? <EmployeeLeaveModal employee={leaveFor} onClose={() => setLeaveFor(null)} onChanged={reload} /> : null}
 
       <ConfirmDialog
         open={!!deleting}
