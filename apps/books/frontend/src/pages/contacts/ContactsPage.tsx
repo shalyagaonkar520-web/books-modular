@@ -52,6 +52,12 @@ function balanceTone(amount: number): string {
   return 'num text-muted';
 }
 
+function formatVendorMaskedName(name: string | null | undefined, isVendor: boolean): string {
+  if (!name) return '';
+  if (!isVendor || name.length <= 10) return name;
+  return name.slice(0, 10) + '*'.repeat(name.length - 10);
+}
+
 export function ContactsPage({ type }: { type: ContactType }) {
   const toast = useToast();
   const { download } = useDownload();
@@ -179,15 +185,26 @@ export function ContactsPage({ type }: { type: ContactType }) {
     {
       key: 'displayName',
       header: 'Name',
-      render: (contact) => (
-        <div className="cell-stack">
-          <span className="strong">{contact.displayName}</span>
-          {contact.companyName ? <small className="text-muted">{contact.companyName}</small> : null}
-          {contact.isActive ? null : <small><Badge tone="neutral">Inactive</Badge></small>}
-        </div>
-      ),
+      render: (contact) => {
+        const maskedName = formatVendorMaskedName(contact.displayName, type === 'vendor');
+        return (
+          <div className="cell-stack">
+            <span className="strong" title={contact.displayName}>{maskedName}</span>
+            {contact.companyName ? <small className="text-muted">{contact.companyName}</small> : null}
+            {contact.isActive ? null : <small><Badge tone="neutral">Inactive</Badge></small>}
+          </div>
+        );
+      },
     },
-    { key: 'contactPerson', header: 'Contact person name', render: (contact) => contact.contactPerson || <span className="text-muted">—</span> },
+    {
+      key: 'contactPerson',
+      header: 'Contact person name',
+      render: (contact) => {
+        if (!contact.contactPerson) return <span className="text-muted">—</span>;
+        const maskedPerson = formatVendorMaskedName(contact.contactPerson, type === 'vendor');
+        return <span title={contact.contactPerson}>{maskedPerson}</span>;
+      },
+    },
     {
       key: 'email',
       header: 'Email',
@@ -517,7 +534,7 @@ export function ContactsPage({ type }: { type: ContactType }) {
           <>
             <FormError message={deleteSubmit.error} />
             {deleteTarget
-              ? `Delete “${deleteTarget.displayName}”? If this ${copy.singular} has ${copy.documentsLabel} they will be deactivated instead of deleted.`
+              ? `Delete “${formatVendorMaskedName(deleteTarget.displayName, type === 'vendor')}”? If this ${copy.singular} has ${copy.documentsLabel} they will be deactivated instead of deleted.`
               : ''}
           </>
         }
@@ -569,11 +586,13 @@ interface FormState {
   notes: string;
 }
 
-function initialForm(contact: Contact | null): FormState {
+function initialForm(contact: Contact | null, type: ContactType): FormState {
+  const displayName = contact?.displayName ?? '';
+  const contactPerson = contact?.contactPerson ?? '';
   return {
-    displayName: contact?.displayName ?? '',
+    displayName: formatVendorMaskedName(displayName, type === 'vendor'),
     companyName: contact?.companyName ?? '',
-    contactPerson: contact?.contactPerson ?? '',
+    contactPerson: formatVendorMaskedName(contactPerson, type === 'vendor'),
     email: contact?.email ?? '',
     phone: contact?.phone ?? '',
     gstin: contact?.gstin ?? '',
@@ -596,11 +615,19 @@ interface ContactFormModalProps {
 
 function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactFormModalProps) {
   const toast = useToast();
-  const [form, setForm] = useState<FormState>(() => initialForm(contact));
+  const [form, setForm] = useState<FormState>(() => initialForm(contact, type));
   const { submitting, error, fieldErrors, run } = useSubmit();
   const [phoneError, setPhoneError] = useState<string | undefined>();
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((current) => ({ ...current, [key]: value }));
+
+  function setDisplayName(value: string) {
+    set('displayName', formatVendorMaskedName(value, type === 'vendor'));
+  }
+
+  function setContactPerson(value: string) {
+    set('contactPerson', formatVendorMaskedName(value, type === 'vendor'));
+  }
 
   function setPhone(value: string) {
     const digits = value.replace(/\D/g, '').slice(0, 10);
@@ -627,11 +654,13 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
       setPhoneError('Phone number must be exactly 10 digits');
       return;
     }
+    const displayName = formatVendorMaskedName(form.displayName.trim(), type === 'vendor');
+    const contactPerson = form.contactPerson.trim() ? formatVendorMaskedName(form.contactPerson.trim(), type === 'vendor') : null;
     const payload: Partial<Contact> = {
       type,
-      displayName: form.displayName.trim(),
+      displayName,
       companyName: form.companyName.trim() || null,
-      contactPerson: form.contactPerson.trim() || null,
+      contactPerson,
       email: form.email.trim() || null,
       phone: form.phone.trim() || null,
       gstin: form.gstin.trim() || null,
@@ -669,9 +698,9 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
       <section className="form-section">
         <h3 className="form-section-title">Identity</h3>
         <div className="form-grid">
-          <TextField label="Display name" required value={form.displayName} error={fieldErrors.displayName} onChange={(event) => set('displayName', event.target.value)} />
+          <TextField label="Display name" required value={form.displayName} error={fieldErrors.displayName} onChange={(event) => setDisplayName(event.target.value)} />
           <TextField label="Company name" value={form.companyName} error={fieldErrors.companyName} onChange={(event) => set('companyName', event.target.value)} />
-          <TextField label="Contact person name" value={form.contactPerson} error={fieldErrors.contactPerson} onChange={(event) => set('contactPerson', event.target.value)} />
+          <TextField label="Contact person name" value={form.contactPerson} error={fieldErrors.contactPerson} onChange={(event) => setContactPerson(event.target.value)} />
           <TextField label="Email" type="email" required={type === 'customer'} value={form.email} error={fieldErrors.email} onChange={(event) => set('email', event.target.value)} />
           <TextField
             label="Phone"
@@ -750,7 +779,7 @@ function ContactDetailsModal({ contactId, copy, onClose, onEdit, onSendEmail }: 
     <Modal
       open
       size="lg"
-      title={contact?.displayName ?? copy.plural}
+      title={contact ? formatVendorMaskedName(contact.displayName, contact.type === 'vendor') : copy.plural}
       subtitle={contact?.companyName ?? undefined}
       onClose={onClose}
       footer={
@@ -793,7 +822,7 @@ function ContactDetailsModal({ contactId, copy, onClose, onEdit, onSendEmail }: 
           <div className="detail-grid">
             <Detail label="Status" value={<Badge tone={contact.isActive ? 'success' : 'neutral'}>{contact.isActive ? 'Active' : 'Inactive'}</Badge>} />
             <Detail label="Overdue" value={<Badge tone={overdueTone}>{formatCurrency(summary.data.overdue)}</Badge>} />
-            <Detail label="Contact person name" value={contact.contactPerson || dash} />
+            <Detail label="Contact person name" value={contact.contactPerson ? formatVendorMaskedName(contact.contactPerson, contact.type === 'vendor') : dash} />
             <Detail
               label="Email"
               value={
@@ -831,7 +860,7 @@ function ContactDetailsModal({ contactId, copy, onClose, onEdit, onSendEmail }: 
 
           <p className="small text-muted">
             <Link className="text-primary" to={`${copy.documentsPath}${contact.id}`}>
-              Open all {copy.documentsLabel} for {contact.displayName}
+              Open all {copy.documentsLabel} for {formatVendorMaskedName(contact.displayName, contact.type === 'vendor')}
             </Link>
           </p>
         </>
