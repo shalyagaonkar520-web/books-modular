@@ -68,11 +68,12 @@ export function InvoicesPage() {
   const [autoReminding, setAutoReminding] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const debouncedSearch = useDebounced(search);
 
   async function confirmBulkDelete() {
+    setBulkDeleteConfirmOpen(false);
     if (selectedIds.size === 0) return;
-    if (!window.confirm(`Delete ${selectedIds.size} selected invoice(s)?`)) return;
     setBulkDeleting(true);
     let count = 0;
     const failedIds = new Set<string>();
@@ -530,7 +531,7 @@ export function InvoicesPage() {
                     size="sm"
                     variant="danger"
                     loading={bulkDeleting}
-                    onClick={() => void confirmBulkDelete()}
+                    onClick={() => setBulkDeleteConfirmOpen(true)}
                     icon={<Trash2 size={13} />}
                   >
                     Delete Selected ({selectedIds.size})
@@ -626,6 +627,16 @@ export function InvoicesPage() {
             ) : null}
           </>
         }
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteConfirmOpen}
+        title="Delete selected invoices"
+        message={<p>{selectedIds.size} selected invoice(s) will be permanently removed. This cannot be undone.</p>}
+        confirmLabel="Delete"
+        busy={bulkDeleting}
+        onCancel={() => setBulkDeleteConfirmOpen(false)}
+        onConfirm={() => void confirmBulkDelete()}
       />
     </>
   );

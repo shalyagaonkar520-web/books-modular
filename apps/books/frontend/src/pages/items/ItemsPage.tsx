@@ -88,6 +88,7 @@ export function ItemsPage() {
   const [deleteItem, setDeleteItem] = useState<Item | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const deleteSubmit = useSubmit();
 
   const list = useAsync(
@@ -168,8 +169,8 @@ export function ItemsPage() {
   }
 
   async function confirmBulkDelete() {
+    setBulkDeleteConfirmOpen(false);
     if (selectedIds.size === 0) return;
-    if (!window.confirm(`Delete ${selectedIds.size} selected item(s)?`)) return;
     setBulkDeleting(true);
     let count = 0;
     const failedIds = new Set<string>();
@@ -376,7 +377,7 @@ export function ItemsPage() {
                     size="sm"
                     variant="danger"
                     loading={bulkDeleting}
-                    onClick={() => void confirmBulkDelete()}
+                    onClick={() => setBulkDeleteConfirmOpen(true)}
                     icon={<Trash2 size={13} />}
                   >
                     Delete Selected ({selectedIds.size})
@@ -457,6 +458,16 @@ export function ItemsPage() {
           setDeleteItem(null);
           deleteSubmit.reset();
         }}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteConfirmOpen}
+        title="Delete selected items"
+        message={<p>{selectedIds.size} selected item(s) will be permanently removed. Any used on invoices or bills are marked inactive instead.</p>}
+        confirmLabel="Delete"
+        busy={bulkDeleting}
+        onCancel={() => setBulkDeleteConfirmOpen(false)}
+        onConfirm={() => void confirmBulkDelete()}
       />
     </>
   );

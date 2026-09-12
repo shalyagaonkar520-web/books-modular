@@ -47,6 +47,7 @@ export function ExpensesPage() {
   const [mailExpense, setMailExpense] = useState<Expense | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const remove = useSubmit();
 
   const refs = useAsync(async (): Promise<ExpenseRefs> => {
@@ -100,8 +101,8 @@ export function ExpensesPage() {
   };
 
   const confirmBulkDelete = async () => {
+    setBulkDeleteConfirmOpen(false);
     if (selectedIds.size === 0) return;
-    if (!window.confirm(`Delete ${selectedIds.size} selected expense(s)?`)) return;
     setBulkDeleting(true);
     let count = 0;
     const failedIds = new Set<string>();
@@ -343,7 +344,7 @@ export function ExpensesPage() {
                     size="sm"
                     variant="danger"
                     loading={bulkDeleting}
-                    onClick={() => void confirmBulkDelete()}
+                    onClick={() => setBulkDeleteConfirmOpen(true)}
                     icon={<Trash2 size={13} />}
                   >
                     Delete Selected ({selectedIds.size})
@@ -417,6 +418,16 @@ export function ExpensesPage() {
         onConfirm={() => {
           if (pendingDelete) void deleteExpense(pendingDelete);
         }}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteConfirmOpen}
+        title="Delete selected expenses"
+        message={<p>{selectedIds.size} selected expense(s) will be permanently removed. This cannot be undone.</p>}
+        confirmLabel="Delete"
+        busy={bulkDeleting}
+        onCancel={() => setBulkDeleteConfirmOpen(false)}
+        onConfirm={() => void confirmBulkDelete()}
       />
 
       {mailExpense ? (

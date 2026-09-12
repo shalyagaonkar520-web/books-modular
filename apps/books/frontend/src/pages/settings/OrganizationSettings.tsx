@@ -124,10 +124,26 @@ export function OrganizationSettings() {
         <div className="form-grid">
           <TextField label="Display name" value={form.name} onChange={set('name')} error={fieldErrors.name} required maxLength={200} />
           <TextField label="Legal name" value={form.legalName} onChange={set('legalName')} error={fieldErrors.legalName} />
-          <TextField label="GSTIN" value={form.gstin} onChange={set('gstin')} error={fieldErrors.gstin} maxLength={20} />
-          <TextField label="PAN" value={form.pan} onChange={set('pan')} error={fieldErrors.pan} maxLength={20} />
+          <TextField
+            label="GSTIN"
+            value={form.gstin}
+            onChange={set('gstin')}
+            error={fieldErrors.gstin}
+            maxLength={15}
+            hint="15 characters, e.g. 29AABCR1234F1Z5"
+          />
+          <TextField label="PAN" value={form.pan} onChange={set('pan')} error={fieldErrors.pan} maxLength={10} hint="10 characters, e.g. AABCR1234F" />
           <TextField label="Email" type="email" value={form.email} onChange={set('email')} error={fieldErrors.email} />
-          <TextField label="Phone" value={form.phone} onChange={set('phone')} error={fieldErrors.phone} />
+          <TextField
+            label="Phone"
+            type="tel"
+            inputMode="numeric"
+            value={form.phone}
+            onChange={set('phone')}
+            error={fieldErrors.phone}
+            maxLength={10}
+            hint="10 digits, no spaces or country code"
+          />
         </div>
 
         <div className="form-section">
@@ -136,7 +152,16 @@ export function OrganizationSettings() {
           <div className="form-grid">
             <TextField label="City" value={form.city} onChange={set('city')} error={fieldErrors.city} />
             <TextField label="State" value={form.state} onChange={set('state')} error={fieldErrors.state} />
-            <TextField label="Postal code" value={form.postalCode} onChange={set('postalCode')} error={fieldErrors.postalCode} />
+            <TextField
+              label="Postal code"
+              type="text"
+              inputMode="numeric"
+              value={form.postalCode}
+              onChange={set('postalCode')}
+              error={fieldErrors.postalCode}
+              maxLength={6}
+              hint="6 digits"
+            />
             <TextField label="Country" value={form.country} onChange={set('country')} error={fieldErrors.country} />
           </div>
         </div>

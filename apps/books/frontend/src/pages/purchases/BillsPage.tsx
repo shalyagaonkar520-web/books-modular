@@ -66,6 +66,7 @@ export function BillsPage() {
   const [mailBill, setMailBill] = useState<BillListItem | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const action = useSubmit();
 
   const stats = useAsync(() => billsApi.stats(), []);
@@ -102,8 +103,8 @@ export function BillsPage() {
   };
 
   const confirmBulkDelete = async () => {
+    setBulkDeleteConfirmOpen(false);
     if (selectedIds.size === 0) return;
-    if (!window.confirm(`Delete ${selectedIds.size} selected bill(s)?`)) return;
     setBulkDeleting(true);
     let count = 0;
     const failedIds = new Set<string>();
@@ -437,7 +438,7 @@ export function BillsPage() {
                     size="sm"
                     variant="danger"
                     loading={bulkDeleting}
-                    onClick={() => void confirmBulkDelete()}
+                    onClick={() => setBulkDeleteConfirmOpen(true)}
                     icon={<Trash2 size={13} />}
                   >
                     Delete Selected ({selectedIds.size})
@@ -518,6 +519,16 @@ export function BillsPage() {
             void perform(() => billsApi.setStatus(confirm.bill.id, 'void'), `Bill ${confirm.bill.billNumber} voided`);
           }
         }}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteConfirmOpen}
+        title="Delete selected bills"
+        message={<p>{selectedIds.size} selected bill(s) will be permanently removed. This cannot be undone.</p>}
+        confirmLabel="Delete"
+        busy={bulkDeleting}
+        onCancel={() => setBulkDeleteConfirmOpen(false)}
+        onConfirm={() => void confirmBulkDelete()}
       />
 
       {mailBill ? (

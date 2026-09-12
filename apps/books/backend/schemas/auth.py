@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import List, Optional
 
@@ -104,6 +105,44 @@ class OrganizationUpdate(APIModel):
     fiscal_year_start_month: Optional[int] = Field(default=None, ge=1, le=12)
     invoice_terms: Optional[str] = None
     invoice_notes: Optional[str] = None
+
+    @field_validator("phone")
+    @classmethod
+    def _phone(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or value == "":
+            return value
+        if not (value.isdigit() and len(value) == 10):
+            raise ValueError("Phone number must be exactly 10 digits")
+        return value
+
+    @field_validator("postal_code")
+    @classmethod
+    def _postal_code(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or value == "":
+            return value
+        if not (value.isdigit() and len(value) == 6):
+            raise ValueError("Postal code must be exactly 6 digits")
+        return value
+
+    @field_validator("gstin")
+    @classmethod
+    def _gstin(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or value == "":
+            return value
+        value = value.upper()
+        if not re.fullmatch(r"\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]", value):
+            raise ValueError("GSTIN must be a valid 15-character GSTIN (e.g. 29AABCR1234F1Z5)")
+        return value
+
+    @field_validator("pan")
+    @classmethod
+    def _pan(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or value == "":
+            return value
+        value = value.upper()
+        if not re.fullmatch(r"[A-Z]{5}\d{4}[A-Z]", value):
+            raise ValueError("PAN must be a valid 10-character PAN (e.g. AABCR1234F)")
+        return value
 
 
 class AuthResponse(APIModel):

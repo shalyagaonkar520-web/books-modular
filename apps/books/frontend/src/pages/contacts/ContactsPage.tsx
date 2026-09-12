@@ -72,6 +72,7 @@ export function ContactsPage({ type }: { type: ContactType }) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectAllPages, setSelectAllPages] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState<{ allPages: boolean } | null>(null);
   const deleteSubmit = useSubmit();
 
   // Reset paging and filters when switching between customers and vendors.
@@ -148,12 +149,6 @@ export function ContactsPage({ type }: { type: ContactType }) {
     const totalCount = list.data?.total ?? 0;
     const count = isAll ? totalCount : selectedIds.size;
     if (count === 0) return;
-
-    const promptMsg = isAll
-      ? `Are you sure you want to delete ALL ${totalCount} ${copy.plural.toLowerCase()} across ALL pages? Contacts with existing transactions will be safely marked inactive.`
-      : `Delete ${selectedIds.size} selected ${copy.plural.toLowerCase()}?`;
-
-    if (!window.confirm(promptMsg)) return;
 
     setBulkDeleting(true);
     try {
@@ -425,7 +420,7 @@ export function ContactsPage({ type }: { type: ContactType }) {
                     size="sm"
                     variant="ghost"
                     loading={bulkDeleting}
-                    onClick={() => void confirmBulkDelete(true)}
+                    onClick={() => setBulkDeleteConfirm({ allPages: true })}
                     icon={<Trash2 size={13} />}
                     style={{ color: 'var(--color-danger, #dc2626)' }}
                     title={`Delete all ${list.data?.total} ${copy.plural.toLowerCase()} across all pages at once`}
@@ -439,7 +434,7 @@ export function ContactsPage({ type }: { type: ContactType }) {
                     size="sm"
                     variant="danger"
                     loading={bulkDeleting}
-                    onClick={() => void confirmBulkDelete()}
+                    onClick={() => setBulkDeleteConfirm({ allPages: false })}
                     icon={<Trash2 size={13} />}
                   >
                     {selectAllPages
@@ -532,6 +527,27 @@ export function ContactsPage({ type }: { type: ContactType }) {
         onCancel={() => {
           setDeleteTarget(null);
           deleteSubmit.reset();
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!bulkDeleteConfirm}
+        title={`Delete ${copy.plural.toLowerCase()}`}
+        message={
+          <p>
+            {bulkDeleteConfirm?.allPages || selectAllPages
+              ? `All ${list.data?.total ?? 0} ${copy.plural.toLowerCase()} across all pages will be deleted. ${copy.singular}s with existing transactions will be safely marked inactive instead.`
+              : `${selectedIds.size} selected ${copy.plural.toLowerCase()} will be deleted. Any with existing transactions will be safely marked inactive instead.`}
+          </p>
+        }
+        confirmLabel="Delete"
+        busy={bulkDeleting}
+        onCancel={() => setBulkDeleteConfirm(null)}
+        onConfirm={() => {
+          if (!bulkDeleteConfirm) return;
+          const { allPages } = bulkDeleteConfirm;
+          setBulkDeleteConfirm(null);
+          void confirmBulkDelete(allPages);
         }}
       />
     </>

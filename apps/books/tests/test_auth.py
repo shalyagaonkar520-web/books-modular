@@ -136,6 +136,26 @@ def test_organization_profile_update(client):
     assert any(entry["entityType"] == "organization" for entry in logs["items"])
 
 
+def test_organization_profile_rejects_malformed_contact_and_tax_fields(client):
+    ctx = register_org(client, "ProfileValidation")
+    h = auth(ctx["token"])
+
+    assert client.put("/api/organization", headers=h, json={"postalCode": "56002A"}).status_code == 422
+    assert client.put("/api/organization", headers=h, json={"postalCode": "5600"}).status_code == 422
+    assert client.put("/api/organization", headers=h, json={"phone": "98765abcde"}).status_code == 422
+    assert client.put("/api/organization", headers=h, json={"phone": "987654321"}).status_code == 422
+    assert client.put("/api/organization", headers=h, json={"gstin": "not-a-gstin"}).status_code == 422
+    assert client.put("/api/organization", headers=h, json={"pan": "12345ABCDE"}).status_code == 422
+
+    ok = client.put(
+        "/api/organization", headers=h,
+        json={"postalCode": "560001", "phone": "9876543210", "gstin": "29ABCDE1234F1Z5", "pan": "ABCDE1234F"},
+    )
+    assert ok.status_code == 200, ok.text
+    body = ok.json()
+    assert body["postalCode"] == "560001" and body["phone"] == "9876543210" and body["pan"] == "ABCDE1234F"
+
+
 def test_user_dashboard_and_pdf(client):
     ctx = register_org(client, "UserDashboardTest")
     h = auth(ctx["token"])
