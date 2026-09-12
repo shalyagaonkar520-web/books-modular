@@ -26,7 +26,6 @@ import { Badge } from '@/components/ui/Badge';
 import { Card, StatTile } from '@/components/ui/Card';
 import {
   ChartType,
-  ChartTypeToggle,
   ComparisonBar,
   DonutChart,
   HorizontalBarChart,
@@ -332,13 +331,6 @@ export function ReceivablesPayablesDashboard() {
       <Card
         title="Receivables vs Payables Ageing Graph"
         subtitle="Visual comparative analysis across ageing intervals (Current, 1–30d, 31–60d, 61–90d, >90d)"
-        actions={
-          <ChartTypeToggle
-            value={graphChartType}
-            onChange={setGraphChartType}
-            allowedTypes={['line', 'bar', 'area', 'net']}
-          />
-        }
       >
         <InteractiveSeriesChart
           data={ageingComparisonSeries}

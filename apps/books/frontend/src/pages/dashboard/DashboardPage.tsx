@@ -17,7 +17,6 @@ import { useAuth } from '@/auth/AuthContext';
 import { Card, StatTile } from '@/components/ui/Card';
 import {
   ChartType,
-  ChartTypeToggle,
   ComparisonBar,
   DonutChart,
   HorizontalBarChart,
@@ -326,17 +325,7 @@ export function DashboardPage() {
         currency={currency}
       />
 
-      <Card
-        title="Cash flow"
-        subtitle={`Bank movement from ${formatDate(cashFlow.startDate)} to ${formatDate(cashFlow.endDate)}`}
-        actions={
-          <ChartTypeToggle
-            value={cashFlowChartType}
-            onChange={setCashFlowChartType}
-            allowedTypes={['line', 'bar', 'area', 'net']}
-          />
-        }
-      >
+      <Card title="Cash flow" subtitle={`Bank movement from ${formatDate(cashFlow.startDate)} to ${formatDate(cashFlow.endDate)}`}>
         <div className="stat-grid">
           <StatTile label="Opening balance" value={formatCurrency(cashFlow.openingBalance, currency)} />
           <StatTile label="Money in" value={formatCurrency(cashFlow.incomingAmount, currency)} tone="positive" />
@@ -355,17 +344,7 @@ export function DashboardPage() {
         />
       </Card>
 
-      <Card
-        title="Income and expense"
-        subtitle="Accrual view from your ledger, by period"
-        actions={
-          <ChartTypeToggle
-            value={incomeChartType}
-            onChange={setIncomeChartType}
-            allowedTypes={['line', 'bar', 'area', 'net']}
-          />
-        }
-      >
+      <Card title="Income and expense" subtitle="Accrual view from your ledger, by period">
         <InteractiveSeriesChart
           data={incomeExpense.breakdown.map((point) => ({ label: point.label, incoming: point.incoming, outgoing: point.outgoing }))}
           incomingLabel="Income"
