@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { FileDown, FileSpreadsheet, Mail, Pencil, Plus, Receipt, Trash2 } from 'lucide-react';
 
@@ -94,6 +94,25 @@ export function ExpensesPage() {
       setSearchParams(next, { replace: true });
     }
   };
+
+  // Recent activity on the dashboard links here with ?expense=<id> - open that
+  // expense's edit view directly instead of leaving the visitor on the filtered
+  // current-month list, where an older expense wouldn't even be visible.
+  useEffect(() => {
+    const expenseId = searchParams.get('expense');
+    if (!expenseId) return;
+    let cancelled = false;
+    void expensesApi.get(expenseId).then((expense) => {
+      if (!cancelled) setEditing(expense);
+    });
+    const next = new URLSearchParams(searchParams);
+    next.delete('expense');
+    setSearchParams(next, { replace: true });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const refreshAll = () => {
     list.reload();

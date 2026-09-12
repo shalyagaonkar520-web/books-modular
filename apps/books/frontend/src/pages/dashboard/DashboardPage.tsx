@@ -42,13 +42,26 @@ const PERIOD_OPTIONS: Array<{ value: DashboardPeriod; label: string }> = [
   { value: 'last_month', label: 'Last month' },
 ];
 
-const ACTIVITY_ROUTES: Record<string, string> = {
-  invoice: '/invoices',
-  bill: '/bills',
-  customer_payment: '/payments-received',
-  vendor_payment: '/payments-made',
-  expense: '/expenses',
-};
+// Where clicking a Recent activity row should go. Invoices, bills and expenses
+// have a dedicated single-record view, so link straight to that record rather
+// than dumping the visitor on the (often filtered) list page; payments have no
+// per-record view yet, so those still just go to their list.
+function activityRoute(row: Activity): string {
+  switch (row.type) {
+    case 'invoice':
+      return `/invoices/${row.id}`;
+    case 'bill':
+      return `/bills?bill=${row.id}`;
+    case 'expense':
+      return `/expenses?expense=${row.id}`;
+    case 'customer_payment':
+      return '/payments-received';
+    case 'vendor_payment':
+      return '/payments-made';
+    default:
+      return '/';
+  }
+}
 
 type Activity = { id: string; type: string; number: string; contactName?: string | null; date: string; amount: number; status?: string | null };
 
@@ -60,7 +73,6 @@ export function DashboardPage() {
   const [receivablesView, setReceivablesView] = useState<'bar' | 'donut'>('bar');
   const [payablesView, setPayablesView] = useState<'bar' | 'donut'>('bar');
   const [topCustomersChartType, setTopCustomersChartType] = useState<'donut' | 'hbar'>('donut');
-  const [bankViewType, setBankViewType] = useState<'chart' | 'donut' | 'list'>('chart');
   const [inventoryView, setInventoryView] = useState<'overview' | 'donut'>('overview');
   const [activityView, setActivityView] = useState<'table' | 'chart' | 'donut'>('table');
   const currency = organization?.currency ?? 'INR';
@@ -105,7 +117,7 @@ export function DashboardPage() {
       key: 'document',
       header: 'Document',
       render: (row) => (
-        <Link to={ACTIVITY_ROUTES[row.type] ?? '/'} className="cell-stack">
+        <Link to={activityRoute(row)} className="cell-stack">
           <span className="strong">{row.number}</span>
           <small>{titleCase(row.type)}</small>
         </Link>
@@ -367,79 +379,6 @@ export function DashboardPage() {
       </Card>
 
       <div className="grid-2">
-        <Card
-          title="Bank and cash balances"
-          actions={
-            <div className="row" style={{ gap: 8 }}>
-              {bankBalances.length > 0 ? (
-                <div className="chart-type-picker" role="group">
-                  <button
-                    type="button"
-                    className={`chart-pill ${bankViewType === 'chart' ? 'active' : ''}`}
-                    onClick={() => setBankViewType('chart')}
-                    title="Bar chart view"
-                  >
-                    <span>Bar</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`chart-pill ${bankViewType === 'donut' ? 'active' : ''}`}
-                    onClick={() => setBankViewType('donut')}
-                    title="Donut chart view"
-                  >
-                    <span>Donut</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`chart-pill ${bankViewType === 'list' ? 'active' : ''}`}
-                    onClick={() => setBankViewType('list')}
-                    title="List view"
-                  >
-                    <span>List</span>
-                  </button>
-                </div>
-              ) : null}
-              <Link to="/banking" className="btn btn-link btn-sm">
-                <span>Banking</span>
-                <ArrowRight size={13} />
-              </Link>
-            </div>
-          }
-        >
-          {bankBalances.length === 0 ? (
-            <p className="text-muted small">No bank or cash accounts yet.</p>
-          ) : bankViewType === 'chart' ? (
-            <HorizontalBarChart
-              items={bankBalances.map((account) => ({
-                label: account.name,
-                value: Math.max(0, account.balance),
-                sublabel: titleCase(account.type),
-              }))}
-              currency={currency}
-            />
-          ) : bankViewType === 'donut' ? (
-            <DonutChart
-              slices={bankBalances.map((account) => ({
-                label: account.name,
-                value: Math.max(0, account.balance),
-              }))}
-              currency={currency}
-            />
-          ) : (
-            <ul className="plain-list">
-              {bankBalances.map((account) => (
-                <li key={account.bankAccountId}>
-                  <span className="cell-stack">
-                    <span className="strong">{account.name}</span>
-                    <small>{titleCase(account.type)}</small>
-                  </span>
-                  <span className="num strong">{formatCurrency(account.balance, currency)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
         <Card
           title="Top customers"
           subtitle="By invoiced value in this period"

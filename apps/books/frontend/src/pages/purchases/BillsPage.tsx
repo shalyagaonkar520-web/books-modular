@@ -60,7 +60,7 @@ export function BillsPage() {
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounced(search);
 
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(() => searchParams.get('bill'));
   const [payTarget, setPayTarget] = useState<VendorPaymentBill | null>(null);
   const [confirm, setConfirm] = useState<{ kind: 'void' | 'delete'; bill: BillListItem } | null>(null);
   const [mailBill, setMailBill] = useState<BillListItem | null>(null);
