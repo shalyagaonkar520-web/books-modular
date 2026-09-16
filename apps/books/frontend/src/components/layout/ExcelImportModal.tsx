@@ -329,7 +329,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                       setSelectedRowIndices(new Set());
                     }}
                     style={{
-                      border: isActive ? '2px solid var(--color-primary, #0284c7)' : '1px solid var(--color-border)',
+                      border: isActive ? '2px solid var(--primary)' : '1px solid var(--color-border)',
                       backgroundColor: isActive ? 'var(--color-bg, #ffffff)' : 'var(--color-bg-subtle, #f9fafb)',
                       borderRadius: '8px',
                       padding: '8px 14px',

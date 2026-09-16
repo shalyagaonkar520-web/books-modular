@@ -18,10 +18,12 @@
   --text-subtle: #94a3b8;
   --text-inverse: #ffffff;
 
-  /* Brand & semantics — Zoho Executive Luxury Palette */
-  --primary: #059669;
-  --primary-hover: #047857;
-  --primary-soft: #ecfdf5;
+  /* Brand & semantics.
+     Primary is blue and success is green on purpose: when both were the same
+     emerald, every ordinary Save button read as a success state. */
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-soft: #eff6ff;
   --success: #059669;
   --success-soft: #ecfdf5;
   --warning: #d97706;
@@ -427,7 +429,7 @@ a:hover {
 }
 
 .notification-main:focus-visible {
-  outline: 2px solid var(--color-primary, #2563eb);
+  outline: 2px solid var(--primary);
   outline-offset: -2px;
   border-radius: var(--radius-sm);
 }

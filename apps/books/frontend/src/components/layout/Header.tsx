@@ -158,7 +158,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
               title="Upload and auto-categorize Excel or CSV files"
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
-              <FileSpreadsheet size={15} style={{ color: '#16a34a' }} />
+              <FileSpreadsheet size={15} />
               <span>Excel / Data Input</span>
             </button>
             <div className="menu-anchor">
@@ -215,7 +215,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
                     style={{
                       background: 'none',
                       border: 'none',
-                      color: 'var(--color-primary, #2563eb)',
+                      color: 'var(--primary)',
                       fontSize: '12px',
                       cursor: 'pointer',
                       padding: 0,

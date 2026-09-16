@@ -12,6 +12,7 @@ import { BankingPage } from '@/pages/banking/BankingPage';
 import { BillFormPage } from '@/pages/purchases/BillFormPage';
 import { BillsPage } from '@/pages/purchases/BillsPage';
 import { ContactsPage } from '@/pages/contacts/ContactsPage';
+import { ContactFormPage } from '@/pages/contacts/ContactFormPage';
 import { DashboardPage } from '@/pages/dashboard/DashboardPage';
 import { DocumentsPage } from '@/pages/documents/DocumentsPage';
 import { ExpenseDashboardPage } from '@/pages/expenses/ExpenseDashboardPage';
@@ -64,7 +65,11 @@ export function App() {
             <Route path="/items" element={<ItemsPage />} />
 
             <Route path="/customers" element={<ContactsPage type="customer" />} />
+            <Route path="/customers/new" element={<ContactFormPage type="customer" />} />
+            <Route path="/customers/:contactId/edit" element={<ContactFormPage type="customer" />} />
             <Route path="/vendors" element={<ContactsPage type="vendor" />} />
+            <Route path="/vendors/new" element={<ContactFormPage type="vendor" />} />
+            <Route path="/vendors/:contactId/edit" element={<ContactFormPage type="vendor" />} />
 
             <Route path="/invoices" element={<InvoicesPage />} />
             <Route path="/invoices/new" element={<InvoiceFormPage />} />
