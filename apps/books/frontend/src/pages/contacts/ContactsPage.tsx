@@ -588,6 +588,7 @@ interface FormState {
   bankAccountHolder: string;
   bankName: string;
   bankAccountNumber: string;
+  bankAccountNumberConfirm: string;
   bankIfsc: string;
   gstTreatment: GstTreatment;
   paymentTermsDays: string;
@@ -615,6 +616,7 @@ function initialForm(contact: Contact | null, type: ContactType): FormState {
     bankAccountHolder: contact?.bankAccountHolder ?? '',
     bankName: contact?.bankName ?? '',
     bankAccountNumber: contact?.bankAccountNumber ?? '',
+    bankAccountNumberConfirm: contact?.bankAccountNumber ?? '',
     bankIfsc: contact?.bankIfsc ?? '',
     gstTreatment: contact?.gstTreatment ?? 'unregistered',
     paymentTermsDays: String(contact?.paymentTermsDays ?? 30),
@@ -639,6 +641,13 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
   const [phoneError, setPhoneError] = useState<string | undefined>();
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((current) => ({ ...current, [key]: value }));
+
+  // Only a mismatch between two non-empty entries is worth flagging; an
+  // untouched pair is simply a vendor whose bank details are not on file yet.
+  const accountNumberMismatch =
+    form.bankAccountNumber.trim() !== '' &&
+    form.bankAccountNumberConfirm.trim() !== '' &&
+    form.bankAccountNumber.trim() !== form.bankAccountNumberConfirm.trim();
 
   function setDisplayName(value: string) {
     set('displayName', formatVendorMaskedName(value, type === 'vendor'));
@@ -676,6 +685,10 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
     }
     if (form.phone.trim() && form.phone.trim().length !== 10) {
       setPhoneError('Phone number must be exactly 10 digits');
+      return;
+    }
+    if (type === 'vendor' && form.bankAccountNumber.trim() !== form.bankAccountNumberConfirm.trim()) {
+      toast.error('Account numbers do not match');
       return;
     }
     const displayName = formatVendorMaskedName(form.displayName.trim(), type === 'vendor');
@@ -792,38 +805,50 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
         </div>
       </section>
 
-      <section className="form-section">
-        <h3 className="form-section-title">Bank details</h3>
-        <p className="text-muted small" style={{ marginTop: '-4px' }}>
-          {type === 'vendor' ? 'Where this vendor gets paid — saved so a payment run does not need it re-keyed.' : 'Used when refunding this customer.'}
-        </p>
-        <div className="form-grid">
-          <TextField
-            label="Account holder name"
-            value={form.bankAccountHolder}
-            error={fieldErrors.bankAccountHolder}
-            onChange={(event) => set('bankAccountHolder', event.target.value)}
-          />
-          <TextField label="Bank name" value={form.bankName} error={fieldErrors.bankName} onChange={(event) => set('bankName', event.target.value)} />
-          <TextField
-            label="Account number"
-            inputMode="numeric"
-            maxLength={18}
-            value={form.bankAccountNumber}
-            error={fieldErrors.bankAccountNumber}
-            hint="9 to 18 digits"
-            onChange={(event) => set('bankAccountNumber', event.target.value)}
-          />
-          <TextField
-            label="IFSC"
-            maxLength={11}
-            value={form.bankIfsc}
-            error={fieldErrors.bankIfsc}
-            hint="11 characters, e.g. HDFC0001234"
-            onChange={(event) => set('bankIfsc', event.target.value.toUpperCase())}
-          />
-        </div>
-      </section>
+      {/* Money goes out to vendors, so only they need bank details. */}
+      {type === 'vendor' ? (
+        <section className="form-section">
+          <h3 className="form-section-title">Bank details</h3>
+          <p className="text-muted small" style={{ marginTop: '-4px' }}>
+            Where this vendor gets paid — saved so a payment run does not need it re-keyed.
+          </p>
+          <div className="form-grid">
+            <TextField
+              label="Account holder name"
+              value={form.bankAccountHolder}
+              error={fieldErrors.bankAccountHolder}
+              onChange={(event) => set('bankAccountHolder', event.target.value)}
+            />
+            <TextField label="Bank name" value={form.bankName} error={fieldErrors.bankName} onChange={(event) => set('bankName', event.target.value)} />
+            <TextField
+              label="Account number"
+              inputMode="numeric"
+              maxLength={18}
+              value={form.bankAccountNumber}
+              error={fieldErrors.bankAccountNumber}
+              hint="9 to 18 digits"
+              onChange={(event) => set('bankAccountNumber', event.target.value)}
+            />
+            <TextField
+              label="Re-enter account number"
+              inputMode="numeric"
+              maxLength={18}
+              value={form.bankAccountNumberConfirm}
+              error={accountNumberMismatch ? 'Account numbers do not match' : undefined}
+              hint="Typed twice so a wrong digit cannot send a payment astray"
+              onChange={(event) => set('bankAccountNumberConfirm', event.target.value)}
+            />
+            <TextField
+              label="IFSC"
+              maxLength={11}
+              value={form.bankIfsc}
+              error={fieldErrors.bankIfsc}
+              hint="11 characters, e.g. HDFC0001234"
+              onChange={(event) => set('bankIfsc', event.target.value.toUpperCase())}
+            />
+          </div>
+        </section>
+      ) : null}
 
       <section className="form-section">
         <h3 className="form-section-title">Tax and terms</h3>
