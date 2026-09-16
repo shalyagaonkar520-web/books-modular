@@ -4,8 +4,10 @@ Brings the forms in line with what an Indian books package is expected to
 capture:
 
 - contacts gain a business/individual flag, the primary contact entered in
-  parts (salutation, first and last name), a separate mobile number, and the
-  vendor's bank details so a payment run does not need them re-keyed;
+  parts (salutation, first and last name), a separate mobile number, the
+  vendor's bank details so a payment run does not need them re-keyed, a
+  language, and an optional ledger account that overrides the org-wide
+  receivables/payables account for that contact;
 - invoices gain the customer's order number, a subject line and a salesperson;
 - bills gain an order number and a subject line.
 
@@ -39,6 +41,7 @@ _CONTACT_COLUMNS = (
     ("bank_name", sa.String(length=120), None),
     ("bank_account_number", sa.String(length=40), None),
     ("bank_ifsc", sa.String(length=20), None),
+    ("language", sa.String(length=40), None),
 )
 
 _INVOICE_COLUMNS = (
@@ -57,6 +60,10 @@ def upgrade() -> None:
     with op.batch_alter_table("contacts", schema=None) as batch_op:
         for name, type_, default in _CONTACT_COLUMNS:
             batch_op.add_column(sa.Column(name, type_, nullable=True, server_default=default))
+        # Carries its own foreign key, so it is added with the constraint named
+        # rather than through the plain loop above.
+        batch_op.add_column(sa.Column("ledger_account_id", sa.String(length=32), nullable=True))
+        batch_op.create_foreign_key("fk_contacts_ledger_account_id_accounts", "accounts", ["ledger_account_id"], ["id"])
 
     # contact_type is not nullable on the model, so fill the rows that existed
     # before this ran and then tighten it.
@@ -83,5 +90,7 @@ def downgrade() -> None:
             batch_op.drop_column(name)
 
     with op.batch_alter_table("contacts", schema=None) as batch_op:
+        batch_op.drop_constraint("fk_contacts_ledger_account_id_accounts", type_="foreignkey")
+        batch_op.drop_column("ledger_account_id")
         for name, _, _default in _CONTACT_COLUMNS:
             batch_op.drop_column(name)

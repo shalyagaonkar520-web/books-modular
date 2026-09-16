@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
-from backend.models import Bill, Contact, CustomerPayment, Expense, Invoice, Organization, User, VendorPayment
+from backend.models import Account, Bill, Contact, CustomerPayment, Expense, Invoice, Organization, User, VendorPayment
 from backend.schemas.common import Message, Page
 from backend.schemas.contacts import ContactCreate, ContactOut, ContactSummary, ContactUpdate
 from backend.services import audit, export_service
@@ -189,6 +189,8 @@ def contact_summary(contact_id: str, user: User = Depends(get_current_user), db:
 
 @router.post("", response_model=ContactOut, status_code=status.HTTP_201_CREATED)
 def create_contact(payload: ContactCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+    if payload.ledger_account_id:
+        get_or_404(db, Account, payload.ledger_account_id, user.organization_id, "Account")
     contact = Contact(organization_id=user.organization_id, **payload.model_dump())
     _sync_contact_person(contact)
     db.add(contact)
@@ -202,6 +204,8 @@ def create_contact(payload: ContactCreate, user: User = Depends(require_write), 
 def update_contact(contact_id: str, payload: ContactUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)):
     contact = get_or_404(db, Contact, contact_id, user.organization_id, "Contact")
     fields = payload.model_dump(exclude_unset=True)
+    if fields.get("ledger_account_id"):
+        get_or_404(db, Account, fields["ledger_account_id"], user.organization_id, "Account")
     for field, value in fields.items():
         setattr(contact, field, value)
     if {"salutation", "first_name", "last_name"} & fields.keys():

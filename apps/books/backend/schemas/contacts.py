@@ -98,6 +98,9 @@ class ContactBase(APIModel):
     bank_account_number: Optional[str] = Field(default=None, max_length=40)
     bank_ifsc: Optional[str] = Field(default=None, max_length=20)
     gst_treatment: GstTreatment = "unregistered"
+    language: Optional[str] = Field(default=None, max_length=40)
+    # Overrides the org-wide receivables/payables account for this contact.
+    ledger_account_id: Optional[str] = None
     billing_address: Optional[str] = None
     shipping_address: Optional[str] = None
     payment_terms_days: int = Field(default=30, ge=0, le=365)
@@ -126,6 +129,8 @@ class ContactUpdate(_ContactFieldRules, APIModel):
     bank_account_number: Optional[str] = Field(default=None, max_length=40)
     bank_ifsc: Optional[str] = Field(default=None, max_length=20)
     gst_treatment: Optional[GstTreatment] = None
+    language: Optional[str] = Field(default=None, max_length=40)
+    ledger_account_id: Optional[str] = None
     billing_address: Optional[str] = None
     shipping_address: Optional[str] = None
     payment_terms_days: Optional[int] = Field(default=None, ge=0, le=365)

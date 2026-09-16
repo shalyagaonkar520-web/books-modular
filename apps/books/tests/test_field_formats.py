@@ -237,3 +237,52 @@ def test_invoice_and_bill_carry_order_number_and_subject(client, org):
     assert bill.status_code == 201, bill.text
     assert bill.json()["orderNumber"] == "PO-4451"
     assert bill.json()["subject"] == "Monitors for the new office"
+
+
+def test_contact_can_override_its_receivables_account(client, org):
+    """A customer pointed at its own receivables account posts there instead of
+    the org-wide 1100, which is what the per-contact account selector is for."""
+    h = org["h"]
+    accounts = client.get("/api/accounting/accounts", headers=h).json()
+    default_ar = next(a for a in accounts if a["code"] == "1100")
+    other_ar = client.post(
+        "/api/accounting/accounts",
+        headers=h,
+        json={"code": "1150", "name": "Receivables - Key Accounts", "type": "asset", "subtype": "accounts_receivable"},
+    ).json()
+
+    customer = client.post(
+        "/api/contacts",
+        headers=h,
+        json={"type": "customer", "displayName": "Key Account", "ledgerAccountId": other_ar["id"]},
+    ).json()
+    assert customer["ledgerAccountId"] == other_ar["id"]
+
+    inv = client.post(
+        "/api/invoices",
+        headers=h,
+        json={
+            "customerId": customer["id"],
+            "date": "2026-09-01",
+            "status": "sent",
+            "lines": [{"description": "Work", "quantity": 1, "rate": 1000, "taxRate": 0}],
+        },
+    )
+    assert inv.status_code == 201, inv.text
+    number = inv.json()["invoiceNumber"]
+
+    # Match on this invoice's own number - the shared org fixture has plenty of
+    # other invoices posting to the default account.
+    def mentions(lines):
+        return any(number in (line.get("reference") or "") or number in (line.get("description") or "") for line in lines)
+
+    posted = client.get(f"/api/accounting/ledger/{other_ar['id']}", headers=h).json()["lines"]
+    assert mentions(posted), "should post to the overridden account"
+
+    default_lines = client.get(f"/api/accounting/ledger/{default_ar['id']}", headers=h).json()["lines"]
+    assert not mentions(default_lines), "should not touch the default account"
+
+
+def test_an_unknown_ledger_account_is_rejected(client, h):
+    res = _contact(client, h, ledgerAccountId="does-not-exist")
+    assert res.status_code == 404, res.text

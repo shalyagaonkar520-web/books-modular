@@ -274,11 +274,17 @@ class Contact(TimestampMixin, OrgScopedMixin, Base):
     bank_account_number: Mapped[Optional[str]] = mapped_column(String(40))
     bank_ifsc: Mapped[Optional[str]] = mapped_column(String(20))
     gst_treatment: Mapped[str] = mapped_column(String(30), default="unregistered", nullable=False)
+    language: Mapped[Optional[str]] = mapped_column(String(40))
+    # Overrides the org-wide receivables (1100) / payables (2000) account when
+    # this contact's invoices or bills are posted. Null keeps the default.
+    ledger_account_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("accounts.id"))
     billing_address: Mapped[Optional[str]] = mapped_column(Text)
     shipping_address: Mapped[Optional[str]] = mapped_column(Text)
     payment_terms_days: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    ledger_account: Mapped[Optional[Account]] = relationship(foreign_keys=[ledger_account_id])
 
 
 class InventoryAdjustment(TimestampMixin, OrgScopedMixin, Base):

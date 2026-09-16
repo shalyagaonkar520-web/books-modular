@@ -145,6 +145,9 @@ export interface Contact {
   bankAccountNumber?: string | null;
   bankIfsc?: string | null;
   gstTreatment: GstTreatment;
+  language?: string | null;
+  /** Overrides the org-wide receivables/payables account for this contact. */
+  ledgerAccountId?: string | null;
   billingAddress?: string | null;
   shippingAddress?: string | null;
   paymentTermsDays: number;

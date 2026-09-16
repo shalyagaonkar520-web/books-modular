@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { FileDown, FileSpreadsheet, FileText, Mail, Pencil, Plus, Trash2, Users } from 'lucide-react';
 
-import { contactsApi, emailApi } from '@/api/endpoints';
+import { accountingApi, contactsApi, emailApi } from '@/api/endpoints';
 import type { Contact, ContactKind, ContactType, GstTreatment } from '@/api/types';
 import { useAsync } from '@/hooks/useAsync';
 import { useDebounced } from '@/hooks/useDebounced';
@@ -28,6 +28,7 @@ const PAGE_SIZE = 25;
 
 const GST_OPTIONS = GST_TREATMENTS.map((treatment) => ({ value: treatment.value, label: treatment.label }));
 const SALUTATIONS = ['Mr.', 'Ms.', 'Mrs.', 'Dr.', 'Prof.'];
+const LANGUAGES = ['English', 'Hindi', 'Kannada', 'Tamil', 'Telugu', 'Malayalam', 'Marathi', 'Gujarati', 'Bengali'];
 
 function gstLabel(treatment: GstTreatment): string {
   return GST_TREATMENTS.find((option) => option.value === treatment)?.label ?? treatment;
@@ -591,6 +592,8 @@ interface FormState {
   bankAccountNumberConfirm: string;
   bankIfsc: string;
   gstTreatment: GstTreatment;
+  language: string;
+  ledgerAccountId: string;
   paymentTermsDays: string;
   billingAddress: string;
   shippingAddress: string;
@@ -618,6 +621,8 @@ function initialForm(contact: Contact | null, type: ContactType): FormState {
     bankAccountNumber: contact?.bankAccountNumber ?? '',
     bankAccountNumberConfirm: contact?.bankAccountNumber ?? '',
     bankIfsc: contact?.bankIfsc ?? '',
+    language: contact?.language ?? '',
+    ledgerAccountId: contact?.ledgerAccountId ?? '',
     gstTreatment: contact?.gstTreatment ?? 'unregistered',
     paymentTermsDays: String(contact?.paymentTermsDays ?? 30),
     billingAddress: contact?.billingAddress ?? '',
@@ -638,6 +643,12 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
   const toast = useToast();
   const [form, setForm] = useState<FormState>(() => initialForm(contact, type));
   const { submitting, error, fieldErrors, run } = useSubmit();
+  // Receivables for a customer, payables for a vendor - the only accounts it
+  // makes sense to point a contact at.
+  const ledgerAccounts = useAsync(
+    () => accountingApi.accounts({ type: type === 'customer' ? 'asset' : 'liability' }),
+    [type],
+  );
   const [phoneError, setPhoneError] = useState<string | undefined>();
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((current) => ({ ...current, [key]: value }));
@@ -711,6 +722,8 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
       bankName: form.bankName.trim() || null,
       bankAccountNumber: form.bankAccountNumber.trim() || null,
       bankIfsc: form.bankIfsc.trim() || null,
+      language: form.language.trim() || null,
+      ledgerAccountId: form.ledgerAccountId || null,
       gstTreatment: form.gstTreatment,
       paymentTermsDays: Number.parseInt(form.paymentTermsDays, 10) || 0,
       billingAddress: form.billingAddress.trim() || null,
@@ -884,6 +897,23 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
             value={form.paymentTermsDays}
             error={fieldErrors.paymentTermsDays}
             onChange={(event) => set('paymentTermsDays', event.target.value)}
+          />
+          <SelectField
+            label={type === 'customer' ? 'Accounts receivable' : 'Accounts payable'}
+            value={form.ledgerAccountId}
+            placeholder="Default account"
+            options={(ledgerAccounts.data ?? []).map((account) => ({ value: account.id, label: `${account.code} · ${account.name}` }))}
+            error={fieldErrors.ledgerAccountId}
+            hint={`Leave as default unless this ${copy.singular} posts to its own account`}
+            onChange={(event) => set('ledgerAccountId', event.target.value)}
+          />
+          <SelectField
+            label="Language"
+            value={form.language}
+            placeholder="English"
+            options={LANGUAGES.map((language) => ({ value: language, label: language }))}
+            error={fieldErrors.language}
+            onChange={(event) => set('language', event.target.value)}
           />
         </div>
       </section>

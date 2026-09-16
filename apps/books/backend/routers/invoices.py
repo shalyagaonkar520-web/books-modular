@@ -162,7 +162,9 @@ def _apply_payload(db: Session, inv: Invoice, payload: InvoiceCreate, org_id: st
 def post_invoice(db: Session, inv: Invoice, user: User) -> None:
     """Journal: Dr AR total, Dr Discount; Cr income accounts, Cr Output GST. Plus COGS for tracked goods."""
     org_id = inv.organization_id
-    ar = get_account_by_code(db, org_id, "1100")
+    # A customer can be pointed at its own receivables account; most are not,
+    # and fall back to the org-wide one.
+    ar = inv.customer.ledger_account or get_account_by_code(db, org_id, "1100")
     output_gst = get_account_by_code(db, org_id, "2100")
     default_sales = get_account_by_code(db, org_id, "4000")
     discount_acct = get_account_by_code(db, org_id, "4300")

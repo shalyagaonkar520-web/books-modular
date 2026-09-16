@@ -131,7 +131,8 @@ def _apply_payload(db: Session, bill: Bill, payload: BillCreate, org_id: str) ->
 def post_bill(db: Session, bill: Bill, user: User) -> None:
     """Journal: Dr expense/inventory accounts, Dr Input GST; Cr AP total, Cr Purchase Discounts."""
     org_id = bill.organization_id
-    ap = get_account_by_code(db, org_id, "2000")
+    # As with invoices, a vendor may be pointed at its own payables account.
+    ap = bill.vendor.ledger_account or get_account_by_code(db, org_id, "2000")
     input_gst = get_account_by_code(db, org_id, "1300")
     inventory_acct = get_account_by_code(db, org_id, "1200")
     default_expense = get_account_by_code(db, org_id, "5000")
