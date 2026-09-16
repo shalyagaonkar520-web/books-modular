@@ -4,14 +4,29 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Literal, Optional
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
+from backend.schemas import validators
 from backend.schemas.common import MAX_MONEY, APIModel
 
 BankAccountType = Literal["bank", "cash", "credit_card"]
 
 
-class BankAccountCreate(APIModel):
+class _BankFieldRules:
+    """Account number and IFSC follow the same rules wherever they are entered."""
+
+    @field_validator("account_number")
+    @classmethod
+    def _account_number(cls, value):
+        return validators.bank_account_number(value)
+
+    @field_validator("ifsc")
+    @classmethod
+    def _ifsc(cls, value):
+        return validators.ifsc(value)
+
+
+class BankAccountCreate(_BankFieldRules, APIModel):
     name: str = Field(min_length=1, max_length=120)
     type: BankAccountType = "bank"
     bank_name: Optional[str] = Field(default=None, max_length=120)
@@ -24,7 +39,7 @@ class BankAccountCreate(APIModel):
     is_primary: bool = False
 
 
-class BankAccountUpdate(APIModel):
+class BankAccountUpdate(_BankFieldRules, APIModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=120)
     bank_name: Optional[str] = None
     account_number: Optional[str] = None

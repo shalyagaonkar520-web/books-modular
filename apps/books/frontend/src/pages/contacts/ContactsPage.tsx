@@ -699,7 +699,13 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
         <h3 className="form-section-title">Identity</h3>
         <div className="form-grid">
           <TextField label="Display name" required value={form.displayName} error={fieldErrors.displayName} onChange={(event) => setDisplayName(event.target.value)} />
-          <TextField label="Company name" value={form.companyName} error={fieldErrors.companyName} onChange={(event) => set('companyName', event.target.value)} />
+          <TextField
+            label="Company name"
+            value={form.companyName}
+            error={fieldErrors.companyName}
+            hint="Letters only, no numbers"
+            onChange={(event) => set('companyName', event.target.value)}
+          />
           <TextField label="Contact person name" value={form.contactPerson} error={fieldErrors.contactPerson} onChange={(event) => setContactPerson(event.target.value)} />
           <TextField label="Email" type="email" required={type === 'customer'} value={form.email} error={fieldErrors.email} onChange={(event) => set('email', event.target.value)} />
           <TextField
@@ -718,8 +724,22 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
       <section className="form-section">
         <h3 className="form-section-title">Tax and terms</h3>
         <div className="form-grid">
-          <TextField label="GSTIN" value={form.gstin} error={fieldErrors.gstin} onChange={(event) => set('gstin', event.target.value)} />
-          <TextField label="PAN" value={form.pan} error={fieldErrors.pan} onChange={(event) => set('pan', event.target.value)} />
+          <TextField
+            label="GSTIN"
+            value={form.gstin}
+            error={fieldErrors.gstin}
+            maxLength={15}
+            hint="15 characters, e.g. 29AABCR1234F1Z5"
+            onChange={(event) => set('gstin', event.target.value.toUpperCase())}
+          />
+          <TextField
+            label="PAN"
+            value={form.pan}
+            error={fieldErrors.pan}
+            maxLength={10}
+            hint="10 characters, e.g. AABCR1234F"
+            onChange={(event) => set('pan', event.target.value.toUpperCase())}
+          />
           <SelectField
             label="GST treatment"
             value={form.gstTreatment}

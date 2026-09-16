@@ -4,12 +4,37 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional
 
-from pydantic import EmailStr, Field
+from pydantic import EmailStr, Field, field_validator
 
+from backend.schemas import validators
 from backend.schemas.common import MAX_MONEY, APIModel
 
 
-class EmployeeCreate(APIModel):
+class _EmployeeFieldRules:
+    """Same identity-field rules the rest of the app uses, applied on entry only."""
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, value):
+        return validators.person_name(value, "Employee name")
+
+    @field_validator("pan")
+    @classmethod
+    def _pan(cls, value):
+        return validators.pan(value)
+
+    @field_validator("bank_ifsc")
+    @classmethod
+    def _ifsc(cls, value):
+        return validators.ifsc(value)
+
+    @field_validator("bank_account_number")
+    @classmethod
+    def _bank_account_number(cls, value):
+        return validators.bank_account_number(value)
+
+
+class EmployeeCreate(_EmployeeFieldRules, APIModel):
     employee_code: Optional[str] = Field(default=None, max_length=30)
     name: str = Field(min_length=1, max_length=120)
     email: Optional[EmailStr] = None
@@ -30,7 +55,7 @@ class EmployeeCreate(APIModel):
     tds: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
 
 
-class EmployeeUpdate(APIModel):
+class EmployeeUpdate(_EmployeeFieldRules, APIModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=120)
     email: Optional[EmailStr] = None
     designation: Optional[str] = None

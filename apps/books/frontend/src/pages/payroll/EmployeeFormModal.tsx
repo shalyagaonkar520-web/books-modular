@@ -162,16 +162,35 @@ export function EmployeeFormModal({ employee, onClose, onSaved }: EmployeeFormMo
         <div className="form-section">
           <h3 className="form-section-title">Statutory and bank details</h3>
           <div className="form-grid-3">
-            <TextField label="PAN" value={form.pan} onChange={set('pan')} error={fieldErrors.pan} maxLength={20} />
+            <TextField
+              label="PAN"
+              value={form.pan}
+              onChange={(event) => set('pan')({ target: { value: event.target.value.toUpperCase() } })}
+              error={fieldErrors.pan}
+              maxLength={10}
+              hint="10 characters, e.g. AABCR1234F"
+            />
             <TextField
               label="Bank account number"
               value={form.bankAccountNumber}
+              inputMode="numeric"
               onChange={set('bankAccountNumber')}
               error={fieldErrors.bankAccountNumber}
-              maxLength={40}
-              hint={employee?.bankAccountNumberMasked ? `Currently ${employee.bankAccountNumberMasked} — leave blank to keep it` : undefined}
+              maxLength={18}
+              hint={
+                employee?.bankAccountNumberMasked
+                  ? `Currently ${employee.bankAccountNumberMasked} — leave blank to keep it`
+                  : '9 to 18 digits'
+              }
             />
-            <TextField label="Bank IFSC" value={form.bankIfsc} onChange={set('bankIfsc')} error={fieldErrors.bankIfsc} maxLength={20} />
+            <TextField
+              label="Bank IFSC"
+              value={form.bankIfsc}
+              onChange={(event) => set('bankIfsc')({ target: { value: event.target.value.toUpperCase() } })}
+              error={fieldErrors.bankIfsc}
+              maxLength={11}
+              hint="11 characters, e.g. HDFC0001234"
+            />
           </div>
         </div>
 
