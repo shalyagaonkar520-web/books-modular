@@ -6,7 +6,7 @@ from typing import List, Optional
 
 from pydantic import EmailStr, Field
 
-from backend.schemas.common import APIModel
+from backend.schemas.common import MAX_MONEY, APIModel
 
 
 class EmployeeCreate(APIModel):
@@ -22,12 +22,12 @@ class EmployeeCreate(APIModel):
     pan: Optional[str] = Field(default=None, max_length=20)
     bank_account_number: Optional[str] = Field(default=None, max_length=40)
     bank_ifsc: Optional[str] = Field(default=None, max_length=20)
-    basic_salary: Decimal = Field(ge=0)
-    hra: Decimal = Field(default=Decimal("0"), ge=0)
-    other_allowances: Decimal = Field(default=Decimal("0"), ge=0)
-    pf_employee: Decimal = Field(default=Decimal("0"), ge=0)
-    professional_tax: Decimal = Field(default=Decimal("0"), ge=0)
-    tds: Decimal = Field(default=Decimal("0"), ge=0)
+    basic_salary: Decimal = Field(ge=0, le=MAX_MONEY)
+    hra: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
+    other_allowances: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
+    pf_employee: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
+    professional_tax: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
+    tds: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
 
 
 class EmployeeUpdate(APIModel):
@@ -40,12 +40,12 @@ class EmployeeUpdate(APIModel):
     pan: Optional[str] = None
     bank_account_number: Optional[str] = None
     bank_ifsc: Optional[str] = None
-    basic_salary: Optional[Decimal] = Field(default=None, ge=0)
-    hra: Optional[Decimal] = Field(default=None, ge=0)
-    other_allowances: Optional[Decimal] = Field(default=None, ge=0)
-    pf_employee: Optional[Decimal] = Field(default=None, ge=0)
-    professional_tax: Optional[Decimal] = Field(default=None, ge=0)
-    tds: Optional[Decimal] = Field(default=None, ge=0)
+    basic_salary: Optional[Decimal] = Field(default=None, ge=0, le=MAX_MONEY)
+    hra: Optional[Decimal] = Field(default=None, ge=0, le=MAX_MONEY)
+    other_allowances: Optional[Decimal] = Field(default=None, ge=0, le=MAX_MONEY)
+    pf_employee: Optional[Decimal] = Field(default=None, ge=0, le=MAX_MONEY)
+    professional_tax: Optional[Decimal] = Field(default=None, ge=0, le=MAX_MONEY)
+    tds: Optional[Decimal] = Field(default=None, ge=0, le=MAX_MONEY)
     is_active: Optional[bool] = None
 
 

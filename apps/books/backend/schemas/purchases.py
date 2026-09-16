@@ -6,7 +6,7 @@ from typing import List, Literal, Optional
 
 from pydantic import Field, model_validator
 
-from backend.schemas.common import APIModel
+from backend.schemas.common import MAX_MONEY, APIModel
 from backend.schemas.sales import LineInput, LineOut, PaymentMode
 
 BillStatus = Literal["draft", "open", "partially_paid", "paid", "void", "overdue"]
@@ -17,7 +17,7 @@ class BillCreate(APIModel):
     vendor_bill_number: Optional[str] = Field(default=None, max_length=60)
     date: date
     due_date: Optional[date] = None
-    discount_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    discount_amount: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
     notes: Optional[str] = None
     lines: List[LineInput] = Field(min_length=1)
     status: Literal["draft", "open"] = "open"
@@ -86,7 +86,7 @@ class VendorPaymentCreate(APIModel):
     bill_id: Optional[str] = None
     bank_account_id: str
     date: date
-    amount: Decimal = Field(gt=0)
+    amount: Decimal = Field(gt=0, le=MAX_MONEY)
     mode: PaymentMode = "bank_transfer"
     reference: Optional[str] = Field(default=None, max_length=120)
     notes: Optional[str] = None
@@ -115,7 +115,7 @@ class ExpenseCreate(APIModel):
     paid_through_account_id: str
     vendor_id: Optional[str] = None
     customer_id: Optional[str] = None
-    amount: Decimal = Field(gt=0)
+    amount: Decimal = Field(gt=0, le=MAX_MONEY)
     tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     reference: Optional[str] = Field(default=None, max_length=120)
     notes: Optional[str] = None

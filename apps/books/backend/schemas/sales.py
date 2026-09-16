@@ -6,7 +6,7 @@ from typing import List, Literal, Optional
 
 from pydantic import Field, model_validator
 
-from backend.schemas.common import APIModel
+from backend.schemas.common import MAX_MONEY, MAX_QUANTITY, APIModel
 
 InvoiceStatus = Literal["draft", "sent", "partially_paid", "paid", "void", "overdue"]
 PaymentMode = Literal["cash", "bank_transfer", "upi", "cheque", "card", "other"]
@@ -16,8 +16,8 @@ class LineInput(APIModel):
     item_id: Optional[str] = None
     account_id: Optional[str] = None
     description: str = Field(default="", max_length=500)
-    quantity: Decimal = Field(default=Decimal("1"), gt=0)
-    rate: Decimal = Field(default=Decimal("0"), ge=0)
+    quantity: Decimal = Field(default=Decimal("1"), gt=0, le=MAX_QUANTITY)
+    rate: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
     tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
 
 
@@ -41,7 +41,7 @@ class InvoiceCreate(APIModel):
     date: date
     due_date: Optional[date] = None
     reference: Optional[str] = Field(default=None, max_length=120)
-    discount_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    discount_amount: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
     notes: Optional[str] = None
     terms: Optional[str] = None
     lines: List[LineInput] = Field(min_length=1)
@@ -117,7 +117,7 @@ class CustomerPaymentCreate(APIModel):
     invoice_id: Optional[str] = None
     bank_account_id: str
     date: date
-    amount: Decimal = Field(gt=0)
+    amount: Decimal = Field(gt=0, le=MAX_MONEY)
     mode: PaymentMode = "bank_transfer"
     reference: Optional[str] = Field(default=None, max_length=120)
     notes: Optional[str] = None

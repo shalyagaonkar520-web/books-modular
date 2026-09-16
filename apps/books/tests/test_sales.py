@@ -14,14 +14,38 @@ def _invoice_payload(org, qty=2, status="sent", **extra):
 
 def test_invoice_line_description_falls_back_to_item_name(client, org):
     res = client.post(
-        "/api/invoices", headers=org["h"],
+        "/api/invoices",
+        headers=org["h"],
         json={
-            "customerId": org["customer"]["id"], "date": "2026-09-01", "status": "draft",
+            "customerId": org["customer"]["id"],
+            "date": "2026-09-01",
+            "status": "draft",
             "lines": [{"itemId": org["item"]["id"], "description": "", "quantity": 1, "rate": 10000, "taxRate": 18}],
         },
     )
     assert res.status_code == 201, res.text
     assert res.json()["lines"][0]["description"] == org["item"]["name"]
+
+
+def test_invoice_line_without_item_still_needs_a_description(client, org):
+    """A blank description is only allowed when an item can supply one.
+
+    With no item there is nothing to print on the customer's copy, so the
+    line is rejected rather than saved blank.
+    """
+    income = next(a for a in client.get("/api/accounting/accounts", headers=org["h"]).json() if a["type"] == "income")
+    res = client.post(
+        "/api/invoices",
+        headers=org["h"],
+        json={
+            "customerId": org["customer"]["id"],
+            "date": "2026-09-01",
+            "status": "draft",
+            "lines": [{"accountId": income["id"], "description": "", "quantity": 1, "rate": 500, "taxRate": 0}],
+        },
+    )
+    assert res.status_code == 400, res.text
+    assert "description" in res.json()["detail"].lower()
 
 
 def test_invoice_totals_due_date_numbering_and_posting(client, org):
@@ -68,13 +92,44 @@ def test_draft_invoice_does_not_post_or_move_stock(client, org):
 def test_payments_partial_full_and_delete(client, org):
     h = org["h"]
     inv = client.post("/api/invoices", headers=h, json=_invoice_payload(org, qty=1)).json()  # total 11800
-    too_much = client.post("/api/customer-payments", headers=h, json={"customerId": org["customer"]["id"], "invoiceId": inv["id"], "bankAccountId": org["bank"]["id"], "date": "2026-09-02", "amount": 20000})
+    too_much = client.post(
+        "/api/customer-payments",
+        headers=h,
+        json={
+            "customerId": org["customer"]["id"],
+            "invoiceId": inv["id"],
+            "bankAccountId": org["bank"]["id"],
+            "date": "2026-09-02",
+            "amount": 20000,
+        },
+    )
     assert too_much.status_code == 400
-    p1 = client.post("/api/customer-payments", headers=h, json={"customerId": org["customer"]["id"], "invoiceId": inv["id"], "bankAccountId": org["bank"]["id"], "date": "2026-09-02", "amount": 5000, "mode": "upi"})
+    p1 = client.post(
+        "/api/customer-payments",
+        headers=h,
+        json={
+            "customerId": org["customer"]["id"],
+            "invoiceId": inv["id"],
+            "bankAccountId": org["bank"]["id"],
+            "date": "2026-09-02",
+            "amount": 5000,
+            "mode": "upi",
+        },
+    )
     assert p1.status_code == 201, p1.text
     state = client.get(f"/api/invoices/{inv['id']}", headers=h).json()
     assert state["status"] == "partially_paid" and state["balanceDue"] == 6800
-    p2 = client.post("/api/customer-payments", headers=h, json={"customerId": org["customer"]["id"], "invoiceId": inv["id"], "bankAccountId": org["bank"]["id"], "date": "2026-09-03", "amount": 6800})
+    p2 = client.post(
+        "/api/customer-payments",
+        headers=h,
+        json={
+            "customerId": org["customer"]["id"],
+            "invoiceId": inv["id"],
+            "bankAccountId": org["bank"]["id"],
+            "date": "2026-09-03",
+            "amount": 6800,
+        },
+    )
     assert p2.status_code == 201
     state = client.get(f"/api/invoices/{inv['id']}", headers=h).json()
     assert state["status"] == "paid" and state["balanceDue"] == 0
@@ -124,7 +179,11 @@ def test_invoice_list_filters_and_stats(client, org):
 
 def test_unapplied_customer_advance(client, org):
     h = org["h"]
-    res = client.post("/api/customer-payments", headers=h, json={"customerId": org["customer"]["id"], "bankAccountId": org["bank"]["id"], "date": "2026-09-02", "amount": 1500})
+    res = client.post(
+        "/api/customer-payments",
+        headers=h,
+        json={"customerId": org["customer"]["id"], "bankAccountId": org["bank"]["id"], "date": "2026-09-02", "amount": 1500},
+    )
     assert res.status_code == 201 and res.json()["invoiceId"] is None
     assert trial_balance_ok(client, h)
 
@@ -134,10 +193,17 @@ def test_unpaid_sent_invoice_can_be_deleted_and_reverses_the_ledger(client, org)
     invoices the bulk-delete had nothing to act on and looked broken. The API
     has always unposted a sent-but-unpaid invoice on the way out."""
     h = org["h"]
-    sent = client.post("/api/invoices", headers=h, json={
-        "customerId": org["customer"]["id"], "date": "2026-09-01", "dueDate": "2026-09-20", "status": "sent",
-        "lines": [{"itemId": org["service"]["id"], "description": "Work", "quantity": 1, "rate": 10000, "taxRate": 18}],
-    }).json()
+    sent = client.post(
+        "/api/invoices",
+        headers=h,
+        json={
+            "customerId": org["customer"]["id"],
+            "date": "2026-09-01",
+            "dueDate": "2026-09-20",
+            "status": "sent",
+            "lines": [{"itemId": org["service"]["id"], "description": "Work", "quantity": 1, "rate": 10000, "taxRate": 18}],
+        },
+    ).json()
     assert sent["status"] == "sent" and sent["amountPaid"] == 0
 
     removed = client.delete(f"/api/invoices/{sent['id']}", headers=h)
@@ -146,13 +212,29 @@ def test_unpaid_sent_invoice_can_be_deleted_and_reverses_the_ledger(client, org)
     assert trial_balance_ok(client, h)
 
     # One with a payment against it is still refused.
-    paid = client.post("/api/invoices", headers=h, json={
-        "customerId": org["customer"]["id"], "date": "2026-09-02", "dueDate": "2026-09-20", "status": "sent",
-        "lines": [{"itemId": org["service"]["id"], "description": "Work", "quantity": 1, "rate": 8000, "taxRate": 0}],
-    }).json()
-    payment = client.post("/api/customer-payments", headers=h, json={
-        "customerId": org["customer"]["id"], "invoiceId": paid["id"], "bankAccountId": org["bank"]["id"],
-        "date": "2026-09-05", "amount": 2000, "mode": "bank_transfer"})
+    paid = client.post(
+        "/api/invoices",
+        headers=h,
+        json={
+            "customerId": org["customer"]["id"],
+            "date": "2026-09-02",
+            "dueDate": "2026-09-20",
+            "status": "sent",
+            "lines": [{"itemId": org["service"]["id"], "description": "Work", "quantity": 1, "rate": 8000, "taxRate": 0}],
+        },
+    ).json()
+    payment = client.post(
+        "/api/customer-payments",
+        headers=h,
+        json={
+            "customerId": org["customer"]["id"],
+            "invoiceId": paid["id"],
+            "bankAccountId": org["bank"]["id"],
+            "date": "2026-09-05",
+            "amount": 2000,
+            "mode": "bank_transfer",
+        },
+    )
     assert payment.status_code == 201, payment.text
     refused = client.delete(f"/api/invoices/{paid['id']}", headers=h)
     assert refused.status_code == 400

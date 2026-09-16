@@ -6,7 +6,7 @@ from typing import List, Literal, Optional
 
 from pydantic import Field, model_validator
 
-from backend.schemas.common import APIModel
+from backend.schemas.common import MAX_MONEY, APIModel
 
 AccountType = Literal["asset", "liability", "equity", "income", "expense"]
 
@@ -41,8 +41,8 @@ class AccountOut(APIModel):
 class JournalLineInput(APIModel):
     account_id: str
     description: Optional[str] = Field(default=None, max_length=255)
-    debit: Decimal = Field(default=Decimal("0"), ge=0)
-    credit: Decimal = Field(default=Decimal("0"), ge=0)
+    debit: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
+    credit: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
     contact_id: Optional[str] = None
 
     @model_validator(mode="after")

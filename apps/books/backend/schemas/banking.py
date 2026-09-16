@@ -6,7 +6,7 @@ from typing import List, Literal, Optional
 
 from pydantic import Field
 
-from backend.schemas.common import APIModel
+from backend.schemas.common import MAX_MONEY, APIModel
 
 BankAccountType = Literal["bank", "cash", "credit_card"]
 
@@ -17,7 +17,9 @@ class BankAccountCreate(APIModel):
     bank_name: Optional[str] = Field(default=None, max_length=120)
     account_number: Optional[str] = Field(default=None, max_length=40)
     ifsc: Optional[str] = Field(default=None, max_length=20)
-    opening_balance: Decimal = Field(default=Decimal("0"))
+    # Credit cards legitimately open with a negative balance, so this one is
+    # bounded on both sides rather than floored at zero.
+    opening_balance: Decimal = Field(default=Decimal("0"), ge=-MAX_MONEY, le=MAX_MONEY)
     opening_balance_date: date
     is_primary: bool = False
 
@@ -52,7 +54,7 @@ class BankAccountOut(APIModel):
 class BankTransactionCreate(APIModel):
     date: date
     type: Literal["deposit", "withdrawal"]
-    amount: Decimal = Field(gt=0)
+    amount: Decimal = Field(gt=0, le=MAX_MONEY)
     description: str = Field(min_length=1, max_length=255)
     reference: Optional[str] = Field(default=None, max_length=120)
     counter_account_id: str = Field(description="Ledger account for the other side of the entry")
@@ -62,7 +64,7 @@ class TransferCreate(APIModel):
     from_account_id: str
     to_account_id: str
     date: date
-    amount: Decimal = Field(gt=0)
+    amount: Decimal = Field(gt=0, le=MAX_MONEY)
     description: Optional[str] = Field(default=None, max_length=255)
     reference: Optional[str] = Field(default=None, max_length=120)
 

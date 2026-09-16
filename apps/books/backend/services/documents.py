@@ -1,4 +1,5 @@
 """Shared line-item math for invoices and bills."""
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -29,12 +30,19 @@ def compute_lines(db: Session, org_id: str, lines: Sequence[LineInput]) -> Tuple
     computed: List[ComputedLine] = []
     subtotal = Decimal("0")
     tax_total = Decimal("0")
-    for spec in lines:
+    for position, spec in enumerate(lines, start=1):
         item = get_or_404(db, Item, spec.item_id, org_id, "Item") if spec.item_id else None
         account = get_or_404(db, Account, spec.account_id, org_id, "Account") if spec.account_id else None
         # Fallback: if description omitted but item is provided, use item's name
         if not spec.description and item:
             spec.description = item.sales_description or item.name
+        # With no item to borrow a name from there is nothing to print on the
+        # document, so ask for one rather than saving a blank line.
+        if not spec.description:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Line {position} needs a description, or an item to take one from.",
+            )
         line = ComputedLine(spec, item, account)
         computed.append(line)
         subtotal += line.amount

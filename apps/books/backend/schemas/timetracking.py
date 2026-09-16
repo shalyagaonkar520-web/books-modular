@@ -6,7 +6,7 @@ from typing import List, Literal, Optional
 
 from pydantic import Field
 
-from backend.schemas.common import APIModel
+from backend.schemas.common import MAX_MONEY, MAX_QUANTITY, APIModel
 
 
 class ProjectCreate(APIModel):
@@ -14,8 +14,8 @@ class ProjectCreate(APIModel):
     customer_id: Optional[str] = None
     description: Optional[str] = None
     billing_method: Literal["hourly", "fixed"] = "hourly"
-    hourly_rate: Decimal = Field(default=Decimal("0"), ge=0)
-    budget_hours: Decimal = Field(default=Decimal("0"), ge=0)
+    hourly_rate: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
+    budget_hours: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_QUANTITY)
 
 
 class ProjectUpdate(APIModel):
@@ -23,8 +23,8 @@ class ProjectUpdate(APIModel):
     customer_id: Optional[str] = None
     description: Optional[str] = None
     billing_method: Optional[Literal["hourly", "fixed"]] = None
-    hourly_rate: Optional[Decimal] = Field(default=None, ge=0)
-    budget_hours: Optional[Decimal] = Field(default=None, ge=0)
+    hourly_rate: Optional[Decimal] = Field(default=None, ge=0, le=MAX_MONEY)
+    budget_hours: Optional[Decimal] = Field(default=None, ge=0, le=MAX_QUANTITY)
     status: Optional[Literal["active", "completed", "on_hold"]] = None
 
 
