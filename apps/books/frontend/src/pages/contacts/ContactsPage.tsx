@@ -442,7 +442,7 @@ export function ContactsPage({ type }: { type: ContactType }) {
                     style={{ color: 'var(--color-danger, #dc2626)' }}
                     title={`Delete all ${list.data?.total} ${copy.plural.toLowerCase()} across all pages at once`}
                   >
-                    Delete All {copy.plural} ({list.data?.total} all pages)
+                    Delete All {copy.plural} ({list.data?.total} total)
                   </Button>
                 )}
 

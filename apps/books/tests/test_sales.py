@@ -12,6 +12,18 @@ def _invoice_payload(org, qty=2, status="sent", **extra):
     return payload
 
 
+def test_invoice_line_description_falls_back_to_item_name(client, org):
+    res = client.post(
+        "/api/invoices", headers=org["h"],
+        json={
+            "customerId": org["customer"]["id"], "date": "2026-09-01", "status": "draft",
+            "lines": [{"itemId": org["item"]["id"], "description": "", "quantity": 1, "rate": 10000, "taxRate": 18}],
+        },
+    )
+    assert res.status_code == 201, res.text
+    assert res.json()["lines"][0]["description"] == org["item"]["name"]
+
+
 def test_invoice_totals_due_date_numbering_and_posting(client, org):
     h = org["h"]
     stock_before = client.get(f"/api/items/{org['item']['id']}", headers=h).json()["stockOnHand"]

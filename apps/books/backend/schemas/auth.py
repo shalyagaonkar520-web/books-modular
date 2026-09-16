@@ -25,6 +25,53 @@ def _validate_password(value: str) -> str:
     return value
 
 
+class SendEmailVerificationRequest(APIModel):
+    email: EmailStr
+
+
+class SendEmailVerificationResponse(APIModel):
+    message: str
+    cooldown_seconds: int = 60
+    dev_otp: Optional[str] = None
+
+
+class VerifyEmailTokenRequest(APIModel):
+    token: str = Field(min_length=4, max_length=255)
+
+
+class VerifyOtpRequest(APIModel):
+    email: EmailStr
+    otp: str = Field(min_length=4, max_length=10)
+
+
+class ForgotPasswordRequest(APIModel):
+    email: EmailStr
+
+
+class ForgotPasswordResponse(APIModel):
+    message: str
+    cooldown_seconds: int = 60
+    dev_otp: Optional[str] = None
+
+
+class ResetPasswordWithOtpRequest(APIModel):
+    email: EmailStr
+    otp: str = Field(min_length=4, max_length=10)
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def _validate_new_password(cls, value: str) -> str:
+        return _validate_password(value)
+
+
+class EmailVerificationStatusResponse(APIModel):
+    email: str
+    status: str
+    verified: bool
+    expires_at: Optional[datetime] = None
+
+
 class RegisterRequest(APIModel):
     name: str = Field(min_length=2, max_length=120)
     email: EmailStr

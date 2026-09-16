@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -56,8 +56,18 @@ def _section(title: str, accounts: List[Account], balances: dict, predicate) -> 
 
 
 @router.get("/profit-and-loss", response_model=ProfitAndLoss)
-def profit_and_loss(start_date: Optional[date] = None, end_date: Optional[date] = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    start, end = _default_range(user, start_date, end_date)
+def profit_and_loss(
+    start_date: Optional[date] = Query(default=None, alias="startDate"),
+    end_date: Optional[date] = Query(default=None, alias="endDate"),
+    # Also accept the snake_case form so existing callers aren't broken
+    start_date_snake: Optional[date] = Query(default=None, alias="start_date"),
+    end_date_snake: Optional[date] = Query(default=None, alias="end_date"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    effective_start = start_date or start_date_snake
+    effective_end = end_date or end_date_snake
+    start, end = _default_range(user, effective_start, effective_end)
     accounts = db.execute(select(Account).where(Account.organization_id == user.organization_id).order_by(Account.code)).scalars().all()
     balances = ledger.account_balances(db, user.organization_id, start=start, end=end)
     income = _section("Operating Income", accounts, balances, lambda a: a.type == "income" and a.subtype != "other_income")

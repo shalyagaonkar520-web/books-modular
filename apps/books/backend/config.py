@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     smtp_user: str = Field(default="", description="SMTP_USER")
     smtp_password: str = Field(default="", description="SMTP_PASSWORD (app password)")
     smtp_sender_name: str = Field(default="Rooman Books Accounts")
+    smtp_from: str = Field(default="", description="SMTP_FROM email address")
+    app_url: str = Field(default="http://localhost:3000", description="Frontend application URL")
 
     # Razorpay gateway
     # Credentials are read from the environment only. Never hardcode them here:

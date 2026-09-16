@@ -32,6 +32,9 @@ def compute_lines(db: Session, org_id: str, lines: Sequence[LineInput]) -> Tuple
     for spec in lines:
         item = get_or_404(db, Item, spec.item_id, org_id, "Item") if spec.item_id else None
         account = get_or_404(db, Account, spec.account_id, org_id, "Account") if spec.account_id else None
+        # Fallback: if description omitted but item is provided, use item's name
+        if not spec.description and item:
+            spec.description = item.sales_description or item.name
         line = ComputedLine(spec, item, account)
         computed.append(line)
         subtotal += line.amount

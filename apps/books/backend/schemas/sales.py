@@ -15,7 +15,7 @@ PaymentMode = Literal["cash", "bank_transfer", "upi", "cheque", "card", "other"]
 class LineInput(APIModel):
     item_id: Optional[str] = None
     account_id: Optional[str] = None
-    description: str = Field(min_length=1, max_length=500)
+    description: str = Field(default="", max_length=500)
     quantity: Decimal = Field(default=Decimal("1"), gt=0)
     rate: Decimal = Field(default=Decimal("0"), ge=0)
     tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)

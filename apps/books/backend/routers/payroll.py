@@ -328,6 +328,7 @@ def pay_pay_run(run_id: str, payload: PayRunPay, user: User = Depends(require_ad
         lines.append((tds_payable.id, Decimal("0"), tds, f"{label} - TDS", None))
     lines.append((bank_acct.ledger_account_id, Decimal("0"), run.total_net, f"{label} - net salaries", None))
     entry = ledger.post_entry(db, org_id, payload.pay_date, lines, "payroll", run.id, reference=label, created_by=user.id)
+    bank.check_cash_overdraft(db, bank_acct, run.total_net)
     bank.record_movement(db, bank_acct, payload.pay_date, "withdrawal", run.total_net, label, "payroll", run.id, user.id, None, salary_exp.id, entry.id)
     run.status = "paid"
     run.pay_date = payload.pay_date

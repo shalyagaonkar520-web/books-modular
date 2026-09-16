@@ -74,6 +74,26 @@ def record_movement(
     return tx
 
 
+def check_cash_overdraft(db: Session, bank_acct: BankAccount, withdrawal_amount: Decimal) -> None:
+    """Raise HTTP 400 if a cash-type account would go negative after a withdrawal.
+
+    Bank accounts can have overdraft facilities, but physical cash drawers
+    cannot dispense more notes/coins than they hold.
+    """
+    from fastapi import HTTPException, status as http_status
+
+    if bank_acct.type != "cash":
+        return
+    balance = current_balance(db, bank_acct)
+    if balance < money(withdrawal_amount):
+        raise HTTPException(
+            http_status.HTTP_400_BAD_REQUEST,
+            f"Insufficient cash balance in '{bank_acct.name}'. "
+            f"Current balance: ₹{balance:,.2f}, required: ₹{withdrawal_amount:,.2f}. "
+            f"Please deposit funds or use a bank account instead.",
+        )
+
+
 def remove_movements(db: Session, source_type: str, source_id: str) -> None:
     for tx in db.execute(
         select(BankTransaction).where(BankTransaction.source_type == source_type, BankTransaction.source_id == source_id)

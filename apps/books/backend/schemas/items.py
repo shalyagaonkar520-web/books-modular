@@ -20,17 +20,17 @@ class ItemBase(APIModel):
     tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     description: Optional[str] = None
     image_url: Optional[str] = None
-    selling_price: Decimal = Field(default=Decimal("0"), ge=0)
+    selling_price: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("999999999.99"))
     sales_account_id: Optional[str] = None
     sales_description: Optional[str] = None
-    cost_price: Decimal = Field(default=Decimal("0"), ge=0)
+    cost_price: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("999999999.99"))
     purchase_account_id: Optional[str] = None
     purchase_description: Optional[str] = None
     preferred_vendor_id: Optional[str] = None
     track_inventory: bool = False
-    opening_stock: Decimal = Field(default=Decimal("0"), ge=0)
-    opening_stock_rate: Decimal = Field(default=Decimal("0"), ge=0)
-    reorder_level: Decimal = Field(default=Decimal("0"), ge=0)
+    opening_stock: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("99999999"))
+    opening_stock_rate: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("999999999.99"))
+    reorder_level: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("99999999"))
     warehouse_location: Optional[str] = Field(default=None, max_length=120)
 
     @model_validator(mode="after")
@@ -57,17 +57,17 @@ class ItemUpdate(APIModel):
     tax_rate: Optional[Decimal] = Field(default=None, ge=0, le=100)
     description: Optional[str] = None
     image_url: Optional[str] = None
-    selling_price: Optional[Decimal] = Field(default=None, ge=0)
+    selling_price: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("999999999.99"))
     sales_account_id: Optional[str] = None
     sales_description: Optional[str] = None
-    cost_price: Optional[Decimal] = Field(default=None, ge=0)
+    cost_price: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("999999999.99"))
     purchase_account_id: Optional[str] = None
     purchase_description: Optional[str] = None
     preferred_vendor_id: Optional[str] = None
     track_inventory: Optional[bool] = None
-    opening_stock: Optional[Decimal] = Field(default=None, ge=0)
-    opening_stock_rate: Optional[Decimal] = Field(default=None, ge=0)
-    reorder_level: Optional[Decimal] = Field(default=None, ge=0)
+    opening_stock: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("99999999"))
+    opening_stock_rate: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("999999999.99"))
+    reorder_level: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("99999999"))
     warehouse_location: Optional[str] = None
     is_active: Optional[bool] = None
 

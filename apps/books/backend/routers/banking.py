@@ -159,6 +159,8 @@ def create_transaction(account_id: str, payload: BankTransactionCreate, user: Us
         lines = [(acct.ledger_account_id, amount, Decimal("0"), payload.description, None), (counter.id, Decimal("0"), amount, payload.description, None)]
     else:
         lines = [(counter.id, amount, Decimal("0"), payload.description, None), (acct.ledger_account_id, Decimal("0"), amount, payload.description, None)]
+    if payload.type == "withdrawal":
+        bank.check_cash_overdraft(db, acct, amount)
     tx = bank.record_movement(db, acct, payload.date, payload.type, amount, payload.description, "manual", None, user.id, payload.reference, counter.id)
     entry = ledger.post_entry(db, org_id, payload.date, lines, "bank_transaction", tx.id, reference=payload.reference, notes=payload.description, created_by=user.id)
     tx.source_id = tx.id
@@ -186,6 +188,7 @@ def transfer(payload: TransferCreate, user: User = Depends(require_financial_wri
         "transfer", None, reference=payload.reference, notes=desc, created_by=user.id,
     )
     entry.source_id = entry.id
+    bank.check_cash_overdraft(db, src, amount)
     bank.record_movement(db, src, payload.date, "withdrawal", amount, desc, "transfer", entry.id, user.id, payload.reference, dst.ledger_account_id, entry.id)
     bank.record_movement(db, dst, payload.date, "deposit", amount, desc, "transfer", entry.id, user.id, payload.reference, src.ledger_account_id, entry.id)
     audit.record(db, user, "create", "transfer", entry.id, desc)

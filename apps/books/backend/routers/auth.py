@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -11,19 +12,27 @@ from sqlalchemy.orm import Session
 from backend.config import get_settings
 from backend.db import get_db
 from backend.deps import get_current_user
-from backend.models import BankAccount, Organization, RefreshToken, User
+from backend.models import BankAccount, EmailVerification, Organization, RefreshToken, User
 from backend.schemas.auth import (
     AcceptInviteRequest,
     AuthResponse,
     ChangePasswordRequest,
+    EmailVerificationStatusResponse,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
     InviteInfo,
     LoginRequest,
     OrganizationOut,
     RegisterRequest,
+    ResetPasswordWithOtpRequest,
+    SendEmailVerificationRequest,
+    SendEmailVerificationResponse,
     SessionOut,
     TokenResponse,
     UpdateProfileRequest,
     UserOut,
+    VerifyEmailTokenRequest,
+    VerifyOtpRequest,
 )
 from backend.schemas.common import Message
 from backend.security import (
@@ -35,6 +44,7 @@ from backend.security import (
 )
 from backend.services import audit
 from backend.services.chart_of_accounts import bootstrap_accounts
+from backend.services.email_service import send_password_reset_email, send_verification_email
 from backend.services.ratelimit import RateLimiter, client_ip
 from backend.services.user_agent import parse_user_agent
 
@@ -84,15 +94,215 @@ def _auth_response(access: str, user: User) -> AuthResponse:
     )
 
 
+EMAIL_TOKEN_EXPIRE_MINUTES = 30
+
+
+@router.post("/send-verification-email", response_model=SendEmailVerificationResponse)
+def send_email_verification(payload: SendEmailVerificationRequest, request: Request, db: Session = Depends(get_db)):
+    login_limiter.check(f"send-verify:{client_ip(request)}")
+    email = payload.email.lower().strip()
+
+    # If an account already exists with this email, reject
+    if db.execute(select(User.id).where(User.email == email)).first():
+        raise HTTPException(status.HTTP_409_CONFLICT, "An account with this email already exists")
+
+    # Resend cooldown: 60 seconds
+    recent = db.execute(
+        select(EmailVerification)
+        .where(
+            EmailVerification.email == email,
+            EmailVerification.status == "PENDING",
+            EmailVerification.created_at > datetime.now(UTC) - timedelta(seconds=60),
+        )
+    ).scalar_one_or_none()
+    if recent:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Please wait 60 seconds before requesting another verification code.",
+        )
+
+    # Invalidate any older PENDING tokens for this email
+    pending_records = db.execute(
+        select(EmailVerification).where(
+            EmailVerification.email == email,
+            EmailVerification.status == "PENDING",
+        )
+    ).scalars().all()
+    for rec in pending_records:
+        rec.status = "EXPIRED"
+
+    # Generate a 6-digit numeric OTP code
+    otp = f"{secrets.randbelow(900000) + 100000}"
+    raw_token = secrets.token_urlsafe(32)
+    t_hash = hash_token(f"{email}:{otp}")
+    expires_at = datetime.now(UTC) + timedelta(minutes=EMAIL_TOKEN_EXPIRE_MINUTES)
+
+    verification = EmailVerification(
+        email=email,
+        token_hash=t_hash,
+        status="PENDING",
+        expires_at=expires_at,
+    )
+    db.add(verification)
+    db.commit()
+
+    app_url = (settings.app_url or "http://localhost:3000").rstrip("/")
+    verify_url = f"{app_url}/verify-email?token={raw_token}"
+
+    send_res = send_verification_email(email, verify_url=verify_url, otp=otp)
+    dev_otp: Optional[str] = None
+    if settings.environment == "development" or not send_res.get("success"):
+        dev_otp = otp
+        logger.info("[DEV OTP] Verification code for %s is %s", email, otp)
+
+    if not send_res.get("success"):
+        logger.warning("SMTP delivery notice: %s", send_res.get("error"))
+        msg = f"Verification code generated: {otp} (Gmail delivery failed or in dev mode)"
+    else:
+        msg = "Verification code sent to your email. Please check your inbox."
+
+    return SendEmailVerificationResponse(
+        message=msg,
+        cooldown_seconds=60,
+        dev_otp=dev_otp,
+    )
+
+
+@router.post("/verify-otp", response_model=Message)
+def verify_email_otp(payload: VerifyOtpRequest, db: Session = Depends(get_db)):
+    email = payload.email.lower().strip()
+    otp = payload.otp.strip()
+    t_hash = hash_token(f"{email}:{otp}")
+
+    verification = db.execute(
+        select(EmailVerification).where(
+            EmailVerification.email == email,
+            EmailVerification.token_hash == t_hash,
+        )
+    ).scalar_one_or_none()
+
+    if verification is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid verification code. Please check and try again.")
+
+    if verification.status == "VERIFIED":
+        return Message(message="Email already verified")
+
+    if verification.status != "PENDING":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Verification code has already been used or expired.")
+
+    exp = verification.expires_at.replace(tzinfo=UTC) if verification.expires_at.tzinfo is None else verification.expires_at
+    if exp < datetime.now(UTC):
+        verification.status = "EXPIRED"
+        db.commit()
+        raise HTTPException(status.HTTP_410_GONE, "Verification code has expired. Please request a new one.")
+
+    verification.status = "VERIFIED"
+    verification.verified_at = datetime.now(UTC)
+    db.commit()
+
+    return Message(message="Email verified successfully")
+
+
+@router.post("/verify-email", response_model=Message)
+def verify_email_token(payload: VerifyEmailTokenRequest, db: Session = Depends(get_db)):
+    tok = payload.token.strip()
+    t_hash = hash_token(tok)
+    verification = db.execute(
+        select(EmailVerification).where(
+            (EmailVerification.token_hash == t_hash)
+            | (EmailVerification.token_hash == hash_token(f"{EmailVerification.email}:{tok}"))
+        )
+    ).scalar_one_or_none()
+
+    if verification is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Verification link is invalid or has expired.")
+
+    if verification.status == "VERIFIED":
+        return Message(message="Email already verified")
+
+    if verification.status != "PENDING":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Verification link is invalid or has already been used.")
+
+    exp = verification.expires_at.replace(tzinfo=UTC) if verification.expires_at.tzinfo is None else verification.expires_at
+    if exp < datetime.now(UTC):
+        verification.status = "EXPIRED"
+        db.commit()
+        raise HTTPException(status.HTTP_410_GONE, "Verification link has expired. Please request a new one.")
+
+    verification.status = "VERIFIED"
+    verification.verified_at = datetime.now(UTC)
+    db.commit()
+
+    return Message(message="Email verified successfully")
+
+
+@router.get("/email-verification-status", response_model=EmailVerificationStatusResponse)
+def check_email_verification_status(email: str, db: Session = Depends(get_db)):
+    norm_email = email.lower().strip()
+    rec = db.execute(
+        select(EmailVerification)
+        .where(
+            EmailVerification.email == norm_email,
+            EmailVerification.status == "VERIFIED",
+            EmailVerification.used_at.is_(None),
+        )
+        .order_by(EmailVerification.verified_at.desc())
+    ).scalars().first()
+
+    if rec:
+        exp = rec.expires_at.replace(tzinfo=UTC) if rec.expires_at.tzinfo is None else rec.expires_at
+        if exp >= datetime.now(UTC):
+            return EmailVerificationStatusResponse(
+                email=norm_email,
+                status="VERIFIED",
+                verified=True,
+                expires_at=rec.expires_at,
+            )
+
+    return EmailVerificationStatusResponse(
+        email=norm_email,
+        status="PENDING",
+        verified=False,
+    )
+
+
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     if not settings.allow_public_signup:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Public sign-up is disabled. Ask an administrator for an invite.")
     login_limiter.check(f"register:{client_ip(request)}")
 
-    email = payload.email.lower()
+    email = payload.email.lower().strip()
+
     if db.execute(select(User.id).where(User.email == email)).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with this email already exists")
+
+    # CORE SECURITY RULE: The backend must independently verify that the email address
+    # has a valid, unexpired, single-use VERIFIED record before creating the organization.
+    verification = db.execute(
+        select(EmailVerification)
+        .where(
+            EmailVerification.email == email,
+            EmailVerification.status == "VERIFIED",
+            EmailVerification.used_at.is_(None),
+        )
+        .order_by(EmailVerification.verified_at.desc())
+    ).scalars().first()
+
+    if not verification:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="EMAIL_NOT_VERIFIED: Please verify your email address before creating your organization.",
+        )
+
+    exp = verification.expires_at.replace(tzinfo=UTC) if verification.expires_at.tzinfo is None else verification.expires_at
+    if exp < datetime.now(UTC):
+        verification.status = "EXPIRED"
+        db.commit()
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="EMAIL_NOT_VERIFIED: Email verification has expired. Please verify your email again.",
+        )
 
     org = Organization(name=payload.organization_name, gstin=payload.gstin or None)
     db.add(org)
@@ -122,6 +332,12 @@ def register(payload: RegisterRequest, request: Request, response: Response, db:
     db.add(user)
     db.flush()
     user.organization = org
+
+    # Invalidate the verification record as USED and attach user_id
+    verification.status = "USED"
+    verification.used_at = datetime.now(UTC)
+    verification.user_id = user.id
+
     audit.record(db, user, "register", "organization", org.id, f"Organization '{org.name}' created")
     access = _issue_tokens(db, user, response, request)
     db.commit()
@@ -176,6 +392,140 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
     audit.record(db, user, "login", "user", user.id, f"{user.email} signed in")
     db.commit()
     return _auth_response(access, user)
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+def forgot_password(payload: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
+    login_limiter.check(f"forgot-password:{client_ip(request)}")
+    email = payload.email.lower().strip()
+
+    # CORE REQUIREMENT: Only send if registered
+    user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+    if not user:
+        # Check if they verified email during setup but didn't finish creating organization
+        verified_ev = db.execute(
+            select(EmailVerification).where(
+                EmailVerification.email == email,
+                EmailVerification.status == "VERIFIED",
+            )
+        ).first()
+        if verified_ev:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                "This email was verified, but registration was not completed. Please create your organization on the registration page first.",
+            )
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "No registered account found with this email address.",
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Your account has been deactivated. Please contact your administrator.",
+        )
+
+    # Resend cooldown: 60 seconds
+    recent = db.execute(
+        select(EmailVerification)
+        .where(
+            EmailVerification.email == email,
+            EmailVerification.status == "PENDING",
+            EmailVerification.created_at > datetime.now(UTC) - timedelta(seconds=60),
+        )
+    ).scalar_one_or_none()
+    if recent:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Please wait 60 seconds before requesting another reset code.",
+        )
+
+    # Invalidate older pending reset tokens for this email
+    pending_records = db.execute(
+        select(EmailVerification).where(
+            EmailVerification.email == email,
+            EmailVerification.status == "PENDING",
+        )
+    ).scalars().all()
+    for rec in pending_records:
+        rec.status = "EXPIRED"
+
+    otp = f"{secrets.randbelow(900000) + 100000}"
+    t_hash = hash_token(f"reset:{email}:{otp}")
+    expires_at = datetime.now(UTC) + timedelta(minutes=15)
+
+    verification = EmailVerification(
+        user_id=user.id,
+        email=email,
+        token_hash=t_hash,
+        status="PENDING",
+        expires_at=expires_at,
+    )
+    db.add(verification)
+    db.commit()
+
+    send_res = send_password_reset_email(email, otp)
+    dev_otp: Optional[str] = None
+    if settings.environment == "development" or not send_res.get("success"):
+        dev_otp = otp
+        logger.info("[DEV OTP] Password reset code for %s is %s", email, otp)
+
+    if not send_res.get("success"):
+        msg = "Password reset code sent. Please check your email inbox."
+    else:
+        msg = "Password reset code sent to your email. Please check your inbox."
+
+    return ForgotPasswordResponse(
+        message=msg,
+        cooldown_seconds=60,
+        dev_otp=dev_otp,
+    )
+
+
+@router.post("/reset-password", response_model=Message)
+def reset_password_with_otp(payload: ResetPasswordWithOtpRequest, request: Request, db: Session = Depends(get_db)):
+    login_limiter.check(f"reset-password:{client_ip(request)}")
+    email = payload.email.lower().strip()
+    otp = payload.otp.strip()
+    t_hash = hash_token(f"reset:{email}:{otp}")
+
+    user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No registered account found with this email address.")
+
+    verification = db.execute(
+        select(EmailVerification).where(
+            EmailVerification.email == email,
+            EmailVerification.token_hash == t_hash,
+        )
+    ).scalar_one_or_none()
+
+    if verification is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid verification code. Please check and try again.")
+
+    if verification.status != "PENDING":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Verification code has already been used or expired.")
+
+    exp = verification.expires_at.replace(tzinfo=UTC) if verification.expires_at.tzinfo is None else verification.expires_at
+    if exp < datetime.now(UTC):
+        verification.status = "EXPIRED"
+        db.commit()
+        raise HTTPException(status.HTTP_410_GONE, "Verification code has expired. Please request a new one.")
+
+    # Update password and invalidate verification record
+    user.password_hash = hash_password(payload.new_password)
+    verification.status = "USED"
+    verification.used_at = datetime.now(UTC)
+
+    # Invalidate existing refresh tokens so user logs in cleanly
+    existing_tokens = db.execute(select(RefreshToken).where(RefreshToken.user_id == user.id)).scalars().all()
+    for tok in existing_tokens:
+        tok.revoked = True
+
+    audit.record(db, user, "reset_password", "user", user.id, "Password reset via OTP")
+    db.commit()
+
+    return Message(message="Password reset successfully. You can now sign in with your new password.")
 
 
 @router.post("/refresh", response_model=TokenResponse)

@@ -102,6 +102,7 @@ def _post(db: Session, e: Expense, user: User) -> None:
         lines.append((input_gst.id, e.tax_amount, Decimal("0"), f"GST on {e.expense_number}", e.vendor_id))
     lines.append((paid_through.ledger_account_id, Decimal("0"), e.total, desc, e.vendor_id))
     entry = ledger.post_entry(db, org_id, e.date, lines, "expense", e.id, reference=e.reference or e.expense_number, created_by=user.id)
+    bank.check_cash_overdraft(db, paid_through, e.total)
     bank.record_movement(db, paid_through, e.date, "withdrawal", e.total, desc, "expense", e.id, user.id, e.reference, e.account_id, entry.id)
 
 

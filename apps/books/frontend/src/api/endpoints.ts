@@ -17,6 +17,7 @@ import type {
   DashboardPeriod,
   DashboardSummary,
   DocumentStats,
+  EmailVerificationStatus,
   Employee,
   EmployeeOption,
   LeaveRecord,
@@ -67,6 +68,24 @@ export const authApi = {
   revokeSession: (id: string) => api.delete<Message>(`/auth/sessions/${id}`),
   getInvite: (token: string) => api.get<InviteInfo>(`/auth/invite/${token}`),
   acceptInvite: (body: { token: string; password: string }) => api.post<Message>('/auth/accept-invite', body),
+  sendVerificationEmail: (email: string) =>
+    api.post<{ message: string; cooldownSeconds?: number; cooldown_seconds?: number; dev_otp?: string }>(
+      '/auth/send-verification-email',
+      { email }
+    ),
+  verifyOtp: (email: string, otp: string) =>
+    api.post<Message>('/auth/verify-otp', { email, otp }),
+  verifyEmail: (token: string) =>
+    api.post<{ message: string; email: string }>('/auth/verify-email', { token }),
+  getEmailVerificationStatus: (email: string) =>
+    api.get<EmailVerificationStatus>('/auth/email-verification-status', { email }),
+  forgotPassword: (email: string) =>
+    api.post<{ message: string; cooldownSeconds?: number; cooldown_seconds?: number; dev_otp?: string; devOtp?: string }>(
+      '/auth/forgot-password',
+      { email }
+    ),
+  resetPasswordWithOtp: (body: { email: string; otp: string; newPassword: string }) =>
+    api.post<Message>('/auth/reset-password', body),
 };
 
 export const orgApi = {

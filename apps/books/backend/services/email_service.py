@@ -1,3 +1,4 @@
+import logging
 import smtplib
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
@@ -5,6 +6,8 @@ from email.mime.text import MIMEText
 from typing import Any, Dict, Optional
 
 from backend.config import get_settings
+
+logger = logging.getLogger("roomanbooks.email")
 
 
 class SmtpNotConfigured(RuntimeError):
@@ -924,4 +927,157 @@ def send_test_email(to_email: str, organization_name: str) -> Dict[str, Any]:
         server.quit()
         return {"success": True, "message": f"Test email sent to {to_email}", "recipient": to_email}
     except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def send_verification_email(to_email: str, verify_url: str = "", otp: str = "") -> Dict[str, Any]:
+    """Send single-use email verification code or link to user before organization creation."""
+    settings = _smtp()
+    if not settings.smtp_configured:
+        logger.info("[DEV VERIFICATION] To: %s | OTP: %s | URL: %s", to_email, otp, verify_url)
+        return {
+            "success": True,
+            "message": "Verification email generated (SMTP not configured, code logged to server console)",
+            "recipient": to_email,
+            "otp": otp,
+            "verify_url": verify_url,
+        }
+
+    try:
+        msg = MIMEMultipart("alternative")
+        if otp:
+            msg["Subject"] = f"{otp} is your Rooman Books verification code"
+        else:
+            msg["Subject"] = "Verify your email to create your organization"
+        from_addr = settings.smtp_from or settings.smtp_user
+        msg["From"] = f"{settings.smtp_sender_name} <{from_addr}>"
+        msg["To"] = to_email
+
+        if otp:
+            content_section = f"""
+      <p>Use the 6-digit verification code below to verify your email address and continue creating your organization on Rooman Books:</p>
+      <div style="text-align:center; margin: 28px 0;">
+        <div style="display:inline-block; letter-spacing: 8px; font-size: 32px; font-weight: 800; color: #0f172a; background: #f1f5f9; padding: 14px 28px; border-radius: 8px; border: 1px solid #cbd5e1;">
+          {otp}
+        </div>
+      </div>
+      <p style="margin-top:24px; font-size:13px; color:#64748b;">This verification code expires in 15 minutes. If you did not request this, you can safely ignore this email.</p>
+"""
+        else:
+            content_section = f"""
+      <p>Click the button below to verify your email address and continue creating your organization on Rooman Books.</p>
+      <p style="text-align:center; margin: 28px 0;">
+        <a href="{verify_url}" class="cta">Verify Email</a>
+      </p>
+      <p class="link-fallback">Or paste this link into your browser:<br>{verify_url}</p>
+      <p style="margin-top:24px; font-size:13px; color:#64748b;">This verification link expires in 30 minutes. If you did not request this, you can safely ignore this email.</p>
+"""
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #1e293b; }}
+    .container {{ max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }}
+    .header {{ background: #0f172a; padding: 28px 32px; color: #fff; }}
+    .header h1 {{ margin: 0; font-size: 20px; font-weight: 700; }}
+    .header p {{ color: #94a3b8; margin: 4px 0 0 0; font-size: 13px; }}
+    .content {{ padding: 32px; line-height: 1.6; font-size: 15px; color: #334155; }}
+    .cta {{ display: inline-block; background: #10b981; color: #ffffff !important; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 700; font-size: 15px; margin: 20px 0; }}
+    .link-fallback {{ word-break: break-all; font-size: 12.5px; color: #64748b; margin-top: 18px; }}
+    .footer {{ background: #f8fafc; padding: 20px 32px; font-size: 12px; color: #64748b; text-align: center; border-top: 1px solid #e2e8f0; }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Rooman Books</h1>
+      <p>Organization Setup &amp; Email Verification</p>
+    </div>
+    <div class="content">
+      <p><strong>Welcome!</strong></p>
+      {content_section}
+    </div>
+    <div class="footer">
+      Rooman Books • Enterprise Cloud Accounting &amp; Financial Operating System
+    </div>
+  </div>
+</body>
+</html>
+"""
+        msg.attach(MIMEText(html_body, "html"))
+        server = get_smtp_connection()
+        server.sendmail(from_addr, to_email, msg.as_string())
+        server.quit()
+        return {"success": True, "message": f"Verification email sent to {to_email}", "recipient": to_email}
+    except Exception as e:
+        logger.warning("Failed to deliver verification email to %s: %s", to_email, e)
+        return {"success": False, "error": str(e)}
+
+
+def send_password_reset_email(to_email: str, otp: str) -> Dict[str, Any]:
+    """Send single-use password reset OTP code to user."""
+    settings = _smtp()
+    if not settings.smtp_configured:
+        logger.info("[DEV PASSWORD RESET] To: %s | OTP: %s", to_email, otp)
+        return {
+            "success": True,
+            "message": "Password reset code generated (SMTP not configured, code logged to server console)",
+            "recipient": to_email,
+            "otp": otp,
+        }
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"{otp} is your Rooman Books password reset code"
+        from_addr = settings.smtp_from or settings.smtp_user
+        msg["From"] = f"{settings.smtp_sender_name} <{from_addr}>"
+        msg["To"] = to_email
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #1e293b; }}
+    .container {{ max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }}
+    .header {{ background: #0f172a; padding: 28px 32px; color: #fff; }}
+    .header h1 {{ margin: 0; font-size: 20px; font-weight: 700; }}
+    .header p {{ color: #94a3b8; margin: 4px 0 0 0; font-size: 13px; }}
+    .content {{ padding: 32px; line-height: 1.6; font-size: 15px; color: #334155; }}
+    .footer {{ background: #f8fafc; padding: 20px 32px; font-size: 12px; color: #64748b; text-align: center; border-top: 1px solid #e2e8f0; }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Rooman Books</h1>
+      <p>Account Security &amp; Password Reset</p>
+    </div>
+    <div class="content">
+      <p><strong>Hello,</strong></p>
+      <p>We received a request to reset the password for your Rooman Books account ({to_email}).</p>
+      <p>Use the 6-digit verification code below to set a new password:</p>
+      <div style="text-align:center; margin: 28px 0;">
+        <div style="display:inline-block; letter-spacing: 8px; font-size: 32px; font-weight: 800; color: #0f172a; background: #f1f5f9; padding: 14px 28px; border-radius: 8px; border: 1px solid #cbd5e1;">
+          {otp}
+        </div>
+      </div>
+      <p style="margin-top:24px; font-size:13px; color:#64748b;">This code expires in 15 minutes. If you did not request a password reset, please ignore this email or contact your administrator immediately.</p>
+    </div>
+    <div class="footer">
+      Rooman Books • Enterprise Cloud Accounting &amp; Financial Operating System
+    </div>
+  </div>
+</body>
+</html>
+"""
+        msg.attach(MIMEText(html_body, "html"))
+        server = get_smtp_connection()
+        server.sendmail(from_addr, to_email, msg.as_string())
+        server.quit()
+        return {"success": True, "message": f"Password reset email sent to {to_email}", "recipient": to_email}
+    except Exception as e:
+        logger.warning("Failed to deliver password reset email to %s: %s", to_email, e)
         return {"success": False, "error": str(e)}

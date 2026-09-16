@@ -28,6 +28,7 @@ import { PaymentsReceivedPage } from '@/pages/sales/PaymentsReceivedPage';
 import { PayrollPage } from '@/pages/payroll/PayrollPage';
 import { ProfilePage } from '@/pages/settings/ProfilePage';
 import { RegisterPage } from '@/pages/auth/RegisterPage';
+import { VerifyEmailPage } from '@/pages/auth/VerifyEmailPage';
 import { ReportsPage } from '@/pages/reports/ReportsPage';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
 import { TimeTrackingPage } from '@/pages/timetracking/TimeTrackingPage';
@@ -46,6 +47,7 @@ export function App() {
         <Route element={<RequireGuest />}>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/accept-invite" element={<AcceptInvitePage />} />
         </Route>
 

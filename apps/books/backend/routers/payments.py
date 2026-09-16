@@ -451,6 +451,7 @@ def create_vendor_payment(payload: VendorPaymentCreate, user: User = Depends(req
         [(debit_account, amount, Decimal("0"), desc, vendor.id), (bank_acct.ledger_account_id, Decimal("0"), amount, desc, vendor.id)],
         "vendor_payment", payment.id, reference=payment.reference or payment.payment_number, created_by=user.id,
     )
+    bank.check_cash_overdraft(db, bank_acct, amount)
     bank.record_movement(db, bank_acct, payment.date, "withdrawal", amount, desc, "vendor_payment", payment.id, user.id, payment.reference, debit_account, entry.id)
 
     if bill:

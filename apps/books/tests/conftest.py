@@ -56,18 +56,36 @@ _counter = {"n": 0}
 def register_org(client: TestClient, name_hint: str = "Org") -> dict:
     _counter["n"] += 1
     n = _counter["n"]
+    email = f"admin{n}@{name_hint.lower()}.example.com"
+
+    from datetime import UTC, datetime, timedelta
+    from backend.db import SessionLocal
+    from backend.models import EmailVerification
+    from backend.security import hash_token
+    with SessionLocal() as db:
+        db.add(
+            EmailVerification(
+                email=email.lower().strip(),
+                token_hash=hash_token(f"test-token-{n}"),
+                status="VERIFIED",
+                expires_at=datetime.now(UTC) + timedelta(minutes=30),
+                verified_at=datetime.now(UTC),
+            )
+        )
+        db.commit()
+
     res = client.post(
         "/api/auth/register",
         json={
             "name": f"Admin {n}",
-            "email": f"admin{n}@{name_hint.lower()}.example.com",
+            "email": email,
             "password": "Str0ngPass!",
             "organizationName": f"{name_hint} {n}",
         },
     )
     assert res.status_code == 201, res.text
     body = res.json()
-    return {"token": body["accessToken"], "user": body["user"], "org": body["organization"], "email": f"admin{n}@{name_hint.lower()}.example.com", "password": "Str0ngPass!"}
+    return {"token": body["accessToken"], "user": body["user"], "org": body["organization"], "email": email, "password": "Str0ngPass!"}
 
 
 def auth(token: str) -> dict:

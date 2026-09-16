@@ -1,9 +1,27 @@
 import time
 import unittest
 
+from datetime import UTC, datetime, timedelta
 from fastapi.testclient import TestClient
 
+from backend.db import SessionLocal
 from backend.main import app
+from backend.models import EmailVerification
+from backend.security import hash_token
+
+
+def mark_email_verified(email: str):
+    with SessionLocal() as db:
+        db.add(
+            EmailVerification(
+                email=email.lower().strip(),
+                token_hash=hash_token(f"e2e-token-{email}"),
+                status="VERIFIED",
+                expires_at=datetime.now(UTC) + timedelta(minutes=30),
+                verified_at=datetime.now(UTC),
+            )
+        )
+        db.commit()
 
 
 class ComprehensiveBackendE2ETest(unittest.TestCase):
@@ -15,6 +33,7 @@ class ComprehensiveBackendE2ETest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = TestClient(app)
         test_email = f"e2e_user_{int(time.time()*1000)}@rooman.com"
+        mark_email_verified(test_email)
         reg_res = cls.client.post("/api/auth/register", json={
             "name": "E2E Test User",
             "email": test_email,
@@ -47,6 +66,7 @@ class ComprehensiveBackendE2ETest(unittest.TestCase):
     # ── 2. AUTHENTICATION FLOWS ──
     def test_02_register_duplicate_fails(self):
         dup_email = f"dup_{int(time.time()*1000)}@rooman.com"
+        mark_email_verified(dup_email)
         r1 = self.client.post("/api/auth/register", json={
             "name": "Duplicate Test",
             "email": dup_email,
@@ -65,6 +85,7 @@ class ComprehensiveBackendE2ETest(unittest.TestCase):
 
     def test_03_login_success_and_invalid(self):
         email = f"login_test_{int(time.time()*1000)}@rooman.com"
+        mark_email_verified(email)
         self.client.post("/api/auth/register", json={
             "name": "Login Test",
             "email": email,

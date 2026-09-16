@@ -54,6 +54,13 @@ export interface AuthResponse {
   organization: Organization;
 }
 
+export interface EmailVerificationStatus {
+  email: string;
+  status: string;
+  isVerified: boolean;
+  verifiedAt?: string | null;
+}
+
 export interface Page<T> {
   items: T[];
   total: number;
