@@ -703,7 +703,7 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
             label="Company name"
             value={form.companyName}
             error={fieldErrors.companyName}
-            hint="Letters only, no numbers"
+            hint="Letters and numbers, e.g. 3M India"
             onChange={(event) => set('companyName', event.target.value)}
           />
           <TextField label="Contact person name" value={form.contactPerson} error={fieldErrors.contactPerson} onChange={(event) => setContactPerson(event.target.value)} />

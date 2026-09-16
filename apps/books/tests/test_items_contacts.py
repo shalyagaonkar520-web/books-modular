@@ -149,9 +149,8 @@ def test_contacts_crud_and_filters(client, org):
     assert client.get(f"/api/contacts/{created['id']}", headers=h).status_code == 404
 
 
-def test_contact_name_fields_all_reject_digits(client, org):
-    """Every name on a contact - the contact's own, the person's and the
-    company's - is held to the same no-digits rule."""
+def test_contact_person_names_reject_digits_but_company_names_keep_them(client, org):
+    """People's names are names, not codes - but "3M India" is a real company."""
     h = org["h"]
     bad_name = client.post("/api/contacts", headers=h, json={"type": "customer", "displayName": "Shivani 123", "email": "s1@x.com"})
     assert bad_name.status_code == 422
@@ -165,27 +164,19 @@ def test_contact_name_fields_all_reject_digits(client, org):
     assert bad_person.status_code == 422
     assert "cannot contain numbers" in bad_person.text
 
-    bad_company = client.post(
-        "/api/contacts",
-        headers=h,
-        json={"type": "customer", "displayName": "Acme Traders", "companyName": "3M India", "email": "s4@x.com"},
-    )
-    assert bad_company.status_code == 422
-    assert "cannot contain numbers" in bad_company.text
-
     ok = client.post(
         "/api/contacts",
         headers=h,
         json={
             "type": "customer",
             "displayName": "Acme Traders",
-            "companyName": "Acme Holdings",
+            "companyName": "3M India",
             "contactPerson": "Ravi Kumar",
             "email": "s3@x.com",
         },
     )
     assert ok.status_code == 201, ok.text
-    assert ok.json()["companyName"] == "Acme Holdings"
+    assert ok.json()["companyName"] == "3M India"
 
     # The same rule applies on update.
     renamed = client.put(f"/api/contacts/{ok.json()['id']}", headers=h, json={"displayName": "Acme 2"})

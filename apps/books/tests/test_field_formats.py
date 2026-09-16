@@ -128,10 +128,15 @@ def test_person_names_reject_digits_everywhere_they_are_entered(client, h):
     assert _employee(client, h, name="Asha 42").status_code == 422
 
 
-def test_company_name_rejects_digits_like_every_other_name_field(client, h):
-    assert _contact(client, h, companyName="Acme 123").status_code == 422
+def test_company_name_allows_digits_but_not_a_bare_number(client, h):
+    """Unlike a person's name, a company name can carry digits - 3M India and
+    7-Eleven are real - so only a value with no letters at all is refused."""
+    ok = _contact(client, h, companyName="3M India")
+    assert ok.status_code == 201, ok.text
+    assert ok.json()["companyName"] == "3M India"
+
+    assert _contact(client, h, companyName="Acme 123").status_code == 201
     assert _contact(client, h, companyName="12345").status_code == 422
-    assert _contact(client, h, companyName="Acme Traders").status_code == 201
 
 
 def test_product_names_still_allow_digits(client, h):

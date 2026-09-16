@@ -38,17 +38,15 @@ def person_name(value: Optional[str], label: str = "Name") -> Optional[str]:
 
 
 def business_name(value: Optional[str], label: str = "Company name") -> Optional[str]:
-    """Company names are held to the same no-digits rule as people's names.
-
-    Note this does reject genuine names like "3M India" or "7-Eleven". That is
-    the deliberate house rule - a digit in this box is far more often a typo or
-    a reference number than a real trading name - and relaxing it later means
-    changing only this function.
+    """Company names may mix letters and digits - 3M India and 7-Eleven are real
+    trading names - so unlike a person's name this only requires that there be a
+    letter somewhere. A value of pure digits is a reference number that has been
+    typed into the wrong box, not a company.
     """
     if _blank(value):
         return value
-    if any(ch.isdigit() for ch in value):
-        raise ValueError(f"{label} cannot contain numbers")
+    if not any(ch.isalpha() for ch in value):
+        raise ValueError(f"{label} must contain letters, not only numbers")
     return value
 
 
