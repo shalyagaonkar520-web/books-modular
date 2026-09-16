@@ -5,6 +5,7 @@ Everything below the API boundary -- pagination, deduplication, categorisation,
 customer and invoice matching, refunds, accounting and the sync log -- is the
 real code path.
 """
+
 from __future__ import annotations
 
 import time
@@ -35,12 +36,11 @@ class FakeRazorpay:
             raise self.fail_with
         page_size = min(page_size, 100)
         window = [
-            p for p in self.payments
-            if (from_ts is None or p["created_at"] >= from_ts) and (to_ts is None or p["created_at"] <= to_ts)
+            p for p in self.payments if (from_ts is None or p["created_at"] >= from_ts) and (to_ts is None or p["created_at"] <= to_ts)
         ]
         page_number = 0
         for start in range(0, max(len(window), 1), page_size):
-            chunk = window[start:start + page_size]
+            chunk = window[start : start + page_size]
             page_number += 1
             self.pages_served += 1
             yield page_number, chunk
@@ -102,7 +102,14 @@ def sync_org(client):
     item = client.post(
         "/api/items",
         headers=h,
-        json={"name": "Consulting", "sku": f"SVC-{ctx['org']['id'][:6]}", "type": "service", "sellingPrice": 25000, "costPrice": 0, "taxRate": 0},
+        json={
+            "name": "Consulting",
+            "sku": f"SVC-{ctx['org']['id'][:6]}",
+            "type": "service",
+            "sellingPrice": 25000,
+            "costPrice": 0,
+            "taxRate": 0,
+        },
     ).json()
     ctx.update({"h": h, "bank": bank, "customer": customer, "item": item})
     return ctx
@@ -154,9 +161,9 @@ def test_successful_payment_is_imported_with_fees_and_net_amount(client, sync_or
     row = rows["items"][0]
     assert row["razorpay_payment_id"] == "pay_success_1"
     assert row["amount"] == 25000.0
-    assert row["razorpay_fee"] == 500.0          # 2% of 25,000
-    assert row["tax_on_fee"] == 90.0             # 18% GST on the fee
-    assert row["net_amount"] == 24410.0          # 25,000 - 500 - 90
+    assert row["razorpay_fee"] == 500.0  # 2% of 25,000
+    assert row["tax_on_fee"] == 90.0  # 18% GST on the fee
+    assert row["net_amount"] == 24410.0  # 25,000 - 500 - 90
     assert row["payment_method"] == "upi"
     assert row["payment_status"] == "captured"
     assert row["source"] == "sync"
@@ -271,11 +278,7 @@ def test_refunds_are_linked_to_the_original_payment(client, sync_org, fake_api):
 
 
 def test_missing_customer_leaves_the_payment_unlinked(client, sync_org, fake_api):
-    fake_api(
-        FakeRazorpay(
-            payments=[payment_entity("pay_nocust_1", 700000, email="stranger@nowhere.example.com", contact="+919999999999")]
-        )
-    )
+    fake_api(FakeRazorpay(payments=[payment_entity("pay_nocust_1", 700000, email="stranger@nowhere.example.com", contact="+919999999999")]))
     client.post("/api/razorpay/sync", headers=sync_org["h"], json={"full": True})
 
     row = client.get("/api/razorpay/payments", headers=sync_org["h"]).json()["items"][0]
@@ -332,11 +335,7 @@ def test_invoice_is_suggested_but_never_paid_without_confirmation(client, sync_o
 def test_confirming_a_match_pays_the_invoice_and_posts_balanced_entries(client, sync_org, fake_api):
     invoice = make_invoice(client, sync_org, total=25000)
     fake_api(
-        FakeRazorpay(
-            payments=[
-                payment_entity("pay_book_1", 2500000, email="ap@abcltd.example.com", notes={"invoice_id": invoice["id"]})
-            ]
-        )
+        FakeRazorpay(payments=[payment_entity("pay_book_1", 2500000, email="ap@abcltd.example.com", notes={"invoice_id": invoice["id"]})])
     )
     client.post("/api/razorpay/sync", headers=sync_org["h"], json={"full": True})
     row = client.get("/api/razorpay/payments", headers=sync_org["h"]).json()["items"][0]
@@ -493,7 +492,13 @@ def test_filters_and_search_narrow_the_transaction_list(client, sync_org, fake_a
         FakeRazorpay(
             payments=[
                 payment_entity("pay_filter_upi", 100000, method="upi", description="UPI collection"),
-                payment_entity("pay_filter_card", 900000, method="card", description="Card sale", card={"last4": "4321", "network": "Visa", "type": "credit"}),
+                payment_entity(
+                    "pay_filter_card",
+                    900000,
+                    method="card",
+                    description="Card sale",
+                    card={"last4": "4321", "network": "Visa", "type": "credit"},
+                ),
                 payment_entity("pay_filter_fail", 300000, status="failed", method="netbanking", fee=0, tax=0),
             ]
         )
@@ -536,8 +541,8 @@ def test_raw_reference_never_stores_card_or_credential_data(client, sync_org, fa
                         "network": "Visa",
                         "type": "credit",
                         "issuer": "HDFC",
-                        "number": "4111111111111111",   # must never be persisted
-                        "cvv": "123",                    # must never be persisted
+                        "number": "4111111111111111",  # must never be persisted
+                        "cvv": "123",  # must never be persisted
                     },
                     token_id="token_secret_value",
                 )

@@ -1,4 +1,5 @@
 """Tests for PDF extract, Excel extract, Gmail send options, and automated overdue reminders."""
+
 import io
 from datetime import date
 from unittest.mock import patch
@@ -28,7 +29,7 @@ def test_download_invoice_pdf(client, org):
     assert res.headers["content-type"] == "application/pdf"
     assert res.content.startswith(b"%PDF-")
     assert len(res.content) > 1000
-    assert f"attachment; filename=\"Invoice-{inv['invoiceNumber']}.pdf\"" in res.headers["content-disposition"]
+    assert f'attachment; filename="Invoice-{inv["invoiceNumber"]}.pdf"' in res.headers["content-disposition"]
 
 
 def test_download_invoice_excel(client, org):

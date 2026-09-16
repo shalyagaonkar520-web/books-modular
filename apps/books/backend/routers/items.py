@@ -1,4 +1,5 @@
 """Items catalogue and inventory adjustments."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -74,14 +75,23 @@ def list_items(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    stmt = select(Item).where(Item.organization_id == user.organization_id).options(
-        selectinload(Item.sales_account), selectinload(Item.purchase_account), selectinload(Item.preferred_vendor)
+    stmt = (
+        select(Item)
+        .where(Item.organization_id == user.organization_id)
+        .options(selectinload(Item.sales_account), selectinload(Item.purchase_account), selectinload(Item.preferred_vendor))
     )
     if not include_inactive:
         stmt = stmt.where(Item.is_active.is_(True))
     if search and search.strip():
         q = f"%{search.strip().lower()}%"
-        stmt = stmt.where(or_(func.lower(Item.name).like(q), func.lower(Item.sku).like(q), func.lower(Item.description).like(q), func.lower(Item.hsn_sac).like(q)))
+        stmt = stmt.where(
+            or_(
+                func.lower(Item.name).like(q),
+                func.lower(Item.sku).like(q),
+                func.lower(Item.description).like(q),
+                func.lower(Item.hsn_sac).like(q),
+            )
+        )
     if type_filter in ("goods", "service"):
         stmt = stmt.where(Item.type == type_filter)
     if inventory_filter == "tracked":
@@ -130,7 +140,9 @@ def update_item(item_id: str, payload: ItemUpdate, user: User = Depends(require_
 
     new_type = data.get("type", item.type)
     if new_type == "service":
-        data.update({"track_inventory": False, "opening_stock": Decimal("0"), "opening_stock_rate": Decimal("0"), "reorder_level": Decimal("0")})
+        data.update(
+            {"track_inventory": False, "opening_stock": Decimal("0"), "opening_stock_rate": Decimal("0"), "reorder_level": Decimal("0")}
+        )
 
     was_tracked = item.track_inventory
     old_opening = qty(item.opening_stock)
@@ -144,7 +156,9 @@ def update_item(item_id: str, payload: ItemUpdate, user: User = Depends(require_
         item.stock_on_hand = qty(item.opening_stock)
         inventory.post_opening_stock(db, item, user.id)
     elif not item.track_inventory and was_tracked:
-        ledger.reverse_entries_for_source(db, user.organization_id, "item_opening", item.id, date.today(), user.id, "Inventory tracking disabled")
+        ledger.reverse_entries_for_source(
+            db, user.organization_id, "item_opening", item.id, date.today(), user.id, "Inventory tracking disabled"
+        )
         item.stock_on_hand = Decimal("0")
     elif item.track_inventory and (qty(item.opening_stock) != old_opening or money(item.opening_stock_rate or item.cost_price) != old_rate):
         delta_qty = qty(item.opening_stock) - old_opening
@@ -161,9 +175,10 @@ def update_item(item_id: str, payload: ItemUpdate, user: User = Depends(require_
 @router.delete("/{item_id}", response_model=Message)
 def delete_item(item_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
     item = get_or_404(db, Item, item_id, user.organization_id, "Item")
-    used = db.execute(select(InvoiceLine.id).where(InvoiceLine.item_id == item.id).limit(1)).first() or db.execute(
-        select(BillLine.id).where(BillLine.item_id == item.id).limit(1)
-    ).first()
+    used = (
+        db.execute(select(InvoiceLine.id).where(InvoiceLine.item_id == item.id).limit(1)).first()
+        or db.execute(select(BillLine.id).where(BillLine.item_id == item.id).limit(1)).first()
+    )
     if used:
         item.is_active = False
         audit.record(db, user, "update", "item", item.id, f"Deactivated item {item.name} (used in transactions)")
@@ -203,7 +218,11 @@ def list_adjustments(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    stmt = select(InventoryAdjustment).where(InventoryAdjustment.organization_id == user.organization_id).options(selectinload(InventoryAdjustment.item))
+    stmt = (
+        select(InventoryAdjustment)
+        .where(InventoryAdjustment.organization_id == user.organization_id)
+        .options(selectinload(InventoryAdjustment.item))
+    )
     if item_id:
         stmt = stmt.where(InventoryAdjustment.item_id == item_id)
     stmt = stmt.order_by(InventoryAdjustment.date.desc(), InventoryAdjustment.created_at.desc())
@@ -230,9 +249,10 @@ def create_adjustment(payload: InventoryAdjustmentCreate, user: User = Depends(r
     )
     db.add(adj)
     db.flush()
-    inventory.adjust_stock(db, item, adj.quantity_delta, adj.date, "inventory_adjustment", adj.id, f"{adj.reason} ({adj.adjustment_number})", user.id)
+    inventory.adjust_stock(
+        db, item, adj.quantity_delta, adj.date, "inventory_adjustment", adj.id, f"{adj.reason} ({adj.adjustment_number})", user.id
+    )
     audit.record(db, user, "create", "inventory_adjustment", adj.id, f"{adj.adjustment_number}: {item.name} {adj.quantity_delta:+}")
     db.commit()
     db.refresh(adj)
     return adj_out(adj)
-

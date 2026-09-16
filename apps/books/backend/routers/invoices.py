@@ -1,4 +1,5 @@
 """Sales invoices."""
+
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
@@ -180,7 +181,9 @@ def post_invoice(db: Session, inv: Invoice, user: User) -> None:
     for line in inv.lines:
         item = line.item
         if item and item.track_inventory:
-            inventory.adjust_stock(db, item, -line.quantity, inv.date, "invoice_stock", inv.id, f"Sold on {inv.invoice_number}", user.id, rate=Decimal("0"))
+            inventory.adjust_stock(
+                db, item, -line.quantity, inv.date, "invoice_stock", inv.id, f"Sold on {inv.invoice_number}", user.id, rate=Decimal("0")
+            )
             cost = money(line.quantity * money(item.cost_price))
             if cost > 0:
                 cogs_account = item.purchase_account_id or cogs_default.id
@@ -196,12 +199,16 @@ def unpost_invoice(db: Session, inv: Invoice, user: User, reason: str) -> None:
     ledger.reverse_entries_for_source(db, inv.organization_id, "invoice_cogs", inv.id, today, user.id, reason)
     for line in inv.lines:
         if line.item and line.item.track_inventory:
-            inventory.adjust_stock(db, line.item, line.quantity, today, "invoice_stock", inv.id, f"{reason} {inv.invoice_number}", user.id, rate=Decimal("0"))
+            inventory.adjust_stock(
+                db, line.item, line.quantity, today, "invoice_stock", inv.id, f"{reason} {inv.invoice_number}", user.id, rate=Decimal("0")
+            )
 
 
 def _base_query(org_id: str):
-    return select(Invoice).where(Invoice.organization_id == org_id).options(
-        selectinload(Invoice.customer), selectinload(Invoice.lines).selectinload(InvoiceLine.item)
+    return (
+        select(Invoice)
+        .where(Invoice.organization_id == org_id)
+        .options(selectinload(Invoice.customer), selectinload(Invoice.lines).selectinload(InvoiceLine.item))
     )
 
 
@@ -243,9 +250,11 @@ def list_invoices(
 @router.get("/stats", response_model=InvoiceStats)
 def invoice_stats(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     today = date.today()
-    open_invoices = db.execute(
-        select(Invoice).where(Invoice.organization_id == user.organization_id, Invoice.status.in_(OPEN_STATUSES))
-    ).scalars().all()
+    open_invoices = (
+        db.execute(select(Invoice).where(Invoice.organization_id == user.organization_id, Invoice.status.in_(OPEN_STATUSES)))
+        .scalars()
+        .all()
+    )
     overdue = [i for i in open_invoices if i.due_date < today]
     soon = [i for i in open_invoices if today <= i.due_date <= today + timedelta(days=30)]
     drafts = db.execute(
@@ -379,11 +388,13 @@ def auto_remind_overdue_invoices(
     for inv in overdue_invoices:
         cust_email = inv.customer.email if inv.customer else None
         if not cust_email or "@" not in cust_email:
-            skipped.append({
-                "invoice_number": inv.invoice_number,
-                "customer": inv.customer.display_name if inv.customer else "Unknown",
-                "reason": "No valid email address on customer contact",
-            })
+            skipped.append(
+                {
+                    "invoice_number": inv.invoice_number,
+                    "customer": inv.customer.display_name if inv.customer else "Unknown",
+                    "reason": "No valid email address on customer contact",
+                }
+            )
             continue
 
         days_overdue = max((today - inv.due_date).days, 1)
@@ -400,23 +411,31 @@ def auto_remind_overdue_invoices(
             pdf_filename=f"Invoice_{inv.invoice_number}.pdf",
         )
         if res.get("success"):
-            dispatched.append({
-                "invoice_number": inv.invoice_number,
-                "customer": inv.customer.display_name if inv.customer else "Client",
-                "email": cust_email,
-                "balance_due": float(inv.balance_due),
-                "days_overdue": days_overdue,
-            })
+            dispatched.append(
+                {
+                    "invoice_number": inv.invoice_number,
+                    "customer": inv.customer.display_name if inv.customer else "Client",
+                    "email": cust_email,
+                    "balance_due": float(inv.balance_due),
+                    "days_overdue": days_overdue,
+                }
+            )
             audit.record(
-                db, user, "email", "invoice", inv.id,
-                f"Auto-sent overdue reminder via Gmail SMTP to {cust_email} ({days_overdue} days overdue)"
+                db,
+                user,
+                "email",
+                "invoice",
+                inv.id,
+                f"Auto-sent overdue reminder via Gmail SMTP to {cust_email} ({days_overdue} days overdue)",
             )
         else:
-            skipped.append({
-                "invoice_number": inv.invoice_number,
-                "customer": inv.customer.display_name if inv.customer else "Client",
-                "reason": res.get("error", "SMTP delivery failure"),
-            })
+            skipped.append(
+                {
+                    "invoice_number": inv.invoice_number,
+                    "customer": inv.customer.display_name if inv.customer else "Client",
+                    "reason": res.get("error", "SMTP delivery failure"),
+                }
+            )
 
     db.commit()
     return {
@@ -527,8 +546,12 @@ def send_invoice_via_gmail(
         post_invoice(db, inv, user)
 
     audit.record(
-        db, user, "email", "invoice", inv.id,
-        f"Sent invoice {inv.invoice_number} to {payload.to_email} via Gmail SMTP (overdue={payload.send_as_overdue}, pdf={payload.attach_pdf})"
+        db,
+        user,
+        "email",
+        "invoice",
+        inv.id,
+        f"Sent invoice {inv.invoice_number} to {payload.to_email} via Gmail SMTP (overdue={payload.send_as_overdue}, pdf={payload.attach_pdf})",
     )
     db.commit()
     return res
@@ -623,4 +646,3 @@ def delete_invoice(invoice_id: str, user: User = Depends(require_write), db: Ses
     audit.record(db, user, "delete", "invoice", invoice_id, f"Deleted invoice {number}")
     db.commit()
     return Message(message=f"Invoice {number} deleted")
-

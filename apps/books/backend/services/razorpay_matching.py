@@ -9,6 +9,7 @@ Ambiguity is treated as failure. If two invoices score close to each other the
 match is reported as ambiguous and left for a human, because silently paying off
 the wrong invoice is far more expensive than asking.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -105,15 +106,15 @@ def find_matches(
     org_id = payment.organization_id
     amount = money(payment.amount)
     references = [value.lower() for value in _referenced_ids(raw)]
-    haystack = " ".join(
-        filter(None, [(payment.description or "").lower(), (payment.notes or "").lower(), *references])
-    )
+    haystack = " ".join(filter(None, [(payment.description or "").lower(), (payment.notes or "").lower(), *references]))
 
-    invoices = db.execute(
-        select(Invoice)
-        .where(Invoice.organization_id == org_id, Invoice.status.in_(OPEN_STATUSES))
-        .order_by(Invoice.date.desc())
-    ).scalars().all()
+    invoices = (
+        db.execute(
+            select(Invoice).where(Invoice.organization_id == org_id, Invoice.status.in_(OPEN_STATUSES)).order_by(Invoice.date.desc())
+        )
+        .scalars()
+        .all()
+    )
 
     candidates: List[InvoiceCandidate] = []
     for invoice in invoices:
@@ -162,15 +163,9 @@ def find_matches(
     if not candidates:
         return MatchResult([], False, "No open invoice matched this payment")
 
-    ambiguous = (
-        len(candidates) > 1
-        and (candidates[0].score - candidates[1].score) < AMBIGUITY_MARGIN
-    )
+    ambiguous = len(candidates) > 1 and (candidates[0].score - candidates[1].score) < AMBIGUITY_MARGIN
     if ambiguous:
-        reason = (
-            f"{len(candidates)} invoices score within {float(AMBIGUITY_MARGIN)} of each other - "
-            "confirm the correct one manually"
-        )
+        reason = f"{len(candidates)} invoices score within {float(AMBIGUITY_MARGIN)} of each other - confirm the correct one manually"
     elif candidates[0].score >= AUTO_MATCH_THRESHOLD:
         reason = "Single unambiguous match"
     else:

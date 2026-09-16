@@ -89,23 +89,31 @@ def test_razorpay_refund_flow(client, org):
     inv = _create_open_invoice(client, org, total=5000)
 
     # Pay full invoice
-    verify_res = client.post("/api/razorpay/verify-payment", headers=h, json={
-        "razorpay_order_id": "order_test_rfnd",
-        "razorpay_payment_id": "pay_test_refund_flow",
-        "razorpay_signature": "test_sig_mock",
-        "invoice_id": inv["id"],
-        "amount": 5000,
-        "method": "card",
-    })
+    verify_res = client.post(
+        "/api/razorpay/verify-payment",
+        headers=h,
+        json={
+            "razorpay_order_id": "order_test_rfnd",
+            "razorpay_payment_id": "pay_test_refund_flow",
+            "razorpay_signature": "test_sig_mock",
+            "invoice_id": inv["id"],
+            "amount": 5000,
+            "method": "card",
+        },
+    )
     assert verify_res.status_code == 200
     payment_id = verify_res.json()["payment_id"]
 
     # Partial refund of ₹2000
-    rfnd_res = client.post("/api/razorpay/refund", headers=h, json={
-        "payment_id": payment_id,
-        "amount": 2000,
-        "reason": "Customer returned partial order",
-    })
+    rfnd_res = client.post(
+        "/api/razorpay/refund",
+        headers=h,
+        json={
+            "payment_id": payment_id,
+            "amount": 2000,
+            "reason": "Customer returned partial order",
+        },
+    )
     assert rfnd_res.status_code == 200
     rfnd_data = rfnd_res.json()
     assert rfnd_data["success"] is True

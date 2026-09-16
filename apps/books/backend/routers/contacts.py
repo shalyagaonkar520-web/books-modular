@@ -1,4 +1,5 @@
 """Customers and vendors."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -234,27 +235,16 @@ def bulk_delete_contacts(
         }
 
     contact_ids = [c.id for c in contacts]
-    invoices_contact_ids = set(
-        db.execute(select(Invoice.customer_id).where(Invoice.customer_id.in_(contact_ids))).scalars().all()
-    )
-    bills_contact_ids = set(
-        db.execute(select(Bill.vendor_id).where(Bill.vendor_id.in_(contact_ids))).scalars().all()
-    )
+    invoices_contact_ids = set(db.execute(select(Invoice.customer_id).where(Invoice.customer_id.in_(contact_ids))).scalars().all())
+    bills_contact_ids = set(db.execute(select(Bill.vendor_id).where(Bill.vendor_id.in_(contact_ids))).scalars().all())
     customer_payment_ids = set(
         db.execute(select(CustomerPayment.customer_id).where(CustomerPayment.customer_id.in_(contact_ids))).scalars().all()
     )
-    vendor_payment_ids = set(
-        db.execute(select(VendorPayment.vendor_id).where(VendorPayment.vendor_id.in_(contact_ids))).scalars().all()
-    )
-    expense_vendor_ids = set(
-        db.execute(select(Expense.vendor_id).where(Expense.vendor_id.in_(contact_ids))).scalars().all()
-    )
-    expense_customer_ids = set(
-        db.execute(select(Expense.customer_id).where(Expense.customer_id.in_(contact_ids))).scalars().all()
-    )
+    vendor_payment_ids = set(db.execute(select(VendorPayment.vendor_id).where(VendorPayment.vendor_id.in_(contact_ids))).scalars().all())
+    expense_vendor_ids = set(db.execute(select(Expense.vendor_id).where(Expense.vendor_id.in_(contact_ids))).scalars().all())
+    expense_customer_ids = set(db.execute(select(Expense.customer_id).where(Expense.customer_id.in_(contact_ids))).scalars().all())
     has_transactions_ids = (
-        invoices_contact_ids | bills_contact_ids | customer_payment_ids | vendor_payment_ids
-        | expense_vendor_ids | expense_customer_ids
+        invoices_contact_ids | bills_contact_ids | customer_payment_ids | vendor_payment_ids | expense_vendor_ids | expense_customer_ids
     )
 
     deleted_count = 0
@@ -342,4 +332,3 @@ def send_contact_email(
     audit.record(db, user, "email", "contact", contact.id, f"Sent email to {contact.display_name} ({recipient})")
     db.commit()
     return result
-

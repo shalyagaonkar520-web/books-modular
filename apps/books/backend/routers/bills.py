@@ -1,4 +1,5 @@
 """Vendor bills."""
+
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -37,27 +38,56 @@ def effective_status(bill: Bill, today: Optional[date] = None) -> str:
 
 def line_out(line: BillLine) -> LineOut:
     return LineOut(
-        id=line.id, position=line.position, item_id=line.item_id, account_id=line.account_id, description=line.description,
-        quantity=line.quantity, rate=line.rate, tax_rate=line.tax_rate, amount=line.amount, tax_amount=line.tax_amount,
+        id=line.id,
+        position=line.position,
+        item_id=line.item_id,
+        account_id=line.account_id,
+        description=line.description,
+        quantity=line.quantity,
+        rate=line.rate,
+        tax_rate=line.tax_rate,
+        amount=line.amount,
+        tax_amount=line.tax_amount,
         item_name=line.item.name if line.item else None,
     )
 
 
 def to_out(bill: Bill) -> BillOut:
     return BillOut(
-        id=bill.id, bill_number=bill.bill_number, vendor_bill_number=bill.vendor_bill_number, vendor_id=bill.vendor_id,
-        vendor_name=bill.vendor.display_name, date=bill.date, due_date=bill.due_date, status=effective_status(bill),
-        subtotal=bill.subtotal, discount_amount=bill.discount_amount, tax_total=bill.tax_total, total=bill.total,
-        amount_paid=bill.amount_paid, balance_due=money(bill.balance_due), notes=bill.notes,
-        lines=[line_out(line) for line in bill.lines], created_at=bill.created_at, updated_at=bill.updated_at,
+        id=bill.id,
+        bill_number=bill.bill_number,
+        vendor_bill_number=bill.vendor_bill_number,
+        vendor_id=bill.vendor_id,
+        vendor_name=bill.vendor.display_name,
+        date=bill.date,
+        due_date=bill.due_date,
+        status=effective_status(bill),
+        subtotal=bill.subtotal,
+        discount_amount=bill.discount_amount,
+        tax_total=bill.tax_total,
+        total=bill.total,
+        amount_paid=bill.amount_paid,
+        balance_due=money(bill.balance_due),
+        notes=bill.notes,
+        lines=[line_out(line) for line in bill.lines],
+        created_at=bill.created_at,
+        updated_at=bill.updated_at,
     )
 
 
 def to_list_item(bill: Bill) -> BillListItem:
     return BillListItem(
-        id=bill.id, bill_number=bill.bill_number, vendor_bill_number=bill.vendor_bill_number, vendor_id=bill.vendor_id,
-        vendor_name=bill.vendor.display_name, date=bill.date, due_date=bill.due_date, status=effective_status(bill),
-        total=bill.total, amount_paid=bill.amount_paid, balance_due=money(bill.balance_due),
+        id=bill.id,
+        bill_number=bill.bill_number,
+        vendor_bill_number=bill.vendor_bill_number,
+        vendor_id=bill.vendor_id,
+        vendor_name=bill.vendor.display_name,
+        date=bill.date,
+        due_date=bill.due_date,
+        status=effective_status(bill),
+        total=bill.total,
+        amount_paid=bill.amount_paid,
+        balance_due=money(bill.balance_due),
     )
 
 
@@ -79,9 +109,15 @@ def _apply_payload(db: Session, bill: Bill, payload: BillCreate, org_id: str) ->
     for position, line in enumerate(computed):
         bill.lines.append(
             BillLine(
-                item_id=line.item.id if line.item else None, account_id=line.account.id if line.account else None, position=position,
-                description=line.spec.description, quantity=line.quantity, rate=line.rate, tax_rate=line.tax_rate,
-                amount=line.amount, tax_amount=line.tax_amount,
+                item_id=line.item.id if line.item else None,
+                account_id=line.account.id if line.account else None,
+                position=position,
+                description=line.spec.description,
+                quantity=line.quantity,
+                rate=line.rate,
+                tax_rate=line.tax_rate,
+                amount=line.amount,
+                tax_amount=line.tax_amount,
             )
         )
 
@@ -101,7 +137,9 @@ def post_bill(db: Session, bill: Bill, user: User) -> None:
         if item and item.track_inventory:
             debit_pairs.append((inventory_acct.id, line.amount))
             unit_cost = money(line.rate)
-            inventory.adjust_stock(db, item, line.quantity, bill.date, "bill_stock", bill.id, f"Received on {bill.bill_number}", user.id, rate=Decimal("0"))
+            inventory.adjust_stock(
+                db, item, line.quantity, bill.date, "bill_stock", bill.id, f"Received on {bill.bill_number}", user.id, rate=Decimal("0")
+            )
             # Keep the item's cost price in sync with the latest purchase rate.
             if unit_cost > 0:
                 item.cost_price = unit_cost
@@ -116,7 +154,9 @@ def post_bill(db: Session, bill: Bill, user: User) -> None:
     if bill.discount_amount > 0:
         lines.append((discount_acct.id, Decimal("0"), bill.discount_amount, f"Discount on {bill.bill_number}", bill.vendor_id))
     lines.append((ap.id, Decimal("0"), bill.total, f"Bill {bill.bill_number}", bill.vendor_id))
-    ledger.post_entry(db, org_id, bill.date, lines, "bill", bill.id, reference=bill.vendor_bill_number or bill.bill_number, created_by=user.id)
+    ledger.post_entry(
+        db, org_id, bill.date, lines, "bill", bill.id, reference=bill.vendor_bill_number or bill.bill_number, created_by=user.id
+    )
 
 
 def unpost_bill(db: Session, bill: Bill, user: User, reason: str) -> None:
@@ -124,11 +164,26 @@ def unpost_bill(db: Session, bill: Bill, user: User, reason: str) -> None:
     ledger.reverse_entries_for_source(db, bill.organization_id, "bill", bill.id, today, user.id, reason)
     for line in bill.lines:
         if line.item and line.item.track_inventory:
-            inventory.adjust_stock(db, line.item, -line.quantity, today, "bill_stock", bill.id, f"{reason} {bill.bill_number}", user.id, rate=Decimal("0"), allow_negative=True)
+            inventory.adjust_stock(
+                db,
+                line.item,
+                -line.quantity,
+                today,
+                "bill_stock",
+                bill.id,
+                f"{reason} {bill.bill_number}",
+                user.id,
+                rate=Decimal("0"),
+                allow_negative=True,
+            )
 
 
 def _base_query(org_id: str):
-    return select(Bill).where(Bill.organization_id == org_id).options(selectinload(Bill.vendor), selectinload(Bill.lines).selectinload(BillLine.item))
+    return (
+        select(Bill)
+        .where(Bill.organization_id == org_id)
+        .options(selectinload(Bill.vendor), selectinload(Bill.lines).selectinload(BillLine.item))
+    )
 
 
 @router.get("", response_model=Page[BillListItem])
@@ -169,15 +224,21 @@ def list_bills(
 @router.get("/stats", response_model=BillStats)
 def bill_stats(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     today = date.today()
-    open_bills = db.execute(select(Bill).where(Bill.organization_id == user.organization_id, Bill.status.in_(OPEN_STATUSES))).scalars().all()
+    open_bills = (
+        db.execute(select(Bill).where(Bill.organization_id == user.organization_id, Bill.status.in_(OPEN_STATUSES))).scalars().all()
+    )
     overdue = [b for b in open_bills if b.due_date < today]
     soon = [b for b in open_bills if today <= b.due_date <= today + timedelta(days=30)]
-    drafts = db.execute(select(func.count()).select_from(Bill).where(Bill.organization_id == user.organization_id, Bill.status == "draft")).scalar_one()
+    drafts = db.execute(
+        select(func.count()).select_from(Bill).where(Bill.organization_id == user.organization_id, Bill.status == "draft")
+    ).scalar_one()
     return BillStats(
         total_outstanding=money(sum((b.balance_due for b in open_bills), Decimal("0"))),
         overdue=money(sum((b.balance_due for b in overdue), Decimal("0"))),
         due_within_30_days=money(sum((b.balance_due for b in soon), Decimal("0"))),
-        draft_count=drafts, unpaid_count=len(open_bills), overdue_count=len(overdue),
+        draft_count=drafts,
+        unpaid_count=len(open_bills),
+        overdue_count=len(overdue),
     )
 
 
@@ -219,7 +280,9 @@ def export_bills_pdf(
     bills = db.execute(stmt).scalars().all()
     org = db.get(Organization, user.organization_id)
     pdf_bytes = export_service.generate_bills_list_pdf(bills, org)
-    return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="bills_report.pdf"'})
+    return Response(
+        content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="bills_report.pdf"'}
+    )
 
 
 @router.get("/export/excel")
@@ -277,7 +340,11 @@ def download_bill_pdf(bill_id: str, user: User = Depends(get_current_user), db: 
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Bill not found")
     org = db.get(Organization, user.organization_id)
     pdf_bytes = export_service.generate_bill_pdf(bill, org)
-    return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="Bill-{bill.bill_number}.pdf"'})
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="Bill-{bill.bill_number}.pdf"'},
+    )
 
 
 @router.get("/{bill_id}/excel")
@@ -324,13 +391,13 @@ def send_bill_via_gmail(
     <div style="max-width:550px;margin:0 auto;background:#fff;padding:28px;border-radius:10px;border:1px solid #e2e8f0;">
     <h2 style="color:#0f172a;margin-top:0;">Rooman Technologies - Purchase Bill Voucher</h2>
     <p>Dear <strong>{vendor_name}</strong>,</p>
-    <p>Please find attached voucher details for Purchase Bill <strong>{bill.bill_number}</strong> (Vendor Ref: {bill.vendor_bill_number or 'N/A'}).</p>
+    <p>Please find attached voucher details for Purchase Bill <strong>{bill.bill_number}</strong> (Vendor Ref: {bill.vendor_bill_number or "N/A"}).</p>
     <div style="background:#f1f5f9;padding:16px;border-radius:6px;margin:16px 0;">
       <div>Bill Amount: <strong>₹{bill.total:,.2f}</strong></div>
-      <div>Due Date: <strong>{bill.due_date.strftime('%d %b %Y')}</strong></div>
+      <div>Due Date: <strong>{bill.due_date.strftime("%d %b %Y")}</strong></div>
       <div>Balance Outstanding: <strong>₹{bill.balance_due:,.2f}</strong></div>
     </div>
-    {f'<p style="background:#eff6ff;padding:12px;border-left:4px solid #2563eb;"><strong>Note:</strong> {payload.custom_notes}</p>' if payload.custom_notes else ''}
+    {f'<p style="background:#eff6ff;padding:12px;border-left:4px solid #2563eb;"><strong>Note:</strong> {payload.custom_notes}</p>' if payload.custom_notes else ""}
     <p>Warm regards,<br/><strong>Accounts Payable Team</strong><br/>Rooman Technologies</p>
     </div></body></html>"""
 
@@ -354,7 +421,12 @@ def send_bill_via_gmail(
 
 @router.post("", response_model=BillOut, status_code=status.HTTP_201_CREATED)
 def create_bill(payload: BillCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
-    bill = Bill(organization_id=user.organization_id, bill_number=numbering.next_number(db, user.organization_id, "bill"), status="draft", created_by=user.id)
+    bill = Bill(
+        organization_id=user.organization_id,
+        bill_number=numbering.next_number(db, user.organization_id, "bill"),
+        status="draft",
+        created_by=user.id,
+    )
     _apply_payload(db, bill, payload, user.organization_id)
     db.add(bill)
     db.flush()

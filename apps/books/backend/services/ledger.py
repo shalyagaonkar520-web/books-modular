@@ -4,6 +4,7 @@ Every financial document (invoice, payment, bill, expense, payroll, inventory
 adjustment) posts a balanced journal entry. Voiding a document posts a reversal.
 Reports (trial balance, P&L, balance sheet) are derived from journal lines.
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -57,9 +58,7 @@ def post_entry(
         )
 
     account_ids = {line[0] for line in cleaned}
-    found = db.execute(
-        select(Account.id).where(Account.organization_id == organization_id, Account.id.in_(account_ids))
-    ).scalars().all()
+    found = db.execute(select(Account.id).where(Account.organization_id == organization_id, Account.id.in_(account_ids))).scalars().all()
     if len(set(found)) != len(account_ids):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "One or more accounts do not belong to this organization")
 
@@ -101,14 +100,18 @@ def reverse_entries_for_source(
     note: str = "Reversal",
 ) -> List[JournalEntry]:
     """Post reversing entries for every non-reversed entry attached to a source document."""
-    entries = db.execute(
-        select(JournalEntry).where(
-            JournalEntry.organization_id == organization_id,
-            JournalEntry.source_type == source_type,
-            JournalEntry.source_id == source_id,
-            JournalEntry.is_reversal.is_(False),
+    entries = (
+        db.execute(
+            select(JournalEntry).where(
+                JournalEntry.organization_id == organization_id,
+                JournalEntry.source_type == source_type,
+                JournalEntry.source_id == source_id,
+                JournalEntry.is_reversal.is_(False),
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     reversals: List[JournalEntry] = []
     for entry in entries:
         already = db.execute(
@@ -121,9 +124,7 @@ def reverse_entries_for_source(
         ).first()
         if already:
             continue
-        lines: List[LineSpec] = [
-            (line.account_id, line.credit, line.debit, line.description, line.contact_id) for line in entry.lines
-        ]
+        lines: List[LineSpec] = [(line.account_id, line.credit, line.debit, line.description, line.contact_id) for line in entry.lines]
         reversals.append(
             post_entry(
                 db,

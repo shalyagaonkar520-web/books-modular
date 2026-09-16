@@ -8,6 +8,7 @@ The loop is intentionally forgiving: one organisation failing (bad credentials,
 Razorpay down, a rate limit) is logged against that organisation's sync log and
 does not stop the others or kill the task.
 """
+
 from __future__ import annotations
 
 import asyncio

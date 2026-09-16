@@ -10,6 +10,7 @@ Only real Razorpay data is imported. Unlike the checkout helper, nothing in this
 module fabricates a transaction when the API is unreachable -- the run is
 recorded as failed instead, with the error preserved on the sync log.
 """
+
 from __future__ import annotations
 
 import json
@@ -55,11 +56,33 @@ _STATUS_MAP = {
 # could identify an instrument beyond its last four digits is deliberately left
 # behind: no card number, no CVV, no OTP, no token, no credential of any kind.
 _RAW_ALLOWLIST = (
-    "id", "entity", "amount", "currency", "status", "order_id", "invoice_id",
-    "international", "method", "amount_refunded", "refund_status", "captured",
-    "description", "bank", "wallet", "vpa", "email", "contact", "notes", "fee",
-    "tax", "error_code", "error_description", "error_source", "error_step",
-    "error_reason", "created_at",
+    "id",
+    "entity",
+    "amount",
+    "currency",
+    "status",
+    "order_id",
+    "invoice_id",
+    "international",
+    "method",
+    "amount_refunded",
+    "refund_status",
+    "captured",
+    "description",
+    "bank",
+    "wallet",
+    "vpa",
+    "email",
+    "contact",
+    "notes",
+    "fee",
+    "tax",
+    "error_code",
+    "error_description",
+    "error_source",
+    "error_step",
+    "error_reason",
+    "created_at",
 )
 _CARD_ALLOWLIST = ("last4", "network", "type", "issuer")
 
@@ -87,8 +110,7 @@ def _sanitise_raw(entity: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(acquirer, dict):
         # Reference numbers only -- these are the values printed on a bank statement.
         clean["acquirer_data"] = {
-            key: value for key, value in acquirer.items()
-            if key in ("rrn", "upi_transaction_id", "bank_transaction_id", "auth_code")
+            key: value for key, value in acquirer.items() if key in ("rrn", "upi_transaction_id", "bank_transaction_id", "auth_code")
         }
     return clean
 
@@ -140,15 +162,19 @@ class SyncOutcome:
 
 
 def last_successful_sync(db: Session, org_id: str) -> Optional[RazorpaySyncLog]:
-    return db.execute(
-        select(RazorpaySyncLog)
-        .where(
-            RazorpaySyncLog.organization_id == org_id,
-            RazorpaySyncLog.status.in_(("completed", "partial")),
+    return (
+        db.execute(
+            select(RazorpaySyncLog)
+            .where(
+                RazorpaySyncLog.organization_id == org_id,
+                RazorpaySyncLog.status.in_(("completed", "partial")),
+            )
+            .order_by(RazorpaySyncLog.started_at.desc())
+            .limit(1)
         )
-        .order_by(RazorpaySyncLog.started_at.desc())
-        .limit(1)
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
 
 
 def _sync_window(db: Session, org_id: str, full: bool) -> tuple[datetime, datetime, str]:
@@ -184,9 +210,7 @@ def _upsert_payment(
         outcome.errors.append("Payment entity arrived without an id")
         return
 
-    existing = db.execute(
-        select(PaymentRecord).where(PaymentRecord.razorpay_payment_id == payment_id)
-    ).scalars().first()
+    existing = db.execute(select(PaymentRecord).where(PaymentRecord.razorpay_payment_id == payment_id)).scalars().first()
 
     if existing is not None and existing.organization_id != org_id:
         # The same Razorpay account is already imported by another organisation.
@@ -226,8 +250,8 @@ def _upsert_payment(
         # The mode reflects which keys the transaction actually ran under; it
         # must not drift if the org later switches its configured mode and re-syncs.
         record.mode = get_razorpay_service().mode
-    record.customer_email = (entity.get("email") or None)
-    record.customer_contact = (str(entity.get("contact")) if entity.get("contact") else None)
+    record.customer_email = entity.get("email") or None
+    record.customer_contact = str(entity.get("contact")) if entity.get("contact") else None
     record.description = (description or "")[:500] or None
     record.transaction_date = created_at.date() if created_at else record.transaction_date
     record.razorpay_fee = fee
@@ -295,19 +319,21 @@ def _sync_refunds(db: Session, org_id: str, from_ts: int, to_ts: int, outcome: S
             if not refund_id or not payment_id:
                 continue
 
-            payment = db.execute(
-                select(PaymentRecord).where(
-                    PaymentRecord.razorpay_payment_id == payment_id,
-                    PaymentRecord.organization_id == org_id,
+            payment = (
+                db.execute(
+                    select(PaymentRecord).where(
+                        PaymentRecord.razorpay_payment_id == payment_id,
+                        PaymentRecord.organization_id == org_id,
+                    )
                 )
-            ).scalars().first()
+                .scalars()
+                .first()
+            )
             if payment is None:
                 # The refund's payment is outside this organisation or this window.
                 continue
 
-            existing = db.execute(
-                select(PaymentRefund).where(PaymentRefund.razorpay_refund_id == refund_id)
-            ).scalars().first()
+            existing = db.execute(select(PaymentRefund).where(PaymentRefund.razorpay_refund_id == refund_id)).scalars().first()
             amount = _paise_to_inr(entity.get("amount"))
             created_at = _epoch_to_dt(entity.get("created_at"))
             refund_date = created_at.date() if created_at else datetime.now(UTC).date()
@@ -338,15 +364,11 @@ def _sync_refunds(db: Session, org_id: str, from_ts: int, to_ts: int, outcome: S
 
             # Keep the payment's refund total in step with Razorpay's own view.
             total_refunded = db.execute(
-                select(func.coalesce(func.sum(PaymentRefund.amount), 0)).where(
-                    PaymentRefund.payment_id == payment.id
-                )
+                select(func.coalesce(func.sum(PaymentRefund.amount), 0)).where(PaymentRefund.payment_id == payment.id)
             ).scalar_one()
             payment.refund_amount = money(total_refunded)
             if payment.refund_amount > 0:
-                payment.payment_status = (
-                    "refunded" if payment.refund_amount >= payment.amount else "partially_refunded"
-                )
+                payment.payment_status = "refunded" if payment.refund_amount >= payment.amount else "partially_refunded"
 
 
 def sync_organization(
@@ -385,9 +407,7 @@ def sync_organization(
 
     try:
         if not service.is_configured:
-            raise RazorpayNotConfigured(
-                "Razorpay is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET on the server."
-            )
+            raise RazorpayNotConfigured("Razorpay is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET on the server.")
 
         for page_number, items in service.iter_payments(from_ts=from_ts, to_ts=to_ts):
             outcome.pages = page_number
@@ -446,12 +466,8 @@ def organizations_to_sync(db: Session) -> List[str]:
     screen. Without that the loop stays idle, so a single set of Razorpay
     credentials is never fanned out across every tenant in the database.
     """
-    rows = db.execute(
-        select(RazorpaySyncLog.organization_id).distinct()
-    ).scalars().all()
+    rows = db.execute(select(RazorpaySyncLog.organization_id).distinct()).scalars().all()
     if not rows:
         return []
-    valid = db.execute(
-        select(Organization.id).where(Organization.id.in_(rows))
-    ).scalars().all()
+    valid = db.execute(select(Organization.id).where(Organization.id.in_(rows))).scalars().all()
     return list(valid)

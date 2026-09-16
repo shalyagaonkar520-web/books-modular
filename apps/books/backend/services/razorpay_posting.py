@@ -18,6 +18,7 @@ Gateway fee of INR 500 plus 18% GST::
     Dr  Input GST                             90
         Cr  Razorpay / bank deposit account          590
 """
+
 from __future__ import annotations
 
 from datetime import date as date_type
@@ -98,11 +99,15 @@ def default_bank_account(db: Session, org_id: str) -> Optional[BankAccount]:
     Prefers an account that names Razorpay, then the primary account, then the
     oldest one -- matching how the rest of Rooman Books picks a default.
     """
-    accounts = db.execute(
-        select(BankAccount)
-        .where(BankAccount.organization_id == org_id, BankAccount.is_active.is_(True))
-        .order_by(BankAccount.created_at.asc())
-    ).scalars().all()
+    accounts = (
+        db.execute(
+            select(BankAccount)
+            .where(BankAccount.organization_id == org_id, BankAccount.is_active.is_(True))
+            .order_by(BankAccount.created_at.asc())
+        )
+        .scalars()
+        .all()
+    )
     if not accounts:
         return None
     for account in accounts:
@@ -313,8 +318,7 @@ def find_contact_for_payment(
         digits = "".join(ch for ch in contact_number if ch.isdigit())[-10:]
         if len(digits) == 10:
             candidates = [
-                c for c in db.execute(base).scalars().all()
-                if "".join(ch for ch in (c.phone or "") if ch.isdigit()).endswith(digits)
+                c for c in db.execute(base).scalars().all() if "".join(ch for ch in (c.phone or "") if ch.isdigit()).endswith(digits)
             ]
             if len(candidates) == 1:
                 return candidates[0]

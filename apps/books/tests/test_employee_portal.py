@@ -1,5 +1,6 @@
 """The Employee portal role: invited employees see only their own payslips
 and profile, and nothing else in the app - not even the org profile."""
+
 import uuid
 from unittest.mock import MagicMock, patch
 
@@ -57,7 +58,8 @@ def test_employee_can_only_see_own_profile_and_payslips(portal, client):
     priya_user_id = client.get("/api/auth/me", headers=eh).json()["user"]["id"]
     project = client.post("/api/projects", headers=h, json={"name": "Website Revamp"}).json()
     client.post(
-        "/api/time-entries", headers=h,
+        "/api/time-entries",
+        headers=h,
         json={"projectId": project["id"], "userId": priya_user_id, "date": "2026-08-05", "hours": 4},
     )
     entries = client.get("/api/me/time-entries", headers=eh).json()
@@ -86,19 +88,24 @@ def test_invite_as_employee_requires_and_validates_employee_id(client):
     ).json()
 
     # Missing employee_id.
-    assert client.post("/api/users", headers=h, json={"name": "Kiran", "email": "kiran@portal.example.com", "role": "employee"}).status_code == 400
+    assert (
+        client.post("/api/users", headers=h, json={"name": "Kiran", "email": "kiran@portal.example.com", "role": "employee"}).status_code
+        == 400
+    )
 
     with patch("backend.services.email_service.smtplib.SMTP") as mock_smtp:
         mock_smtp.return_value = MagicMock()
         first = client.post(
-            "/api/users", headers=h,
+            "/api/users",
+            headers=h,
             json={"name": "Kiran", "email": "kiran@portal.example.com", "role": "employee", "employeeId": emp["id"]},
         )
         assert first.status_code == 201, first.text
 
         # That employee already has portal access - inviting them again is rejected.
         again = client.post(
-            "/api/users", headers=h,
+            "/api/users",
+            headers=h,
             json={"name": "Kiran 2", "email": "kiran2@portal.example.com", "role": "employee", "employeeId": emp["id"]},
         )
         assert again.status_code == 409

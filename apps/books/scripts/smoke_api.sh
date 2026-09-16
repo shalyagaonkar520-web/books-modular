@@ -13,6 +13,15 @@ jqr() { python3 -c "import sys,json;d=json.load(sys.stdin);print(eval('d'+sys.ar
 say "health"
 curl -fsS "$BASE/api/health" | grep -q '"status":"healthy"'
 
+say "verify email"
+# Registration now requires a verified email first. The API echoes the OTP
+# back as devOtp when ENVIRONMENT=development (which this job sets) so CI
+# can drive the same flow a real signup goes through without needing SMTP.
+OTP=$(curl -fsS -X POST "$BASE/api/auth/send-verification-email" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$EMAIL\"}" | jqr "['devOtp']")
+curl -fsS -X POST "$BASE/api/auth/verify-otp" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$EMAIL\",\"otp\":\"$OTP\"}" > /dev/null
+
 say "register organization"
 TOKEN=$(curl -fsS -X POST "$BASE/api/auth/register" -H 'Content-Type: application/json' \
   -d "{\"name\":\"Smoke Admin\",\"email\":\"$EMAIL\",\"password\":\"Str0ngPass!\",\"organizationName\":\"Smoke Org $SUFFIX\"}" \

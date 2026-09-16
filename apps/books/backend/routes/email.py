@@ -42,12 +42,11 @@ def handle_send_due_reminder(payload: DueReminderRequest):
         invoice_id=payload.invoice_id,
         amount=payload.amount,
         due_date=payload.due_date,
-        days_overdue=payload.days_overdue or 4
+        days_overdue=payload.days_overdue or 4,
     )
     if not result.get("success"):
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=result.get("error", "Failed to dispatch reminder email via SMTP")
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=result.get("error", "Failed to dispatch reminder email via SMTP")
         )
     return result
 
@@ -61,12 +60,11 @@ def handle_send_invoice(payload: InvoiceEmailRequest):
         invoice_id=payload.invoice_id,
         amount=payload.amount,
         due_date=payload.due_date,
-        items_summary=payload.items_summary
+        items_summary=payload.items_summary,
     )
     if not result.get("success"):
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=result.get("error", "Failed to send invoice email via SMTP")
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=result.get("error", "Failed to send invoice email via SMTP")
         )
     return result
 
@@ -75,18 +73,13 @@ def handle_send_invoice(payload: InvoiceEmailRequest):
 def handle_send_custom_message(payload: CustomEmailRequest):
     """Dispatch custom communication email to customer, client, or others via Gmail SMTP."""
     result = send_custom_message_email(
-        to_email=payload.to_email,
-        subject=payload.subject,
-        message=payload.message,
-        recipient_name=payload.recipient_name
+        to_email=payload.to_email, subject=payload.subject, message=payload.message, recipient_name=payload.recipient_name
     )
     if not result.get("success"):
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=result.get("error", "Failed to dispatch email via SMTP")
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=result.get("error", "Failed to dispatch email via SMTP")
         )
     return result
-
 
 
 @router.get("/status")
@@ -96,5 +89,5 @@ def get_email_service_status():
         "status": "operational",
         "sender": "shalya@rooman.com",
         "smtp_server": "smtp.gmail.com:587 (TLS)",
-        "features": ["Customer Overdue Reminders", "Tax Invoice Dispatches"]
+        "features": ["Customer Overdue Reminders", "Tax Invoice Dispatches"],
     }

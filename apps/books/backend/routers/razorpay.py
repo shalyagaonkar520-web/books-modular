@@ -1,4 +1,5 @@
 """Razorpay Payments, Webhooks, Refunds, Reconciliation & Financial Hub API Router."""
+
 from __future__ import annotations
 
 import csv
@@ -108,8 +109,19 @@ def _record_financial_txn(
     user_id: Optional[str] = None,
 ) -> FinancialTransactionRecord:
     return razorpay_posting.record_financial_txn(
-        db, org_id, txn_type, ref_type, ref_id, debit, credit,
-        amount, account, txn_date, description, status_val, user_id,
+        db,
+        org_id,
+        txn_type,
+        ref_type,
+        ref_id,
+        debit,
+        credit,
+        amount,
+        account,
+        txn_date,
+        description,
+        status_val,
+        user_id,
     )
 
 
@@ -133,9 +145,7 @@ def create_order(
     """Generates a Razorpay Order for an open invoice."""
     org_id = user.organization_id
     invoice = db.execute(
-        select(Invoice)
-        .where(Invoice.id == payload.invoice_id, Invoice.organization_id == org_id)
-        .options(selectinload(Invoice.customer))
+        select(Invoice).where(Invoice.id == payload.invoice_id, Invoice.organization_id == org_id).options(selectinload(Invoice.customer))
     ).scalar_one_or_none()
 
     if not invoice:
@@ -219,9 +229,7 @@ def verify_payment(
         }
 
     # 3. Load Invoice
-    invoice = db.execute(
-        select(Invoice).where(Invoice.id == payload.invoice_id, Invoice.organization_id == org_id)
-    ).scalar_one_or_none()
+    invoice = db.execute(select(Invoice).where(Invoice.id == payload.invoice_id, Invoice.organization_id == org_id)).scalar_one_or_none()
     if not invoice:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
 
@@ -344,9 +352,7 @@ async def handle_webhook(
     entity_payload = data.get("payload", {})
 
     # 2. Check idempotency
-    existing_evt = db.execute(
-        select(PaymentEvent).where(PaymentEvent.event_id == event_id)
-    ).scalar_one_or_none()
+    existing_evt = db.execute(select(PaymentEvent).where(PaymentEvent.event_id == event_id)).scalar_one_or_none()
 
     if existing_evt:
         return {"status": "already_processed", "event_id": event_id}
@@ -376,9 +382,7 @@ async def handle_webhook(
         evt_record.organization_id = org_id
 
         # If not already recorded, create PaymentRecord
-        existing_pay = db.execute(
-            select(PaymentRecord).where(PaymentRecord.razorpay_payment_id == pay_id)
-        ).scalar_one_or_none()
+        existing_pay = db.execute(select(PaymentRecord).where(PaymentRecord.razorpay_payment_id == pay_id)).scalar_one_or_none()
 
         if not existing_pay and invoice_id:
             invoice = db.get(Invoice, invoice_id)
@@ -408,9 +412,7 @@ async def handle_webhook(
         pay_id = payment_entity.get("id")
         error_code = payment_entity.get("error_code")
         error_desc = payment_entity.get("error_description")
-        rec = db.execute(
-            select(PaymentRecord).where(PaymentRecord.razorpay_payment_id == pay_id)
-        ).scalar_one_or_none()
+        rec = db.execute(select(PaymentRecord).where(PaymentRecord.razorpay_payment_id == pay_id)).scalar_one_or_none()
         if rec:
             rec.payment_status = "failed"
             rec.error_code = error_code
@@ -421,13 +423,9 @@ async def handle_webhook(
         rfnd_id = refund_entity.get("id")
         pay_id = refund_entity.get("payment_id")
         amount_inr = Decimal(str(refund_entity.get("amount", 0))) / Decimal("100")
-        rec = db.execute(
-            select(PaymentRecord).where(PaymentRecord.razorpay_payment_id == pay_id)
-        ).scalar_one_or_none()
+        rec = db.execute(select(PaymentRecord).where(PaymentRecord.razorpay_payment_id == pay_id)).scalar_one_or_none()
         if rec:
-            existing_rfnd = db.execute(
-                select(PaymentRefund).where(PaymentRefund.razorpay_refund_id == rfnd_id)
-            ).scalar_one_or_none()
+            existing_rfnd = db.execute(select(PaymentRefund).where(PaymentRefund.razorpay_refund_id == rfnd_id)).scalar_one_or_none()
             if not existing_rfnd:
                 rfnd = PaymentRefund(
                     id=new_id(),
@@ -454,9 +452,7 @@ async def handle_webhook(
             fee = Decimal(str(setl_entity.get("fees", 0))) / Decimal("100")
             tax = Decimal(str(setl_entity.get("tax", 0))) / Decimal("100")
             net = gross - fee - tax
-            existing_setl = db.execute(
-                select(SettlementRecord).where(SettlementRecord.settlement_id == setl_id)
-            ).scalar_one_or_none()
+            existing_setl = db.execute(select(SettlementRecord).where(SettlementRecord.settlement_id == setl_id)).scalar_one_or_none()
             if not existing_setl:
                 s_rec = SettlementRecord(
                     id=new_id(),
@@ -550,9 +546,11 @@ def create_refund(
             _refresh_invoice_status(invoice)
 
     # Post Accounting Entry: Debit Sales (Revenue Adjustment), Credit Bank Account
-    bank_account = db.execute(
-        select(BankAccount).where(BankAccount.organization_id == org_id).order_by(BankAccount.created_at.asc())
-    ).scalars().first()
+    bank_account = (
+        db.execute(select(BankAccount).where(BankAccount.organization_id == org_id).order_by(BankAccount.created_at.asc()))
+        .scalars()
+        .first()
+    )
 
     if bank_account:
         sales_account = get_account_by_code(db, org_id, "4000")  # Sales / Revenue
@@ -739,13 +737,9 @@ def list_payments(
     if reconciliation_status:
         stmt = stmt.where(PaymentRecord.reconciliation_status == reconciliation_status)
     if date_from:
-        stmt = stmt.where(
-            func.coalesce(PaymentRecord.transaction_date, func.date(PaymentRecord.created_at)) >= date_from
-        )
+        stmt = stmt.where(func.coalesce(PaymentRecord.transaction_date, func.date(PaymentRecord.created_at)) >= date_from)
     if date_to:
-        stmt = stmt.where(
-            func.coalesce(PaymentRecord.transaction_date, func.date(PaymentRecord.created_at)) <= date_to
-        )
+        stmt = stmt.where(func.coalesce(PaymentRecord.transaction_date, func.date(PaymentRecord.created_at)) <= date_to)
     if amount_min is not None:
         stmt = stmt.where(PaymentRecord.amount >= amount_min)
     if amount_max is not None:
@@ -823,13 +817,9 @@ def run_reconciliation(
     org_id = user.organization_id
     today = date.today()
 
-    payments = db.execute(
-        select(PaymentRecord).where(PaymentRecord.organization_id == org_id)
-    ).scalars().all()
+    payments = db.execute(select(PaymentRecord).where(PaymentRecord.organization_id == org_id)).scalars().all()
 
-    settlements = db.execute(
-        select(SettlementRecord).where(SettlementRecord.organization_id == org_id)
-    ).scalars().all()
+    settlements = db.execute(select(SettlementRecord).where(SettlementRecord.organization_id == org_id)).scalars().all()
     settled_map = {s.settlement_id: s for s in settlements if s.settlement_id}
 
     reconciled_count = 0
@@ -1122,14 +1112,16 @@ def get_financial_dashboard(
             day_invs = sum(inv.total for inv in invoices if inv.date == cur)
             day_exps = sum(e.total for e in expenses if e.date == cur)
             day_rfnds = sum(r.amount for r in refunds if r.refund_date == cur)
-            chart_data.append({
-                "label": cur.strftime("%b %d"),
-                "date": cur.isoformat(),
-                "revenue": float(day_invs),
-                "expenses": float(day_exps),
-                "refunds": float(day_rfnds),
-                "profit": float(day_invs - day_exps - day_rfnds),
-            })
+            chart_data.append(
+                {
+                    "label": cur.strftime("%b %d"),
+                    "date": cur.isoformat(),
+                    "revenue": float(day_invs),
+                    "expenses": float(day_exps),
+                    "refunds": float(day_rfnds),
+                    "profit": float(day_invs - day_exps - day_rfnds),
+                }
+            )
             cur += timedelta(days=1)
     else:
         # Sample weekly intervals
@@ -1139,14 +1131,16 @@ def get_financial_dashboard(
             w_invs = sum(inv.total for inv in invoices if cur <= inv.date <= next_cur)
             w_exps = sum(e.total for e in expenses if cur <= e.date <= next_cur)
             w_rfnds = sum(r.amount for r in refunds if cur <= r.refund_date <= next_cur)
-            chart_data.append({
-                "label": f"{cur.strftime('%b %d')} - {next_cur.strftime('%b %d')}",
-                "date": cur.isoformat(),
-                "revenue": float(w_invs),
-                "expenses": float(w_exps),
-                "refunds": float(w_rfnds),
-                "profit": float(w_invs - w_exps - w_rfnds),
-            })
+            chart_data.append(
+                {
+                    "label": f"{cur.strftime('%b %d')} - {next_cur.strftime('%b %d')}",
+                    "date": cur.isoformat(),
+                    "revenue": float(w_invs),
+                    "expenses": float(w_exps),
+                    "refunds": float(w_rfnds),
+                    "profit": float(w_invs - w_exps - w_rfnds),
+                }
+            )
             cur = next_cur + timedelta(days=1)
 
     return {
@@ -1240,111 +1234,136 @@ def export_reports(
     writer = csv.writer(output)
 
     if report_type == "payments":
-        writer.writerow([
-            "Payment ID", "Order ID", "Date", "Customer", "Invoice #", "Amount (INR)",
-            "Method", "Status", "Gateway Fee", "GST on Fee", "Net Settlement", "Mode"
-        ])
-        stmt = select(PaymentRecord).where(PaymentRecord.organization_id == org_id).options(
-            selectinload(PaymentRecord.customer), selectinload(PaymentRecord.invoice)
-        ).order_by(PaymentRecord.created_at.desc())
+        writer.writerow(
+            [
+                "Payment ID",
+                "Order ID",
+                "Date",
+                "Customer",
+                "Invoice #",
+                "Amount (INR)",
+                "Method",
+                "Status",
+                "Gateway Fee",
+                "GST on Fee",
+                "Net Settlement",
+                "Mode",
+            ]
+        )
+        stmt = (
+            select(PaymentRecord)
+            .where(PaymentRecord.organization_id == org_id)
+            .options(selectinload(PaymentRecord.customer), selectinload(PaymentRecord.invoice))
+            .order_by(PaymentRecord.created_at.desc())
+        )
         if start_date:
             stmt = stmt.where(func.date(PaymentRecord.created_at) >= start_date)
         if end_date:
             stmt = stmt.where(func.date(PaymentRecord.created_at) <= end_date)
         for p in db.execute(stmt).scalars().all():
-            writer.writerow([
-                p.razorpay_payment_id,
-                p.razorpay_order_id or "",
-                p.created_at.strftime("%Y-%m-%d %H:%M"),
-                p.customer.display_name if p.customer else "",
-                p.invoice.invoice_number if p.invoice else "",
-                f"{p.amount:.2f}",
-                p.payment_method.upper(),
-                p.payment_status.upper(),
-                f"{p.razorpay_fee:.2f}",
-                f"{p.tax_on_fee:.2f}",
-                f"{p.net_settlement:.2f}",
-                p.mode.upper(),
-            ])
+            writer.writerow(
+                [
+                    p.razorpay_payment_id,
+                    p.razorpay_order_id or "",
+                    p.created_at.strftime("%Y-%m-%d %H:%M"),
+                    p.customer.display_name if p.customer else "",
+                    p.invoice.invoice_number if p.invoice else "",
+                    f"{p.amount:.2f}",
+                    p.payment_method.upper(),
+                    p.payment_status.upper(),
+                    f"{p.razorpay_fee:.2f}",
+                    f"{p.tax_on_fee:.2f}",
+                    f"{p.net_settlement:.2f}",
+                    p.mode.upper(),
+                ]
+            )
 
     elif report_type == "expenses":
-        writer.writerow([
-            "Expense #", "Date", "Category", "Account", "Paid Through", "Amount",
-            "Tax", "Total", "Payment Method", "Status", "Reference"
-        ])
-        stmt = select(Expense).where(Expense.organization_id == org_id).options(
-            selectinload(Expense.account), selectinload(Expense.paid_through)
-        ).order_by(Expense.date.desc())
+        writer.writerow(
+            ["Expense #", "Date", "Category", "Account", "Paid Through", "Amount", "Tax", "Total", "Payment Method", "Status", "Reference"]
+        )
+        stmt = (
+            select(Expense)
+            .where(Expense.organization_id == org_id)
+            .options(selectinload(Expense.account), selectinload(Expense.paid_through))
+            .order_by(Expense.date.desc())
+        )
         if start_date:
             stmt = stmt.where(Expense.date >= start_date)
         if end_date:
             stmt = stmt.where(Expense.date <= end_date)
         for e in db.execute(stmt).scalars().all():
-            writer.writerow([
-                e.expense_number,
-                e.date.isoformat(),
-                e.category,
-                e.account.name,
-                e.paid_through.name,
-                f"{e.amount:.2f}",
-                f"{e.tax_amount:.2f}",
-                f"{e.total:.2f}",
-                e.payment_method,
-                e.status,
-                e.reference or "",
-            ])
+            writer.writerow(
+                [
+                    e.expense_number,
+                    e.date.isoformat(),
+                    e.category,
+                    e.account.name,
+                    e.paid_through.name,
+                    f"{e.amount:.2f}",
+                    f"{e.tax_amount:.2f}",
+                    f"{e.total:.2f}",
+                    e.payment_method,
+                    e.status,
+                    e.reference or "",
+                ]
+            )
 
     elif report_type == "refunds":
-        writer.writerow([
-            "Refund ID", "Payment ID", "Date", "Amount", "Reason", "Status", "Speed"
-        ])
+        writer.writerow(["Refund ID", "Payment ID", "Date", "Amount", "Reason", "Status", "Speed"])
         stmt = select(PaymentRefund).where(PaymentRefund.organization_id == org_id).order_by(PaymentRefund.refund_date.desc())
         for r in db.execute(stmt).scalars().all():
-            writer.writerow([
-                r.razorpay_refund_id,
-                r.razorpay_payment_id,
-                r.refund_date.isoformat(),
-                f"{r.amount:.2f}",
-                r.reason,
-                r.status,
-                r.speed,
-            ])
+            writer.writerow(
+                [
+                    r.razorpay_refund_id,
+                    r.razorpay_payment_id,
+                    r.refund_date.isoformat(),
+                    f"{r.amount:.2f}",
+                    r.reason,
+                    r.status,
+                    r.speed,
+                ]
+            )
 
     elif report_type == "settlements":
-        writer.writerow([
-            "Settlement ID", "Date", "Gross Amount", "Fees", "Tax", "Net Amount", "Bank UTR", "Status"
-        ])
+        writer.writerow(["Settlement ID", "Date", "Gross Amount", "Fees", "Tax", "Net Amount", "Bank UTR", "Status"])
         stmt = select(SettlementRecord).where(SettlementRecord.organization_id == org_id).order_by(SettlementRecord.settlement_date.desc())
         for s in db.execute(stmt).scalars().all():
-            writer.writerow([
-                s.settlement_id,
-                s.settlement_date.isoformat(),
-                f"{s.gross_amount:.2f}",
-                f"{s.fee_amount:.2f}",
-                f"{s.tax_amount:.2f}",
-                f"{s.net_amount:.2f}",
-                s.bank_reference or "",
-                s.status,
-            ])
+            writer.writerow(
+                [
+                    s.settlement_id,
+                    s.settlement_date.isoformat(),
+                    f"{s.gross_amount:.2f}",
+                    f"{s.fee_amount:.2f}",
+                    f"{s.tax_amount:.2f}",
+                    f"{s.net_amount:.2f}",
+                    s.bank_reference or "",
+                    s.status,
+                ]
+            )
 
     else:
         # Default: Transaction Ledger
-        writer.writerow([
-            "Transaction ID", "Date", "Type", "Account", "Debit", "Credit", "Amount", "Status", "Description"
-        ])
-        stmt = select(FinancialTransactionRecord).where(FinancialTransactionRecord.organization_id == org_id).order_by(FinancialTransactionRecord.date.desc())
+        writer.writerow(["Transaction ID", "Date", "Type", "Account", "Debit", "Credit", "Amount", "Status", "Description"])
+        stmt = (
+            select(FinancialTransactionRecord)
+            .where(FinancialTransactionRecord.organization_id == org_id)
+            .order_by(FinancialTransactionRecord.date.desc())
+        )
         for t in db.execute(stmt).scalars().all():
-            writer.writerow([
-                t.transaction_id,
-                t.date.isoformat(),
-                t.transaction_type,
-                t.account,
-                f"{t.debit:.2f}",
-                f"{t.credit:.2f}",
-                f"{t.amount:.2f}",
-                t.status,
-                t.description,
-            ])
+            writer.writerow(
+                [
+                    t.transaction_id,
+                    t.date.isoformat(),
+                    t.transaction_type,
+                    t.account,
+                    f"{t.debit:.2f}",
+                    f"{t.credit:.2f}",
+                    f"{t.amount:.2f}",
+                    t.status,
+                    t.description,
+                ]
+            )
 
     output.seek(0)
     filename = f"{report_type}_report_{date.today().isoformat()}.csv"
@@ -1425,16 +1444,15 @@ def integration_status(
 
     status_payload = service.get_status()
     last_success = razorpay_sync.last_successful_sync(db, org_id)
-    last_run = db.execute(
-        select(RazorpaySyncLog)
-        .where(RazorpaySyncLog.organization_id == org_id)
-        .order_by(RazorpaySyncLog.started_at.desc())
-        .limit(1)
-    ).scalars().first()
+    last_run = (
+        db.execute(
+            select(RazorpaySyncLog).where(RazorpaySyncLog.organization_id == org_id).order_by(RazorpaySyncLog.started_at.desc()).limit(1)
+        )
+        .scalars()
+        .first()
+    )
 
-    imported = db.execute(
-        select(func.count()).select_from(PaymentRecord).where(PaymentRecord.organization_id == org_id)
-    ).scalar_one()
+    imported = db.execute(select(func.count()).select_from(PaymentRecord).where(PaymentRecord.organization_id == org_id)).scalar_one()
 
     return {
         **status_payload,
@@ -1474,6 +1492,7 @@ def connect_razorpay(
     # 1. Test credentials with Razorpay API
     import razorpay
     from razorpay.errors import BadRequestError
+
     test_client = razorpay.Client(auth=(key_id, key_secret))
     reachable = False
     warning_error = None
@@ -1530,8 +1549,12 @@ def connect_razorpay(
     status_payload = service.get_status()
 
     audit.record(
-        db, user, "update", "integration", "razorpay",
-        f"Configured Razorpay credentials (mode={mode}, key_id={service.settings.razorpay_key_id_masked})"
+        db,
+        user,
+        "update",
+        "integration",
+        "razorpay",
+        f"Configured Razorpay credentials (mode={mode}, key_id={service.settings.razorpay_key_id_masked})",
     )
     db.commit()
 
@@ -1548,7 +1571,9 @@ def connect_razorpay(
         "success": True,
         "connected": True,
         "reachable": reachable,
-        "message": "Razorpay successfully connected (Live API Verified)!" if reachable else "Razorpay credentials saved and connected (Test sandbox active).",
+        "message": "Razorpay successfully connected (Live API Verified)!"
+        if reachable
+        else "Razorpay credentials saved and connected (Test sandbox active).",
         "status": status_payload,
     }
 
@@ -1634,9 +1659,7 @@ def list_sync_logs(
     db: Session = Depends(get_db),
 ):
     stmt = (
-        select(RazorpaySyncLog)
-        .where(RazorpaySyncLog.organization_id == user.organization_id)
-        .order_by(RazorpaySyncLog.started_at.desc())
+        select(RazorpaySyncLog).where(RazorpaySyncLog.organization_id == user.organization_id).order_by(RazorpaySyncLog.started_at.desc())
     )
     rows, total = paginate(db, stmt, pagination)
     return {
@@ -1770,23 +1793,27 @@ def get_payment_detail(
     if payment is None or payment.organization_id != user.organization_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Transaction not found")
 
-    refunds = db.execute(
-        select(PaymentRefund)
-        .where(PaymentRefund.payment_id == payment.id)
-        .order_by(PaymentRefund.refund_date.desc())
-    ).scalars().all()
+    refunds = (
+        db.execute(select(PaymentRefund).where(PaymentRefund.payment_id == payment.id).order_by(PaymentRefund.refund_date.desc()))
+        .scalars()
+        .all()
+    )
 
     entries: List[Dict[str, Any]] = []
     if payment.customer_payment_id:
-        for entry in db.execute(
-            select(JournalEntry)
-            .where(
-                JournalEntry.organization_id == payment.organization_id,
-                JournalEntry.source_type == "customer_payment",
-                JournalEntry.source_id == payment.customer_payment_id,
+        for entry in (
+            db.execute(
+                select(JournalEntry)
+                .where(
+                    JournalEntry.organization_id == payment.organization_id,
+                    JournalEntry.source_type == "customer_payment",
+                    JournalEntry.source_id == payment.customer_payment_id,
+                )
+                .options(selectinload(JournalEntry.lines))
             )
-            .options(selectinload(JournalEntry.lines))
-        ).scalars().all():
+            .scalars()
+            .all()
+        ):
             entries.append(
                 {
                     "id": entry.id,
@@ -1839,10 +1866,7 @@ def get_payment_detail(
 def list_categories(user: User = Depends(require_financial_read)):
     """The categories a transaction can be assigned to."""
     return {
-        "items": [
-            {"value": value, "label": meta["label"], "account_code": meta["code"] or None}
-            for value, meta in CATEGORIES.items()
-        ],
+        "items": [{"value": value, "label": meta["label"], "account_code": meta["code"] or None} for value, meta in CATEGORIES.items()],
         "match_types": list(MATCH_TYPES),
     }
 
@@ -1925,9 +1949,7 @@ def match_payment_to_invoice(
             f"Only captured payments can be matched (this one is {payment.payment_status})",
         )
 
-    invoice = db.execute(
-        select(Invoice).where(Invoice.id == payload.invoice_id, Invoice.organization_id == org_id)
-    ).scalar_one_or_none()
+    invoice = db.execute(select(Invoice).where(Invoice.id == payload.invoice_id, Invoice.organization_id == org_id)).scalar_one_or_none()
     if invoice is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
     if invoice.status == "void":
@@ -2039,11 +2061,15 @@ def list_category_rules(
     user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
-    rules = db.execute(
-        select(RazorpayCategoryRule)
-        .where(RazorpayCategoryRule.organization_id == user.organization_id)
-        .order_by(RazorpayCategoryRule.priority.asc(), RazorpayCategoryRule.created_at.asc())
-    ).scalars().all()
+    rules = (
+        db.execute(
+            select(RazorpayCategoryRule)
+            .where(RazorpayCategoryRule.organization_id == user.organization_id)
+            .order_by(RazorpayCategoryRule.priority.asc(), RazorpayCategoryRule.created_at.asc())
+        )
+        .scalars()
+        .all()
+    )
     return {"items": [_rule_row(rule) for rule in rules], "total": len(rules)}
 
 
@@ -2126,12 +2152,16 @@ def reapply_category_rules(
     db: Session = Depends(get_db),
 ):
     """Re-run categorisation over transactions that nobody has decided on yet."""
-    payments = db.execute(
-        select(PaymentRecord).where(
-            PaymentRecord.organization_id == user.organization_id,
-            PaymentRecord.category_status != "accepted",
+    payments = (
+        db.execute(
+            select(PaymentRecord).where(
+                PaymentRecord.organization_id == user.organization_id,
+                PaymentRecord.category_status != "accepted",
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     changed = 0
     for payment in payments:
         raw: Optional[Dict[str, Any]] = None

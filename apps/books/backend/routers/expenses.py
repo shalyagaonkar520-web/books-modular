@@ -1,4 +1,5 @@
 """Expenses paid directly from a bank/cash account."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -30,7 +31,6 @@ class SendExpenseEmailRequest(BaseModel):
     recipient_name: Optional[str] = None
     custom_notes: Optional[str] = None
     attach_pdf: bool = True
-
 
 
 def to_out(e: Expense) -> ExpenseOut:
@@ -103,7 +103,9 @@ def _post(db: Session, e: Expense, user: User) -> None:
     lines.append((paid_through.ledger_account_id, Decimal("0"), e.total, desc, e.vendor_id))
     entry = ledger.post_entry(db, org_id, e.date, lines, "expense", e.id, reference=e.reference or e.expense_number, created_by=user.id)
     bank.check_cash_overdraft(db, paid_through, e.total)
-    bank.record_movement(db, paid_through, e.date, "withdrawal", e.total, desc, "expense", e.id, user.id, e.reference, e.account_id, entry.id)
+    bank.record_movement(
+        db, paid_through, e.date, "withdrawal", e.total, desc, "expense", e.id, user.id, e.reference, e.account_id, entry.id
+    )
 
 
 def _unpost(db: Session, e: Expense, user: User, reason: str) -> None:
@@ -112,8 +114,12 @@ def _unpost(db: Session, e: Expense, user: User, reason: str) -> None:
 
 
 def _query(org_id: str):
-    return select(Expense).where(Expense.organization_id == org_id).options(
-        selectinload(Expense.account), selectinload(Expense.paid_through), selectinload(Expense.vendor), selectinload(Expense.customer)
+    return (
+        select(Expense)
+        .where(Expense.organization_id == org_id)
+        .options(
+            selectinload(Expense.account), selectinload(Expense.paid_through), selectinload(Expense.vendor), selectinload(Expense.customer)
+        )
     )
 
 
@@ -220,7 +226,9 @@ def get_expense(expense_id: str, user: User = Depends(get_current_user), db: Ses
 
 @router.post("", response_model=ExpenseOut, status_code=status.HTTP_201_CREATED)
 def create_expense(payload: ExpenseCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
-    e = Expense(organization_id=user.organization_id, expense_number=numbering.next_number(db, user.organization_id, "expense"), created_by=user.id)
+    e = Expense(
+        organization_id=user.organization_id, expense_number=numbering.next_number(db, user.organization_id, "expense"), created_by=user.id
+    )
     _apply(db, e, payload, user.organization_id)
     db.add(e)
     db.flush()
@@ -286,4 +294,3 @@ def send_expense_via_gmail(
     audit.record(db, user, "email", "expense", e.id, f"Emailed expense {e.expense_number} to {payload.to_email}")
     db.commit()
     return result
-

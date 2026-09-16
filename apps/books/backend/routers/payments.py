@@ -1,4 +1,5 @@
 """Payments received from customers and payments made to vendors."""
+
 from __future__ import annotations
 
 import json
@@ -47,8 +48,6 @@ class SendPaymentEmailRequest(BaseModel):
     to_email: str
     custom_notes: Optional[str] = None
     attach_pdf: bool = True
-
-
 
 
 def _refresh_invoice_status(inv: Invoice) -> None:
@@ -107,8 +106,10 @@ def list_customer_payments(
     user: User = Depends(require_full_app_access),
     db: Session = Depends(get_db),
 ):
-    stmt = select(CustomerPayment).where(CustomerPayment.organization_id == user.organization_id).options(
-        selectinload(CustomerPayment.customer), selectinload(CustomerPayment.invoice), selectinload(CustomerPayment.bank_account)
+    stmt = (
+        select(CustomerPayment)
+        .where(CustomerPayment.organization_id == user.organization_id)
+        .options(selectinload(CustomerPayment.customer), selectinload(CustomerPayment.invoice), selectinload(CustomerPayment.bank_account))
     )
     if customer_id:
         stmt = stmt.where(CustomerPayment.customer_id == customer_id)
@@ -132,8 +133,10 @@ def export_customer_payments_pdf(
     db: Session = Depends(get_db),
 ):
     """Export Customer Payments Received registry to PDF."""
-    stmt = select(CustomerPayment).where(CustomerPayment.organization_id == user.organization_id).options(
-        selectinload(CustomerPayment.customer), selectinload(CustomerPayment.invoice), selectinload(CustomerPayment.bank_account)
+    stmt = (
+        select(CustomerPayment)
+        .where(CustomerPayment.organization_id == user.organization_id)
+        .options(selectinload(CustomerPayment.customer), selectinload(CustomerPayment.invoice), selectinload(CustomerPayment.bank_account))
     )
     if customer_id:
         stmt = stmt.where(CustomerPayment.customer_id == customer_id)
@@ -161,8 +164,10 @@ def export_customer_payments_excel(
     db: Session = Depends(get_db),
 ):
     """Export Customer Payments Received registry to Excel."""
-    stmt = select(CustomerPayment).where(CustomerPayment.organization_id == user.organization_id).options(
-        selectinload(CustomerPayment.customer), selectinload(CustomerPayment.invoice), selectinload(CustomerPayment.bank_account)
+    stmt = (
+        select(CustomerPayment)
+        .where(CustomerPayment.organization_id == user.organization_id)
+        .options(selectinload(CustomerPayment.customer), selectinload(CustomerPayment.invoice), selectinload(CustomerPayment.bank_account))
     )
     if customer_id:
         stmt = stmt.where(CustomerPayment.customer_id == customer_id)
@@ -195,7 +200,9 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
         if invoice.customer_id != customer.id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invoice belongs to a different customer")
         if invoice.status not in ("sent", "partially_paid"):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payments can only be applied to sent invoices (current status: {invoice.status})")
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, f"Payments can only be applied to sent invoices (current status: {invoice.status})"
+            )
         if amount > money(invoice.balance_due):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the invoice balance of {invoice.balance_due}")
     payment = CustomerPayment(
@@ -219,11 +226,29 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
     credit_account = ar.id if invoice else unearned.id  # unapplied payments sit as customer advances
     desc = f"Payment {payment.payment_number} from {customer.display_name}" + (f" for {invoice.invoice_number}" if invoice else "")
     entry = ledger.post_entry(
-        db, org_id, payment.date,
+        db,
+        org_id,
+        payment.date,
         [(bank_acct.ledger_account_id, amount, Decimal("0"), desc, customer.id), (credit_account, Decimal("0"), amount, desc, customer.id)],
-        "customer_payment", payment.id, reference=payment.reference or payment.payment_number, created_by=user.id,
+        "customer_payment",
+        payment.id,
+        reference=payment.reference or payment.payment_number,
+        created_by=user.id,
     )
-    bank.record_movement(db, bank_acct, payment.date, "deposit", amount, desc, "customer_payment", payment.id, user.id, payment.reference, credit_account, entry.id)
+    bank.record_movement(
+        db,
+        bank_acct,
+        payment.date,
+        "deposit",
+        amount,
+        desc,
+        "customer_payment",
+        payment.id,
+        user.id,
+        payment.reference,
+        credit_account,
+        entry.id,
+    )
 
     if invoice:
         invoice.amount_paid = money(invoice.amount_paid) + amount
@@ -252,8 +277,10 @@ def delete_customer_payment(payment_id: str, user: User = Depends(require_write)
 @router.get("/customer-payments/{payment_id}/pdf")
 def download_customer_payment_pdf(payment_id: str, user: User = Depends(require_full_app_access), db: Session = Depends(get_db)):
     """Download single Customer Payment receipt as PDF."""
-    stmt = select(CustomerPayment).where(CustomerPayment.id == payment_id, CustomerPayment.organization_id == user.organization_id).options(
-        selectinload(CustomerPayment.customer), selectinload(CustomerPayment.invoice), selectinload(CustomerPayment.bank_account)
+    stmt = (
+        select(CustomerPayment)
+        .where(CustomerPayment.id == payment_id, CustomerPayment.organization_id == user.organization_id)
+        .options(selectinload(CustomerPayment.customer), selectinload(CustomerPayment.invoice), selectinload(CustomerPayment.bank_account))
     )
     payment = db.execute(stmt).scalar_one_or_none()
     if payment is None:
@@ -275,8 +302,10 @@ def send_customer_payment_receipt_gmail(
     db: Session = Depends(get_db),
 ):
     """Send payment confirmation receipt to customer via Gmail SMTP."""
-    stmt = select(CustomerPayment).where(CustomerPayment.id == payment_id, CustomerPayment.organization_id == user.organization_id).options(
-        selectinload(CustomerPayment.customer), selectinload(CustomerPayment.invoice), selectinload(CustomerPayment.bank_account)
+    stmt = (
+        select(CustomerPayment)
+        .where(CustomerPayment.id == payment_id, CustomerPayment.organization_id == user.organization_id)
+        .options(selectinload(CustomerPayment.customer), selectinload(CustomerPayment.invoice), selectinload(CustomerPayment.bank_account))
     )
     payment = db.execute(stmt).scalar_one_or_none()
     if payment is None:
@@ -335,8 +364,10 @@ def list_vendor_payments(
     user: User = Depends(require_full_app_access),
     db: Session = Depends(get_db),
 ):
-    stmt = select(VendorPayment).where(VendorPayment.organization_id == user.organization_id).options(
-        selectinload(VendorPayment.vendor), selectinload(VendorPayment.bill), selectinload(VendorPayment.bank_account)
+    stmt = (
+        select(VendorPayment)
+        .where(VendorPayment.organization_id == user.organization_id)
+        .options(selectinload(VendorPayment.vendor), selectinload(VendorPayment.bill), selectinload(VendorPayment.bank_account))
     )
     if vendor_id:
         stmt = stmt.where(VendorPayment.vendor_id == vendor_id)
@@ -360,8 +391,10 @@ def export_vendor_payments_pdf(
     db: Session = Depends(get_db),
 ):
     """Export Vendor Payments Made registry to PDF."""
-    stmt = select(VendorPayment).where(VendorPayment.organization_id == user.organization_id).options(
-        selectinload(VendorPayment.vendor), selectinload(VendorPayment.bill), selectinload(VendorPayment.bank_account)
+    stmt = (
+        select(VendorPayment)
+        .where(VendorPayment.organization_id == user.organization_id)
+        .options(selectinload(VendorPayment.vendor), selectinload(VendorPayment.bill), selectinload(VendorPayment.bank_account))
     )
     if vendor_id:
         stmt = stmt.where(VendorPayment.vendor_id == vendor_id)
@@ -389,8 +422,10 @@ def export_vendor_payments_excel(
     db: Session = Depends(get_db),
 ):
     """Export Vendor Payments Made registry to Excel."""
-    stmt = select(VendorPayment).where(VendorPayment.organization_id == user.organization_id).options(
-        selectinload(VendorPayment.vendor), selectinload(VendorPayment.bill), selectinload(VendorPayment.bank_account)
+    stmt = (
+        select(VendorPayment)
+        .where(VendorPayment.organization_id == user.organization_id)
+        .options(selectinload(VendorPayment.vendor), selectinload(VendorPayment.bill), selectinload(VendorPayment.bank_account))
     )
     if vendor_id:
         stmt = stmt.where(VendorPayment.vendor_id == vendor_id)
@@ -447,12 +482,30 @@ def create_vendor_payment(payload: VendorPaymentCreate, user: User = Depends(req
     debit_account = ap.id if bill else prepaid.id  # advances to vendors
     desc = f"Payment {payment.payment_number} to {vendor.display_name}" + (f" for {bill.bill_number}" if bill else "")
     entry = ledger.post_entry(
-        db, org_id, payment.date,
+        db,
+        org_id,
+        payment.date,
         [(debit_account, amount, Decimal("0"), desc, vendor.id), (bank_acct.ledger_account_id, Decimal("0"), amount, desc, vendor.id)],
-        "vendor_payment", payment.id, reference=payment.reference or payment.payment_number, created_by=user.id,
+        "vendor_payment",
+        payment.id,
+        reference=payment.reference or payment.payment_number,
+        created_by=user.id,
     )
     bank.check_cash_overdraft(db, bank_acct, amount)
-    bank.record_movement(db, bank_acct, payment.date, "withdrawal", amount, desc, "vendor_payment", payment.id, user.id, payment.reference, debit_account, entry.id)
+    bank.record_movement(
+        db,
+        bank_acct,
+        payment.date,
+        "withdrawal",
+        amount,
+        desc,
+        "vendor_payment",
+        payment.id,
+        user.id,
+        payment.reference,
+        debit_account,
+        entry.id,
+    )
 
     if bill:
         bill.amount_paid = money(bill.amount_paid) + amount
@@ -481,8 +534,10 @@ def delete_vendor_payment(payment_id: str, user: User = Depends(require_write), 
 @router.get("/vendor-payments/{payment_id}/pdf")
 def download_vendor_payment_pdf(payment_id: str, user: User = Depends(require_full_app_access), db: Session = Depends(get_db)):
     """Download single Vendor Payment remittance advice as PDF."""
-    stmt = select(VendorPayment).where(VendorPayment.id == payment_id, VendorPayment.organization_id == user.organization_id).options(
-        selectinload(VendorPayment.vendor), selectinload(VendorPayment.bill), selectinload(VendorPayment.bank_account)
+    stmt = (
+        select(VendorPayment)
+        .where(VendorPayment.id == payment_id, VendorPayment.organization_id == user.organization_id)
+        .options(selectinload(VendorPayment.vendor), selectinload(VendorPayment.bill), selectinload(VendorPayment.bank_account))
     )
     payment = db.execute(stmt).scalar_one_or_none()
     if payment is None:
@@ -504,8 +559,10 @@ def send_vendor_payment_remittance_gmail(
     db: Session = Depends(get_db),
 ):
     """Send payment remittance advice to vendor via Gmail SMTP."""
-    stmt = select(VendorPayment).where(VendorPayment.id == payment_id, VendorPayment.organization_id == user.organization_id).options(
-        selectinload(VendorPayment.vendor), selectinload(VendorPayment.bill), selectinload(VendorPayment.bank_account)
+    stmt = (
+        select(VendorPayment)
+        .where(VendorPayment.id == payment_id, VendorPayment.organization_id == user.organization_id)
+        .options(selectinload(VendorPayment.vendor), selectinload(VendorPayment.bill), selectinload(VendorPayment.bank_account))
     )
     payment = db.execute(stmt).scalar_one_or_none()
     if payment is None:
@@ -641,11 +698,14 @@ def process_approved_external_payment(
     if ext_pay.bank_account_id:
         bank_acct = db.get(BankAccount, ext_pay.bank_account_id)
     if not bank_acct:
-        bank_acct = db.execute(
-            select(BankAccount).where(BankAccount.organization_id == org_id).order_by(BankAccount.is_active.desc())
-        ).scalars().first()
+        bank_acct = (
+            db.execute(select(BankAccount).where(BankAccount.organization_id == org_id).order_by(BankAccount.is_active.desc()))
+            .scalars()
+            .first()
+        )
     if not bank_acct:
         from backend.models import Account
+
         op_account = db.execute(select(Account).where(Account.organization_id == org_id, Account.code == "1000")).scalar_one_or_none()
         if not op_account:
             op_account = Account(organization_id=org_id, code="1000", name="Main Operating Account", type="bank")
@@ -689,13 +749,33 @@ def process_approved_external_payment(
     ar = get_account_by_code(db, org_id, "1100")
     unearned = get_account_by_code(db, org_id, "2400")
     credit_account = ar.id if invoice else unearned.id
-    desc = f"Payment {payment.payment_number} ({ext_pay.platform.upper()}) from {customer.display_name}" + (f" for {invoice.invoice_number}" if invoice else "")
-    entry = ledger.post_entry(
-        db, org_id, payment.date,
-        [(bank_acct.ledger_account_id, amount, Decimal("0"), desc, customer.id), (credit_account, Decimal("0"), amount, desc, customer.id)],
-        "customer_payment", payment.id, reference=payment.reference or payment.payment_number, created_by="system",
+    desc = f"Payment {payment.payment_number} ({ext_pay.platform.upper()}) from {customer.display_name}" + (
+        f" for {invoice.invoice_number}" if invoice else ""
     )
-    bank.record_movement(db, bank_acct, payment.date, "deposit", amount, desc, "customer_payment", payment.id, "system", payment.reference, credit_account, entry.id)
+    entry = ledger.post_entry(
+        db,
+        org_id,
+        payment.date,
+        [(bank_acct.ledger_account_id, amount, Decimal("0"), desc, customer.id), (credit_account, Decimal("0"), amount, desc, customer.id)],
+        "customer_payment",
+        payment.id,
+        reference=payment.reference or payment.payment_number,
+        created_by="system",
+    )
+    bank.record_movement(
+        db,
+        bank_acct,
+        payment.date,
+        "deposit",
+        amount,
+        desc,
+        "customer_payment",
+        payment.id,
+        "system",
+        payment.reference,
+        credit_account,
+        entry.id,
+    )
 
     if invoice:
         invoice.amount_paid = money(invoice.amount_paid) + amount
@@ -825,9 +905,7 @@ def confirm_external_payment_from_email(
     db: Session = Depends(get_db),
 ):
     """Processes 1-click YES or NO confirmation directly from the Gmail SMTP email."""
-    ext_pay = db.execute(
-        select(ExternalPayment).where(ExternalPayment.approval_token == token)
-    ).scalar_one_or_none()
+    ext_pay = db.execute(select(ExternalPayment).where(ExternalPayment.approval_token == token)).scalar_one_or_none()
 
     if not ext_pay:
         return HTMLResponse(
@@ -835,7 +913,7 @@ def confirm_external_payment_from_email(
             content="""<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;">
             <h2 style="color:#ef4444;">Invalid or Expired Link</h2>
             <p>The payment confirmation token was not found or has expired.</p>
-            </body></html>"""
+            </body></html>""",
         )
 
     formatted_amount = f"₹{ext_pay.amount:,.2f}" if ext_pay.currency == "INR" else f"{ext_pay.currency} {ext_pay.amount:,.2f}"
@@ -843,13 +921,18 @@ def confirm_external_payment_from_email(
 
     if decision_clean == "yes":
         if ext_pay.status == "approved":
-            return HTMLResponse(content=f"""<!DOCTYPE html><html><head><title>Already Approved</title><style>body{{font-family:sans-serif;background:#f8fafc;padding:40px;display:flex;justify-content:center;}}.card{{background:#fff;padding:32px;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.1);max-width:500px;text-align:center;}}</style></head><body><div class="card"><h2 style="color:#16a34a;">Payment Already Approved</h2><p>This {ext_pay.platform.upper()} transaction of <strong>{formatted_amount}</strong> (Ref: {ext_pay.external_transaction_id}) has already been approved and recorded in Rooman Books.</p></div></body></html>""")
+            return HTMLResponse(
+                content=f"""<!DOCTYPE html><html><head><title>Already Approved</title><style>body{{font-family:sans-serif;background:#f8fafc;padding:40px;display:flex;justify-content:center;}}.card{{background:#fff;padding:32px;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.1);max-width:500px;text-align:center;}}</style></head><body><div class="card"><h2 style="color:#16a34a;">Payment Already Approved</h2><p>This {ext_pay.platform.upper()} transaction of <strong>{formatted_amount}</strong> (Ref: {ext_pay.external_transaction_id}) has already been approved and recorded in Rooman Books.</p></div></body></html>"""
+            )
         if ext_pay.status == "rejected":
-            return HTMLResponse(content="""<!DOCTYPE html><html><head><title>Previously Rejected</title><style>body{font-family:sans-serif;background:#f8fafc;padding:40px;display:flex;justify-content:center;}.card{background:#fff;padding:32px;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.1);max-width:500px;text-align:center;}</style></head><body><div class="card"><h2 style="color:#dc2626;">Payment Previously Rejected</h2><p>This transaction was already marked as rejected.</p></div></body></html>""")
+            return HTMLResponse(
+                content="""<!DOCTYPE html><html><head><title>Previously Rejected</title><style>body{font-family:sans-serif;background:#f8fafc;padding:40px;display:flex;justify-content:center;}.card{background:#fff;padding:32px;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.1);max-width:500px;text-align:center;}</style></head><body><div class="card"><h2 style="color:#dc2626;">Payment Previously Rejected</h2><p>This transaction was already marked as rejected.</p></div></body></html>"""
+            )
 
         cust_payment = process_approved_external_payment(db, ext_pay, approved_by="Gmail SMTP 1-Click Action")
 
-        return HTMLResponse(content=f"""<!DOCTYPE html>
+        return HTMLResponse(
+            content=f"""<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -903,19 +986,25 @@ def confirm_external_payment_from_email(
   </div>
 </body>
 </html>
-""")
+"""
+        )
 
     elif decision_clean == "no":
         if ext_pay.status == "rejected":
-            return HTMLResponse(content="""<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;"><h2 style="color:#dc2626;">Payment Already Rejected</h2><p>This transaction was already marked as rejected.</p></body></html>""")
+            return HTMLResponse(
+                content="""<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;"><h2 style="color:#dc2626;">Payment Already Rejected</h2><p>This transaction was already marked as rejected.</p></body></html>"""
+            )
         if ext_pay.status == "approved":
-            return HTMLResponse(content="""<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;"><h2 style="color:#ef4444;">Cannot Reject</h2><p>This payment has already been approved and committed to the financial ledger.</p></body></html>""")
+            return HTMLResponse(
+                content="""<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;"><h2 style="color:#ef4444;">Cannot Reject</h2><p>This payment has already been approved and committed to the financial ledger.</p></body></html>"""
+            )
 
         ext_pay.status = "rejected"
         ext_pay.rejection_reason = "Rejected via Gmail SMTP confirmation link"
         db.commit()
 
-        return HTMLResponse(content=f"""<!DOCTYPE html>
+        return HTMLResponse(
+            content=f"""<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -969,11 +1058,12 @@ def confirm_external_payment_from_email(
   </div>
 </body>
 </html>
-""")
+"""
+        )
 
     return HTMLResponse(
         status_code=400,
-        content="""<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;"><h2>Invalid Decision</h2><p>Expected decision=yes or decision=no.</p></body></html>"""
+        content="""<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;"><h2>Invalid Decision</h2><p>Expected decision=yes or decision=no.</p></body></html>""",
     )
 
 
@@ -1031,4 +1121,3 @@ def resend_external_payment_confirmation_email(
     ext_pay.confirmation_email_sent = True
     db.commit()
     return Message(message=f"Confirmation email re-dispatched to {recipient}")
-

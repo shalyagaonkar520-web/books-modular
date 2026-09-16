@@ -29,9 +29,14 @@ def test_register_creates_org_admin_and_bootstrap(client):
 
 def test_register_rejects_duplicate_email_and_weak_password(client):
     ctx = register_org(client, "Dup")
-    res = client.post("/api/auth/register", json={"name": "Someone Else", "email": ctx["email"], "password": "Str0ngPass!", "organizationName": "Another"})
+    res = client.post(
+        "/api/auth/register", json={"name": "Someone Else", "email": ctx["email"], "password": "Str0ngPass!", "organizationName": "Another"}
+    )
     assert res.status_code == 409
-    res = client.post("/api/auth/register", json={"name": "Someone Else", "email": "weak@x.example.com", "password": "weak", "organizationName": "Another"})
+    res = client.post(
+        "/api/auth/register",
+        json={"name": "Someone Else", "email": "weak@x.example.com", "password": "weak", "organizationName": "Another"},
+    )
     assert res.status_code == 422
 
 
@@ -107,7 +112,9 @@ def test_user_management_and_roles(mock_smtp, client):
     promoted = client.patch(f"/api/users/{viewer.json()['id']}", headers=h, json={"role": "staff"})
     assert promoted.status_code == 200
     login = client.post("/api/auth/login", json={"email": "viewer@roles.example.com", "password": "Viewer1234"}).json()
-    assert client.post("/api/contacts", headers=auth(login["accessToken"]), json={"type": "customer", "displayName": "Ok"}).status_code == 201
+    assert (
+        client.post("/api/contacts", headers=auth(login["accessToken"]), json={"type": "customer", "displayName": "Ok"}).status_code == 201
+    )
     # cannot demote the last admin
     assert client.patch(f"/api/users/{ctx['user']['id']}", headers=h, json={"role": "staff"}).status_code == 400
     # deactivated users cannot log in
@@ -148,7 +155,8 @@ def test_organization_profile_rejects_malformed_contact_and_tax_fields(client):
     assert client.put("/api/organization", headers=h, json={"pan": "12345ABCDE"}).status_code == 422
 
     ok = client.put(
-        "/api/organization", headers=h,
+        "/api/organization",
+        headers=h,
         json={"postalCode": "560001", "phone": "9876543210", "gstin": "29ABCDE1234F1Z5", "pan": "ABCDE1234F"},
     )
     assert ok.status_code == 200, ok.text
@@ -222,6 +230,7 @@ def test_send_verification_email_and_verify_token(client):
         assert rec is not None
         # We can generate a known token to test verification
         from backend.security import hash_token
+
         raw_token = "test-secret-token-12345"
         rec.token_hash = hash_token(raw_token)
         db.commit()
@@ -354,5 +363,3 @@ def test_forgot_password_and_reset_flow(client):
     new_login = client.post("/api/auth/login", json={"email": email, "password": "BrandNewPass123!"})
     assert new_login.status_code == 200
     assert new_login.json()["user"]["email"] == email
-
-

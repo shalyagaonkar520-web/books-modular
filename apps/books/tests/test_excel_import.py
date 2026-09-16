@@ -5,6 +5,7 @@ Customer Name, "rate" matched Tax Rate before Amount) and the commit step
 defaulted anything missing to invented values - a missing amount became 100 or
 500, and every imported document was dated today regardless of the sheet.
 """
+
 import io
 
 import openpyxl
@@ -42,12 +43,16 @@ def test_missing_required_column_is_reported_not_guessed(client, org):
 
 def test_columns_are_matched_by_name_not_by_position(client, org):
     """A decoy 'Item Name'/'Tax Rate' must not be mistaken for the real fields."""
-    res = _upload(client, org["h"], {
-        "Invoices": [
-            ["Item Name", "Tax Rate", "Due Date", "Customer Name", "Date", "Amount"],
-            ["Laptop", "18", "2026-09-15", "Acme Enterprises", "2026-09-01", "75000"],
-        ]
-    })
+    res = _upload(
+        client,
+        org["h"],
+        {
+            "Invoices": [
+                ["Item Name", "Tax Rate", "Due Date", "Customer Name", "Date", "Amount"],
+                ["Laptop", "18", "2026-09-15", "Acme Enterprises", "2026-09-01", "75000"],
+            ]
+        },
+    )
     section = res.json()["sections"][0]
     assert section["mapped_columns"]["display_name"] == "Customer Name"
     assert section["mapped_columns"]["amount"] == "Amount"
@@ -67,14 +72,18 @@ def test_blank_header_cell_does_not_shift_the_columns(client, org):
 
 
 def test_unreadable_rows_are_skipped_with_a_reason(client, org):
-    res = _upload(client, org["h"], {
-        "Expenses": [
-            ["Payee", "Category", "Amount", "Date", "Notes"],
-            ["Good Co", "Rent", "5000", "2026-09-01", "fine"],
-            ["Bad Co", "Rent", "not-a-number", "2026-09-02", "bad amount"],
-            ["No Date Co", "Rent", "900", "", "missing date"],
-        ]
-    })
+    res = _upload(
+        client,
+        org["h"],
+        {
+            "Expenses": [
+                ["Payee", "Category", "Amount", "Date", "Notes"],
+                ["Good Co", "Rent", "5000", "2026-09-01", "fine"],
+                ["Bad Co", "Rent", "not-a-number", "2026-09-02", "bad amount"],
+                ["No Date Co", "Rent", "900", "", "missing date"],
+            ]
+        },
+    )
     section = res.json()["sections"][0]
     assert section["count"] == 1
     assert section["skipped_count"] == 2
@@ -84,22 +93,23 @@ def test_unreadable_rows_are_skipped_with_a_reason(client, org):
 
 
 def test_import_uses_the_dates_and_amounts_from_the_sheet(client, org):
-    res = _upload(client, org["h"], {
-        "Invoices": [
-            ["Customer Name", "Amount", "Date", "Due Date", "Notes"],
-            ["Imported Customer", "12345.50", "2026-09-01", "2026-09-20", "Real note text"],
-        ]
-    })
+    res = _upload(
+        client,
+        org["h"],
+        {
+            "Invoices": [
+                ["Customer Name", "Amount", "Date", "Due Date", "Notes"],
+                ["Imported Customer", "12345.50", "2026-09-01", "2026-09-20", "Real note text"],
+            ]
+        },
+    )
     body = res.json()
     assert body["ready"] is True
     commit = client.post("/api/documents/import-excel-commit", headers=org["h"], json={"sections": body["sections"]})
     assert commit.status_code == 200, commit.text
     assert commit.json()["imported_counts"]["invoices"] == 1
 
-    invoice = next(
-        i for i in client.get("/api/invoices", headers=org["h"]).json()["items"]
-        if i["customerName"] == "Imported Customer"
-    )
+    invoice = next(i for i in client.get("/api/invoices", headers=org["h"]).json()["items"] if i["customerName"] == "Imported Customer")
     assert invoice["date"] == "2026-09-01"
     assert invoice["dueDate"] == "2026-09-20"
     assert invoice["total"] == 12345.50
@@ -118,13 +128,17 @@ def test_sending_both_sections_and_items_does_not_import_twice(client, org):
     The commit endpoint appended both lists, so every record landed in the
     books twice - a 6-row sheet reported 12 imported.
     """
-    res = _upload(client, org["h"], {
-        "Customers": [
-            ["Display Name", "Email"],
-            ["Double Check One", "one@dup.example.com"],
-            ["Double Check Two", "two@dup.example.com"],
-        ]
-    })
+    res = _upload(
+        client,
+        org["h"],
+        {
+            "Customers": [
+                ["Display Name", "Email"],
+                ["Double Check One", "one@dup.example.com"],
+                ["Double Check Two", "two@dup.example.com"],
+            ]
+        },
+    )
     sections = res.json()["sections"]
     duplicated_items = [{"category": s["category"], "data": row} for s in sections for row in s["rows"]]
 
@@ -136,7 +150,10 @@ def test_sending_both_sections_and_items_does_not_import_twice(client, org):
     assert commit.status_code == 200, commit.text
     assert commit.json()["imported_counts"]["customers"] == 2
 
-    names = [c["displayName"] for c in client.get("/api/contacts", headers=org["h"], params={"type": "customer", "page_size": 200}).json()["items"]]
+    names = [
+        c["displayName"]
+        for c in client.get("/api/contacts", headers=org["h"], params={"type": "customer", "page_size": 200}).json()["items"]
+    ]
     assert names.count("Double Check One") == 1
     assert names.count("Double Check Two") == 1
 
@@ -163,13 +180,17 @@ def test_currency_formatted_amounts_do_not_crash_the_import(client, org):
     The old commit step did Decimal(str(value)) directly, so any amount with a
     thousands separator or currency prefix returned HTTP 500 mid-import.
     """
-    res = _upload(client, org["h"], {
-        "Invoices": [
-            ["Customer Name", "Amount", "Date"],
-            ["Comma Amount Co", "1,25,000", "2026-09-01"],
-            ["Currency Prefix Co", "INR 3,500.50", "2026-09-02"],
-        ]
-    })
+    res = _upload(
+        client,
+        org["h"],
+        {
+            "Invoices": [
+                ["Customer Name", "Amount", "Date"],
+                ["Comma Amount Co", "1,25,000", "2026-09-01"],
+                ["Currency Prefix Co", "INR 3,500.50", "2026-09-02"],
+            ]
+        },
+    )
     assert res.status_code == 200
     section = res.json()["sections"][0]
     assert section["count"] == 2
@@ -180,8 +201,7 @@ def test_currency_formatted_amounts_do_not_crash_the_import(client, org):
     assert commit.json()["imported_counts"]["invoices"] == 2
 
     totals = {
-        i["customerName"]: i["total"]
-        for i in client.get("/api/invoices", headers=org["h"], params={"page_size": 200}).json()["items"]
+        i["customerName"]: i["total"] for i in client.get("/api/invoices", headers=org["h"], params={"page_size": 200}).json()["items"]
     }
     assert totals["Comma Amount Co"] == 125000
     assert totals["Currency Prefix Co"] == 3500.50
@@ -199,30 +219,34 @@ def test_reimporting_the_same_sheet_does_not_duplicate_contacts(client, org):
     assert c2.json()["imported_counts"]["customers"] == 0
     assert "already exists" in c2.json()["skipped"][0]
 
-    names = [c["displayName"] for c in client.get(
-        "/api/contacts", headers=org["h"], params={"type": "customer", "page_size": 200}).json()["items"]]
+    names = [
+        c["displayName"]
+        for c in client.get("/api/contacts", headers=org["h"], params={"type": "customer", "page_size": 200}).json()["items"]
+    ]
     assert names.count("Repeat Co") == 1
 
 
 def test_columns_absent_from_the_sheet_are_left_empty(client, org):
     """No placeholder text for fields the spreadsheet does not carry."""
-    res = _upload(client, org["h"], {
-        # No Notes column, and no Category column on the expense.
-        "Invoices": [["Customer Name", "Amount", "Date"], ["Bare Invoice Co", "1000", "2026-09-01"]],
-        "Expenses": [["Amount", "Date"], ["250", "2026-09-02"]],
-    }).json()
+    res = _upload(
+        client,
+        org["h"],
+        {
+            # No Notes column, and no Category column on the expense.
+            "Invoices": [["Customer Name", "Amount", "Date"], ["Bare Invoice Co", "1000", "2026-09-01"]],
+            "Expenses": [["Amount", "Date"], ["250", "2026-09-02"]],
+        },
+    ).json()
     commit = client.post("/api/documents/import-excel-commit", headers=org["h"], json={"sections": res["sections"]})
     assert commit.status_code == 200, commit.text
 
     invoice_id = next(
-        i["id"] for i in client.get("/api/invoices", headers=org["h"], params={"page_size": 200}).json()["items"]
+        i["id"]
+        for i in client.get("/api/invoices", headers=org["h"], params={"page_size": 200}).json()["items"]
         if i["customerName"] == "Bare Invoice Co"
     )
     invoice = client.get(f"/api/invoices/{invoice_id}", headers=org["h"]).json()
     assert invoice["lines"][0]["description"] == ""
 
-    expense = next(
-        e for e in client.get("/api/expenses", headers=org["h"], params={"page_size": 200}).json()["items"]
-        if e["total"] == 250
-    )
+    expense = next(e for e in client.get("/api/expenses", headers=org["h"], params={"page_size": 200}).json()["items"] if e["total"] == 250)
     assert not expense["notes"]

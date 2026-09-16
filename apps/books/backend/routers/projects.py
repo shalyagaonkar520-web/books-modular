@@ -1,4 +1,5 @@
 """Projects and timesheets, plus billing unbilled time into an invoice."""
+
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
@@ -48,23 +49,44 @@ def _hours_summary(db: Session, project_ids: List[str]) -> dict:
 def project_out(p: Project, summary: Optional[dict] = None) -> ProjectOut:
     s = summary or {"logged": Decimal("0"), "billable": Decimal("0"), "unbilled": Decimal("0")}
     return ProjectOut(
-        id=p.id, name=p.name, customer_id=p.customer_id, customer_name=p.customer.display_name if p.customer else None,
-        description=p.description, billing_method=p.billing_method, hourly_rate=p.hourly_rate, budget_hours=p.budget_hours, status=p.status,
-        logged_hours=s["logged"], billable_hours=s["billable"], unbilled_hours=s["unbilled"],
-        unbilled_amount=money(s["unbilled"] * p.hourly_rate) if p.billing_method == "hourly" else Decimal("0"), created_at=p.created_at,
+        id=p.id,
+        name=p.name,
+        customer_id=p.customer_id,
+        customer_name=p.customer.display_name if p.customer else None,
+        description=p.description,
+        billing_method=p.billing_method,
+        hourly_rate=p.hourly_rate,
+        budget_hours=p.budget_hours,
+        status=p.status,
+        logged_hours=s["logged"],
+        billable_hours=s["billable"],
+        unbilled_hours=s["unbilled"],
+        unbilled_amount=money(s["unbilled"] * p.hourly_rate) if p.billing_method == "hourly" else Decimal("0"),
+        created_at=p.created_at,
     )
 
 
 def entry_out(e: TimeEntry) -> TimeEntryOut:
     return TimeEntryOut(
-        id=e.id, project_id=e.project_id, project_name=e.project.name, customer_name=e.project.customer.display_name if e.project.customer else None,
-        user_id=e.user_id, user_name=e.user.name, date=e.date, hours=e.hours, description=e.description, is_billable=e.is_billable,
-        invoice_id=e.invoice_id, created_at=e.created_at,
+        id=e.id,
+        project_id=e.project_id,
+        project_name=e.project.name,
+        customer_name=e.project.customer.display_name if e.project.customer else None,
+        user_id=e.user_id,
+        user_name=e.user.name,
+        date=e.date,
+        hours=e.hours,
+        description=e.description,
+        is_billable=e.is_billable,
+        invoice_id=e.invoice_id,
+        created_at=e.created_at,
     )
 
 
 @router.get("/projects", response_model=List[ProjectOut])
-def list_projects(status_filter: Optional[str] = Query(None, alias="status"), user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_projects(
+    status_filter: Optional[str] = Query(None, alias="status"), user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
     stmt = select(Project).where(Project.organization_id == user.organization_id).options(selectinload(Project.customer))
     if status_filter:
         stmt = stmt.where(Project.status == status_filter)
@@ -136,8 +158,10 @@ def list_time_entries(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    stmt = select(TimeEntry).where(TimeEntry.organization_id == user.organization_id).options(
-        selectinload(TimeEntry.project).selectinload(Project.customer), selectinload(TimeEntry.user)
+    stmt = (
+        select(TimeEntry)
+        .where(TimeEntry.organization_id == user.organization_id)
+        .options(selectinload(TimeEntry.project).selectinload(Project.customer), selectinload(TimeEntry.user))
     )
     if project_id:
         stmt = stmt.where(TimeEntry.project_id == project_id)
@@ -168,8 +192,13 @@ def create_time_entry(payload: TimeEntryCreate, user: User = Depends(require_wri
             raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
         target_user_id = target.id
     entry = TimeEntry(
-        organization_id=user.organization_id, project_id=project.id, user_id=target_user_id, date=payload.date,
-        hours=payload.hours, description=payload.description, is_billable=payload.is_billable,
+        organization_id=user.organization_id,
+        project_id=project.id,
+        user_id=target_user_id,
+        date=payload.date,
+        hours=payload.hours,
+        description=payload.description,
+        is_billable=payload.is_billable,
     )
     db.add(entry)
     db.flush()
@@ -224,9 +253,16 @@ def invoice_unbilled_time(payload: InvoiceFromTimeRequest, user: User = Depends(
     hours = sum((e.hours for e in entries), Decimal("0"))
     customer = db.get(Contact, project.customer_id)
     inv = Invoice(
-        organization_id=org_id, invoice_number=numbering.next_number(db, org_id, "invoice"), customer_id=customer.id, project_id=project.id,
-        date=payload.date, due_date=payload.due_date or (payload.date + timedelta(days=customer.payment_terms_days)), status="sent",
-        sent_at=datetime.now(UTC), created_by=user.id, reference=f"Project: {project.name}",
+        organization_id=org_id,
+        invoice_number=numbering.next_number(db, org_id, "invoice"),
+        customer_id=customer.id,
+        project_id=project.id,
+        date=payload.date,
+        due_date=payload.due_date or (payload.date + timedelta(days=customer.payment_terms_days)),
+        status="sent",
+        sent_at=datetime.now(UTC),
+        created_by=user.id,
+        reference=f"Project: {project.name}",
     )
     amount = money(hours * project.hourly_rate)
     tax = money(amount * Decimal(str(payload.tax_rate)) / Decimal("100"))
@@ -235,8 +271,17 @@ def invoice_unbilled_time(payload: InvoiceFromTimeRequest, user: User = Depends(
     inv.discount_amount = Decimal("0")
     inv.total = money(amount + tax)
     first, last = entries[0].date, entries[-1].date
-    inv.lines.append(InvoiceLine(position=0, description=f"{project.name}: {hours} hours of professional services ({first} to {last})",
-                                 quantity=hours, rate=project.hourly_rate, tax_rate=payload.tax_rate, amount=amount, tax_amount=tax))
+    inv.lines.append(
+        InvoiceLine(
+            position=0,
+            description=f"{project.name}: {hours} hours of professional services ({first} to {last})",
+            quantity=hours,
+            rate=project.hourly_rate,
+            tax_rate=payload.tax_rate,
+            amount=amount,
+            tax_amount=tax,
+        )
+    )
     db.add(inv)
     db.flush()
     for e in entries:

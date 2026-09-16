@@ -1,4 +1,5 @@
 """Date period helpers (fiscal year, months, quarters)."""
+
 from __future__ import annotations
 
 import calendar

@@ -1,4 +1,5 @@
 """Service for generating professional PDF and Excel extracts for Invoices and Sales Registries."""
+
 from __future__ import annotations
 
 import io
@@ -114,7 +115,9 @@ def generate_invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -
     # Org Info & Header
     org_name = (org.name if org else None) or "Rooman Technologies Pvt Ltd"
     org_addr = (org.address if org else None) or "Rooman House, #12 Rajajinagar"
-    org_city_state = ", ".join(filter(None, [org.city if org else "Bengaluru", org.state if org else "Karnataka", org.postal_code if org else "560010"]))
+    org_city_state = ", ".join(
+        filter(None, [org.city if org else "Bengaluru", org.state if org else "Karnataka", org.postal_code if org else "560010"])
+    )
     org_gstin = (org.gstin if org else None) or "29AABCR1234F1Z5"
     org_email = (org.email if org else None) or "shalya@rooman.com"
 
@@ -136,11 +139,13 @@ def generate_invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -
     ]
     t_header = Table(header_table_data, colWidths=[330, 210])
     t_header.setStyle(
-        TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ])
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
     )
     story.append(t_header)
     story.append(Spacer(1, 14))
@@ -171,15 +176,17 @@ def generate_invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -
     ]
     t_bill = Table(bill_to_data, colWidths=[330, 210])
     t_bill.setStyle(
-        TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
-            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
-            ("TOPPADDING", (0, 0), (-1, -1), 8),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-            ("LEFTPADDING", (0, 0), (-1, -1), 10),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-        ])
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+            ]
+        )
     )
     story.append(t_bill)
     story.append(Spacer(1, 16))
@@ -197,29 +204,33 @@ def generate_invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -
 
     for idx, line in enumerate(invoice.lines, start=1):
         desc = line.description or (line.item.name if line.item else "Product / Service")
-        table_rows.append([
-            Paragraph(str(idx), cell_style),
-            Paragraph(desc, cell_style),
-            Paragraph(f"{float(line.quantity):g}", cell_right),
-            Paragraph(_fmt_curr(line.rate), cell_right),
-            Paragraph(f"{float(line.tax_rate or 0):g}%", cell_right),
-            Paragraph(_fmt_curr(line.amount), cell_right),
-        ])
+        table_rows.append(
+            [
+                Paragraph(str(idx), cell_style),
+                Paragraph(desc, cell_style),
+                Paragraph(f"{float(line.quantity):g}", cell_right),
+                Paragraph(_fmt_curr(line.rate), cell_right),
+                Paragraph(f"{float(line.tax_rate or 0):g}%", cell_right),
+                Paragraph(_fmt_curr(line.amount), cell_right),
+            ]
+        )
 
     t_lines = Table(table_rows, colWidths=[24, 256, 50, 70, 50, 90])
     t_lines.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
-            ("ALIGN", (0, 0), (0, -1), "CENTER"),
-            ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
-            ("TOPPADDING", (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ("LEFTPADDING", (0, 0), (-1, -1), 6),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ])
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+                ("ALIGN", (0, 0), (0, -1), "CENTER"),
+                ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
     )
     story.append(t_lines)
     story.append(Spacer(1, 14))
@@ -238,37 +249,47 @@ def generate_invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -
     ]
     if discount > 0:
         summary_rows.append([Paragraph("Discount:", cell_right), Paragraph(f"- {_fmt_curr(discount)}", cell_right)])
-    summary_rows.extend([
-        [Paragraph("<b>Grand Total:</b>", cell_right), Paragraph(f"<b>{_fmt_curr(total)}</b>", cell_right)],
-        [Paragraph("Amount Paid:", cell_right), Paragraph(_fmt_curr(paid), cell_right)],
+    summary_rows.extend(
         [
-            Paragraph("<b>Balance Due:</b>", cell_right),
-            Paragraph(f"<font color='#b91c1c'><b>{_fmt_curr(balance)}</b></font>", cell_right),
-        ],
-    ])
+            [Paragraph("<b>Grand Total:</b>", cell_right), Paragraph(f"<b>{_fmt_curr(total)}</b>", cell_right)],
+            [Paragraph("Amount Paid:", cell_right), Paragraph(_fmt_curr(paid), cell_right)],
+            [
+                Paragraph("<b>Balance Due:</b>", cell_right),
+                Paragraph(f"<font color='#b91c1c'><b>{_fmt_curr(balance)}</b></font>", cell_right),
+            ],
+        ]
+    )
 
     t_summary = Table(summary_rows, colWidths=[120, 100])
     t_summary.setStyle(
-        TableStyle([
-            ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ("LINEBELOW", (0, 2), (-1, 2), 0.5, colors.HexColor("#cbd5e1")),
-            ("LINEBELOW", (0, -2), (-1, -2), 0.5, colors.HexColor("#cbd5e1")),
-        ])
+        TableStyle(
+            [
+                ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("LINEBELOW", (0, 2), (-1, 2), 0.5, colors.HexColor("#cbd5e1")),
+                ("LINEBELOW", (0, -2), (-1, -2), 0.5, colors.HexColor("#cbd5e1")),
+            ]
+        )
     )
 
-    t_wrap = Table([[Paragraph(f"<b>Notes:</b><br/>{invoice.notes or 'Thank you for your business.'}", value_style), t_summary]], colWidths=[320, 220])
+    t_wrap = Table(
+        [[Paragraph(f"<b>Notes:</b><br/>{invoice.notes or 'Thank you for your business.'}", value_style), t_summary]], colWidths=[320, 220]
+    )
     t_wrap.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
     story.append(t_wrap)
 
     story.append(Spacer(1, 25))
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cbd5e1"), spaceAfter=10))
-    story.append(Paragraph(
-        "<i>This is a computer-generated GST Tax Invoice issued by Rooman Technologies Pvt Ltd. For inquiries, email shalya@rooman.com</i>",
-        ParagraphStyle("Footnote", parent=styles["Normal"], fontSize=7.5, leading=10, textColor=colors.HexColor("#64748b"), alignment=1),
-    ))
+    story.append(
+        Paragraph(
+            "<i>This is a computer-generated GST Tax Invoice issued by Rooman Technologies Pvt Ltd. For inquiries, email shalya@rooman.com</i>",
+            ParagraphStyle(
+                "Footnote", parent=styles["Normal"], fontSize=7.5, leading=10, textColor=colors.HexColor("#64748b"), alignment=1
+            ),
+        )
+    )
 
     doc.build(story)
     return buffer.getvalue()
@@ -314,38 +335,44 @@ def generate_invoices_list_pdf(invoices: List[Invoice], org: Optional[Organizati
         paid_sum += pd
         balance_sum += bal
 
-        rows.append([
-            Paragraph(inv.invoice_number, td_style),
-            Paragraph((inv.customer.display_name if inv.customer else "-")[:24], td_style),
-            Paragraph(_fmt_date(inv.date), td_style),
-            Paragraph(_fmt_date(inv.due_date), td_style),
-            Paragraph(inv.status.upper(), td_style),
-            Paragraph(_fmt_curr(tot), td_right),
-            Paragraph(_fmt_curr(pd), td_right),
-            Paragraph(_fmt_curr(bal), td_right),
-        ])
+        rows.append(
+            [
+                Paragraph(inv.invoice_number, td_style),
+                Paragraph((inv.customer.display_name if inv.customer else "-")[:24], td_style),
+                Paragraph(_fmt_date(inv.date), td_style),
+                Paragraph(_fmt_date(inv.due_date), td_style),
+                Paragraph(inv.status.upper(), td_style),
+                Paragraph(_fmt_curr(tot), td_right),
+                Paragraph(_fmt_curr(pd), td_right),
+                Paragraph(_fmt_curr(bal), td_right),
+            ]
+        )
 
-    rows.append([
-        Paragraph("<b>TOTALS</b>", td_style),
-        Paragraph("", td_style),
-        Paragraph("", td_style),
-        Paragraph("", td_style),
-        Paragraph("", td_style),
-        Paragraph(f"<b>{_fmt_curr(total_sum)}</b>", td_right),
-        Paragraph(f"<b>{_fmt_curr(paid_sum)}</b>", td_right),
-        Paragraph(f"<b>{_fmt_curr(balance_sum)}</b>", td_right),
-    ])
+    rows.append(
+        [
+            Paragraph("<b>TOTALS</b>", td_style),
+            Paragraph("", td_style),
+            Paragraph("", td_style),
+            Paragraph("", td_style),
+            Paragraph("", td_style),
+            Paragraph(f"<b>{_fmt_curr(total_sum)}</b>", td_right),
+            Paragraph(f"<b>{_fmt_curr(paid_sum)}</b>", td_right),
+            Paragraph(f"<b>{_fmt_curr(balance_sum)}</b>", td_right),
+        ]
+    )
 
     t = Table(rows, colWidths=[75, 125, 55, 55, 55, 65, 65, 69])
     t.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f8fafc")]),
-            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#e2e8f0")),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ])
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f8fafc")]),
+                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#e2e8f0")),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
     )
     story.append(t)
     doc.build(story)
@@ -530,7 +557,7 @@ def generate_invoices_list_excel(invoices: List[Invoice], org: Optional[Organiza
     ws.cell(row=row_idx, column=1, value="TOTALS").font = bold_font
     for c_idx in range(7, 12):
         col_letter = get_column_letter(c_idx)
-        cell = ws.cell(row=row_idx, column=c_idx, value=f"=SUM({col_letter}5:{col_letter}{row_idx-1})")
+        cell = ws.cell(row=row_idx, column=c_idx, value=f"=SUM({col_letter}5:{col_letter}{row_idx - 1})")
         cell.font = bold_font
         cell.number_format = "₹#,##0.00"
         cell.border = border
@@ -557,7 +584,9 @@ def generate_bill_pdf(bill: Bill, org: Optional[Organization] = None) -> bytes:
     styles = getSampleStyleSheet()
 
     title_style = ParagraphStyle("BTitle", parent=styles["Heading1"], fontSize=18, leading=22, textColor=colors.HexColor("#0f172a"))
-    sub_style = ParagraphStyle("BSub", parent=styles["Normal"], fontSize=12, fontName="Helvetica-Bold", textColor=colors.HexColor("#dc2626"))
+    sub_style = ParagraphStyle(
+        "BSub", parent=styles["Normal"], fontSize=12, fontName="Helvetica-Bold", textColor=colors.HexColor("#dc2626")
+    )
     val_style = ParagraphStyle("BVal", parent=styles["Normal"], fontSize=9, leading=12)
     th_style = ParagraphStyle("BTH", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=9, textColor=colors.white)
     cell_style = ParagraphStyle("BCell", parent=styles["Normal"], fontSize=8.5, leading=11)
@@ -569,65 +598,99 @@ def generate_bill_pdf(bill: Bill, org: Optional[Organization] = None) -> bytes:
     vendor_gstin = (bill.vendor.gstin if bill.vendor else "") or "-"
 
     story = [
-        Table([
-            [Paragraph(f"<b>{org_name}</b>", title_style), Paragraph("<b>PURCHASE BILL VOUCHER</b>", sub_style)],
+        Table(
             [
-                Paragraph(f"Accounts Payable Dept<br/>GSTIN: {(org.gstin if org else None) or '29AABCR1234F1Z5'}", val_style),
-                Paragraph(f"<b>Bill #:</b> {bill.bill_number}<br/><b>Vendor Ref:</b> {getattr(bill, 'vendor_bill_number', None) or 'N/A'}<br/><b>Date:</b> {_fmt_date(bill.date)}<br/><b>Due:</b> {_fmt_date(bill.due_date)}<br/><b>Status:</b> {bill.status.upper()}", val_style),
+                [Paragraph(f"<b>{org_name}</b>", title_style), Paragraph("<b>PURCHASE BILL VOUCHER</b>", sub_style)],
+                [
+                    Paragraph(f"Accounts Payable Dept<br/>GSTIN: {(org.gstin if org else None) or '29AABCR1234F1Z5'}", val_style),
+                    Paragraph(
+                        f"<b>Bill #:</b> {bill.bill_number}<br/><b>Vendor Ref:</b> {getattr(bill, 'vendor_bill_number', None) or 'N/A'}<br/><b>Date:</b> {_fmt_date(bill.date)}<br/><b>Due:</b> {_fmt_date(bill.due_date)}<br/><b>Status:</b> {bill.status.upper()}",
+                        val_style,
+                    ),
+                ],
             ],
-        ], colWidths=[330, 210], style=[("VALIGN", (0, 0), (-1, -1), "TOP"), ("ALIGN", (1, 0), (1, -1), "RIGHT")]),
+            colWidths=[330, 210],
+            style=[("VALIGN", (0, 0), (-1, -1), "TOP"), ("ALIGN", (1, 0), (1, -1), "RIGHT")],
+        ),
         Spacer(1, 14),
         HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cbd5e1"), spaceAfter=14),
-        Table([
-            [Paragraph("<b>VENDOR DETAILS:</b>", val_style), Paragraph("<b>PAYMENT STATUS:</b>", val_style)],
+        Table(
             [
-                Paragraph(f"<b>{vendor_name}</b><br/>Email: {vendor_email}<br/>GSTIN: {vendor_gstin}", val_style),
-                Paragraph(f"Total Bill Amount: <b>{_fmt_curr(bill.total)}</b><br/>Paid to date: {_fmt_curr(bill.amount_paid)}<br/>Balance Outstanding: <font color='#dc2626'><b>{_fmt_curr(bill.balance_due)}</b></font>", val_style),
+                [Paragraph("<b>VENDOR DETAILS:</b>", val_style), Paragraph("<b>PAYMENT STATUS:</b>", val_style)],
+                [
+                    Paragraph(f"<b>{vendor_name}</b><br/>Email: {vendor_email}<br/>GSTIN: {vendor_gstin}", val_style),
+                    Paragraph(
+                        f"Total Bill Amount: <b>{_fmt_curr(bill.total)}</b><br/>Paid to date: {_fmt_curr(bill.amount_paid)}<br/>Balance Outstanding: <font color='#dc2626'><b>{_fmt_curr(bill.balance_due)}</b></font>",
+                        val_style,
+                    ),
+                ],
             ],
-        ], colWidths=[330, 210], style=[("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")), ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")), ("PADDING", (0, 0), (-1, -1), 8)]),
+            colWidths=[330, 210],
+            style=[
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("PADDING", (0, 0), (-1, -1), 8),
+            ],
+        ),
         Spacer(1, 16),
     ]
 
     # Lines
-    rows = [[
-        Paragraph("#", th_style),
-        Paragraph("Item / Expense Description", th_style),
-        Paragraph("Qty", th_style),
-        Paragraph("Rate", th_style),
-        Paragraph("Tax %", th_style),
-        Paragraph("Amount", th_style),
-    ]]
+    rows = [
+        [
+            Paragraph("#", th_style),
+            Paragraph("Item / Expense Description", th_style),
+            Paragraph("Qty", th_style),
+            Paragraph("Rate", th_style),
+            Paragraph("Tax %", th_style),
+            Paragraph("Amount", th_style),
+        ]
+    ]
     for idx, line in enumerate(bill.lines, start=1):
         desc = line.description or (line.item.name if line.item else "Purchase Item")
-        rows.append([
-            Paragraph(str(idx), cell_style),
-            Paragraph(desc, cell_style),
-            Paragraph(f"{float(line.quantity):g}", cell_right),
-            Paragraph(_fmt_curr(line.rate), cell_right),
-            Paragraph(f"{float(line.tax_rate or 0):g}%", cell_right),
-            Paragraph(_fmt_curr(line.amount), cell_right),
-        ])
+        rows.append(
+            [
+                Paragraph(str(idx), cell_style),
+                Paragraph(desc, cell_style),
+                Paragraph(f"{float(line.quantity):g}", cell_right),
+                Paragraph(_fmt_curr(line.rate), cell_right),
+                Paragraph(f"{float(line.tax_rate or 0):g}%", cell_right),
+                Paragraph(_fmt_curr(line.amount), cell_right),
+            ]
+        )
 
     t_lines = Table(rows, colWidths=[24, 256, 50, 70, 50, 90])
-    t_lines.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
-        ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
-        ("PADDING", (0, 0), (-1, -1), 6),
-    ]))
+    t_lines.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+                ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("PADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
     story.append(t_lines)
     story.append(Spacer(1, 14))
 
     # Summary
-    summary = Table([
-        [Paragraph("Subtotal:", cell_right), Paragraph(_fmt_curr(bill.subtotal), cell_right)],
-        [Paragraph("Tax (GST):", cell_right), Paragraph(_fmt_curr(bill.tax_total), cell_right)],
-        [Paragraph("<b>Total:</b>", cell_right), Paragraph(f"<b>{_fmt_curr(bill.total)}</b>", cell_right)],
-        [Paragraph("Balance Due:", cell_right), Paragraph(f"<font color='#dc2626'><b>{_fmt_curr(bill.balance_due)}</b></font>", cell_right)],
-    ], colWidths=[120, 100])
+    summary = Table(
+        [
+            [Paragraph("Subtotal:", cell_right), Paragraph(_fmt_curr(bill.subtotal), cell_right)],
+            [Paragraph("Tax (GST):", cell_right), Paragraph(_fmt_curr(bill.tax_total), cell_right)],
+            [Paragraph("<b>Total:</b>", cell_right), Paragraph(f"<b>{_fmt_curr(bill.total)}</b>", cell_right)],
+            [
+                Paragraph("Balance Due:", cell_right),
+                Paragraph(f"<font color='#dc2626'><b>{_fmt_curr(bill.balance_due)}</b></font>", cell_right),
+            ],
+        ],
+        colWidths=[120, 100],
+    )
     summary.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "RIGHT"), ("PADDING", (0, 0), (-1, -1), 3)]))
-    story.append(Table([[Paragraph(f"Notes: {bill.notes or 'Purchase bill recorded in Rooman Books.'}", val_style), summary]], colWidths=[320, 220]))
+    story.append(
+        Table([[Paragraph(f"Notes: {bill.notes or 'Purchase bill recorded in Rooman Books.'}", val_style), summary]], colWidths=[320, 220])
+    )
 
     doc.build(story)
     return buffer.getvalue()
@@ -648,35 +711,43 @@ def generate_bills_list_pdf(bills: List[Bill], org: Optional[Organization] = Non
         Spacer(1, 12),
     ]
 
-    rows = [[
-        Paragraph("Bill #", th_style),
-        Paragraph("Vendor", th_style),
-        Paragraph("Date", th_style),
-        Paragraph("Due Date", th_style),
-        Paragraph("Status", th_style),
-        Paragraph("Total", th_style),
-        Paragraph("Paid", th_style),
-        Paragraph("Balance Due", th_style),
-    ]]
+    rows = [
+        [
+            Paragraph("Bill #", th_style),
+            Paragraph("Vendor", th_style),
+            Paragraph("Date", th_style),
+            Paragraph("Due Date", th_style),
+            Paragraph("Status", th_style),
+            Paragraph("Total", th_style),
+            Paragraph("Paid", th_style),
+            Paragraph("Balance Due", th_style),
+        ]
+    ]
     for b in bills:
-        rows.append([
-            Paragraph(b.bill_number, td_style),
-            Paragraph((b.vendor.display_name if b.vendor else "-")[:24], td_style),
-            Paragraph(_fmt_date(b.date), td_style),
-            Paragraph(_fmt_date(b.due_date), td_style),
-            Paragraph(b.status.upper(), td_style),
-            Paragraph(_fmt_curr(b.total), td_right),
-            Paragraph(_fmt_curr(b.amount_paid), td_right),
-            Paragraph(_fmt_curr(b.balance_due), td_right),
-        ])
+        rows.append(
+            [
+                Paragraph(b.bill_number, td_style),
+                Paragraph((b.vendor.display_name if b.vendor else "-")[:24], td_style),
+                Paragraph(_fmt_date(b.date), td_style),
+                Paragraph(_fmt_date(b.due_date), td_style),
+                Paragraph(b.status.upper(), td_style),
+                Paragraph(_fmt_curr(b.total), td_right),
+                Paragraph(_fmt_curr(b.amount_paid), td_right),
+                Paragraph(_fmt_curr(b.balance_due), td_right),
+            ]
+        )
 
     t = Table(rows, colWidths=[75, 125, 55, 55, 55, 65, 65, 69])
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-        ("PADDING", (0, 0), (-1, -1), 4),
-    ]))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("PADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
     story.append(t)
     doc.build(story)
     return buffer.getvalue()
@@ -691,7 +762,19 @@ def generate_bills_list_excel(bills: List[Bill], org: Optional[Organization] = N
     ws["A1"].font = Font(name="Calibri", size=14, bold=True, color="0F172A")
     ws["A2"] = f"Exported: {datetime.now().strftime('%d %b %Y, %I:%M %p')}"
 
-    headers = ["Bill Number", "Vendor Name", "Vendor Email", "Date", "Due Date", "Status", "Subtotal", "Tax Total", "Total", "Paid", "Balance Due"]
+    headers = [
+        "Bill Number",
+        "Vendor Name",
+        "Vendor Email",
+        "Date",
+        "Due Date",
+        "Status",
+        "Subtotal",
+        "Tax Total",
+        "Total",
+        "Paid",
+        "Balance Due",
+    ]
     for c_idx, h in enumerate(headers, start=1):
         cell = ws.cell(row=4, column=c_idx, value=h)
         cell.font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
@@ -735,37 +818,67 @@ def generate_customer_payment_pdf(payment: CustomerPayment, org: Optional[Organi
     cust_name = payment.customer.display_name if payment.customer else "Valued Customer"
 
     story = [
-        Paragraph(f"<b>{org_name}</b>", ParagraphStyle("PTitle", parent=styles["Heading1"], fontSize=18, textColor=colors.HexColor("#0f172a"))),
-        Paragraph("<b>OFFICIAL PAYMENT RECEIPT</b>", ParagraphStyle("PSub", parent=styles["Normal"], fontSize=12, fontName="Helvetica-Bold", textColor=colors.HexColor("#16a34a"))),
+        Paragraph(
+            f"<b>{org_name}</b>", ParagraphStyle("PTitle", parent=styles["Heading1"], fontSize=18, textColor=colors.HexColor("#0f172a"))
+        ),
+        Paragraph(
+            "<b>OFFICIAL PAYMENT RECEIPT</b>",
+            ParagraphStyle("PSub", parent=styles["Normal"], fontSize=12, fontName="Helvetica-Bold", textColor=colors.HexColor("#16a34a")),
+        ),
         Spacer(1, 10),
         HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cbd5e1"), spaceAfter=14),
-        Table([
-            [Paragraph("<b>RECEIPT DETAILS:</b>", styles["Normal"]), Paragraph("<b>RECEIVED FROM:</b>", styles["Normal"])],
+        Table(
             [
-                Paragraph(
-                    f"Receipt #: <b>{payment.payment_number}</b><br/>"
-                    f"Payment Date: {_fmt_date(payment.date)}<br/>"
-                    f"Payment Mode: {payment.mode.upper()}<br/>"
-                    f"Reference / UTR: {payment.reference or 'N/A'}<br/>"
-                    f"Deposited To: {payment.bank_account.name if payment.bank_account else 'Bank'}",
-                    styles["Normal"],
-                ),
-                Paragraph(
-                    f"<b>{cust_name}</b><br/>"
-                    f"Email: {(payment.customer.email if payment.customer else '') or '-'}<br/>"
-                    f"Invoice Reference: {payment.invoice.invoice_number if payment.invoice else 'General Advance'}",
-                    styles["Normal"],
-                ),
+                [Paragraph("<b>RECEIPT DETAILS:</b>", styles["Normal"]), Paragraph("<b>RECEIVED FROM:</b>", styles["Normal"])],
+                [
+                    Paragraph(
+                        f"Receipt #: <b>{payment.payment_number}</b><br/>"
+                        f"Payment Date: {_fmt_date(payment.date)}<br/>"
+                        f"Payment Mode: {payment.mode.upper()}<br/>"
+                        f"Reference / UTR: {payment.reference or 'N/A'}<br/>"
+                        f"Deposited To: {payment.bank_account.name if payment.bank_account else 'Bank'}",
+                        styles["Normal"],
+                    ),
+                    Paragraph(
+                        f"<b>{cust_name}</b><br/>"
+                        f"Email: {(payment.customer.email if payment.customer else '') or '-'}<br/>"
+                        f"Invoice Reference: {payment.invoice.invoice_number if payment.invoice else 'General Advance'}",
+                        styles["Normal"],
+                    ),
+                ],
             ],
-        ], colWidths=[270, 270], style=[("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")), ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")), ("PADDING", (0, 0), (-1, -1), 10)]),
+            colWidths=[270, 270],
+            style=[
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("PADDING", (0, 0), (-1, -1), 10),
+            ],
+        ),
         Spacer(1, 20),
-        Table([
-            [Paragraph("<b>AMOUNT RECEIVED:</b>", ParagraphStyle("AR", fontSize=14, fontName="Helvetica-Bold")), Paragraph(f"<font color='#16a34a'><b>{_fmt_curr(payment.amount)}</b></font>", ParagraphStyle("ARVal", fontSize=18, fontName="Helvetica-Bold", alignment=2))],
-        ], colWidths=[270, 270], style=[("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#ecfdf5")), ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#6ee7b7")), ("PADDING", (0, 0), (-1, -1), 12)]),
+        Table(
+            [
+                [
+                    Paragraph("<b>AMOUNT RECEIVED:</b>", ParagraphStyle("AR", fontSize=14, fontName="Helvetica-Bold")),
+                    Paragraph(
+                        f"<font color='#16a34a'><b>{_fmt_curr(payment.amount)}</b></font>",
+                        ParagraphStyle("ARVal", fontSize=18, fontName="Helvetica-Bold", alignment=2),
+                    ),
+                ],
+            ],
+            colWidths=[270, 270],
+            style=[
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#ecfdf5")),
+                ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#6ee7b7")),
+                ("PADDING", (0, 0), (-1, -1), 12),
+            ],
+        ),
         Spacer(1, 20),
         Paragraph(f"<b>Notes:</b> {payment.notes or 'Payment credited and posted to general ledger accounts.'}", styles["Normal"]),
         Spacer(1, 30),
-        Paragraph("<i>Thank you for your business. Computer generated receipt issued by Rooman Books.</i>", ParagraphStyle("Foot", fontSize=8, alignment=1, textColor=colors.HexColor("#64748b"))),
+        Paragraph(
+            "<i>Thank you for your business. Computer generated receipt issued by Rooman Books.</i>",
+            ParagraphStyle("Foot", fontSize=8, alignment=1, textColor=colors.HexColor("#64748b")),
+        ),
     ]
     doc.build(story)
     return buffer.getvalue()
@@ -820,33 +933,41 @@ def generate_customer_payments_list_pdf(payments: List[CustomerPayment], org: Op
         Spacer(1, 12),
     ]
 
-    rows = [[
-        Paragraph("Receipt #", th_style),
-        Paragraph("Customer", th_style),
-        Paragraph("Date", th_style),
-        Paragraph("Mode", th_style),
-        Paragraph("Reference", th_style),
-        Paragraph("Invoice #", th_style),
-        Paragraph("Amount", th_style),
-    ]]
+    rows = [
+        [
+            Paragraph("Receipt #", th_style),
+            Paragraph("Customer", th_style),
+            Paragraph("Date", th_style),
+            Paragraph("Mode", th_style),
+            Paragraph("Reference", th_style),
+            Paragraph("Invoice #", th_style),
+            Paragraph("Amount", th_style),
+        ]
+    ]
     for p in payments:
-        rows.append([
-            Paragraph(p.payment_number, td_style),
-            Paragraph((p.customer.display_name if p.customer else "-")[:24], td_style),
-            Paragraph(_fmt_date(p.date), td_style),
-            Paragraph(p.mode.upper(), td_style),
-            Paragraph(p.reference or "-", td_style),
-            Paragraph(p.invoice.invoice_number if p.invoice else "Advance", td_style),
-            Paragraph(_fmt_curr(p.amount), td_right),
-        ])
+        rows.append(
+            [
+                Paragraph(p.payment_number, td_style),
+                Paragraph((p.customer.display_name if p.customer else "-")[:24], td_style),
+                Paragraph(_fmt_date(p.date), td_style),
+                Paragraph(p.mode.upper(), td_style),
+                Paragraph(p.reference or "-", td_style),
+                Paragraph(p.invoice.invoice_number if p.invoice else "Advance", td_style),
+                Paragraph(_fmt_curr(p.amount), td_right),
+            ]
+        )
 
     t = Table(rows, colWidths=[80, 130, 60, 60, 85, 75, 70])
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#16a34a")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-        ("PADDING", (0, 0), (-1, -1), 4),
-    ]))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#16a34a")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("PADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
     story.append(t)
     doc.build(story)
     return buffer.getvalue()
@@ -862,33 +983,60 @@ def generate_vendor_payment_pdf(payment: VendorPayment, org: Optional[Organizati
     vendor_name = payment.vendor.display_name if payment.vendor else "Vendor"
 
     story = [
-        Paragraph(f"<b>{org_name}</b>", ParagraphStyle("VPTitle", parent=styles["Heading1"], fontSize=18, textColor=colors.HexColor("#0f172a"))),
-        Paragraph("<b>PAYMENT REMITTANCE ADVICE</b>", ParagraphStyle("VPSub", parent=styles["Normal"], fontSize=12, fontName="Helvetica-Bold", textColor=colors.HexColor("#2563eb"))),
+        Paragraph(
+            f"<b>{org_name}</b>", ParagraphStyle("VPTitle", parent=styles["Heading1"], fontSize=18, textColor=colors.HexColor("#0f172a"))
+        ),
+        Paragraph(
+            "<b>PAYMENT REMITTANCE ADVICE</b>",
+            ParagraphStyle("VPSub", parent=styles["Normal"], fontSize=12, fontName="Helvetica-Bold", textColor=colors.HexColor("#2563eb")),
+        ),
         Spacer(1, 10),
         HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cbd5e1"), spaceAfter=14),
-        Table([
-            [Paragraph("<b>VOUCHER DETAILS:</b>", styles["Normal"]), Paragraph("<b>PAID TO:</b>", styles["Normal"])],
+        Table(
             [
-                Paragraph(
-                    f"Voucher #: <b>{payment.payment_number}</b><br/>"
-                    f"Date: {_fmt_date(payment.date)}<br/>"
-                    f"Mode: {payment.mode.upper()}<br/>"
-                    f"Ref / Cheque #: {payment.reference or 'N/A'}<br/>"
-                    f"Paid From: {payment.bank_account.name if payment.bank_account else 'Bank'}",
-                    styles["Normal"],
-                ),
-                Paragraph(
-                    f"<b>{vendor_name}</b><br/>"
-                    f"Email: {(payment.vendor.email if payment.vendor else '') or '-'}<br/>"
-                    f"Bill Applied: {payment.bill.bill_number if payment.bill else 'Direct Vendor Settlement'}",
-                    styles["Normal"],
-                ),
+                [Paragraph("<b>VOUCHER DETAILS:</b>", styles["Normal"]), Paragraph("<b>PAID TO:</b>", styles["Normal"])],
+                [
+                    Paragraph(
+                        f"Voucher #: <b>{payment.payment_number}</b><br/>"
+                        f"Date: {_fmt_date(payment.date)}<br/>"
+                        f"Mode: {payment.mode.upper()}<br/>"
+                        f"Ref / Cheque #: {payment.reference or 'N/A'}<br/>"
+                        f"Paid From: {payment.bank_account.name if payment.bank_account else 'Bank'}",
+                        styles["Normal"],
+                    ),
+                    Paragraph(
+                        f"<b>{vendor_name}</b><br/>"
+                        f"Email: {(payment.vendor.email if payment.vendor else '') or '-'}<br/>"
+                        f"Bill Applied: {payment.bill.bill_number if payment.bill else 'Direct Vendor Settlement'}",
+                        styles["Normal"],
+                    ),
+                ],
             ],
-        ], colWidths=[270, 270], style=[("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")), ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")), ("PADDING", (0, 0), (-1, -1), 10)]),
+            colWidths=[270, 270],
+            style=[
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("PADDING", (0, 0), (-1, -1), 10),
+            ],
+        ),
         Spacer(1, 20),
-        Table([
-            [Paragraph("<b>AMOUNT DISBURSED:</b>", ParagraphStyle("AD", fontSize=14, fontName="Helvetica-Bold")), Paragraph(f"<font color='#2563eb'><b>{_fmt_curr(payment.amount)}</b></font>", ParagraphStyle("ADVal", fontSize=18, fontName="Helvetica-Bold", alignment=2))],
-        ], colWidths=[270, 270], style=[("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#eff6ff")), ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#93c5fd")), ("PADDING", (0, 0), (-1, -1), 12)]),
+        Table(
+            [
+                [
+                    Paragraph("<b>AMOUNT DISBURSED:</b>", ParagraphStyle("AD", fontSize=14, fontName="Helvetica-Bold")),
+                    Paragraph(
+                        f"<font color='#2563eb'><b>{_fmt_curr(payment.amount)}</b></font>",
+                        ParagraphStyle("ADVal", fontSize=18, fontName="Helvetica-Bold", alignment=2),
+                    ),
+                ],
+            ],
+            colWidths=[270, 270],
+            style=[
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#eff6ff")),
+                ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#93c5fd")),
+                ("PADDING", (0, 0), (-1, -1), 12),
+            ],
+        ),
         Spacer(1, 20),
         Paragraph(f"<b>Notes:</b> {payment.notes or 'Vendor payment processed and confirmed.'}", styles["Normal"]),
     ]
@@ -945,33 +1093,41 @@ def generate_vendor_payments_list_pdf(payments: List[VendorPayment], org: Option
         Spacer(1, 12),
     ]
 
-    rows = [[
-        Paragraph("Voucher #", th_style),
-        Paragraph("Vendor", th_style),
-        Paragraph("Date", th_style),
-        Paragraph("Mode", th_style),
-        Paragraph("Reference", th_style),
-        Paragraph("Bill #", th_style),
-        Paragraph("Amount", th_style),
-    ]]
+    rows = [
+        [
+            Paragraph("Voucher #", th_style),
+            Paragraph("Vendor", th_style),
+            Paragraph("Date", th_style),
+            Paragraph("Mode", th_style),
+            Paragraph("Reference", th_style),
+            Paragraph("Bill #", th_style),
+            Paragraph("Amount", th_style),
+        ]
+    ]
     for p in payments:
-        rows.append([
-            Paragraph(p.payment_number, td_style),
-            Paragraph((p.vendor.display_name if p.vendor else "-")[:24], td_style),
-            Paragraph(_fmt_date(p.date), td_style),
-            Paragraph(p.mode.upper(), td_style),
-            Paragraph(p.reference or "-", td_style),
-            Paragraph(p.bill.bill_number if p.bill else "Vendor Advance", td_style),
-            Paragraph(_fmt_curr(p.amount), td_right),
-        ])
+        rows.append(
+            [
+                Paragraph(p.payment_number, td_style),
+                Paragraph((p.vendor.display_name if p.vendor else "-")[:24], td_style),
+                Paragraph(_fmt_date(p.date), td_style),
+                Paragraph(p.mode.upper(), td_style),
+                Paragraph(p.reference or "-", td_style),
+                Paragraph(p.bill.bill_number if p.bill else "Vendor Advance", td_style),
+                Paragraph(_fmt_curr(p.amount), td_right),
+            ]
+        )
 
     t = Table(rows, colWidths=[80, 130, 60, 60, 85, 75, 70])
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2563eb")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-        ("PADDING", (0, 0), (-1, -1), 4),
-    ]))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2563eb")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("PADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
     story.append(t)
     doc.build(story)
     return buffer.getvalue()
@@ -997,32 +1153,40 @@ def generate_expenses_list_pdf(expenses: List[Expense], org: Optional[Organizati
         Spacer(1, 12),
     ]
 
-    rows = [[
-        Paragraph("Date", th_style),
-        Paragraph("Category / Account", th_style),
-        Paragraph("Payee", th_style),
-        Paragraph("Payment Method", th_style),
-        Paragraph("Reference", th_style),
-        Paragraph("Amount", th_style),
-    ]]
+    rows = [
+        [
+            Paragraph("Date", th_style),
+            Paragraph("Category / Account", th_style),
+            Paragraph("Payee", th_style),
+            Paragraph("Payment Method", th_style),
+            Paragraph("Reference", th_style),
+            Paragraph("Amount", th_style),
+        ]
+    ]
     for e in expenses:
         payee_str = e.vendor.display_name if e.vendor else (e.customer.display_name if e.customer else getattr(e, "payee", None) or "-")
-        rows.append([
-            Paragraph(_fmt_date(e.date), td_style),
-            Paragraph((e.account.name if e.account else "-")[:24], td_style),
-            Paragraph(payee_str[:20], td_style),
-            Paragraph(e.payment_method.upper() if e.payment_method else "-", td_style),
-            Paragraph(e.reference or "-", td_style),
-            Paragraph(_fmt_curr(e.amount), td_right),
-        ])
+        rows.append(
+            [
+                Paragraph(_fmt_date(e.date), td_style),
+                Paragraph((e.account.name if e.account else "-")[:24], td_style),
+                Paragraph(payee_str[:20], td_style),
+                Paragraph(e.payment_method.upper() if e.payment_method else "-", td_style),
+                Paragraph(e.reference or "-", td_style),
+                Paragraph(_fmt_curr(e.amount), td_right),
+            ]
+        )
 
     t = Table(rows, colWidths=[65, 140, 110, 85, 80, 80])
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-        ("PADDING", (0, 0), (-1, -1), 4),
-    ]))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("PADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
     story.append(t)
     doc.build(story)
     return buffer.getvalue()
@@ -1083,29 +1247,37 @@ def generate_contacts_list_pdf(contacts: List[Contact], contact_type: str = "cus
         Spacer(1, 12),
     ]
 
-    rows = [[
-        Paragraph(f"{label} Name", th_style),
-        Paragraph("Company / Legal", th_style),
-        Paragraph("Email Address", th_style),
-        Paragraph("Phone", th_style),
-        Paragraph("GSTIN", th_style),
-    ]]
+    rows = [
+        [
+            Paragraph(f"{label} Name", th_style),
+            Paragraph("Company / Legal", th_style),
+            Paragraph("Email Address", th_style),
+            Paragraph("Phone", th_style),
+            Paragraph("GSTIN", th_style),
+        ]
+    ]
     for c in contacts:
-        rows.append([
-            Paragraph(c.display_name, td_style),
-            Paragraph(c.company_name or "-", td_style),
-            Paragraph(c.email or "-", td_style),
-            Paragraph(c.phone or "-", td_style),
-            Paragraph(c.gstin or "-", td_style),
-        ])
+        rows.append(
+            [
+                Paragraph(c.display_name, td_style),
+                Paragraph(c.company_name or "-", td_style),
+                Paragraph(c.email or "-", td_style),
+                Paragraph(c.phone or "-", td_style),
+                Paragraph(c.gstin or "-", td_style),
+            ]
+        )
 
     t = Table(rows, colWidths=[130, 120, 130, 85, 95])
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-        ("PADDING", (0, 0), (-1, -1), 4),
-    ]))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("PADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
     story.append(t)
     doc.build(story)
     return buffer.getvalue()
@@ -1145,7 +1317,9 @@ def generate_contacts_list_excel(contacts: List[Contact], contact_type: str = "c
     return buf.getvalue()
 
 
-def generate_overall_dashboard_report_pdf(summary_data: any, org: Optional[Organization] = None, period_label: str = "This Fiscal Year") -> bytes:
+def generate_overall_dashboard_report_pdf(
+    summary_data: any, org: Optional[Organization] = None, period_label: str = "This Fiscal Year"
+) -> bytes:
     """Generate a comprehensive Executive Financial & Operations Overall Report PDF."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -1229,7 +1403,9 @@ def generate_overall_dashboard_report_pdf(summary_data: any, org: Optional[Organ
 
     org_name = (org.name if org else None) or "Rooman Technologies Pvt Ltd"
     org_addr = (org.address if org else None) or "Rooman House, #12 Rajajinagar"
-    org_city_state = ", ".join(filter(None, [org.city if org else "Bengaluru", org.state if org else "Karnataka", org.postal_code if org else "560010"]))
+    org_city_state = ", ".join(
+        filter(None, [org.city if org else "Bengaluru", org.state if org else "Karnataka", org.postal_code if org else "560010"])
+    )
     org_gstin = (org.gstin if org else None) or "29AABCR1234F1Z5"
     org_email = (org.email if org else None) or "shalya@rooman.com"
 
@@ -1249,11 +1425,15 @@ def generate_overall_dashboard_report_pdf(summary_data: any, org: Optional[Organ
         ],
     ]
     header_table = Table(header_table_data, colWidths=[330, 210])
-    header_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
+    header_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
     story.append(header_table)
     story.append(Spacer(1, 10))
     story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#2563eb"), spaceAfter=14))
@@ -1319,7 +1499,9 @@ def generate_overall_dashboard_report_pdf(summary_data: any, org: Optional[Organ
         [
             Paragraph("<b>Net Position (Profit / Loss)</b>", cell_bold),
             Paragraph(f"<b>{_fmt_curr(net_val)}</b>", cell_right_bold),
-            Paragraph("Net operational surplus for selected period" if net_val >= 0 else "Net operational deficit for selected period", cell_style),
+            Paragraph(
+                "Net operational surplus for selected period" if net_val >= 0 else "Net operational deficit for selected period", cell_style
+            ),
         ],
         [
             Paragraph("Inventory Valuation", cell_bold),
@@ -1329,15 +1511,19 @@ def generate_overall_dashboard_report_pdf(summary_data: any, org: Optional[Organ
     ]
 
     kpi_table = Table(kpi_data, colWidths=[160, 130, 250])
-    kpi_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
-        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-    ]))
+    kpi_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
     story.append(kpi_table)
     story.append(Spacer(1, 14))
 
@@ -1357,19 +1543,25 @@ def generate_overall_dashboard_report_pdf(summary_data: any, org: Optional[Organ
             b_name = _g(b, "name") or "Account"
             b_type = (_g(b, "type") or "bank").replace("_", " ").title()
             b_bal = float(_g(b, "balance") or 0.0)
-            bank_data.append([
-                Paragraph(b_name, cell_style),
-                Paragraph(b_type, cell_style),
-                Paragraph(_fmt_curr(b_bal), cell_right),
-            ])
+            bank_data.append(
+                [
+                    Paragraph(b_name, cell_style),
+                    Paragraph(b_type, cell_style),
+                    Paragraph(_fmt_curr(b_bal), cell_right),
+                ]
+            )
         bank_table = Table(bank_data, colWidths=[240, 150, 150])
-        bank_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
+        bank_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
         story.append(bank_table)
         story.append(Spacer(1, 14))
 
@@ -1387,18 +1579,24 @@ def generate_overall_dashboard_report_pdf(summary_data: any, org: Optional[Organ
         for tc in top_custs:
             c_name = _g(tc, "contact_name") or "Customer"
             c_amt = float(_g(tc, "amount") or 0.0)
-            cust_data.append([
-                Paragraph(c_name, cell_style),
-                Paragraph(_fmt_curr(c_amt), cell_right),
-            ])
+            cust_data.append(
+                [
+                    Paragraph(c_name, cell_style),
+                    Paragraph(_fmt_curr(c_amt), cell_right),
+                ]
+            )
         cust_table = Table(cust_data, colWidths=[360, 180])
-        cust_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
+        cust_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
         story.append(cust_table)
         story.append(Spacer(1, 14))
 
@@ -1406,7 +1604,9 @@ def generate_overall_dashboard_report_pdf(summary_data: any, org: Optional[Organ
     story.append(Spacer(1, 10))
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#94a3b8"), spaceAfter=8))
     footer_text = f"Generated by Rooman Books Cloud Accounting &bull; {org_name} &bull; Confidential Management Report"
-    story.append(Paragraph(footer_text, ParagraphStyle("FooterStyle", parent=value_style, alignment=1, textColor=colors.HexColor("#64748b"))))
+    story.append(
+        Paragraph(footer_text, ParagraphStyle("FooterStyle", parent=value_style, alignment=1, textColor=colors.HexColor("#64748b")))
+    )
 
     doc.build(story)
     return buffer.getvalue()
@@ -1536,11 +1736,15 @@ def generate_user_dashboard_pdf(
         ],
     ]
     header_table = Table(header_table_data, colWidths=[330, 210])
-    header_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
+    header_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
     story.append(header_table)
     story.append(Spacer(1, 10))
     story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#2563eb"), spaceAfter=14))
@@ -1549,30 +1753,44 @@ def generate_user_dashboard_pdf(
     story.append(Paragraph("User Account & Profile", sec_heading))
     story.append(Spacer(1, 6))
 
-    last_login_str = _fmt_date(target_user.last_login_at) if target_user.last_login_at else ("Awaiting invite acceptance" if target_user.pending_invite else "Never")
+    last_login_str = (
+        _fmt_date(target_user.last_login_at)
+        if target_user.last_login_at
+        else ("Awaiting invite acceptance" if target_user.pending_invite else "Never")
+    )
     status_label = "Pending Invite" if target_user.pending_invite else ("Active" if target_user.is_active else "Deactivated")
 
     user_info_data = [
         [
-            Paragraph("<b>Full Name:</b>", cell_bold), Paragraph(target_user.name, cell_style),
-            Paragraph("<b>Email Address:</b>", cell_bold), Paragraph(target_user.email, cell_style),
+            Paragraph("<b>Full Name:</b>", cell_bold),
+            Paragraph(target_user.name, cell_style),
+            Paragraph("<b>Email Address:</b>", cell_bold),
+            Paragraph(target_user.email, cell_style),
         ],
         [
-            Paragraph("<b>System Role:</b>", cell_bold), Paragraph(target_user.role.capitalize(), cell_style),
-            Paragraph("<b>Account Status:</b>", cell_bold), Paragraph(status_label, cell_style),
+            Paragraph("<b>System Role:</b>", cell_bold),
+            Paragraph(target_user.role.capitalize(), cell_style),
+            Paragraph("<b>Account Status:</b>", cell_bold),
+            Paragraph(status_label, cell_style),
         ],
         [
-            Paragraph("<b>Created Date:</b>", cell_bold), Paragraph(_fmt_date(target_user.created_at), cell_style),
-            Paragraph("<b>Last Login:</b>", cell_bold), Paragraph(last_login_str, cell_style),
+            Paragraph("<b>Created Date:</b>", cell_bold),
+            Paragraph(_fmt_date(target_user.created_at), cell_style),
+            Paragraph("<b>Last Login:</b>", cell_bold),
+            Paragraph(last_login_str, cell_style),
         ],
     ]
     user_info_table = Table(user_info_data, colWidths=[100, 170, 100, 170])
-    user_info_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
+    user_info_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
     story.append(user_info_table)
     story.append(Spacer(1, 14))
 
@@ -1591,29 +1809,41 @@ def generate_user_dashboard_pdf(
 
         emp_info_data = [
             [
-                Paragraph("<b>Employee Code:</b>", cell_bold), Paragraph(employee.employee_code, cell_style),
-                Paragraph("<b>Designation:</b>", cell_bold), Paragraph(employee.designation or "-", cell_style),
+                Paragraph("<b>Employee Code:</b>", cell_bold),
+                Paragraph(employee.employee_code, cell_style),
+                Paragraph("<b>Designation:</b>", cell_bold),
+                Paragraph(employee.designation or "-", cell_style),
             ],
             [
-                Paragraph("<b>Department:</b>", cell_bold), Paragraph(employee.department or "-", cell_style),
-                Paragraph("<b>Date of Joining:</b>", cell_bold), Paragraph(_fmt_date(employee.date_of_joining), cell_style),
+                Paragraph("<b>Department:</b>", cell_bold),
+                Paragraph(employee.department or "-", cell_style),
+                Paragraph("<b>Date of Joining:</b>", cell_bold),
+                Paragraph(_fmt_date(employee.date_of_joining), cell_style),
             ],
             [
-                Paragraph("<b>PAN:</b>", cell_bold), Paragraph(employee.pan or "-", cell_style),
-                Paragraph("<b>Bank Account:</b>", cell_bold), Paragraph(f"{employee.bank_account_number or '-'} ({employee.bank_ifsc or '-'})", cell_style),
+                Paragraph("<b>PAN:</b>", cell_bold),
+                Paragraph(employee.pan or "-", cell_style),
+                Paragraph("<b>Bank Account:</b>", cell_bold),
+                Paragraph(f"{employee.bank_account_number or '-'} ({employee.bank_ifsc or '-'})", cell_style),
             ],
             [
-                Paragraph("<b>Gross Salary:</b>", cell_bold), Paragraph(_fmt_curr(gross), cell_bold),
-                Paragraph("<b>Net Monthly Salary:</b>", cell_bold), Paragraph(_fmt_curr(net), cell_bold),
+                Paragraph("<b>Gross Salary:</b>", cell_bold),
+                Paragraph(_fmt_curr(gross), cell_bold),
+                Paragraph("<b>Net Monthly Salary:</b>", cell_bold),
+                Paragraph(_fmt_curr(net), cell_bold),
             ],
         ]
         emp_table = Table(emp_info_data, colWidths=[100, 170, 100, 170])
-        emp_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f1f5f9")),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
+        emp_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f1f5f9")),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
         story.append(emp_table)
         story.append(Spacer(1, 14))
 
@@ -1635,22 +1865,28 @@ def generate_user_dashboard_pdf(
             period_lbl = f"{p.pay_run.period_year}-{p.pay_run.period_month:02d}" if hasattr(p, "pay_run") and p.pay_run else "-"
             status_txt = p.pay_run.status.capitalize() if hasattr(p, "pay_run") and p.pay_run else "Approved"
             pay_date_txt = _fmt_date(p.pay_run.pay_date) if hasattr(p, "pay_run") and p.pay_run and p.pay_run.pay_date else "-"
-            ps_data.append([
-                Paragraph(period_lbl, cell_style),
-                Paragraph(_fmt_curr(float(p.gross or 0)), cell_right),
-                Paragraph(_fmt_curr(float(p.total_deductions or 0)), cell_right),
-                Paragraph(_fmt_curr(float(p.net_pay or 0)), cell_right_bold),
-                Paragraph(status_txt, cell_style),
-                Paragraph(pay_date_txt, cell_style),
-            ])
+            ps_data.append(
+                [
+                    Paragraph(period_lbl, cell_style),
+                    Paragraph(_fmt_curr(float(p.gross or 0)), cell_right),
+                    Paragraph(_fmt_curr(float(p.total_deductions or 0)), cell_right),
+                    Paragraph(_fmt_curr(float(p.net_pay or 0)), cell_right_bold),
+                    Paragraph(status_txt, cell_style),
+                    Paragraph(pay_date_txt, cell_style),
+                ]
+            )
         ps_table = Table(ps_data, colWidths=[90, 90, 90, 90, 90, 90])
-        ps_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
+        ps_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
         story.append(ps_table)
         story.append(Spacer(1, 14))
 
@@ -1669,21 +1905,27 @@ def generate_user_dashboard_pdf(
         ]
         for te in time_entries[:10]:
             p_name = te.project.name if hasattr(te, "project") and te.project else "-"
-            te_data.append([
-                Paragraph(_fmt_date(te.date), cell_style),
-                Paragraph(p_name, cell_style),
-                Paragraph(str(te.hours), cell_right),
-                Paragraph("Yes" if te.is_billable else "No", cell_style),
-                Paragraph(str(te.description or "-"), cell_style),
-            ])
+            te_data.append(
+                [
+                    Paragraph(_fmt_date(te.date), cell_style),
+                    Paragraph(p_name, cell_style),
+                    Paragraph(str(te.hours), cell_right),
+                    Paragraph("Yes" if te.is_billable else "No", cell_style),
+                    Paragraph(str(te.description or "-"), cell_style),
+                ]
+            )
         te_table = Table(te_data, colWidths=[80, 150, 60, 60, 190])
-        te_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
+        te_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
         story.append(te_table)
         story.append(Spacer(1, 14))
 
@@ -1700,20 +1942,26 @@ def generate_user_dashboard_pdf(
             ]
         ]
         for al in audit_logs[:15]:
-            al_data.append([
-                Paragraph(al.created_at.strftime("%d %b %Y, %I:%M %p") if al.created_at else "-", cell_style),
-                Paragraph(al.action.upper(), cell_style),
-                Paragraph(al.entity_type.capitalize(), cell_style),
-                Paragraph(al.summary or "-", cell_style),
-            ])
+            al_data.append(
+                [
+                    Paragraph(al.created_at.strftime("%d %b %Y, %I:%M %p") if al.created_at else "-", cell_style),
+                    Paragraph(al.action.upper(), cell_style),
+                    Paragraph(al.entity_type.capitalize(), cell_style),
+                    Paragraph(al.summary or "-", cell_style),
+                ]
+            )
         al_table = Table(al_data, colWidths=[120, 80, 90, 250])
-        al_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
+        al_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
         story.append(al_table)
     else:
         story.append(Paragraph("<i>No audit log entries recorded for this user yet.</i>", cell_style))
@@ -1722,9 +1970,9 @@ def generate_user_dashboard_pdf(
     story.append(Spacer(1, 16))
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#94a3b8"), spaceAfter=8))
     footer_text = f"Generated by Rooman Books Cloud Accounting &bull; {org_name} &bull; Confidential Administrative Record"
-    story.append(Paragraph(footer_text, ParagraphStyle("FooterStyle", parent=value_style, alignment=1, textColor=colors.HexColor("#64748b"))))
+    story.append(
+        Paragraph(footer_text, ParagraphStyle("FooterStyle", parent=value_style, alignment=1, textColor=colors.HexColor("#64748b")))
+    )
 
     doc.build(story)
     return buffer.getvalue()
-
-

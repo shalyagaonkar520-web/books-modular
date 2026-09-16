@@ -1,4 +1,5 @@
 """Bank account helpers: balances, ledger account creation, movements."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -38,7 +39,9 @@ def post_opening_balance(db: Session, bank: BankAccount, created_by: Optional[st
         lines = [(bank.ledger_account_id, amount, Decimal("0"), desc, None), (opening.id, Decimal("0"), amount, desc, None)]
     else:
         lines = [(opening.id, -amount, Decimal("0"), desc, None), (bank.ledger_account_id, Decimal("0"), -amount, desc, None)]
-    ledger.post_entry(db, bank.organization_id, bank.opening_balance_date, lines, "bank_opening", bank.id, reference=bank.name, created_by=created_by)
+    ledger.post_entry(
+        db, bank.organization_id, bank.opening_balance_date, lines, "bank_opening", bank.id, reference=bank.name, created_by=created_by
+    )
 
 
 def record_movement(
@@ -80,7 +83,8 @@ def check_cash_overdraft(db: Session, bank_acct: BankAccount, withdrawal_amount:
     Bank accounts can have overdraft facilities, but physical cash drawers
     cannot dispense more notes/coins than they hold.
     """
-    from fastapi import HTTPException, status as http_status
+    from fastapi import HTTPException
+    from fastapi import status as http_status
 
     if bank_acct.type != "cash":
         return

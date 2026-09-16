@@ -1,4 +1,5 @@
 """Sequential document numbering per organization (INV-00001, BILL-00001 ...)."""
+
 from __future__ import annotations
 
 from sqlalchemy import select
@@ -20,9 +21,7 @@ PREFIXES = {
 
 def next_number(db: Session, organization_id: str, kind: str) -> str:
     prefix = PREFIXES[kind]
-    stmt = select(DocumentSequence).where(
-        DocumentSequence.organization_id == organization_id, DocumentSequence.kind == kind
-    )
+    stmt = select(DocumentSequence).where(DocumentSequence.organization_id == organization_id, DocumentSequence.kind == kind)
     if db.bind is not None and db.bind.dialect.name != "sqlite":
         stmt = stmt.with_for_update()
     seq = db.execute(stmt).scalar_one_or_none()

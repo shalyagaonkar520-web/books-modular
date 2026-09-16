@@ -1,4 +1,5 @@
 """Application configuration loaded from environment variables / .env file."""
+
 from __future__ import annotations
 
 import os
@@ -59,13 +60,10 @@ class Settings(BaseSettings):
     # Razorpay transaction synchronisation
     razorpay_sync_enabled: bool = Field(default=True, description="Run the background sync loop")
     razorpay_sync_interval_minutes: int = Field(default=30, ge=5, le=1440)
-    razorpay_sync_initial_days: int = Field(
-        default=365, ge=1, le=3650, description="How far back the very first import reaches"
-    )
+    razorpay_sync_initial_days: int = Field(default=365, ge=1, le=3650, description="How far back the very first import reaches")
     razorpay_sync_overlap_minutes: int = Field(
         default=60, ge=0, le=1440, description="Re-scan window before the last sync so late captures are not missed"
     )
-
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -74,6 +72,7 @@ class Settings(BaseSettings):
             val = value.strip()
             if val.startswith("[") and val.endswith("]"):
                 import json
+
                 try:
                     return json.loads(val)
                 except Exception:

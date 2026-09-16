@@ -4,6 +4,7 @@ All business tables are scoped by ``organization_id`` (multi-tenant) and use
 string UUID primary keys so that the schema is portable between SQLite and
 PostgreSQL.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -41,15 +42,11 @@ def utcnow() -> datetime:
 
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
-    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
 
 class OrgScopedMixin:
-    organization_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    organization_id: Mapped[str] = mapped_column(String(32), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -189,9 +186,7 @@ class JournalEntry(TimestampMixin, OrgScopedMixin, Base):
     total: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
     created_by: Mapped[Optional[str]] = mapped_column(String(32))
 
-    lines: Mapped[List[JournalLine]] = relationship(
-        back_populates="entry", cascade="all, delete-orphan", order_by="JournalLine.position"
-    )
+    lines: Mapped[List[JournalLine]] = relationship(back_populates="entry", cascade="all, delete-orphan", order_by="JournalLine.position")
 
 
 class JournalLine(Base):
@@ -314,9 +309,7 @@ class Invoice(TimestampMixin, OrgScopedMixin, Base):
     reminder_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     customer: Mapped[Contact] = relationship()
-    lines: Mapped[List[InvoiceLine]] = relationship(
-        back_populates="invoice", cascade="all, delete-orphan", order_by="InvoiceLine.position"
-    )
+    lines: Mapped[List[InvoiceLine]] = relationship(back_populates="invoice", cascade="all, delete-orphan", order_by="InvoiceLine.position")
     payments: Mapped[List[CustomerPayment]] = relationship(back_populates="invoice")
 
     @property
@@ -387,9 +380,7 @@ class Bill(TimestampMixin, OrgScopedMixin, Base):
     created_by: Mapped[Optional[str]] = mapped_column(String(32))
 
     vendor: Mapped[Contact] = relationship()
-    lines: Mapped[List[BillLine]] = relationship(
-        back_populates="bill", cascade="all, delete-orphan", order_by="BillLine.position"
-    )
+    lines: Mapped[List[BillLine]] = relationship(back_populates="bill", cascade="all, delete-orphan", order_by="BillLine.position")
     payments: Mapped[List[VendorPayment]] = relationship(back_populates="bill")
 
     @property
@@ -492,9 +483,7 @@ class BankTransaction(TimestampMixin, OrgScopedMixin, Base):
     __tablename__ = "bank_transactions"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
-    bank_account_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("bank_accounts.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    bank_account_id: Mapped[str] = mapped_column(String(32), ForeignKey("bank_accounts.id", ondelete="CASCADE"), nullable=False, index=True)
     date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     type: Mapped[str] = mapped_column(String(10), nullable=False)  # deposit | withdrawal
     amount: Mapped[Decimal] = mapped_column(Money, nullable=False)
@@ -601,9 +590,7 @@ class Employee(TimestampMixin, OrgScopedMixin, Base):
     # Set once this employee has been invited to the self-service portal and
     # accepted - lets them log in (role=employee) and see only their own
     # payslips and profile. Null until then; SET NULL if that login is removed.
-    user_id: Mapped[Optional[str]] = mapped_column(
-        String(32), ForeignKey("users.id", ondelete="SET NULL"), unique=True, index=True
-    )
+    user_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("users.id", ondelete="SET NULL"), unique=True, index=True)
 
     user: Mapped[Optional[User]] = relationship()
 
@@ -680,10 +667,9 @@ class PaymentRecord(TimestampMixin, OrgScopedMixin, Base):
     never be imported twice, whichever path (checkout, webhook or sync) sees it
     first.
     """
+
     __tablename__ = "payments"
-    __table_args__ = (
-        UniqueConstraint("razorpay_payment_id", name="uq_payments_razorpay_payment_id"),
-    )
+    __table_args__ = (UniqueConstraint("razorpay_payment_id", name="uq_payments_razorpay_payment_id"),)
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     razorpay_order_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
@@ -696,8 +682,12 @@ class PaymentRecord(TimestampMixin, OrgScopedMixin, Base):
     customer_payment_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("customer_payments.id"), index=True)
     amount: Mapped[Decimal] = mapped_column(Money, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), default="INR", nullable=False)
-    payment_method: Mapped[str] = mapped_column(String(40), default="card", nullable=False)  # upi | card | netbanking | wallet | emi | other
-    payment_status: Mapped[str] = mapped_column(String(30), default="captured", nullable=False, index=True)  # created | authorized | captured | failed | refunded | partially_refunded
+    payment_method: Mapped[str] = mapped_column(
+        String(40), default="card", nullable=False
+    )  # upi | card | netbanking | wallet | emi | other
+    payment_status: Mapped[str] = mapped_column(
+        String(30), default="captured", nullable=False, index=True
+    )  # created | authorized | captured | failed | refunded | partially_refunded
     mode: Mapped[str] = mapped_column(String(10), default="test", nullable=False)  # test | live
     captured_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     refund_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
@@ -756,6 +746,7 @@ RazorpayPayment = PaymentRecord
 
 class PaymentEvent(TimestampMixin, Base):
     """Webhook event log ensuring idempotency and full auditability."""
+
     __tablename__ = "payment_events"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
@@ -771,6 +762,7 @@ class PaymentEvent(TimestampMixin, Base):
 
 class PaymentRefund(TimestampMixin, OrgScopedMixin, Base):
     """Refund tracking for payments."""
+
     __tablename__ = "refunds"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
@@ -793,6 +785,7 @@ class PaymentRefund(TimestampMixin, OrgScopedMixin, Base):
 
 class SettlementRecord(TimestampMixin, OrgScopedMixin, Base):
     """Razorpay settlements for bank payouts."""
+
     __tablename__ = "settlements"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
@@ -814,6 +807,7 @@ class SettlementRecord(TimestampMixin, OrgScopedMixin, Base):
 
 class ReconciliationRecord(TimestampMixin, OrgScopedMixin, Base):
     """Three-way reconciliation between Internal Payments, Razorpay Payments, and Settlements."""
+
     __tablename__ = "reconciliation_records"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
@@ -833,11 +827,14 @@ class ReconciliationRecord(TimestampMixin, OrgScopedMixin, Base):
 
 class FinancialTransactionRecord(TimestampMixin, OrgScopedMixin, Base):
     """Granular transaction ledger table for reporting, analytics and audit."""
+
     __tablename__ = "financial_transactions"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     transaction_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
-    transaction_type: Mapped[str] = mapped_column(String(40), index=True, nullable=False)  # customer_payment | refund | gateway_fee | purchase | expense | settlement | manual
+    transaction_type: Mapped[str] = mapped_column(
+        String(40), index=True, nullable=False
+    )  # customer_payment | refund | gateway_fee | purchase | expense | settlement | manual
     reference_type: Mapped[str] = mapped_column(String(40), nullable=False)  # invoice | payment | refund | bill | expense | settlement
     reference_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
     debit: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
@@ -856,6 +853,7 @@ class RazorpaySyncLog(TimestampMixin, OrgScopedMixin, Base):
     A run is never silently dropped: it starts as ``running`` and always ends as
     ``completed``, ``partial`` or ``failed`` with a human readable message.
     """
+
     __tablename__ = "razorpay_sync_logs"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
@@ -885,6 +883,7 @@ class RazorpaySyncLog(TimestampMixin, OrgScopedMixin, Base):
 
 class RazorpayCategoryRule(TimestampMixin, OrgScopedMixin, Base):
     """User-maintained categorisation rules, applied before any automatic guess."""
+
     __tablename__ = "razorpay_category_rules"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
@@ -901,7 +900,6 @@ class RazorpayCategoryRule(TimestampMixin, OrgScopedMixin, Base):
     ledger_account: Mapped[Optional[Account]] = relationship()
 
 
-
 # --------------------------------------------------------------------------- #
 # External payment intake
 # --------------------------------------------------------------------------- #
@@ -910,6 +908,7 @@ class ExternalPayment(TimestampMixin, OrgScopedMixin, Base):
     a card gateway, a wallet, and so on), awaiting or confirmed through the
     email YES/NO confirmation flow.
     """
+
     __tablename__ = "external_payments"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
@@ -923,7 +922,9 @@ class ExternalPayment(TimestampMixin, OrgScopedMixin, Base):
     invoice_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("invoices.id"), index=True)
     customer_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("contacts.id"), index=True)
     bank_account_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("bank_accounts.id"))
-    status: Mapped[str] = mapped_column(String(30), default="pending_confirmation", nullable=False, index=True)  # pending_confirmation | approved | rejected
+    status: Mapped[str] = mapped_column(
+        String(30), default="pending_confirmation", nullable=False, index=True
+    )  # pending_confirmation | approved | rejected
     approval_token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     approval_notes: Mapped[Optional[str]] = mapped_column(Text)
@@ -942,5 +943,3 @@ class ExternalPayment(TimestampMixin, OrgScopedMixin, Base):
 
 
 ExternalPaymentProof = ExternalPayment
-
-

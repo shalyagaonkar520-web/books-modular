@@ -1,7 +1,7 @@
 import time
 import unittest
-
 from datetime import UTC, datetime, timedelta
+
 from fastapi.testclient import TestClient
 
 from backend.db import SessionLocal
@@ -32,24 +32,24 @@ class ComprehensiveBackendE2ETest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = TestClient(app)
-        test_email = f"e2e_user_{int(time.time()*1000)}@rooman.com"
+        test_email = f"e2e_user_{int(time.time() * 1000)}@rooman.com"
         mark_email_verified(test_email)
-        reg_res = cls.client.post("/api/auth/register", json={
-            "name": "E2E Test User",
-            "email": test_email,
-            "password": "SecurePassword123",
-            "organizationName": "Rooman E2E Org",
-            "gstin": "29ABCDE1234F1Z5"
-        })
+        reg_res = cls.client.post(
+            "/api/auth/register",
+            json={
+                "name": "E2E Test User",
+                "email": test_email,
+                "password": "SecurePassword123",
+                "organizationName": "Rooman E2E Org",
+                "gstin": "29ABCDE1234F1Z5",
+            },
+        )
         if reg_res.status_code == 201:
             data = reg_res.json()
             cls.token = data.get("accessToken") or data.get("token")
             cls.headers = {"Authorization": f"Bearer {cls.token}"}
         else:
-            login_res = cls.client.post("/api/auth/login", json={
-                "email": test_email,
-                "password": "SecurePassword123"
-            })
+            login_res = cls.client.post("/api/auth/login", json={"email": test_email, "password": "SecurePassword123"})
             if login_res.status_code == 200:
                 ldata = login_res.json()
                 cls.token = ldata.get("accessToken") or ldata.get("token")
@@ -65,45 +65,33 @@ class ComprehensiveBackendE2ETest(unittest.TestCase):
 
     # ── 2. AUTHENTICATION FLOWS ──
     def test_02_register_duplicate_fails(self):
-        dup_email = f"dup_{int(time.time()*1000)}@rooman.com"
+        dup_email = f"dup_{int(time.time() * 1000)}@rooman.com"
         mark_email_verified(dup_email)
-        r1 = self.client.post("/api/auth/register", json={
-            "name": "Duplicate Test",
-            "email": dup_email,
-            "password": "SecurePassword123",
-            "organizationName": "Dup Org"
-        })
+        r1 = self.client.post(
+            "/api/auth/register",
+            json={"name": "Duplicate Test", "email": dup_email, "password": "SecurePassword123", "organizationName": "Dup Org"},
+        )
         self.assertEqual(r1.status_code, 201)
 
-        r2 = self.client.post("/api/auth/register", json={
-            "name": "Duplicate Test",
-            "email": dup_email,
-            "password": "SecurePassword123",
-            "organizationName": "Dup Org"
-        })
+        r2 = self.client.post(
+            "/api/auth/register",
+            json={"name": "Duplicate Test", "email": dup_email, "password": "SecurePassword123", "organizationName": "Dup Org"},
+        )
         self.assertIn(r2.status_code, (400, 409))
 
     def test_03_login_success_and_invalid(self):
-        email = f"login_test_{int(time.time()*1000)}@rooman.com"
+        email = f"login_test_{int(time.time() * 1000)}@rooman.com"
         mark_email_verified(email)
-        self.client.post("/api/auth/register", json={
-            "name": "Login Test",
-            "email": email,
-            "password": "SecurePassword123",
-            "organizationName": "Login Org"
-        })
+        self.client.post(
+            "/api/auth/register",
+            json={"name": "Login Test", "email": email, "password": "SecurePassword123", "organizationName": "Login Org"},
+        )
 
-        res = self.client.post("/api/auth/login", json={
-            "email": email,
-            "password": "SecurePassword123"
-        })
+        res = self.client.post("/api/auth/login", json={"email": email, "password": "SecurePassword123"})
         self.assertEqual(res.status_code, 200)
         self.assertTrue("token" in res.json() or "accessToken" in res.json())
 
-        bad_res = self.client.post("/api/auth/login", json={
-            "email": email,
-            "password": "WrongPassword999"
-        })
+        bad_res = self.client.post("/api/auth/login", json={"email": email, "password": "WrongPassword999"})
         self.assertEqual(bad_res.status_code, 401)
 
     def test_04_me_endpoint(self):
@@ -115,15 +103,15 @@ class ComprehensiveBackendE2ETest(unittest.TestCase):
     # ── 3. ITEMS & CATALOG MANAGEMENT ──
     def test_05_items_crud(self):
         item_payload = {
-            "name": f"E2E Switch {int(time.time()*1000)}",
+            "name": f"E2E Switch {int(time.time() * 1000)}",
             "type": "goods",
-            "sku": f"SW-{int(time.time()*1000)}",
+            "sku": f"SW-{int(time.time() * 1000)}",
             "unit": "pcs",
             "description": "24-port Gigabit Managed Switch",
             "sellingPrice": 45000.0,
             "purchasePrice": 32000.0,
             "openingStock": 15.0,
-            "reorderLevel": 3.0
+            "reorderLevel": 3.0,
         }
         create_res = self.client.post("/api/items", headers=self.headers, json=item_payload)
         self.assertEqual(create_res.status_code, 201)
@@ -149,7 +137,7 @@ class ComprehensiveBackendE2ETest(unittest.TestCase):
             "email": "billing@acmeglobal.com",
             "phone": "+91 98765 43210",
             "gstTreatment": "registered_business",
-            "paymentTermsDays": 30
+            "paymentTermsDays": 30,
         }
         res = self.client.post("/api/contacts", headers=self.headers, json=contact_payload)
         self.assertEqual(res.status_code, 201)
@@ -191,6 +179,7 @@ class ComprehensiveBackendE2ETest(unittest.TestCase):
     def test_10_non_existent_route(self):
         res = self.client.get("/api/this-does-not-exist")
         self.assertEqual(res.status_code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()

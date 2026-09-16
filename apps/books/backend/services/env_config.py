@@ -4,6 +4,7 @@ Integration credentials (Razorpay, SMTP) are process-wide settings rather than
 per-organisation rows, so the app keeps them in .env and reloads the cached
 Settings object after writing.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

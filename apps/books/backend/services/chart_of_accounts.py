@@ -2,6 +2,7 @@
 
 This is configuration (like Zoho Books' default accounts), not sample data.
 """
+
 from __future__ import annotations
 
 from typing import Dict
@@ -59,7 +60,27 @@ DEFAULT_ACCOUNTS = [
     ("7000", "Inventory Adjustments", "expense", "operating"),
 ]
 
-SYSTEM_CODES = {"1000", "1100", "1200", "1300", "2000", "2100", "2200", "2300", "2310", "2320", "3100", "4000", "4300", "5000", "5900", "1400", "2400", "6400", "7000"}
+SYSTEM_CODES = {
+    "1000",
+    "1100",
+    "1200",
+    "1300",
+    "2000",
+    "2100",
+    "2200",
+    "2300",
+    "2310",
+    "2320",
+    "3100",
+    "4000",
+    "4300",
+    "5000",
+    "5900",
+    "1400",
+    "2400",
+    "6400",
+    "7000",
+}
 
 
 def bootstrap_accounts(db: Session, organization_id: str) -> Dict[str, Account]:
@@ -80,20 +101,22 @@ def bootstrap_accounts(db: Session, organization_id: str) -> Dict[str, Account]:
 
 
 def get_account_by_code(db: Session, organization_id: str, code: str) -> Account:
-    account = db.execute(
-        select(Account).where(Account.organization_id == organization_id, Account.code == code)
-    ).scalar_one_or_none()
+    account = db.execute(select(Account).where(Account.organization_id == organization_id, Account.code == code)).scalar_one_or_none()
     if account is None:
         raise RuntimeError(f"System account {code} missing for organization {organization_id}")
     return account
 
 
 def get_account_by_subtype(db: Session, organization_id: str, subtype: str) -> Account:
-    account = db.execute(
-        select(Account)
-        .where(Account.organization_id == organization_id, Account.subtype == subtype, Account.is_active.is_(True))
-        .order_by(Account.code)
-    ).scalars().first()
+    account = (
+        db.execute(
+            select(Account)
+            .where(Account.organization_id == organization_id, Account.subtype == subtype, Account.is_active.is_(True))
+            .order_by(Account.code)
+        )
+        .scalars()
+        .first()
+    )
     if account is None:
         raise RuntimeError(f"No account with subtype {subtype} for organization {organization_id}")
     return account

@@ -6,6 +6,7 @@ Employee login can reach it. Every endpoint here scopes strictly to the
 Employee record linked to the caller's own user id - never anyone else's,
 and nothing about the wider organisation.
 """
+
 from __future__ import annotations
 
 from typing import List

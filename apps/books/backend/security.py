@@ -1,4 +1,5 @@
 """Password hashing and JWT helpers."""
+
 from __future__ import annotations
 
 import hashlib

@@ -1,4 +1,5 @@
 """Tests for universal external payment ingestion and Gmail SMTP YES/NO confirmation flow."""
+
 from unittest.mock import MagicMock, patch
 
 
@@ -109,4 +110,3 @@ def test_external_payments_list_and_resend(mock_smtp, client, org):
     resend_res = client.post(f"/api/payments/external/{pay_id}/resend-email", headers=org["h"])
     assert resend_res.status_code == 200
     assert "Confirmation email re-dispatched" in resend_res.json()["message"]
-

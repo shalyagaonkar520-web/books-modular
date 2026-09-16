@@ -1,5 +1,6 @@
 """Payroll: salary_day, the daily-accrual display fields on an employee, and
 leave records that automatically feed loss-of-pay when a pay run is created."""
+
 import calendar
 from datetime import date
 
@@ -24,7 +25,9 @@ def test_salary_day_round_trips_and_clamps_to_month_length(client):
     days_in_month = calendar.monthrange(today.year, today.month)[1]
     next_pay = date.fromisoformat(emp["nextPayDate"])
     # A month shorter than 31 days clamps the pay date to its own last day.
-    assert next_pay.day == min(31, days_in_month) or (next_pay.month != today.month and next_pay.day == calendar.monthrange(next_pay.year, next_pay.month)[1])
+    assert next_pay.day == min(31, days_in_month) or (
+        next_pay.month != today.month and next_pay.day == calendar.monthrange(next_pay.year, next_pay.month)[1]
+    )
 
     updated = client.put(f"/api/payroll/employees/{emp['id']}", headers=h, json={"salaryDay": 5}).json()
     assert updated["salaryDay"] == 5
@@ -68,7 +71,9 @@ def test_leave_crud_and_duplicate_rejected(client):
     h = auth(ctx["token"])
     emp = _employee(client, h)
 
-    created = client.post(f"/api/payroll/employees/{emp['id']}/leaves", headers=h, json={"date": "2026-09-03", "leaveType": "unpaid", "notes": "Sick"})
+    created = client.post(
+        f"/api/payroll/employees/{emp['id']}/leaves", headers=h, json={"date": "2026-09-03", "leaveType": "unpaid", "notes": "Sick"}
+    )
     assert created.status_code == 201, created.text
     rec = created.json()
     assert rec["employeeId"] == emp["id"] and rec["leaveType"] == "unpaid"
@@ -111,7 +116,8 @@ def test_explicit_loss_of_pay_override_wins_over_leave_records(client):
     client.post(f"/api/payroll/employees/{emp['id']}/leaves", headers=h, json={"date": "2026-10-05", "leaveType": "unpaid"})
 
     run = client.post(
-        "/api/payroll/pay-runs", headers=h,
+        "/api/payroll/pay-runs",
+        headers=h,
         json={"periodYear": 2026, "periodMonth": 10, "lossOfPay": {emp["id"]: 5}},
     ).json()
     slip = run["payslips"][0]

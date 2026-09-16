@@ -1,4 +1,5 @@
 """Alembic environment: uses the application's settings and metadata."""
+
 from __future__ import annotations
 
 from logging.config import fileConfig

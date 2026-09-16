@@ -1,4 +1,5 @@
 """Employees, monthly pay runs and payslips."""
+
 from __future__ import annotations
 
 import calendar
@@ -78,18 +79,41 @@ def employee_out(e: Employee, today: date | None = None) -> EmployeeOut:
     deductions = money(e.pf_employee + e.professional_tax + e.tds)
     accrual = _salary_accrual(e, today or date.today())
     return EmployeeOut(
-        id=e.id, employee_code=e.employee_code, name=e.name, email=e.email, designation=e.designation, department=e.department,
-        date_of_joining=e.date_of_joining, salary_day=e.salary_day, pan=e.pan, bank_account_number_masked=mask_number(e.bank_account_number),
-        bank_ifsc=e.bank_ifsc, basic_salary=e.basic_salary, hra=e.hra, other_allowances=e.other_allowances, pf_employee=e.pf_employee,
-        professional_tax=e.professional_tax, tds=e.tds, gross_salary=gross, net_salary=money(gross - deductions), is_active=e.is_active,
-        created_at=e.created_at, has_login=bool(e.user_id), **accrual,
+        id=e.id,
+        employee_code=e.employee_code,
+        name=e.name,
+        email=e.email,
+        designation=e.designation,
+        department=e.department,
+        date_of_joining=e.date_of_joining,
+        salary_day=e.salary_day,
+        pan=e.pan,
+        bank_account_number_masked=mask_number(e.bank_account_number),
+        bank_ifsc=e.bank_ifsc,
+        basic_salary=e.basic_salary,
+        hra=e.hra,
+        other_allowances=e.other_allowances,
+        pf_employee=e.pf_employee,
+        professional_tax=e.professional_tax,
+        tds=e.tds,
+        gross_salary=gross,
+        net_salary=money(gross - deductions),
+        is_active=e.is_active,
+        created_at=e.created_at,
+        has_login=bool(e.user_id),
+        **accrual,
     )
 
 
 def leave_out(rec: LeaveRecord) -> LeaveRecordOut:
     return LeaveRecordOut(
-        id=rec.id, employee_id=rec.employee_id, employee_name=rec.employee.name, date=rec.date,
-        leave_type=rec.leave_type, notes=rec.notes, created_at=rec.created_at,
+        id=rec.id,
+        employee_id=rec.employee_id,
+        employee_name=rec.employee.name,
+        date=rec.date,
+        leave_type=rec.leave_type,
+        notes=rec.notes,
+        created_at=rec.created_at,
     )
 
 
@@ -97,21 +121,48 @@ def payslip_out(p: Payslip) -> PayslipOut:
     e = p.employee
     run = p.pay_run
     return PayslipOut(
-        id=p.id, employee_id=p.employee_id, employee_code=e.employee_code, employee_name=e.name, designation=e.designation, department=e.department,
-        pan=e.pan, bank_account_number_masked=mask_number(e.bank_account_number), basic_salary=p.basic_salary, hra=p.hra,
-        other_allowances=p.other_allowances, gross=p.gross, pf_employee=p.pf_employee, professional_tax=p.professional_tax, tds=p.tds,
-        loss_of_pay_days=p.loss_of_pay_days, loss_of_pay_amount=p.loss_of_pay_amount, total_deductions=p.total_deductions, net_pay=p.net_pay,
-        period_year=run.period_year, period_month=run.period_month,
-        period_label=f"{calendar.month_name[run.period_month]} {run.period_year}", pay_run_status=run.status, pay_date=run.pay_date,
+        id=p.id,
+        employee_id=p.employee_id,
+        employee_code=e.employee_code,
+        employee_name=e.name,
+        designation=e.designation,
+        department=e.department,
+        pan=e.pan,
+        bank_account_number_masked=mask_number(e.bank_account_number),
+        basic_salary=p.basic_salary,
+        hra=p.hra,
+        other_allowances=p.other_allowances,
+        gross=p.gross,
+        pf_employee=p.pf_employee,
+        professional_tax=p.professional_tax,
+        tds=p.tds,
+        loss_of_pay_days=p.loss_of_pay_days,
+        loss_of_pay_amount=p.loss_of_pay_amount,
+        total_deductions=p.total_deductions,
+        net_pay=p.net_pay,
+        period_year=run.period_year,
+        period_month=run.period_month,
+        period_label=f"{calendar.month_name[run.period_month]} {run.period_year}",
+        pay_run_status=run.status,
+        pay_date=run.pay_date,
     )
 
 
 def payrun_out(run: PayRun, include_slips: bool = True) -> PayRunOut:
     return PayRunOut(
-        id=run.id, period_year=run.period_year, period_month=run.period_month, period_label=f"{calendar.month_name[run.period_month]} {run.period_year}",
-        status=run.status, pay_date=run.pay_date, bank_account_id=run.bank_account_id, total_gross=run.total_gross,
-        total_deductions=run.total_deductions, total_net=run.total_net, employee_count=len(run.payslips),
-        payslips=[payslip_out(p) for p in run.payslips] if include_slips else [], created_at=run.created_at,
+        id=run.id,
+        period_year=run.period_year,
+        period_month=run.period_month,
+        period_label=f"{calendar.month_name[run.period_month]} {run.period_year}",
+        status=run.status,
+        pay_date=run.pay_date,
+        bank_account_id=run.bank_account_id,
+        total_gross=run.total_gross,
+        total_deductions=run.total_deductions,
+        total_net=run.total_net,
+        employee_count=len(run.payslips),
+        payslips=[payslip_out(p) for p in run.payslips] if include_slips else [],
+        created_at=run.created_at,
     )
 
 
@@ -131,10 +182,7 @@ def list_unlinked_employees(user: User = Depends(require_admin), db: Session = D
         .where(Employee.organization_id == user.organization_id, Employee.is_active.is_(True), Employee.user_id.is_(None))
         .order_by(Employee.name)
     )
-    return [
-        EmployeeOptionOut(id=e.id, employee_code=e.employee_code, name=e.name, email=e.email)
-        for e in db.execute(stmt).scalars()
-    ]
+    return [EmployeeOptionOut(id=e.id, employee_code=e.employee_code, name=e.name, email=e.email) for e in db.execute(stmt).scalars()]
 
 
 @router.post("/employees", response_model=EmployeeOut, status_code=status.HTTP_201_CREATED)
@@ -195,8 +243,12 @@ def create_employee_leave(employee_id: str, payload: LeaveRecordCreate, user: Us
     if db.execute(select(LeaveRecord.id).where(LeaveRecord.employee_id == emp.id, LeaveRecord.date == payload.date)).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "A leave record already exists for this employee on this date")
     rec = LeaveRecord(
-        organization_id=user.organization_id, employee_id=emp.id, date=payload.date,
-        leave_type=payload.leave_type, notes=payload.notes, created_by=user.id,
+        organization_id=user.organization_id,
+        employee_id=emp.id,
+        date=payload.date,
+        leave_type=payload.leave_type,
+        notes=payload.notes,
+        created_by=user.id,
     )
     db.add(rec)
     db.flush()
@@ -217,17 +269,24 @@ def delete_leave(leave_id: str, user: User = Depends(require_write), db: Session
 
 @router.get("/pay-runs", response_model=List[PayRunOut])
 def list_pay_runs(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    rows = db.execute(
-        select(PayRun).where(PayRun.organization_id == user.organization_id).options(selectinload(PayRun.payslips).selectinload(Payslip.employee))
-        .order_by(PayRun.period_year.desc(), PayRun.period_month.desc())
-    ).scalars().all()
+    rows = (
+        db.execute(
+            select(PayRun)
+            .where(PayRun.organization_id == user.organization_id)
+            .options(selectinload(PayRun.payslips).selectinload(Payslip.employee))
+            .order_by(PayRun.period_year.desc(), PayRun.period_month.desc())
+        )
+        .scalars()
+        .all()
+    )
     return [payrun_out(r, include_slips=False) for r in rows]
 
 
 @router.get("/pay-runs/{run_id}", response_model=PayRunOut)
 def get_pay_run(run_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     run = db.execute(
-        select(PayRun).where(PayRun.id == run_id, PayRun.organization_id == user.organization_id)
+        select(PayRun)
+        .where(PayRun.id == run_id, PayRun.organization_id == user.organization_id)
         .options(selectinload(PayRun.payslips).selectinload(Payslip.employee))
     ).scalar_one_or_none()
     if run is None:
@@ -238,14 +297,22 @@ def get_pay_run(run_id: str, user: User = Depends(get_current_user), db: Session
 @router.post("/pay-runs", response_model=PayRunOut, status_code=status.HTTP_201_CREATED)
 def create_pay_run(payload: PayRunCreate, user: User = Depends(require_admin), db: Session = Depends(get_db)):
     org_id = user.organization_id
-    exists = db.execute(select(PayRun.id).where(PayRun.organization_id == org_id, PayRun.period_year == payload.period_year, PayRun.period_month == payload.period_month)).first()
+    exists = db.execute(
+        select(PayRun.id).where(
+            PayRun.organization_id == org_id, PayRun.period_year == payload.period_year, PayRun.period_month == payload.period_month
+        )
+    ).first()
     if exists:
         raise HTTPException(status.HTTP_409_CONFLICT, "A pay run already exists for this period")
     period_start = date(payload.period_year, payload.period_month, 1)
     period_end = date(payload.period_year, payload.period_month, calendar.monthrange(payload.period_year, payload.period_month)[1])
-    employees = db.execute(
-        select(Employee).where(Employee.organization_id == org_id, Employee.is_active.is_(True), Employee.date_of_joining <= period_end)
-    ).scalars().all()
+    employees = (
+        db.execute(
+            select(Employee).where(Employee.organization_id == org_id, Employee.is_active.is_(True), Employee.date_of_joining <= period_end)
+        )
+        .scalars()
+        .all()
+    )
     if not employees:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No active employees for this period")
     days_in_month = Decimal(calendar.monthrange(payload.period_year, payload.period_month)[1])
@@ -255,13 +322,17 @@ def create_pay_run(payload: PayRunCreate, user: User = Depends(require_admin), d
     auto_lop_counts: dict[str, int] = {}
     leave_rows = db.execute(
         select(LeaveRecord.employee_id, LeaveRecord.date).where(
-            LeaveRecord.organization_id == org_id, LeaveRecord.leave_type == "unpaid",
-            LeaveRecord.date >= period_start, LeaveRecord.date <= period_end,
+            LeaveRecord.organization_id == org_id,
+            LeaveRecord.leave_type == "unpaid",
+            LeaveRecord.date >= period_start,
+            LeaveRecord.date <= period_end,
         )
     ).all()
     for employee_id, _ in leave_rows:
         auto_lop_counts[employee_id] = auto_lop_counts.get(employee_id, 0) + 1
-    run = PayRun(organization_id=org_id, period_year=payload.period_year, period_month=payload.period_month, status="draft", created_by=user.id)
+    run = PayRun(
+        organization_id=org_id, period_year=payload.period_year, period_month=payload.period_month, status="draft", created_by=user.id
+    )
     total_gross = total_ded = total_net = Decimal("0")
     for emp in employees:
         if emp.id in payload.loss_of_pay:
@@ -277,11 +348,22 @@ def create_pay_run(payload: PayRunCreate, user: User = Depends(require_admin), d
         net = money(gross - deductions)
         if net < 0:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Deductions exceed pay for {emp.name}")
-        run.payslips.append(Payslip(
-            employee_id=emp.id, basic_salary=emp.basic_salary, hra=emp.hra, other_allowances=emp.other_allowances, gross=gross,
-            pf_employee=emp.pf_employee, professional_tax=emp.professional_tax, tds=emp.tds, loss_of_pay_days=lop_days,
-            loss_of_pay_amount=lop_amount, total_deductions=deductions, net_pay=net,
-        ))
+        run.payslips.append(
+            Payslip(
+                employee_id=emp.id,
+                basic_salary=emp.basic_salary,
+                hra=emp.hra,
+                other_allowances=emp.other_allowances,
+                gross=gross,
+                pf_employee=emp.pf_employee,
+                professional_tax=emp.professional_tax,
+                tds=emp.tds,
+                loss_of_pay_days=lop_days,
+                loss_of_pay_amount=lop_amount,
+                total_deductions=deductions,
+                net_pay=net,
+            )
+        )
         total_gross += gross
         total_ded += deductions
         total_net += net
@@ -329,7 +411,9 @@ def pay_pay_run(run_id: str, payload: PayRunPay, user: User = Depends(require_ad
     lines.append((bank_acct.ledger_account_id, Decimal("0"), run.total_net, f"{label} - net salaries", None))
     entry = ledger.post_entry(db, org_id, payload.pay_date, lines, "payroll", run.id, reference=label, created_by=user.id)
     bank.check_cash_overdraft(db, bank_acct, run.total_net)
-    bank.record_movement(db, bank_acct, payload.pay_date, "withdrawal", run.total_net, label, "payroll", run.id, user.id, None, salary_exp.id, entry.id)
+    bank.record_movement(
+        db, bank_acct, payload.pay_date, "withdrawal", run.total_net, label, "payroll", run.id, user.id, None, salary_exp.id, entry.id
+    )
     run.status = "paid"
     run.pay_date = payload.pay_date
     run.bank_account_id = bank_acct.id

@@ -3,6 +3,7 @@
 Suitable for a single process. For multi-instance deployments put the limiter
 at the reverse proxy (nginx `limit_req`) or use a shared store.
 """
+
 from __future__ import annotations
 
 import threading

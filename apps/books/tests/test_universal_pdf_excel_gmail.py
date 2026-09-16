@@ -7,26 +7,34 @@ from openpyxl import Workbook
 def test_customer_payment_pdf_excel_gmail(client, org):
     h = org["h"]
     # 1. Create invoice and customer payment
-    inv_res = client.post("/api/invoices", headers=h, json={
-        "customerId": org["customer"]["id"],
-        "date": "2026-09-01",
-        "dueDate": "2026-09-10",
-        "status": "sent",
-        "lines": [{"itemId": org["item"]["id"], "description": "27 inch Monitor", "quantity": 1, "rate": 500, "taxRate": 18}],
-    })
+    inv_res = client.post(
+        "/api/invoices",
+        headers=h,
+        json={
+            "customerId": org["customer"]["id"],
+            "date": "2026-09-01",
+            "dueDate": "2026-09-10",
+            "status": "sent",
+            "lines": [{"itemId": org["item"]["id"], "description": "27 inch Monitor", "quantity": 1, "rate": 500, "taxRate": 18}],
+        },
+    )
     assert inv_res.status_code == 201
     inv = inv_res.json()
 
-    cp_res = client.post("/api/customer-payments", headers=h, json={
-        "customerId": org["customer"]["id"],
-        "invoiceId": inv["id"],
-        "bankAccountId": org["bank"]["id"],
-        "date": "2026-09-02",
-        "amount": 590.0,
-        "mode": "bank_transfer",
-        "reference": "UTR-CUST-8899",
-        "notes": "Full payment received",
-    })
+    cp_res = client.post(
+        "/api/customer-payments",
+        headers=h,
+        json={
+            "customerId": org["customer"]["id"],
+            "invoiceId": inv["id"],
+            "bankAccountId": org["bank"]["id"],
+            "date": "2026-09-02",
+            "amount": 590.0,
+            "mode": "bank_transfer",
+            "reference": "UTR-CUST-8899",
+            "notes": "Full payment received",
+        },
+    )
     assert cp_res.status_code == 201
     cp = cp_res.json()
 
@@ -51,11 +59,15 @@ def test_customer_payment_pdf_excel_gmail(client, org):
         mock_server = MagicMock()
         mock_smtp.return_value = mock_server
 
-        send_res = client.post(f"/api/customer-payments/{cp['id']}/send-gmail", headers=h, json={
-            "to_email": "customer@example.com",
-            "custom_notes": "Thank you for prompt settlement!",
-            "attach_pdf": True,
-        })
+        send_res = client.post(
+            f"/api/customer-payments/{cp['id']}/send-gmail",
+            headers=h,
+            json={
+                "to_email": "customer@example.com",
+                "custom_notes": "Thank you for prompt settlement!",
+                "attach_pdf": True,
+            },
+        )
         assert send_res.status_code == 200
         assert send_res.json()["success"] is True
         assert mock_server.sendmail.called
@@ -64,28 +76,36 @@ def test_customer_payment_pdf_excel_gmail(client, org):
 def test_vendor_payment_pdf_excel_gmail(client, org):
     h = org["h"]
     # 1. Create vendor bill
-    bill_res = client.post("/api/bills", headers=h, json={
-        "vendorId": org["vendor"]["id"],
-        "vendorBillNumber": "VBILL-999",
-        "date": "2026-09-01",
-        "dueDate": "2026-09-15",
-        "status": "open",
-        "lines": [{"itemId": org["item"]["id"], "description": "Monitors", "quantity": 2, "rate": 400, "taxRate": 18}],
-    })
+    bill_res = client.post(
+        "/api/bills",
+        headers=h,
+        json={
+            "vendorId": org["vendor"]["id"],
+            "vendorBillNumber": "VBILL-999",
+            "date": "2026-09-01",
+            "dueDate": "2026-09-15",
+            "status": "open",
+            "lines": [{"itemId": org["item"]["id"], "description": "Monitors", "quantity": 2, "rate": 400, "taxRate": 18}],
+        },
+    )
     assert bill_res.status_code == 201
     bill = bill_res.json()
 
     # 2. Create vendor payment
-    vp_res = client.post("/api/vendor-payments", headers=h, json={
-        "vendorId": org["vendor"]["id"],
-        "billId": bill["id"],
-        "bankAccountId": org["bank"]["id"],
-        "date": "2026-09-03",
-        "amount": 944.0,
-        "mode": "bank_transfer",
-        "reference": "NEFT-VND-5544",
-        "notes": "Bill cleared",
-    })
+    vp_res = client.post(
+        "/api/vendor-payments",
+        headers=h,
+        json={
+            "vendorId": org["vendor"]["id"],
+            "billId": bill["id"],
+            "bankAccountId": org["bank"]["id"],
+            "date": "2026-09-03",
+            "amount": 944.0,
+            "mode": "bank_transfer",
+            "reference": "NEFT-VND-5544",
+            "notes": "Bill cleared",
+        },
+    )
     assert vp_res.status_code == 201
     vp = vp_res.json()
 
@@ -110,11 +130,15 @@ def test_vendor_payment_pdf_excel_gmail(client, org):
         mock_server = MagicMock()
         mock_smtp.return_value = mock_server
 
-        send_res = client.post(f"/api/vendor-payments/{vp['id']}/send-gmail", headers=h, json={
-            "to_email": "vendor@example.com",
-            "custom_notes": "Payment processed via NEFT.",
-            "attach_pdf": True,
-        })
+        send_res = client.post(
+            f"/api/vendor-payments/{vp['id']}/send-gmail",
+            headers=h,
+            json={
+                "to_email": "vendor@example.com",
+                "custom_notes": "Payment processed via NEFT.",
+                "attach_pdf": True,
+            },
+        )
         assert send_res.status_code == 200
         assert send_res.json()["success"] is True
         assert mock_server.sendmail.called
@@ -122,14 +146,18 @@ def test_vendor_payment_pdf_excel_gmail(client, org):
 
 def test_bill_pdf_excel_gmail(client, org):
     h = org["h"]
-    bill_res = client.post("/api/bills", headers=h, json={
-        "vendorId": org["vendor"]["id"],
-        "vendorBillNumber": "INV-SUP-1234",
-        "date": "2026-09-01",
-        "dueDate": "2026-09-20",
-        "status": "open",
-        "lines": [{"itemId": org["item"]["id"], "description": "Consulting Services", "quantity": 1, "rate": 250, "taxRate": 18}],
-    })
+    bill_res = client.post(
+        "/api/bills",
+        headers=h,
+        json={
+            "vendorId": org["vendor"]["id"],
+            "vendorBillNumber": "INV-SUP-1234",
+            "date": "2026-09-01",
+            "dueDate": "2026-09-20",
+            "status": "open",
+            "lines": [{"itemId": org["item"]["id"], "description": "Consulting Services", "quantity": 1, "rate": 250, "taxRate": 18}],
+        },
+    )
     assert bill_res.status_code == 201
     bill = bill_res.json()
 
@@ -153,11 +181,15 @@ def test_bill_pdf_excel_gmail(client, org):
         mock_server = MagicMock()
         mock_smtp.return_value = mock_server
 
-        send_res = client.post(f"/api/bills/{bill['id']}/send-gmail", headers=h, json={
-            "to_email": "accounts@vendor.com",
-            "custom_notes": "Approved for payment cycle.",
-            "attach_pdf": True,
-        })
+        send_res = client.post(
+            f"/api/bills/{bill['id']}/send-gmail",
+            headers=h,
+            json={
+                "to_email": "accounts@vendor.com",
+                "custom_notes": "Approved for payment cycle.",
+                "attach_pdf": True,
+            },
+        )
         assert send_res.status_code == 200
         assert send_res.json()["success"] is True
 
@@ -165,15 +197,19 @@ def test_bill_pdf_excel_gmail(client, org):
 def test_expense_pdf_excel_gmail(client, org):
     h = org["h"]
     exp_account_id = org["accounts"]["5000"]["id"]
-    exp_res = client.post("/api/expenses", headers=h, json={
-        "accountId": exp_account_id,
-        "paidThroughAccountId": org["bank"]["id"],
-        "date": "2026-09-02",
-        "amount": 1200.0,
-        "taxRate": 0,
-        "category": "Office Supplies",
-        "notes": "Stationery & printing supplies",
-    })
+    exp_res = client.post(
+        "/api/expenses",
+        headers=h,
+        json={
+            "accountId": exp_account_id,
+            "paidThroughAccountId": org["bank"]["id"],
+            "date": "2026-09-02",
+            "amount": 1200.0,
+            "taxRate": 0,
+            "category": "Office Supplies",
+            "notes": "Stationery & printing supplies",
+        },
+    )
     assert exp_res.status_code == 201
     exp = exp_res.json()
 
@@ -191,12 +227,16 @@ def test_expense_pdf_excel_gmail(client, org):
         mock_server = MagicMock()
         mock_smtp.return_value = mock_server
 
-        send_res = client.post(f"/api/expenses/{exp['id']}/send-gmail", headers=h, json={
-            "to_email": "auditor@rooman.com",
-            "recipient_name": "Audit Team",
-            "custom_notes": "Verified against tax receipt.",
-            "attach_pdf": True,
-        })
+        send_res = client.post(
+            f"/api/expenses/{exp['id']}/send-gmail",
+            headers=h,
+            json={
+                "to_email": "auditor@rooman.com",
+                "recipient_name": "Audit Team",
+                "custom_notes": "Verified against tax receipt.",
+                "attach_pdf": True,
+            },
+        )
         assert send_res.status_code == 200
         assert send_res.json()["success"] is True
 
@@ -217,10 +257,14 @@ def test_contacts_pdf_excel_gmail(client, org):
         mock_server = MagicMock()
         mock_smtp.return_value = mock_server
 
-        send_res = client.post(f"/api/contacts/{org['customer']['id']}/send-gmail", headers=h, json={
-            "subject": "Monthly Statement of Accounts",
-            "message": "Dear Valued Customer, please review your monthly statement of accounts.",
-        })
+        send_res = client.post(
+            f"/api/contacts/{org['customer']['id']}/send-gmail",
+            headers=h,
+            json={
+                "subject": "Monthly Statement of Accounts",
+                "message": "Dear Valued Customer, please review your monthly statement of accounts.",
+            },
+        )
         assert send_res.status_code == 200
         assert send_res.json()["success"] is True
 

@@ -32,9 +32,7 @@ def sender_identity() -> tuple[str, str]:
 def get_smtp_connection():
     settings = _smtp()
     if not settings.smtp_configured:
-        raise SmtpNotConfigured(
-            "Email is not configured. Set SMTP_USER and SMTP_PASSWORD in the server environment."
-        )
+        raise SmtpNotConfigured("Email is not configured. Set SMTP_USER and SMTP_PASSWORD in the server environment.")
     server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30)
     server.starttls()
     server.login(settings.smtp_user, settings.smtp_password)
@@ -60,9 +58,13 @@ def send_due_reminder_email(
         msg["To"] = to_email
 
         formatted_amount = f"₹{amount:,.2f}"
-        note_block = f"""<div style="background:#f1f5f9; border-left:4px solid #64748b; padding:12px; margin:16px 0; font-size:13.5px; color:#334155;">
+        note_block = (
+            f"""<div style="background:#f1f5f9; border-left:4px solid #64748b; padding:12px; margin:16px 0; font-size:13.5px; color:#334155;">
         <strong>Special Note from Accounts:</strong><br/>{custom_notes}
-        </div>""" if custom_notes else ""
+        </div>"""
+            if custom_notes
+            else ""
+        )
 
         html_body = f"""<!DOCTYPE html>
 <html>
@@ -158,13 +160,10 @@ def send_due_reminder_email(
             "invoice_id": invoice_id,
             "amount": amount,
             "recipient": to_email,
-            "pdf_attached": bool(pdf_bytes)
+            "pdf_attached": bool(pdf_bytes),
         }
     except Exception as e:
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        return {"success": False, "error": str(e)}
 
 
 def send_invoice_email(
@@ -186,9 +185,13 @@ def send_invoice_email(
         msg["To"] = to_email
 
         formatted_amount = f"₹{amount:,.2f}"
-        note_block = f"""<div style="background:#f1f5f9; border-left:4px solid #2563eb; padding:12px; margin:16px 0; font-size:13.5px; color:#334155;">
+        note_block = (
+            f"""<div style="background:#f1f5f9; border-left:4px solid #2563eb; padding:12px; margin:16px 0; font-size:13.5px; color:#334155;">
         <strong>Special Instructions:</strong><br/>{custom_notes}
-        </div>""" if custom_notes else ""
+        </div>"""
+            if custom_notes
+            else ""
+        )
 
         html_body = f"""<!DOCTYPE html>
 <html>
@@ -223,7 +226,7 @@ def send_invoice_email(
 
       {note_block}
 
-      <p style="font-size:13.5px; color:#475569;">Description / Service: {items_summary or 'Enterprise IT & Accounting Solutions'}</p>
+      <p style="font-size:13.5px; color:#475569;">Description / Service: {items_summary or "Enterprise IT & Accounting Solutions"}</p>
 
       <p style="margin-top:28px; font-size:14px;">Regards,<br><strong>Rooman Technologies Billing Team</strong></p>
     </div>
@@ -247,21 +250,13 @@ def send_invoice_email(
             "success": True,
             "message": f"Tax Invoice {invoice_id} emailed successfully to {to_email}",
             "invoice_id": invoice_id,
-            "pdf_attached": bool(pdf_bytes)
+            "pdf_attached": bool(pdf_bytes),
         }
     except Exception as e:
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        return {"success": False, "error": str(e)}
 
 
-def send_custom_message_email(
-    to_email: str,
-    subject: str,
-    message: str,
-    recipient_name: Optional[str] = None
-) -> Dict[str, Any]:
+def send_custom_message_email(to_email: str, subject: str, message: str, recipient_name: Optional[str] = None) -> Dict[str, Any]:
     """Send a custom communication email to a customer, client, or other recipient via Gmail SMTP."""
     try:
         msg = MIMEMultipart("alternative")
@@ -314,17 +309,9 @@ def send_custom_message_email(
         server.sendmail(_smtp().smtp_user, to_email, msg.as_string())
         server.quit()
 
-        return {
-            "success": True,
-            "message": f"Email successfully dispatched to {to_email}",
-            "recipient": to_email,
-            "subject": subject
-        }
+        return {"success": True, "message": f"Email successfully dispatched to {to_email}", "recipient": to_email, "subject": subject}
     except Exception as e:
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        return {"success": False, "error": str(e)}
 
 
 def send_payment_confirmation_request_email(
@@ -411,15 +398,15 @@ def send_payment_confirmation_request_email(
         </tr>
         <tr>
           <th>Payer Name</th>
-          <td>{payer_name or 'N/A'}</td>
+          <td>{payer_name or "N/A"}</td>
         </tr>
         <tr>
           <th>Payer Email</th>
-          <td>{payer_email or 'N/A'}</td>
+          <td>{payer_email or "N/A"}</td>
         </tr>
         <tr>
           <th>Matched Invoice</th>
-          <td>{invoice_number or 'Unassigned Customer Advance'}</td>
+          <td>{invoice_number or "Unassigned Customer Advance"}</td>
         </tr>
       </table>
 
@@ -457,10 +444,7 @@ def send_payment_confirmation_request_email(
             "approval_token": approval_token,
         }
     except Exception as e:
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        return {"success": False, "error": str(e)}
 
 
 def send_customer_payment_email(
@@ -483,9 +467,13 @@ def send_customer_payment_email(
         msg["To"] = to_email
 
         formatted_amount = f"₹{amount:,.2f}"
-        note_block = f"""<div style="background:#f1f5f9; border-left:4px solid #16a34a; padding:12px; margin:16px 0; font-size:13.5px; color:#334155;">
+        note_block = (
+            f"""<div style="background:#f1f5f9; border-left:4px solid #16a34a; padding:12px; margin:16px 0; font-size:13.5px; color:#334155;">
         <strong>Notes from Rooman Accounts:</strong><br/>{custom_notes}
-        </div>""" if custom_notes else ""
+        </div>"""
+            if custom_notes
+            else ""
+        )
 
         html = f"""<!DOCTYPE html>
 <html>
@@ -508,7 +496,7 @@ def send_customer_payment_email(
 
       <table style="width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 13.5px;">
         <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;">Payment Mode</td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-weight: 600; text-align: right;">{payment_mode.upper()}</td></tr>
-        <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;">Reference / UTR</td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-family: monospace; text-align: right;">{reference or 'N/A'}</td></tr>
+        <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;">Reference / UTR</td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-family: monospace; text-align: right;">{reference or "N/A"}</td></tr>
       </table>
 
       {note_block}
@@ -555,9 +543,13 @@ def send_vendor_payment_email(
         msg["To"] = to_email
 
         formatted_amount = f"₹{amount:,.2f}"
-        note_block = f"""<div style="background:#f1f5f9; border-left:4px solid #2563eb; padding:12px; margin:16px 0; font-size:13.5px; color:#334155;">
+        note_block = (
+            f"""<div style="background:#f1f5f9; border-left:4px solid #2563eb; padding:12px; margin:16px 0; font-size:13.5px; color:#334155;">
         <strong>Remittance Note:</strong><br/>{custom_notes}
-        </div>""" if custom_notes else ""
+        </div>"""
+            if custom_notes
+            else ""
+        )
 
         html = f"""<!DOCTYPE html>
 <html>
@@ -580,7 +572,7 @@ def send_vendor_payment_email(
 
       <table style="width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 13.5px;">
         <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;">Transfer Mode</td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-weight: 600; text-align: right;">{payment_mode.upper()}</td></tr>
-        <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;">UTR / Cheque Ref</td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-family: monospace; text-align: right;">{reference or 'N/A'}</td></tr>
+        <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;">UTR / Cheque Ref</td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-family: monospace; text-align: right;">{reference or "N/A"}</td></tr>
       </table>
 
       {note_block}
@@ -627,9 +619,13 @@ def send_expense_email(
         msg["To"] = to_email
 
         formatted_amount = f"₹{amount:,.2f}"
-        note_block = f"""<div style="background:#f1f5f9; border-left:4px solid #d97706; padding:12px; margin:16px 0; font-size:13.5px; color:#334155;">
+        note_block = (
+            f"""<div style="background:#f1f5f9; border-left:4px solid #d97706; padding:12px; margin:16px 0; font-size:13.5px; color:#334155;">
         <strong>Expense Details:</strong><br/>{custom_notes}
-        </div>""" if custom_notes else ""
+        </div>"""
+            if custom_notes
+            else ""
+        )
 
         html = f"""<!DOCTYPE html>
 <html>
@@ -707,13 +703,21 @@ def send_overall_report_email(
         net_border = "#a7f3d0" if net_profit >= 0 else "#fecaca"
         net_label = "Net Operating Profit" if net_profit >= 0 else "Net Operating Loss"
 
-        note_block = f"""<div style="background:#f8fafc; border-left:4px solid #3b82f6; padding:12px 16px; margin:20px 0; border-radius:4px; font-size:13.5px; color:#334155;">
+        note_block = (
+            f"""<div style="background:#f8fafc; border-left:4px solid #3b82f6; padding:12px 16px; margin:20px 0; border-radius:4px; font-size:13.5px; color:#334155;">
         <strong style="color:#1e293b;">Executive Notes:</strong><br/>{custom_notes}
-        </div>""" if custom_notes else ""
+        </div>"""
+            if custom_notes
+            else ""
+        )
 
-        pdf_badge = f"""<div style="margin:16px 0; padding:10px 14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; font-size:13px; color:#1e40af;">
-        📎 <strong>Attached:</strong> Complete Executive Financial &amp; Operations PDF Report ({pdf_filename or 'Overall_Report.pdf'})
-        </div>""" if pdf_bytes else ""
+        pdf_badge = (
+            f"""<div style="margin:16px 0; padding:10px 14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; font-size:13px; color:#1e40af;">
+        📎 <strong>Attached:</strong> Complete Executive Financial &amp; Operations PDF Report ({pdf_filename or "Overall_Report.pdf"})
+        </div>"""
+            if pdf_bytes
+            else ""
+        )
 
         html = f"""<!DOCTYPE html>
 <html>
@@ -727,7 +731,7 @@ def send_overall_report_email(
     </div>
 
     <div style="padding: 28px 32px;">
-      <p style="font-size: 15px; margin-top: 0;">Hello <strong>{recipient_name or 'Team'}</strong>,</p>
+      <p style="font-size: 15px; margin-top: 0;">Hello <strong>{recipient_name or "Team"}</strong>,</p>
       <p style="font-size: 14px; color: #475569; line-height: 1.5;">
         Here is the live executive summary report derived from posted accounting transactions for <strong>{period_label}</strong> in Rooman Books.
       </p>
@@ -802,10 +806,6 @@ def send_overall_report_email(
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
-
-
-
-
 
 
 def send_invite_email(

@@ -1,4 +1,5 @@
 """Pytest fixtures: isolated SQLite database per test session, in-process API client."""
+
 from __future__ import annotations
 
 import datetime
@@ -59,9 +60,11 @@ def register_org(client: TestClient, name_hint: str = "Org") -> dict:
     email = f"admin{n}@{name_hint.lower()}.example.com"
 
     from datetime import UTC, datetime, timedelta
+
     from backend.db import SessionLocal
     from backend.models import EmailVerification
     from backend.security import hash_token
+
     with SessionLocal() as db:
         db.add(
             EmailVerification(
@@ -92,9 +95,7 @@ def auth(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-def invite_and_accept(
-    client: TestClient, h: dict, name: str, email: str, role: str, password: str, employee_id: str | None = None
-) -> dict:
+def invite_and_accept(client: TestClient, h: dict, name: str, email: str, role: str, password: str, employee_id: str | None = None) -> dict:
     """Invites a user by email (SMTP mocked) and immediately accepts on their behalf.
 
     Invited users have no password until they follow the link in that email,
@@ -128,19 +129,45 @@ def org(client):
         headers=h,
         json={"name": "Operating Account", "type": "bank", "openingBalance": 500000, "openingBalanceDate": "2026-04-01", "isPrimary": True},
     ).json()
-    customer = client.post("/api/contacts", headers=h, json={"type": "customer", "displayName": "Acme Ltd", "email": "ap@acme.example.com", "paymentTermsDays": 15}).json()
+    customer = client.post(
+        "/api/contacts",
+        headers=h,
+        json={"type": "customer", "displayName": "Acme Ltd", "email": "ap@acme.example.com", "paymentTermsDays": 15},
+    ).json()
     vendor = client.post("/api/contacts", headers=h, json={"type": "vendor", "displayName": "Dell India", "paymentTermsDays": 30}).json()
     item = client.post(
         "/api/items",
         headers=h,
         json={
-            "name": "27 inch Monitor", "sku": "MON-27", "type": "goods", "sellingPrice": 10000, "costPrice": 7000, "taxRate": 18,
-            "trackInventory": True, "openingStock": 20, "openingStockRate": 7000, "reorderLevel": 5,
+            "name": "27 inch Monitor",
+            "sku": "MON-27",
+            "type": "goods",
+            "sellingPrice": 10000,
+            "costPrice": 7000,
+            "taxRate": 18,
+            "trackInventory": True,
+            "openingStock": 20,
+            "openingStockRate": 7000,
+            "reorderLevel": 5,
         },
     ).json()
-    service = client.post("/api/items", headers=h, json={"name": "Consulting", "sku": "SRV-CON", "type": "service", "sellingPrice": 2500, "costPrice": 0, "taxRate": 18}).json()
+    service = client.post(
+        "/api/items",
+        headers=h,
+        json={"name": "Consulting", "sku": "SRV-CON", "type": "service", "sellingPrice": 2500, "costPrice": 0, "taxRate": 18},
+    ).json()
     accounts = client.get("/api/accounting/accounts", headers=h).json()
-    ctx.update({"h": h, "bank": bank, "customer": customer, "vendor": vendor, "item": item, "service": service, "accounts": {a["code"]: a for a in accounts}})
+    ctx.update(
+        {
+            "h": h,
+            "bank": bank,
+            "customer": customer,
+            "vendor": vendor,
+            "item": item,
+            "service": service,
+            "accounts": {a["code"]: a for a in accounts},
+        }
+    )
     return ctx
 
 

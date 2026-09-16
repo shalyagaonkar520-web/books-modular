@@ -1,9 +1,11 @@
 """Registration, login, token refresh, profile."""
+
 from __future__ import annotations
 
 import logging
 import secrets
 from datetime import UTC, date, datetime, timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
@@ -108,8 +110,7 @@ def send_email_verification(payload: SendEmailVerificationRequest, request: Requ
 
     # Resend cooldown: 60 seconds
     recent = db.execute(
-        select(EmailVerification)
-        .where(
+        select(EmailVerification).where(
             EmailVerification.email == email,
             EmailVerification.status == "PENDING",
             EmailVerification.created_at > datetime.now(UTC) - timedelta(seconds=60),
@@ -122,12 +123,16 @@ def send_email_verification(payload: SendEmailVerificationRequest, request: Requ
         )
 
     # Invalidate any older PENDING tokens for this email
-    pending_records = db.execute(
-        select(EmailVerification).where(
-            EmailVerification.email == email,
-            EmailVerification.status == "PENDING",
+    pending_records = (
+        db.execute(
+            select(EmailVerification).where(
+                EmailVerification.email == email,
+                EmailVerification.status == "PENDING",
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for rec in pending_records:
         rec.status = "EXPIRED"
 
@@ -209,8 +214,7 @@ def verify_email_token(payload: VerifyEmailTokenRequest, db: Session = Depends(g
     t_hash = hash_token(tok)
     verification = db.execute(
         select(EmailVerification).where(
-            (EmailVerification.token_hash == t_hash)
-            | (EmailVerification.token_hash == hash_token(f"{EmailVerification.email}:{tok}"))
+            (EmailVerification.token_hash == t_hash) | (EmailVerification.token_hash == hash_token(f"{EmailVerification.email}:{tok}"))
         )
     ).scalar_one_or_none()
 
@@ -239,15 +243,19 @@ def verify_email_token(payload: VerifyEmailTokenRequest, db: Session = Depends(g
 @router.get("/email-verification-status", response_model=EmailVerificationStatusResponse)
 def check_email_verification_status(email: str, db: Session = Depends(get_db)):
     norm_email = email.lower().strip()
-    rec = db.execute(
-        select(EmailVerification)
-        .where(
-            EmailVerification.email == norm_email,
-            EmailVerification.status == "VERIFIED",
-            EmailVerification.used_at.is_(None),
+    rec = (
+        db.execute(
+            select(EmailVerification)
+            .where(
+                EmailVerification.email == norm_email,
+                EmailVerification.status == "VERIFIED",
+                EmailVerification.used_at.is_(None),
+            )
+            .order_by(EmailVerification.verified_at.desc())
         )
-        .order_by(EmailVerification.verified_at.desc())
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
 
     if rec:
         exp = rec.expires_at.replace(tzinfo=UTC) if rec.expires_at.tzinfo is None else rec.expires_at
@@ -279,15 +287,19 @@ def register(payload: RegisterRequest, request: Request, response: Response, db:
 
     # CORE SECURITY RULE: The backend must independently verify that the email address
     # has a valid, unexpired, single-use VERIFIED record before creating the organization.
-    verification = db.execute(
-        select(EmailVerification)
-        .where(
-            EmailVerification.email == email,
-            EmailVerification.status == "VERIFIED",
-            EmailVerification.used_at.is_(None),
+    verification = (
+        db.execute(
+            select(EmailVerification)
+            .where(
+                EmailVerification.email == email,
+                EmailVerification.status == "VERIFIED",
+                EmailVerification.used_at.is_(None),
+            )
+            .order_by(EmailVerification.verified_at.desc())
         )
-        .order_by(EmailVerification.verified_at.desc())
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
 
     if not verification:
         raise HTTPException(
@@ -379,8 +391,7 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
     if user and user.password_hash is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "This invitation hasn't been accepted yet. Check your email for the setup link.")
     password_ok = user is not None and (
-        verify_password(payload.password, user.password_hash)
-        or verify_password(payload.password.strip(), user.password_hash)
+        verify_password(payload.password, user.password_hash) or verify_password(payload.password.strip(), user.password_hash)
     )
     if not user or not password_ok:
         logger.warning("Login failed for email '%s' (user_found: %s)", email_clean, user is not None)
@@ -427,8 +438,7 @@ def forgot_password(payload: ForgotPasswordRequest, request: Request, db: Sessio
 
     # Resend cooldown: 60 seconds
     recent = db.execute(
-        select(EmailVerification)
-        .where(
+        select(EmailVerification).where(
             EmailVerification.email == email,
             EmailVerification.status == "PENDING",
             EmailVerification.created_at > datetime.now(UTC) - timedelta(seconds=60),
@@ -441,12 +451,16 @@ def forgot_password(payload: ForgotPasswordRequest, request: Request, db: Sessio
         )
 
     # Invalidate older pending reset tokens for this email
-    pending_records = db.execute(
-        select(EmailVerification).where(
-            EmailVerification.email == email,
-            EmailVerification.status == "PENDING",
+    pending_records = (
+        db.execute(
+            select(EmailVerification).where(
+                EmailVerification.email == email,
+                EmailVerification.status == "PENDING",
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for rec in pending_records:
         rec.status = "EXPIRED"
 
@@ -576,9 +590,7 @@ def update_profile(payload: UpdateProfileRequest, user: User = Depends(get_curre
 
 
 @router.post("/change-password", response_model=Message)
-def change_password(
-    payload: ChangePasswordRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+def change_password(payload: ChangePasswordRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not verify_password(payload.current_password, user.password_hash):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Current password is incorrect")
     user.password_hash = hash_password(payload.new_password)
@@ -630,9 +642,7 @@ def list_sessions(request: Request, user: User = Depends(get_current_user), db: 
 @router.delete("/sessions/{session_id}", response_model=Message)
 def revoke_session(session_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Sign a single device/browser out remotely."""
-    token = db.execute(
-        select(RefreshToken).where(RefreshToken.id == session_id, RefreshToken.user_id == user.id)
-    ).scalar_one_or_none()
+    token = db.execute(select(RefreshToken).where(RefreshToken.id == session_id, RefreshToken.user_id == user.id)).scalar_one_or_none()
     if token is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
     if token.revoked_at is None:

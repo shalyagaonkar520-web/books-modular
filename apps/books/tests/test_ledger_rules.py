@@ -1,4 +1,5 @@
 """Direct tests for the posting rules that every module depends on."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -199,10 +200,26 @@ def test_journal_entries_record_their_source(ledger_org):
 
 def test_system_accounts_exist_for_every_posting_path(ledger_org):
     """Every account code the posting services look up must be bootstrapped."""
-    required = {"1000", "1100", "1200", "1300", "1400", "2000", "2100", "2200", "2310", "2320", "2400", "3100", "4000", "4300", "5000", "5900", "6400", "7000"}
+    required = {
+        "1000",
+        "1100",
+        "1200",
+        "1300",
+        "1400",
+        "2000",
+        "2100",
+        "2200",
+        "2310",
+        "2320",
+        "2400",
+        "3100",
+        "4000",
+        "4300",
+        "5000",
+        "5900",
+        "6400",
+        "7000",
+    }
     with SessionLocal() as db:
-        codes = {
-            code
-            for (code,) in db.query(Account.code).filter(Account.organization_id == ledger_org["org_id"]).all()
-        }
+        codes = {code for (code,) in db.query(Account.code).filter(Account.organization_id == ledger_org["org_id"]).all()}
     assert required <= codes, f"missing bootstrap accounts: {sorted(required - codes)}"

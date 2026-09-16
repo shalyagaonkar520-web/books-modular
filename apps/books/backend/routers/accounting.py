@@ -1,4 +1,5 @@
 """Chart of accounts, manual journals, general ledger and trial balance."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -105,11 +106,26 @@ def delete_account(account_id: str, user: User = Depends(require_financial_write
 
 def journal_out(entry: JournalEntry) -> JournalOut:
     return JournalOut(
-        id=entry.id, entry_number=entry.entry_number, date=entry.date, reference=entry.reference, notes=entry.notes,
-        source_type=entry.source_type, source_id=entry.source_id, is_reversal=entry.is_reversal, total=entry.total,
+        id=entry.id,
+        entry_number=entry.entry_number,
+        date=entry.date,
+        reference=entry.reference,
+        notes=entry.notes,
+        source_type=entry.source_type,
+        source_id=entry.source_id,
+        is_reversal=entry.is_reversal,
+        total=entry.total,
         lines=[
-            JournalLineOut(id=ln.id, account_id=ln.account_id, account_code=ln.account.code, account_name=ln.account.name,
-                           description=ln.description, debit=ln.debit, credit=ln.credit, contact_id=ln.contact_id)
+            JournalLineOut(
+                id=ln.id,
+                account_id=ln.account_id,
+                account_code=ln.account.code,
+                account_name=ln.account.name,
+                description=ln.description,
+                debit=ln.debit,
+                credit=ln.credit,
+                contact_id=ln.contact_id,
+            )
             for ln in entry.lines
         ],
         created_at=entry.created_at,
@@ -126,7 +142,11 @@ def list_journals(
     user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
-    stmt = select(JournalEntry).where(JournalEntry.organization_id == user.organization_id).options(selectinload(JournalEntry.lines).selectinload(JournalLine.account))
+    stmt = (
+        select(JournalEntry)
+        .where(JournalEntry.organization_id == user.organization_id)
+        .options(selectinload(JournalEntry.lines).selectinload(JournalLine.account))
+    )
     if source_type:
         stmt = stmt.where(JournalEntry.source_type == source_type)
     if start_date:
@@ -135,7 +155,11 @@ def list_journals(
         stmt = stmt.where(JournalEntry.date <= end_date)
     if search and search.strip():
         q = f"%{search.strip().lower()}%"
-        stmt = stmt.where(func.lower(JournalEntry.entry_number).like(q) | func.lower(JournalEntry.reference).like(q) | func.lower(JournalEntry.notes).like(q))
+        stmt = stmt.where(
+            func.lower(JournalEntry.entry_number).like(q)
+            | func.lower(JournalEntry.reference).like(q)
+            | func.lower(JournalEntry.notes).like(q)
+        )
     stmt = stmt.order_by(JournalEntry.date.desc(), JournalEntry.created_at.desc())
     rows, total = paginate(db, stmt, pagination)
     return Page(items=[journal_out(e) for e in rows], total=total, page=pagination.page, page_size=pagination.page_size)
@@ -150,7 +174,9 @@ def get_journal(entry_id: str, user: User = Depends(require_financial_read), db:
 @router.post("/journals", response_model=JournalOut, status_code=status.HTTP_201_CREATED)
 def create_journal(payload: JournalCreate, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     lines = [(ln.account_id, ln.debit, ln.credit, ln.description, ln.contact_id) for ln in payload.lines]
-    entry = ledger.post_entry(db, user.organization_id, payload.date, lines, "manual", None, reference=payload.reference, notes=payload.notes, created_by=user.id)
+    entry = ledger.post_entry(
+        db, user.organization_id, payload.date, lines, "manual", None, reference=payload.reference, notes=payload.notes, created_by=user.id
+    )
     entry.source_id = entry.id
     audit.record(db, user, "create", "journal", entry.id, f"Manual journal {entry.entry_number} for {entry.total}")
     db.commit()
@@ -159,13 +185,17 @@ def create_journal(payload: JournalCreate, user: User = Depends(require_financia
 
 
 @router.post("/journals/{entry_id}/reverse", response_model=JournalOut)
-def reverse_journal(entry_id: str, reversal_date: Optional[date] = None, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
+def reverse_journal(
+    entry_id: str, reversal_date: Optional[date] = None, user: User = Depends(require_financial_write), db: Session = Depends(get_db)
+):
     entry = get_or_404(db, JournalEntry, entry_id, user.organization_id, "Journal entry")
     if entry.source_type != "manual":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only manual journals can be reversed here. Void the source document instead.")
     if entry.is_reversal:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This entry is already a reversal")
-    reversals = ledger.reverse_entries_for_source(db, user.organization_id, "manual", entry.source_id or entry.id, reversal_date or date.today(), user.id, "Manual reversal")
+    reversals = ledger.reverse_entries_for_source(
+        db, user.organization_id, "manual", entry.source_id or entry.id, reversal_date or date.today(), user.id, "Manual reversal"
+    )
     if not reversals:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This journal has already been reversed")
     audit.record(db, user, "create", "journal", reversals[0].id, f"Reversed {entry.entry_number}")
@@ -184,7 +214,9 @@ def general_ledger(
     acct = get_or_404(db, Account, account_id, user.organization_id, "Account")
     opening = Decimal("0")
     if start_date:
-        d, c = ledger.account_balances(db, user.organization_id, end=start_date.__class__.fromordinal(start_date.toordinal() - 1), account_ids=[acct.id]).get(acct.id, (Decimal("0"), Decimal("0")))
+        d, c = ledger.account_balances(
+            db, user.organization_id, end=start_date.__class__.fromordinal(start_date.toordinal() - 1), account_ids=[acct.id]
+        ).get(acct.id, (Decimal("0"), Decimal("0")))
         opening = ledger.natural_balance(acct.type, d, c)
     stmt = (
         select(JournalLine, JournalEntry)
@@ -201,9 +233,27 @@ def general_ledger(
     sign = 1 if acct.type in ("asset", "expense") else -1
     for line, entry in db.execute(stmt):
         balance = money(balance + sign * (line.debit - line.credit))
-        lines.append(LedgerLine(date=entry.date, entry_id=entry.id, entry_number=entry.entry_number, source_type=entry.source_type,
-                                reference=entry.reference, description=line.description, debit=line.debit, credit=line.credit, balance=balance))
-    return LedgerReport(account=account_out(acct, balance), start_date=start_date, end_date=end_date, opening_balance=money(opening), lines=lines, closing_balance=money(balance))
+        lines.append(
+            LedgerLine(
+                date=entry.date,
+                entry_id=entry.id,
+                entry_number=entry.entry_number,
+                source_type=entry.source_type,
+                reference=entry.reference,
+                description=line.description,
+                debit=line.debit,
+                credit=line.credit,
+                balance=balance,
+            )
+        )
+    return LedgerReport(
+        account=account_out(acct, balance),
+        start_date=start_date,
+        end_date=end_date,
+        opening_balance=money(opening),
+        lines=lines,
+        closing_balance=money(balance),
+    )
 
 
 @router.get("/trial-balance", response_model=TrialBalance)

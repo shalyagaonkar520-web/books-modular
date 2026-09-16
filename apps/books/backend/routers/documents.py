@@ -39,9 +39,16 @@ settings = get_settings()
 router = APIRouter(prefix="/api/documents", tags=["Documents"])
 
 ALLOWED_TYPES = {
-    "application/pdf", "image/png", "image/jpeg", "image/webp", "text/csv", "text/plain",
-    "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "text/csv",
+    "text/plain",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 CATEGORIES = {"general", "invoice", "bill", "receipt", "contract", "tax", "bank_statement", "payroll", "other"}
 
@@ -76,7 +83,9 @@ def list_documents(
         stmt = stmt.where(Document.linked_entity_id == linked_entity_id)
     if search and search.strip():
         q = f"%{search.strip().lower()}%"
-        stmt = stmt.where(func.lower(Document.title).like(q) | func.lower(Document.original_filename).like(q) | func.lower(Document.notes).like(q))
+        stmt = stmt.where(
+            func.lower(Document.title).like(q) | func.lower(Document.original_filename).like(q) | func.lower(Document.notes).like(q)
+        )
     stmt = stmt.order_by(Document.created_at.desc())
     rows, total = paginate(db, stmt, pagination)
     return Page(items=[to_out(d) for d in rows], total=total, page=pagination.page, page_size=pagination.page_size)
@@ -121,9 +130,18 @@ async def upload_document(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Uploaded file is empty")
 
     doc = Document(
-        organization_id=user.organization_id, title=(title or file.filename or "Document")[:255], category=category,
-        original_filename=(file.filename or "file")[:255], stored_path=stored_path, content_type=content_type, size_bytes=size,
-        sha256=digest.hexdigest(), notes=notes, linked_entity_type=linked_entity_type, linked_entity_id=linked_entity_id, uploaded_by=user.id,
+        organization_id=user.organization_id,
+        title=(title or file.filename or "Document")[:255],
+        category=category,
+        original_filename=(file.filename or "file")[:255],
+        stored_path=stored_path,
+        content_type=content_type,
+        size_bytes=size,
+        sha256=digest.hexdigest(),
+        notes=notes,
+        linked_entity_type=linked_entity_type,
+        linked_entity_id=linked_entity_id,
+        uploaded_by=user.id,
     )
     db.add(doc)
     db.flush()
@@ -306,9 +324,7 @@ async def import_excel_categorize(
     problems: List[str] = []
     for section in sections:
         if section.missing_required:
-            problems.append(
-                f"'{section.sheet_name}' is missing required column(s): {', '.join(section.missing_required)}."
-            )
+            problems.append(f"'{section.sheet_name}' is missing required column(s): {', '.join(section.missing_required)}.")
     return ExcelCategorizeResponse(
         filename=filename,
         total_sheets=len(sections),
@@ -367,9 +383,11 @@ def import_excel_commit(
         return excel_import.coerce_date(d.get(key))
 
     def _find_or_create_contact(name: str, kind: str, email: Optional[Any]) -> Contact:
-        existing = db.execute(
-            select(Contact).where(Contact.organization_id == org_id, Contact.type == kind, Contact.display_name == name)
-        ).scalars().first()
+        existing = (
+            db.execute(select(Contact).where(Contact.organization_id == org_id, Contact.type == kind, Contact.display_name == name))
+            .scalars()
+            .first()
+        )
         if existing:
             return existing
         created = Contact(
@@ -394,9 +412,7 @@ def import_excel_commit(
             kind = "customer" if cat == "customers" else "vendor"
             # Re-importing the same sheet must not pile up duplicates.
             already = db.execute(
-                select(Contact.id).where(
-                    Contact.organization_id == org_id, Contact.type == kind, Contact.display_name == name[:100]
-                )
+                select(Contact.id).where(Contact.organization_id == org_id, Contact.type == kind, Contact.display_name == name[:100])
             ).first()
             if already:
                 skipped.append(f"Row {index} ({cat}): '{name}' already exists")
@@ -480,8 +496,15 @@ def import_excel_commit(
                     created_by=user.id,
                 )
                 invoice.lines.append(
-                    InvoiceLine(position=0, description=description, quantity=Decimal("1"), rate=amount,
-                                tax_rate=Decimal("0"), amount=amount, tax_amount=Decimal("0"))
+                    InvoiceLine(
+                        position=0,
+                        description=description,
+                        quantity=Decimal("1"),
+                        rate=amount,
+                        tax_rate=Decimal("0"),
+                        amount=amount,
+                        tax_amount=Decimal("0"),
+                    )
                 )
                 db.add(invoice)
                 db.flush()
@@ -504,8 +527,15 @@ def import_excel_commit(
                     created_by=user.id,
                 )
                 bill.lines.append(
-                    BillLine(position=0, description=description, quantity=Decimal("1"), rate=amount,
-                             tax_rate=Decimal("0"), amount=amount, tax_amount=Decimal("0"))
+                    BillLine(
+                        position=0,
+                        description=description,
+                        quantity=Decimal("1"),
+                        rate=amount,
+                        tax_rate=Decimal("0"),
+                        amount=amount,
+                        tax_amount=Decimal("0"),
+                    )
                 )
                 db.add(bill)
                 db.flush()
@@ -586,6 +616,3 @@ def delete_document(document_id: str, user: User = Depends(require_write), db: S
     except OSError:  # pragma: no cover
         pass
     return Message(message="Document deleted")
-
-
-

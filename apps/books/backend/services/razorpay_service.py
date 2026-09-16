@@ -5,6 +5,7 @@ refund management and paginated retrieval of payments and refunds. The secret
 key is read from the environment and never leaves this process: nothing here
 returns it, logs it, or includes it in an API response.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -169,9 +170,7 @@ class RazorpayService:
             except Exception as exc:
                 logger.debug("SDK signature verification exception: %s", exc)
 
-            expected = hmac.new(
-                self.key_secret.encode("utf-8"), f"{order_id}|{payment_id}".encode(), hashlib.sha256
-            ).hexdigest()
+            expected = hmac.new(self.key_secret.encode("utf-8"), f"{order_id}|{payment_id}".encode(), hashlib.sha256).hexdigest()
             if hmac.compare_digest(expected, signature):
                 return True
 
@@ -193,9 +192,7 @@ class RazorpayService:
             return False
 
         try:
-            self.client.utility.verify_webhook_signature(
-                body_bytes.decode("utf-8"), signature, self.webhook_secret
-            )
+            self.client.utility.verify_webhook_signature(body_bytes.decode("utf-8"), signature, self.webhook_secret)
             return True
         except Exception:
             pass

@@ -28,7 +28,7 @@ def test_send_invoice_email_mocked(mock_smtp, client):
         "invoice_id": "INV-0001",
         "amount": 25000.0,
         "due_date": "2026-09-30",
-        "items_summary": "Cloud Consulting Services"
+        "items_summary": "Cloud Consulting Services",
     }
     res = client.post("/api/email/send-invoice", json=payload)
     assert res.status_code == 200
@@ -47,7 +47,7 @@ def test_send_message_email_mocked(mock_smtp, client):
         "to_email": "client@example.com",
         "subject": "Important Account Update",
         "message": "Please review your pending statements.",
-        "recipient_name": "Jane Doe"
+        "recipient_name": "Jane Doe",
     }
     res = client.post("/api/email/send-message", json=payload)
     assert res.status_code == 200

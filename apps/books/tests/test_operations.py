@@ -6,7 +6,11 @@ from tests.conftest import invite_and_accept, trial_balance_ok
 
 def test_projects_time_and_invoicing(client, org):
     h = org["h"]
-    proj = client.post("/api/projects", headers=h, json={"name": "ERP Rollout", "customerId": org["customer"]["id"], "hourlyRate": 2000, "budgetHours": 100})
+    proj = client.post(
+        "/api/projects",
+        headers=h,
+        json={"name": "ERP Rollout", "customerId": org["customer"]["id"], "hourlyRate": 2000, "budgetHours": 100},
+    )
     assert proj.status_code == 201, proj.text
     pid = proj.json()["id"]
     assert client.post("/api/time-entries", headers=h, json={"projectId": pid, "date": "2026-09-01", "hours": 30}).status_code == 422
@@ -28,7 +32,12 @@ def test_projects_time_and_invoicing(client, org):
 def test_document_upload_download_and_limits(client, org):
     h = org["h"]
     content = b"%PDF-1.4 test document"
-    res = client.post("/api/documents", headers=h, files={"file": ("invoice.pdf", io.BytesIO(content), "application/pdf")}, data={"title": "Vendor invoice", "category": "bill"})
+    res = client.post(
+        "/api/documents",
+        headers=h,
+        files={"file": ("invoice.pdf", io.BytesIO(content), "application/pdf")},
+        data={"title": "Vendor invoice", "category": "bill"},
+    )
     assert res.status_code == 201, res.text
     doc = res.json()
     assert doc["sizeBytes"] == len(content) and len(doc["sha256"]) == 64 and doc["uploadedByName"]
@@ -47,7 +56,21 @@ def test_document_upload_download_and_limits(client, org):
 
 def test_payroll_cycle(client, org):
     h = org["h"]
-    emp = client.post("/api/payroll/employees", headers=h, json={"name": "Asha Rao", "dateOfJoining": "2026-01-15", "basicSalary": 50000, "hra": 20000, "otherAllowances": 5000, "pfEmployee": 1800, "professionalTax": 200, "tds": 2000, "bankAccountNumber": "123456789012"})
+    emp = client.post(
+        "/api/payroll/employees",
+        headers=h,
+        json={
+            "name": "Asha Rao",
+            "dateOfJoining": "2026-01-15",
+            "basicSalary": 50000,
+            "hra": 20000,
+            "otherAllowances": 5000,
+            "pfEmployee": 1800,
+            "professionalTax": 200,
+            "tds": 2000,
+            "bankAccountNumber": "123456789012",
+        },
+    )
     assert emp.status_code == 201, emp.text
     e = emp.json()
     assert e["employeeCode"].startswith("EMP-") and e["grossSalary"] == 75000 and e["netSalary"] == 71000
@@ -58,9 +81,16 @@ def test_payroll_cycle(client, org):
     slip = r["payslips"][0]
     assert slip["lossOfPayDays"] == 3.1 and slip["lossOfPayAmount"] == 7500 and slip["gross"] == 67500 and slip["netPay"] == 63500
     assert client.post("/api/payroll/pay-runs", headers=h, json={"periodYear": 2026, "periodMonth": 8}).status_code == 409
-    assert client.post(f"/api/payroll/pay-runs/{r['id']}/pay", headers=h, json={"bankAccountId": org["bank"]["id"], "payDate": "2026-09-01"}).status_code == 400
+    assert (
+        client.post(
+            f"/api/payroll/pay-runs/{r['id']}/pay", headers=h, json={"bankAccountId": org["bank"]["id"], "payDate": "2026-09-01"}
+        ).status_code
+        == 400
+    )
     assert client.post(f"/api/payroll/pay-runs/{r['id']}/approve", headers=h).status_code == 200
-    paid = client.post(f"/api/payroll/pay-runs/{r['id']}/pay", headers=h, json={"bankAccountId": org["bank"]["id"], "payDate": "2026-09-01"})
+    paid = client.post(
+        f"/api/payroll/pay-runs/{r['id']}/pay", headers=h, json={"bankAccountId": org["bank"]["id"], "payDate": "2026-09-01"}
+    )
     assert paid.status_code == 200 and paid.json()["status"] == "paid"
     assert client.delete(f"/api/payroll/pay-runs/{r['id']}", headers=h).status_code == 400
     journals = client.get("/api/accounting/journals", headers=h, params={"source_type": "payroll"}).json()["items"]
@@ -87,7 +117,10 @@ def test_reports_and_dashboard_consistency(client, org):
         "/api/invoices",
         headers=h,
         json={
-            "customerId": org["customer"]["id"], "date": "2026-01-05", "dueDate": "2026-01-20", "status": "sent",
+            "customerId": org["customer"]["id"],
+            "date": "2026-01-05",
+            "dueDate": "2026-01-20",
+            "status": "sent",
             "lines": [{"itemId": org["service"]["id"], "description": "Consulting", "quantity": 2, "rate": 2500, "taxRate": 18}],
         },
     )
@@ -148,7 +181,10 @@ def test_aging_report_uses_unambiguous_bucket_field_names(client, org):
         "/api/invoices",
         headers=h,
         json={
-            "customerId": customer["id"], "date": overdue_date, "dueDate": overdue_due_date, "status": "sent",
+            "customerId": customer["id"],
+            "date": overdue_date,
+            "dueDate": overdue_due_date,
+            "status": "sent",
             "lines": [{"itemId": org["service"]["id"], "description": "Overdue consulting", "quantity": 1, "rate": 4000, "taxRate": 0}],
         },
     )
@@ -159,7 +195,10 @@ def test_aging_report_uses_unambiguous_bucket_field_names(client, org):
         "/api/invoices",
         headers=h,
         json={
-            "customerId": customer["id"], "date": today.isoformat(), "dueDate": current_due_date, "status": "sent",
+            "customerId": customer["id"],
+            "date": today.isoformat(),
+            "dueDate": current_due_date,
+            "status": "sent",
             "lines": [{"itemId": org["service"]["id"], "description": "Fresh consulting", "quantity": 1, "rate": 1000, "taxRate": 0}],
         },
     )

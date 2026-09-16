@@ -1,4 +1,5 @@
 """Rooman Books API application."""
+
 from __future__ import annotations
 
 import logging
@@ -130,6 +131,7 @@ def create_app() -> FastAPI:
     app.include_router(payments.router)
     app.include_router(razorpay.router)
     from backend.routes import email
+
     app.include_router(email.router)
     app.include_router(items.adjustments_router, dependencies=[Depends(require_full_app_access)])
 

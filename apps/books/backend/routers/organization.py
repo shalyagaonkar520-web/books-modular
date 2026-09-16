@@ -1,4 +1,5 @@
 """Organization profile, user management, audit log."""
+
 from __future__ import annotations
 
 import secrets
@@ -64,9 +65,7 @@ def update_organization(payload: OrganizationUpdate, user: User = Depends(requir
 
 @router.get("/users", response_model=List[UserOut])
 def list_users(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    rows = db.execute(
-        select(User).where(User.organization_id == user.organization_id).order_by(User.created_at)
-    ).scalars().all()
+    rows = db.execute(select(User).where(User.organization_id == user.organization_id).order_by(User.created_at)).scalars().all()
     return [UserOut.model_validate(u) for u in rows]
 
 
@@ -126,9 +125,7 @@ def invite_user(payload: InviteUserRequest, user: User = Depends(require_admin),
 
 
 @router.patch("/users/{user_id}", response_model=UserOut)
-def update_user(
-    user_id: str, payload: UpdateUserRequest, user: User = Depends(require_admin), db: Session = Depends(get_db)
-):
+def update_user(user_id: str, payload: UpdateUserRequest, user: User = Depends(require_admin), db: Session = Depends(get_db)):
     target = db.get(User, user_id)
     if target is None or target.organization_id != user.organization_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
@@ -136,9 +133,11 @@ def update_user(
     if target.id == user.id and (data.get("role") not in (None, "admin") or data.get("is_active") is False):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot demote or deactivate your own account")
     if data.get("role") and data["role"] != "admin" and target.role == "admin":
-        admins = db.execute(
-            select(User.id).where(User.organization_id == user.organization_id, User.role == "admin", User.is_active.is_(True))
-        ).scalars().all()
+        admins = (
+            db.execute(select(User.id).where(User.organization_id == user.organization_id, User.role == "admin", User.is_active.is_(True)))
+            .scalars()
+            .all()
+        )
         if len(admins) <= 1:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "The organization needs at least one administrator")
     for field, value in data.items():
@@ -149,18 +148,18 @@ def update_user(
 
 
 @router.delete("/users/{user_id}", response_model=Message)
-def delete_user(
-    user_id: str, user: User = Depends(require_admin), db: Session = Depends(get_db)
-):
+def delete_user(user_id: str, user: User = Depends(require_admin), db: Session = Depends(get_db)):
     target = db.get(User, user_id)
     if target is None or target.organization_id != user.organization_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     if target.id == user.id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot delete your own account")
     if target.role == "admin":
-        admins = db.execute(
-            select(User.id).where(User.organization_id == user.organization_id, User.role == "admin", User.is_active.is_(True))
-        ).scalars().all()
+        admins = (
+            db.execute(select(User.id).where(User.organization_id == user.organization_id, User.role == "admin", User.is_active.is_(True)))
+            .scalars()
+            .all()
+        )
         if len(admins) <= 1:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "The organization needs at least one administrator")
 
@@ -211,12 +210,16 @@ def get_user_dashboard(
     if target is None or target.organization_id != user.organization_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
 
-    employee = db.execute(
-        select(Employee).where(
-            Employee.organization_id == user.organization_id,
-            (Employee.user_id == target.id) | (Employee.email == target.email),
+    employee = (
+        db.execute(
+            select(Employee).where(
+                Employee.organization_id == user.organization_id,
+                (Employee.user_id == target.id) | (Employee.email == target.email),
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
 
     emp_data = employee_out(employee).model_dump() if employee else None
 
@@ -280,12 +283,16 @@ def export_user_dashboard_pdf(
     if target is None or target.organization_id != user.organization_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
 
-    employee = db.execute(
-        select(Employee).where(
-            Employee.organization_id == user.organization_id,
-            (Employee.user_id == target.id) | (Employee.email == target.email),
+    employee = (
+        db.execute(
+            select(Employee).where(
+                Employee.organization_id == user.organization_id,
+                (Employee.user_id == target.id) | (Employee.email == target.email),
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
 
     payslips = []
     if employee:
@@ -381,13 +388,15 @@ def update_smtp_settings(payload: SmtpSettingsUpdate, user: User = Depends(requi
             f"Those details were rejected by the mail server: {exc}",
         ) from exc
 
-    update_env_values({
-        "SMTP_HOST": payload.host.strip(),
-        "SMTP_PORT": str(payload.port),
-        "SMTP_USER": str(payload.username).strip(),
-        "SMTP_PASSWORD": password,
-        "SMTP_SENDER_NAME": payload.sender_name.strip(),
-    })
+    update_env_values(
+        {
+            "SMTP_HOST": payload.host.strip(),
+            "SMTP_PORT": str(payload.port),
+            "SMTP_USER": str(payload.username).strip(),
+            "SMTP_PASSWORD": password,
+            "SMTP_SENDER_NAME": payload.sender_name.strip(),
+        }
+    )
 
     audit.record(db, user, "update", "organization", user.organization_id, f"Outbound email sender set to {payload.username}")
     db.commit()

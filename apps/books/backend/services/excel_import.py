@@ -8,6 +8,7 @@ books, so mapping here is explicit: a column is recognised only if its header
 matches a known alias, required columns are reported to the user instead of
 being defaulted, and values are parsed to real dates/decimals up front.
 """
+
 from __future__ import annotations
 
 import re
@@ -81,7 +82,7 @@ CATEGORY_RULES: Dict[str, List[ColumnRule]] = {
 
 
 def normalise_header(header: str) -> str:
-    """"Due Date " -> "due_date" so spelling/spacing differences still match."""
+    """ "Due Date " -> "due_date" so spelling/spacing differences still match."""
     return re.sub(r"[^a-z0-9]+", "_", str(header or "").strip().lower()).strip("_")
 
 
@@ -147,14 +148,12 @@ def map_columns(headers: List[str], category: str, sheet_name: str = "") -> Colu
         if rule.required and rule.field not in mapping.mapped:
             mapping.missing_required.append(rule.label)
 
-    mapping.unmapped_headers = [
-        headers[idx] for idx, norm in normalised if idx not in used_indexes and norm
-    ]
+    mapping.unmapped_headers = [headers[idx] for idx, norm in normalised if idx not in used_indexes and norm]
     return mapping
 
 
 def coerce_amount(value: Any) -> Optional[Decimal]:
-    """"₹ 1,25,000.50" -> Decimal("125000.50"); returns None when unusable."""
+    """ "₹ 1,25,000.50" -> Decimal("125000.50"); returns None when unusable."""
     if value is None or isinstance(value, bool):
         return None
     if isinstance(value, (int, float, Decimal)):
@@ -252,9 +251,7 @@ def rules_for_display(category: str) -> Dict[str, List[Dict[str, Any]]]:
     """The column contract, for showing the user what a sheet must contain."""
     return {
         "required": [
-            {"label": rule.label, "accepts": list(rule.aliases), "type": rule.kind}
-            for rule in CATEGORY_RULES[category]
-            if rule.required
+            {"label": rule.label, "accepts": list(rule.aliases), "type": rule.kind} for rule in CATEGORY_RULES[category] if rule.required
         ],
         "optional": [
             {"label": rule.label, "accepts": list(rule.aliases), "type": rule.kind}

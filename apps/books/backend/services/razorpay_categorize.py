@@ -15,6 +15,7 @@ no accounting entry is posted from it until somebody accepts it. That is the
 whole point of the confidence score -- a low-confidence guess must not silently
 turn into a journal entry.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,7 +30,7 @@ from backend.services.chart_of_accounts import get_account_by_code
 
 # Category -> (display label, default chart-of-accounts code)
 CATEGORIES: Dict[str, Dict[str, str]] = {
-    "customer_payment": {"label": "Customer Payment", "code": "1100"},    # Accounts Receivable
+    "customer_payment": {"label": "Customer Payment", "code": "1100"},  # Accounts Receivable
     "gateway_fee": {"label": "Payment Gateway Charges", "code": "6100"},  # Bank Fees and Charges
     "refund": {"label": "Customer Refund / Sales Return", "code": "4300"},
     "other_income": {"label": "Other Income", "code": "4900"},
@@ -60,7 +61,7 @@ _DESCRIPTION_KEYWORDS: List[Tuple[Tuple[str, ...], str, str]] = [
 @dataclass
 class Categorisation:
     category: str
-    source: str          # rule | invoice | description | auto | manual
+    source: str  # rule | invoice | description | auto | manual
     confidence: Decimal  # 0.000 - 1.000
     ledger_account_id: Optional[str] = None
     reason: str = ""
@@ -123,14 +124,18 @@ def categorise(
     haystack = _haystack(payment, raw)
 
     # 1. Explicit user rules win outright.
-    rules = db.execute(
-        select(RazorpayCategoryRule)
-        .where(
-            RazorpayCategoryRule.organization_id == org_id,
-            RazorpayCategoryRule.is_active.is_(True),
+    rules = (
+        db.execute(
+            select(RazorpayCategoryRule)
+            .where(
+                RazorpayCategoryRule.organization_id == org_id,
+                RazorpayCategoryRule.is_active.is_(True),
+            )
+            .order_by(RazorpayCategoryRule.priority.asc(), RazorpayCategoryRule.created_at.asc())
         )
-        .order_by(RazorpayCategoryRule.priority.asc(), RazorpayCategoryRule.created_at.asc())
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for rule in rules:
         if _rule_matches(payment, rule, haystack):
             return Categorisation(

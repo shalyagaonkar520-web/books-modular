@@ -1,4 +1,5 @@
 """Stock movements and their journal effects."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -49,7 +50,9 @@ def adjust_stock(
         lines = [(inventory.id, value, Decimal("0"), description, None), (adjustments.id, Decimal("0"), value, description, None)]
     else:
         lines = [(adjustments.id, -value, Decimal("0"), description, None), (inventory.id, Decimal("0"), -value, description, None)]
-    ledger.post_entry(db, item.organization_id, entry_date, lines, source_type, source_id, reference=item.sku, notes=description, created_by=created_by)
+    ledger.post_entry(
+        db, item.organization_id, entry_date, lines, source_type, source_id, reference=item.sku, notes=description, created_by=created_by
+    )
 
 
 def post_opening_stock(db: Session, item: Item, created_by: Optional[str]) -> None:
@@ -64,7 +67,10 @@ def post_opening_stock(db: Session, item: Item, created_by: Optional[str]) -> No
         db,
         item.organization_id,
         date.today(),
-        [(inventory.id, value, Decimal("0"), f"Opening stock {item.name}", None), (opening.id, Decimal("0"), value, f"Opening stock {item.name}", None)],
+        [
+            (inventory.id, value, Decimal("0"), f"Opening stock {item.name}", None),
+            (opening.id, Decimal("0"), value, f"Opening stock {item.name}", None),
+        ],
         source_type="item_opening",
         source_id=item.id,
         reference=item.sku,

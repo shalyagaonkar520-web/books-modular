@@ -4,6 +4,7 @@ Not meant to be exhaustive - it just needs to turn a raw ``User-Agent`` header
 into a readable "device • OS" and "browser" label, so a signed-in user can
 tell their sessions apart (e.g. to notice a login they don't recognize).
 """
+
 from __future__ import annotations
 
 from typing import NamedTuple
