@@ -395,12 +395,41 @@ a:hover {
   text-transform: capitalize;
 }
 
+/* A notification row is a clickable button (open the record) plus a separate
+   dismiss button, so it cannot be a single <button> - these rules give the row
+   the padding and hover that .dropdown > button provides to plain menu items. */
 .notification {
-  flex-direction: column !important;
-  align-items: flex-start !important;
-  gap: 2px !important;
-  border-left: 3px solid var(--border-strong) !important;
-  border-radius: var(--radius-sm) !important;
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.notification:hover {
+  background: var(--surface-hover);
+}
+
+.notification-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 4px 8px 10px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.notification-main:focus-visible {
+  outline: 2px solid var(--color-primary, #2563eb);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
 }
 
 .notification strong {
@@ -410,6 +439,27 @@ a:hover {
 .notification span {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.notification-dismiss {
+  flex-shrink: 0;
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 6px 6px 0 0;
+  padding: 2px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.notification-dismiss:hover {
+  opacity: 1;
+  background: var(--surface-hover);
 }
 
 .notification-danger {

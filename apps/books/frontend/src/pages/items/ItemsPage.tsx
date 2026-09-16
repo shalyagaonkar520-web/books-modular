@@ -133,6 +133,27 @@ export function ItemsPage() {
     }
   }, [wantsNew]);
 
+  // Low-stock notifications link here with ?item=<id>. Fetch that item directly
+  // rather than looking in the current page of results - it may not be on it.
+  useEffect(() => {
+    const itemId = searchParams.get('item');
+    if (!itemId) return;
+    let cancelled = false;
+    void itemsApi
+      .get(itemId)
+      .then((item) => {
+        if (!cancelled) setDetailsItem(item);
+      })
+      .catch(() => undefined);
+    const next = new URLSearchParams(searchParams);
+    next.delete('item');
+    setSearchParams(next, { replace: true });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function closeForm() {
     setFormOpen(false);
     setFormItem(null);

@@ -17,12 +17,22 @@ import { initials } from '@/utils/format';
 import { ExcelImportModal } from './ExcelImportModal';
 import '@/pages/settings/ProfilePage.css';
 
-const NOTIFICATION_ROUTES: Record<string, string> = {
-  invoice: '/invoices',
-  bill: '/bills',
-  item: '/items',
-  banking: '/banking',
-};
+/** Where a notification takes you: the record it is about, not just its list page. */
+function notificationRoute(item: NotificationItem): string {
+  const id = item.entityId;
+  switch (item.entityType) {
+    case 'invoice':
+      return id ? `/invoices/${id}` : '/invoices';
+    case 'bill':
+      return id ? `/bills?bill=${id}` : '/bills';
+    case 'item':
+      return id ? `/items?item=${id}` : '/items';
+    case 'banking':
+      return '/banking';
+    default:
+      return '/';
+  }
+}
 
 const DISMISSED_NOTIFICATIONS_KEY = 'rooman_dismissed_notifications';
 
@@ -98,7 +108,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const handleNotificationClick = (item: NotificationItem) => {
     dismissNotification(item.id);
     setOpenMenu('none');
-    navigate(NOTIFICATION_ROUTES[item.entityType] ?? '/');
+    navigate(notificationRoute(item));
   };
 
   const clearAllNotifications = () => {
@@ -220,36 +230,21 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
                 <p className="dropdown-empty">Nothing needs your attention right now.</p>
               ) : (
                 notifications.slice(0, 8).map((item) => (
-                  <div
-                    key={item.id}
-                    role="menuitem"
-                    className={`notification notification-${item.severity}`}
-                    style={{ position: 'relative', paddingRight: '28px', cursor: 'pointer' }}
-                    onClick={() => handleNotificationClick(item)}
-                  >
-                    <strong>{item.title}</strong>
-                    <span>{item.body}</span>
+                  <div key={item.id} className={`notification notification-${item.severity}`}>
                     <button
                       type="button"
-                      aria-label="Dismiss notification"
-                      style={{
-                        position: 'absolute',
-                        top: '8px',
-                        right: '8px',
-                        background: 'none',
-                        border: 'none',
-                        opacity: 0.6,
-                        cursor: 'pointer',
-                        padding: '2px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        borderRadius: '4px',
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        dismissNotification(item.id);
-                      }}
+                      role="menuitem"
+                      className="notification-main"
+                      onClick={() => handleNotificationClick(item)}
+                    >
+                      <strong>{item.title}</strong>
+                      <span>{item.body}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="notification-dismiss"
+                      aria-label={`Dismiss: ${item.title}`}
+                      onClick={() => dismissNotification(item.id)}
                     >
                       <X size={14} />
                     </button>
