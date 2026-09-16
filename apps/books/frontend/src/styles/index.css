@@ -154,10 +154,17 @@ a:hover {
 }
 
 /* ------------------------------------------------------------------ shell */
+/* The shell is exactly the viewport and the content pane does the scrolling,
+   so the header and sidebar stay put. This also fixes sticky positioning
+   inside the content: overflow-x on .app-main already made it the containing
+   block for sticky children, so while the window was the thing scrolling, a
+   sticky footer resolved against the full height of .app-main and sat below
+   the fold instead of pinning to the bottom of the screen. */
 .app-shell {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .app-body {
@@ -171,6 +178,7 @@ a:hover {
   min-width: 0;
   padding: 20px 24px 48px;
   overflow-x: hidden;
+  overflow-y: auto;
 }
 
 @media (max-width: 720px) {
@@ -681,17 +689,19 @@ a:hover {
   cursor: not-allowed;
 }
 
+/* A flat fill in the brand colour. This was a green gradient with a coloured
+   glow, which both read as a success state and ignored --primary, so changing
+   the variable had no effect on any button. */
 .btn-primary {
-  background: linear-gradient(180deg, #10b981 0%, #059669 100%);
-  border: 1px solid #047857;
+  background: var(--primary);
+  border: 1px solid var(--primary);
   color: #fff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08), 0 3px 8px rgba(5, 150, 105, 0.28);
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #059669 0%, #047857 100%);
-  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.38);
-  transform: translateY(-0.5px);
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
 }
 
 .btn-primary:active:not(:disabled) {
@@ -857,11 +867,12 @@ a:hover {
   left: 0;
   right: 0;
   height: 3px;
-  background: linear-gradient(90deg, #10b981, #059669);
+  /* Neutral by default; a tile only goes green when its tone says so. */
+  background: var(--primary);
 }
 
 .stat-tile.tone-positive::before {
-  background: linear-gradient(90deg, #10b981, #059669);
+  background: var(--success);
 }
 
 .stat-tile.tone-negative::before {
