@@ -4,7 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { FileDown, FileSpreadsheet, FileText, Mail, Pencil, Plus, Trash2, Users } from 'lucide-react';
 
 import { contactsApi, emailApi } from '@/api/endpoints';
-import type { Contact, ContactType, GstTreatment } from '@/api/types';
+import type { Contact, ContactKind, ContactType, GstTreatment } from '@/api/types';
 import { useAsync } from '@/hooks/useAsync';
 import { useDebounced } from '@/hooks/useDebounced';
 import { useDownload } from '@/hooks/useDownload';
@@ -27,6 +27,7 @@ import { GST_TREATMENTS, type Tone } from '@/utils/status';
 const PAGE_SIZE = 25;
 
 const GST_OPTIONS = GST_TREATMENTS.map((treatment) => ({ value: treatment.value, label: treatment.label }));
+const SALUTATIONS = ['Mr.', 'Ms.', 'Mrs.', 'Dr.', 'Prof.'];
 
 function gstLabel(treatment: GstTreatment): string {
   return GST_TREATMENTS.find((option) => option.value === treatment)?.label ?? treatment;
@@ -572,13 +573,22 @@ export function ContactsPage({ type }: { type: ContactType }) {
 }
 
 interface FormState {
+  contactType: ContactKind;
   displayName: string;
   companyName: string;
+  salutation: string;
+  firstName: string;
+  lastName: string;
   contactPerson: string;
   email: string;
   phone: string;
+  mobile: string;
   gstin: string;
   pan: string;
+  bankAccountHolder: string;
+  bankName: string;
+  bankAccountNumber: string;
+  bankIfsc: string;
   gstTreatment: GstTreatment;
   paymentTermsDays: string;
   billingAddress: string;
@@ -590,13 +600,22 @@ function initialForm(contact: Contact | null, type: ContactType): FormState {
   const displayName = contact?.displayName ?? '';
   const contactPerson = contact?.contactPerson ?? '';
   return {
+    contactType: contact?.contactType ?? 'business',
     displayName: formatVendorMaskedName(displayName, type === 'vendor'),
     companyName: contact?.companyName ?? '',
+    salutation: contact?.salutation ?? '',
+    firstName: contact?.firstName ?? '',
+    lastName: contact?.lastName ?? '',
     contactPerson: formatVendorMaskedName(contactPerson, type === 'vendor'),
     email: contact?.email ?? '',
     phone: contact?.phone ?? '',
+    mobile: contact?.mobile ?? '',
     gstin: contact?.gstin ?? '',
     pan: contact?.pan ?? '',
+    bankAccountHolder: contact?.bankAccountHolder ?? '',
+    bankName: contact?.bankName ?? '',
+    bankAccountNumber: contact?.bankAccountNumber ?? '',
+    bankIfsc: contact?.bankIfsc ?? '',
     gstTreatment: contact?.gstTreatment ?? 'unregistered',
     paymentTermsDays: String(contact?.paymentTermsDays ?? 30),
     billingAddress: contact?.billingAddress ?? '',
@@ -625,10 +644,6 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
     set('displayName', formatVendorMaskedName(value, type === 'vendor'));
   }
 
-  function setContactPerson(value: string) {
-    set('contactPerson', formatVendorMaskedName(value, type === 'vendor'));
-  }
-
   function setPhone(value: string) {
     const digits = value.replace(/\D/g, '').slice(0, 10);
     set('phone', digits);
@@ -650,6 +665,15 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
       toast.error('Contact person name cannot contain numbers');
       return;
     }
+    for (const [value, label] of [
+      [form.firstName, 'First name'],
+      [form.lastName, 'Last name'],
+    ] as const) {
+      if (/\d/.test(value)) {
+        toast.error(`${label} cannot contain numbers`);
+        return;
+      }
+    }
     if (form.phone.trim() && form.phone.trim().length !== 10) {
       setPhoneError('Phone number must be exactly 10 digits');
       return;
@@ -658,13 +682,22 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
     const contactPerson = form.contactPerson.trim() ? formatVendorMaskedName(form.contactPerson.trim(), type === 'vendor') : null;
     const payload: Partial<Contact> = {
       type,
+      contactType: form.contactType,
       displayName,
       companyName: form.companyName.trim() || null,
+      salutation: form.salutation.trim() || null,
+      firstName: form.firstName.trim() || null,
+      lastName: form.lastName.trim() || null,
       contactPerson,
       email: form.email.trim() || null,
       phone: form.phone.trim() || null,
+      mobile: form.mobile.trim() || null,
       gstin: form.gstin.trim() || null,
       pan: form.pan.trim() || null,
+      bankAccountHolder: form.bankAccountHolder.trim() || null,
+      bankName: form.bankName.trim() || null,
+      bankAccountNumber: form.bankAccountNumber.trim() || null,
+      bankIfsc: form.bankIfsc.trim() || null,
       gstTreatment: form.gstTreatment,
       paymentTermsDays: Number.parseInt(form.paymentTermsDays, 10) || 0,
       billingAddress: form.billingAddress.trim() || null,
@@ -698,6 +731,17 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
       <section className="form-section">
         <h3 className="form-section-title">Identity</h3>
         <div className="form-grid">
+          <SelectField
+            label={`${copy.singular === 'customer' ? 'Customer' : 'Vendor'} type`}
+            value={form.contactType}
+            options={[
+              { value: 'business', label: 'Business' },
+              { value: 'individual', label: 'Individual' },
+            ]}
+            error={fieldErrors.contactType}
+            hint="A business is billed under its company name"
+            onChange={(event) => set('contactType', event.target.value as ContactKind)}
+          />
           <TextField label="Display name" required value={form.displayName} error={fieldErrors.displayName} onChange={(event) => setDisplayName(event.target.value)} />
           <TextField
             label="Company name"
@@ -706,17 +750,77 @@ function ContactFormModal({ type, contact, copy, onClose, onSaved }: ContactForm
             hint="Letters and numbers, e.g. 3M India"
             onChange={(event) => set('companyName', event.target.value)}
           />
-          <TextField label="Contact person name" value={form.contactPerson} error={fieldErrors.contactPerson} onChange={(event) => setContactPerson(event.target.value)} />
           <TextField label="Email" type="email" required={type === 'customer'} value={form.email} error={fieldErrors.email} onChange={(event) => set('email', event.target.value)} />
+        </div>
+      </section>
+
+      <section className="form-section">
+        <h3 className="form-section-title">Primary contact</h3>
+        <div className="form-grid-3">
+          <SelectField
+            label="Salutation"
+            value={form.salutation}
+            placeholder="—"
+            options={SALUTATIONS.map((title) => ({ value: title, label: title }))}
+            error={fieldErrors.salutation}
+            onChange={(event) => set('salutation', event.target.value)}
+          />
+          <TextField label="First name" value={form.firstName} error={fieldErrors.firstName} onChange={(event) => set('firstName', event.target.value)} />
+          <TextField label="Last name" value={form.lastName} error={fieldErrors.lastName} onChange={(event) => set('lastName', event.target.value)} />
+        </div>
+        <div className="form-grid">
           <TextField
-            label="Phone"
+            label="Work phone"
             type="tel"
             inputMode="numeric"
             maxLength={10}
             value={form.phone}
             error={phoneError ?? fieldErrors.phone}
-            hint="10-digit mobile number"
+            hint="10 digits"
             onChange={(event) => setPhone(event.target.value)}
+          />
+          <TextField
+            label="Mobile"
+            type="tel"
+            inputMode="numeric"
+            maxLength={10}
+            value={form.mobile}
+            error={fieldErrors.mobile}
+            hint="10 digits"
+            onChange={(event) => set('mobile', event.target.value.replace(/\D/g, '').slice(0, 10))}
+          />
+        </div>
+      </section>
+
+      <section className="form-section">
+        <h3 className="form-section-title">Bank details</h3>
+        <p className="text-muted small" style={{ marginTop: '-4px' }}>
+          {type === 'vendor' ? 'Where this vendor gets paid — saved so a payment run does not need it re-keyed.' : 'Used when refunding this customer.'}
+        </p>
+        <div className="form-grid">
+          <TextField
+            label="Account holder name"
+            value={form.bankAccountHolder}
+            error={fieldErrors.bankAccountHolder}
+            onChange={(event) => set('bankAccountHolder', event.target.value)}
+          />
+          <TextField label="Bank name" value={form.bankName} error={fieldErrors.bankName} onChange={(event) => set('bankName', event.target.value)} />
+          <TextField
+            label="Account number"
+            inputMode="numeric"
+            maxLength={18}
+            value={form.bankAccountNumber}
+            error={fieldErrors.bankAccountNumber}
+            hint="9 to 18 digits"
+            onChange={(event) => set('bankAccountNumber', event.target.value)}
+          />
+          <TextField
+            label="IFSC"
+            maxLength={11}
+            value={form.bankIfsc}
+            error={fieldErrors.bankIfsc}
+            hint="11 characters, e.g. HDFC0001234"
+            onChange={(event) => set('bankIfsc', event.target.value.toUpperCase())}
           />
         </div>
       </section>

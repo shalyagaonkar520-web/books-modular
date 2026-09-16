@@ -120,16 +120,30 @@ export interface InventoryAdjustment {
 export type ContactType = 'customer' | 'vendor';
 export type GstTreatment = 'registered_business' | 'unregistered' | 'consumer' | 'overseas' | 'sez';
 
+export type ContactKind = 'business' | 'individual';
+
 export interface Contact {
   id: string;
   type: ContactType;
+  /** A business is billed under its company name, an individual under their own. */
+  contactType: ContactKind;
   displayName: string;
   companyName?: string | null;
+  salutation?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  /** The parts above, joined - what lists and printed documents show. */
   contactPerson?: string | null;
   email?: string | null;
   phone?: string | null;
+  mobile?: string | null;
   gstin?: string | null;
   pan?: string | null;
+  /** Where a vendor gets paid, so a payment run need not re-key it. */
+  bankAccountHolder?: string | null;
+  bankName?: string | null;
+  bankAccountNumber?: string | null;
+  bankIfsc?: string | null;
   gstTreatment: GstTreatment;
   billingAddress?: string | null;
   shippingAddress?: string | null;
@@ -180,6 +194,10 @@ export interface Invoice {
   dueDate: string;
   status: InvoiceStatus;
   reference?: string | null;
+  /** The customer's own purchase order number, printed on the invoice. */
+  orderNumber?: string | null;
+  subject?: string | null;
+  salesperson?: string | null;
   subtotal: number;
   discountAmount: number;
   taxTotal: number;
@@ -242,6 +260,8 @@ export interface Bill {
   id: string;
   billNumber: string;
   vendorBillNumber?: string | null;
+  orderNumber?: string | null;
+  subject?: string | null;
   vendorId: string;
   vendorName: string;
   date: string;

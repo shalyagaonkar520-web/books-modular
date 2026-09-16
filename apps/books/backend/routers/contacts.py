@@ -59,6 +59,20 @@ def _outstanding_map(db: Session, org_id: str, contact_type: str) -> dict:
     return {cid: money(total) for cid, total in db.execute(stmt)}
 
 
+def _sync_contact_person(contact: Contact) -> None:
+    """Keep the single contact_person string in step with the parts it is entered in.
+
+    The primary contact is typed as salutation / first / last, but invoices,
+    statements and every existing list column read the one contact_person
+    string, so it is composed here rather than at each read site. A name typed
+    straight into contact_person (older records, imports) is left alone.
+    """
+    parts = [contact.salutation, contact.first_name, contact.last_name]
+    composed = " ".join(part.strip() for part in parts if part and part.strip())
+    if composed:
+        contact.contact_person = composed[:120]
+
+
 def to_out(contact: Contact, outstanding: Optional[Decimal] = None) -> ContactOut:
     data = ContactOut.model_validate(contact)
     data.outstanding_balance = money(outstanding or 0)
@@ -176,6 +190,7 @@ def contact_summary(contact_id: str, user: User = Depends(get_current_user), db:
 @router.post("", response_model=ContactOut, status_code=status.HTTP_201_CREATED)
 def create_contact(payload: ContactCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
     contact = Contact(organization_id=user.organization_id, **payload.model_dump())
+    _sync_contact_person(contact)
     db.add(contact)
     db.flush()
     audit.record(db, user, "create", "contact", contact.id, f"Created {contact.type} {contact.display_name}")
@@ -186,8 +201,11 @@ def create_contact(payload: ContactCreate, user: User = Depends(require_write), 
 @router.put("/{contact_id}", response_model=ContactOut)
 def update_contact(contact_id: str, payload: ContactUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)):
     contact = get_or_404(db, Contact, contact_id, user.organization_id, "Contact")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    fields = payload.model_dump(exclude_unset=True)
+    for field, value in fields.items():
         setattr(contact, field, value)
+    if {"salutation", "first_name", "last_name"} & fields.keys():
+        _sync_contact_person(contact)
     audit.record(db, user, "update", "contact", contact.id, f"Updated {contact.type} {contact.display_name}")
     db.commit()
     outstanding = _outstanding_map(db, user.organization_id, contact.type).get(contact.id)

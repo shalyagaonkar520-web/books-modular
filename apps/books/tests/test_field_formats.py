@@ -154,3 +154,86 @@ def test_blank_values_still_clear_an_optional_field(client, h):
     created = _contact(client, h, phone="9876543210").json()
     cleared = client.put(f"/api/contacts/{created['id']}", headers=h, json={"phone": ""})
     assert cleared.status_code == 200, cleared.text
+
+
+# ------------------------------------------------- fields the forms now capture
+
+
+def test_contact_captures_primary_contact_parts_and_bank_details(client, h):
+    """The primary contact is entered in parts and the vendor's bank details are
+    held on the contact, so a payment run does not need them re-keyed."""
+    res = client.post(
+        "/api/contacts",
+        headers=h,
+        json={
+            "type": "vendor",
+            "contactType": "business",
+            "displayName": "Dell India",
+            "salutation": "Mr.",
+            "firstName": "Ravi",
+            "lastName": "Kumar",
+            "phone": "08012345678",
+            "mobile": "+91 98765 43210",
+            "bankAccountHolder": "Dell India Pvt Ltd",
+            "bankName": "HDFC Bank",
+            "bankAccountNumber": "50100123456789",
+            "bankIfsc": "hdfc0001234",
+        },
+    )
+    assert res.status_code == 201, res.text
+    body = res.json()
+    assert body["contactType"] == "business"
+    assert (body["salutation"], body["firstName"], body["lastName"]) == ("Mr.", "Ravi", "Kumar")
+    # The single display string every list and PDF reads is kept in step.
+    assert body["contactPerson"] == "Mr. Ravi Kumar"
+    assert body["phone"] == "8012345678" and body["mobile"] == "9876543210"
+    assert body["bankIfsc"] == "HDFC0001234"
+    assert body["bankAccountNumber"] == "50100123456789"
+
+
+def test_editing_a_name_part_updates_the_display_form(client, h):
+    created = client.post(
+        "/api/contacts",
+        headers=h,
+        json={"type": "customer", "displayName": "Acme", "salutation": "Ms.", "firstName": "Asha", "lastName": "Rao"},
+    ).json()
+    assert created["contactPerson"] == "Ms. Asha Rao"
+
+    updated = client.put(f"/api/contacts/{created['id']}", headers=h, json={"lastName": "Nair"})
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["contactPerson"] == "Ms. Asha Nair"
+
+
+def test_invoice_and_bill_carry_order_number_and_subject(client, org):
+    h = org["h"]
+    inv = client.post(
+        "/api/invoices",
+        headers=h,
+        json={
+            "customerId": org["customer"]["id"],
+            "date": "2026-09-01",
+            "orderNumber": "PO-9912",
+            "subject": "Q3 consulting retainer",
+            "salesperson": "Priya Nair",
+            "lines": [{"description": "Consulting", "quantity": 1, "rate": 5000, "taxRate": 0}],
+        },
+    )
+    assert inv.status_code == 201, inv.text
+    assert inv.json()["orderNumber"] == "PO-9912"
+    assert inv.json()["subject"] == "Q3 consulting retainer"
+    assert inv.json()["salesperson"] == "Priya Nair"
+
+    bill = client.post(
+        "/api/bills",
+        headers=h,
+        json={
+            "vendorId": org["vendor"]["id"],
+            "date": "2026-09-01",
+            "orderNumber": "PO-4451",
+            "subject": "Monitors for the new office",
+            "lines": [{"description": "Monitor", "quantity": 1, "rate": 7000, "taxRate": 0}],
+        },
+    )
+    assert bill.status_code == 201, bill.text
+    assert bill.json()["orderNumber"] == "PO-4451"
+    assert bill.json()["subject"] == "Monitors for the new office"

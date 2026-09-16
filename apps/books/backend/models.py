@@ -249,13 +249,30 @@ class Contact(TimestampMixin, OrgScopedMixin, Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     type: Mapped[str] = mapped_column(String(10), nullable=False, index=True)  # customer | vendor
+    # A business is billed under its company name, an individual under their own.
+    contact_type: Mapped[str] = mapped_column(String(12), default="business", nullable=False)
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
     company_name: Mapped[Optional[str]] = mapped_column(String(200))
+    # The person to talk to, entered in parts. contact_person stays the single
+    # display form every existing screen and PDF already reads, and is kept in
+    # step with these by the contacts router.
+    salutation: Mapped[Optional[str]] = mapped_column(String(10))
+    first_name: Mapped[Optional[str]] = mapped_column(String(60))
+    last_name: Mapped[Optional[str]] = mapped_column(String(60))
     contact_person: Mapped[Optional[str]] = mapped_column(String(120))
     email: Mapped[Optional[str]] = mapped_column(String(255))
+    # phone is the landline/work number; mobile is separate, as on the invoice
+    # and statement templates where only one of the two belongs.
     phone: Mapped[Optional[str]] = mapped_column(String(40))
+    mobile: Mapped[Optional[str]] = mapped_column(String(40))
     gstin: Mapped[Optional[str]] = mapped_column(String(20))
     pan: Mapped[Optional[str]] = mapped_column(String(20))
+    # Where a vendor gets paid. Held per contact so a payment run does not need
+    # the details re-keyed each time.
+    bank_account_holder: Mapped[Optional[str]] = mapped_column(String(120))
+    bank_name: Mapped[Optional[str]] = mapped_column(String(120))
+    bank_account_number: Mapped[Optional[str]] = mapped_column(String(40))
+    bank_ifsc: Mapped[Optional[str]] = mapped_column(String(20))
     gst_treatment: Mapped[str] = mapped_column(String(30), default="unregistered", nullable=False)
     billing_address: Mapped[Optional[str]] = mapped_column(Text)
     shipping_address: Mapped[Optional[str]] = mapped_column(Text)
@@ -295,6 +312,11 @@ class Invoice(TimestampMixin, OrgScopedMixin, Base):
     # draft | sent | partially_paid | paid | void  (overdue is derived)
     status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False, index=True)
     reference: Mapped[Optional[str]] = mapped_column(String(120))
+    # The customer's own purchase order number, their line on the invoice.
+    order_number: Mapped[Optional[str]] = mapped_column(String(120))
+    # One-line description of what the invoice covers, printed above the items.
+    subject: Mapped[Optional[str]] = mapped_column(String(250))
+    salesperson: Mapped[Optional[str]] = mapped_column(String(120))
     subtotal: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
     discount_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
     tax_total: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
@@ -366,6 +388,9 @@ class Bill(TimestampMixin, OrgScopedMixin, Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     bill_number: Mapped[str] = mapped_column(String(30), nullable=False)
     vendor_bill_number: Mapped[Optional[str]] = mapped_column(String(60))
+    # Our purchase order number, and a one-line description of the bill.
+    order_number: Mapped[Optional[str]] = mapped_column(String(120))
+    subject: Mapped[Optional[str]] = mapped_column(String(250))
     vendor_id: Mapped[str] = mapped_column(String(32), ForeignKey("contacts.id"), nullable=False, index=True)
     date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     due_date: Mapped[date] = mapped_column(Date, nullable=False)

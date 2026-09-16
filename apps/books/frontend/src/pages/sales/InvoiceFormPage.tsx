@@ -44,6 +44,9 @@ export function InvoiceFormPage() {
   const [date, setDate] = useState(todayIso());
   const [dueDate, setDueDate] = useState(todayIso());
   const [reference, setReference] = useState('');
+  const [orderNumber, setOrderNumber] = useState('');
+  const [subject, setSubject] = useState('');
+  const [salesperson, setSalesperson] = useState('');
   const [notes, setNotes] = useState(() => organization?.invoiceNotes ?? '');
   const [terms, setTerms] = useState(() => organization?.invoiceTerms ?? '');
   const [discountAmount, setDiscountAmount] = useState('0');
@@ -66,6 +69,9 @@ export function InvoiceFormPage() {
     setDate(loaded.date);
     setDueDate(loaded.dueDate);
     setReference(loaded.reference ?? '');
+    setOrderNumber(loaded.orderNumber ?? '');
+    setSubject(loaded.subject ?? '');
+    setSalesperson(loaded.salesperson ?? '');
     setNotes(loaded.notes ?? '');
     setTerms(loaded.terms ?? '');
     setDiscountAmount(String(loaded.discountAmount));
@@ -139,6 +145,9 @@ export function InvoiceFormPage() {
       date,
       dueDate,
       reference: reference.trim() || null,
+      orderNumber: orderNumber.trim() || null,
+      subject: subject.trim() || null,
+      salesperson: salesperson.trim() || null,
       discountAmount: discount,
       notes: notes.trim() || null,
       terms: terms.trim() || null,
@@ -246,9 +255,31 @@ export function InvoiceFormPage() {
             <TextField
               label="Reference"
               value={reference}
-              placeholder="PO number or internal reference"
+              placeholder="Internal reference"
               error={fieldErrors.reference}
               onChange={(event) => setReference(event.target.value)}
+            />
+            <TextField
+              label="Order number"
+              value={orderNumber}
+              placeholder="The customer's purchase order number"
+              error={fieldErrors.orderNumber}
+              onChange={(event) => setOrderNumber(event.target.value)}
+            />
+            <TextField
+              label="Salesperson"
+              value={salesperson}
+              error={fieldErrors.salesperson}
+              onChange={(event) => setSalesperson(event.target.value)}
+            />
+            <TextField
+              label="Subject"
+              value={subject}
+              maxLength={250}
+              placeholder="What this invoice is for"
+              hint="Printed above the line items"
+              error={fieldErrors.subject}
+              onChange={(event) => setSubject(event.target.value)}
             />
           </div>
         </Card>

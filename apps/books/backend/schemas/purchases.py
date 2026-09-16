@@ -15,6 +15,8 @@ BillStatus = Literal["draft", "open", "partially_paid", "paid", "void", "overdue
 class BillCreate(APIModel):
     vendor_id: str
     vendor_bill_number: Optional[str] = Field(default=None, max_length=60)
+    order_number: Optional[str] = Field(default=None, max_length=120)
+    subject: Optional[str] = Field(default=None, max_length=250)
     date: date
     due_date: Optional[date] = None
     discount_amount: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
@@ -37,6 +39,8 @@ class BillOut(APIModel):
     id: str
     bill_number: str
     vendor_bill_number: Optional[str] = None
+    order_number: Optional[str] = None
+    subject: Optional[str] = None
     vendor_id: str
     vendor_name: str
     date: date
@@ -58,6 +62,8 @@ class BillListItem(APIModel):
     id: str
     bill_number: str
     vendor_bill_number: Optional[str] = None
+    order_number: Optional[str] = None
+    subject: Optional[str] = None
     vendor_id: str
     vendor_name: str
     date: date

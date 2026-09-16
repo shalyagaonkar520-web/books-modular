@@ -57,6 +57,8 @@ def to_out(bill: Bill) -> BillOut:
         id=bill.id,
         bill_number=bill.bill_number,
         vendor_bill_number=bill.vendor_bill_number,
+        order_number=bill.order_number,
+        subject=bill.subject,
         vendor_id=bill.vendor_id,
         vendor_name=bill.vendor.display_name,
         date=bill.date,
@@ -80,6 +82,8 @@ def to_list_item(bill: Bill) -> BillListItem:
         id=bill.id,
         bill_number=bill.bill_number,
         vendor_bill_number=bill.vendor_bill_number,
+        order_number=bill.order_number,
+        subject=bill.subject,
         vendor_id=bill.vendor_id,
         vendor_name=bill.vendor.display_name,
         date=bill.date,
@@ -98,6 +102,8 @@ def _apply_payload(db: Session, bill: Bill, payload: BillCreate, org_id: str) ->
     computed, subtotal, tax_total = compute_lines(db, org_id, payload.lines)
     bill.vendor_id = vendor.id
     bill.vendor_bill_number = payload.vendor_bill_number
+    bill.order_number = payload.order_number
+    bill.subject = payload.subject
     bill.date = payload.date
     bill.due_date = payload.due_date or (payload.date + timedelta(days=vendor.payment_terms_days))
     bill.discount_amount = money(payload.discount_amount)

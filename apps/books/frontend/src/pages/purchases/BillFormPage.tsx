@@ -61,6 +61,8 @@ export function BillFormPage() {
 
   const [vendorId, setVendorId] = useState('');
   const [vendorBillNumber, setVendorBillNumber] = useState('');
+  const [orderNumber, setOrderNumber] = useState('');
+  const [subject, setSubject] = useState('');
   const [date, setDate] = useState(todayIso);
   const [dueDate, setDueDate] = useState('');
   const [dueDateTouched, setDueDateTouched] = useState(false);
@@ -78,6 +80,8 @@ export function BillFormPage() {
     setLoadedId(bill.id);
     setVendorId(bill.vendorId);
     setVendorBillNumber(bill.vendorBillNumber ?? '');
+    setOrderNumber(bill.orderNumber ?? '');
+    setSubject(bill.subject ?? '');
     setDate(bill.date);
     setDueDate(bill.dueDate);
     setDueDateTouched(true);
@@ -149,6 +153,8 @@ export function BillFormPage() {
     const body = {
       vendorId,
       vendorBillNumber: vendorBillNumber.trim() || null,
+      orderNumber: orderNumber.trim() || null,
+      subject: subject.trim() || null,
       date,
       dueDate: dueDate || null,
       discountAmount: discount,
@@ -232,6 +238,21 @@ export function BillFormPage() {
               error={fieldErrors.vendorBillNumber}
               hint="The number printed on the vendor's invoice."
               onChange={(event) => setVendorBillNumber(event.target.value)}
+            />
+            <TextField
+              label="Order number"
+              value={orderNumber}
+              placeholder="Our purchase order number"
+              error={fieldErrors.orderNumber}
+              onChange={(event) => setOrderNumber(event.target.value)}
+            />
+            <TextField
+              label="Subject"
+              value={subject}
+              maxLength={250}
+              placeholder="What this bill is for"
+              error={fieldErrors.subject}
+              onChange={(event) => setSubject(event.target.value)}
             />
           </div>
           <div className="form-grid">

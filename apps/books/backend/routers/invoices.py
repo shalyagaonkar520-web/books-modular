@@ -85,6 +85,9 @@ def to_out(inv: Invoice) -> InvoiceOut:
         due_date=inv.due_date,
         status=effective_status(inv),
         reference=inv.reference,
+        order_number=inv.order_number,
+        subject=inv.subject,
+        salesperson=inv.salesperson,
         subtotal=inv.subtotal,
         discount_amount=inv.discount_amount,
         tax_total=inv.tax_total,
@@ -130,6 +133,9 @@ def _apply_payload(db: Session, inv: Invoice, payload: InvoiceCreate, org_id: st
     inv.date = payload.date
     inv.due_date = payload.due_date or (payload.date + timedelta(days=customer.payment_terms_days))
     inv.reference = payload.reference
+    inv.order_number = payload.order_number
+    inv.subject = payload.subject
+    inv.salesperson = payload.salesperson
     inv.discount_amount = money(payload.discount_amount)
     inv.notes = payload.notes
     inv.terms = payload.terms

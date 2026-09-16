@@ -41,6 +41,9 @@ class InvoiceCreate(APIModel):
     date: date
     due_date: Optional[date] = None
     reference: Optional[str] = Field(default=None, max_length=120)
+    order_number: Optional[str] = Field(default=None, max_length=120)
+    subject: Optional[str] = Field(default=None, max_length=250)
+    salesperson: Optional[str] = Field(default=None, max_length=120)
     discount_amount: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
     notes: Optional[str] = None
     terms: Optional[str] = None
@@ -71,6 +74,9 @@ class InvoiceOut(APIModel):
     due_date: date
     status: str
     reference: Optional[str] = None
+    order_number: Optional[str] = None
+    subject: Optional[str] = None
+    salesperson: Optional[str] = None
     subtotal: Decimal
     discount_amount: Decimal
     tax_total: Decimal
