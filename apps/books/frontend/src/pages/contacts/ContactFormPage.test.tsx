@@ -15,7 +15,7 @@ describe('ContactFormPage', () => {
   beforeEach(() => {
     installMockApi({
       'GET /api/accounting/accounts': accounts,
-      'POST /api/contacts': (_url, init) => ({ id: 'c1', displayName: JSON.parse(String(init.body)).displayName }),
+      'POST /api/contacts': (_url: URL, init: RequestInit) => ({ id: 'c1', displayName: JSON.parse(String(init.body)).displayName }),
     });
   });
 
@@ -26,6 +26,18 @@ describe('ContactFormPage', () => {
     expect(await screen.findByText('New customer')).toBeInTheDocument();
     // A modal would expose role="dialog"; this is a page.
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('is one continuous sheet with the actions pinned, not a stack of cards', async () => {
+    const { container } = renderWithProviders(<ContactFormPage type="customer" />);
+    await screen.findByText('Identity');
+
+    // Separate cards each carry a 20px margin plus the stack gap, which on a
+    // form reads as holes between the sections.
+    expect(container.querySelector('.card')).toBeNull();
+    expect(container.querySelector('.form-page')).not.toBeNull();
+    expect(container.querySelectorAll('.form-page-section').length).toBeGreaterThan(2);
+    expect(container.querySelector('.form-actions-bar')).not.toBeNull();
   });
 
   it('groups the fields into sections', async () => {

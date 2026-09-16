@@ -2609,3 +2609,60 @@ th.sortable {
   .zb-section-title { font-size: 26px; }
   .zb-landing-footer-inner { grid-template-columns: 1fr; }
 }
+
+/* ------------------------------------------------------------- form pages */
+/* An entry form is one continuous sheet, not a stack of cards: separate cards
+   put a 20px margin plus the stack's gap between every section, which on a
+   form reads as holes rather than grouping. Sections are divided by a rule
+   instead, the sheet fills the content area, and the actions stay in view at
+   the foot so a long form never hides its own Save button. */
+.form-page {
+  background: var(--surface);
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  /* Leaves room for the sticky action bar so the last field is never under it. */
+  margin-bottom: 76px;
+}
+
+.form-page-section {
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.form-page-section:last-child {
+  border-bottom: 0;
+}
+
+.form-page-section > .form-section-title {
+  margin: 0 0 14px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+.form-page-section > .form-section-note {
+  margin: -8px 0 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.form-actions-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  margin: 0 -24px -48px;
+  padding: 12px 24px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 12px -6px rgba(15, 23, 42, 0.12);
+}
+
+@media (max-width: 720px) {
+  .form-actions-bar {
+    margin: 0 -14px -40px;
+    padding: 10px 14px;
+  }
+}

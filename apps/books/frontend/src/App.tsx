@@ -21,6 +21,7 @@ import { InvoiceFormPage } from '@/pages/sales/InvoiceFormPage';
 import { InvoiceViewPage } from '@/pages/sales/InvoiceViewPage';
 import { InvoicesPage } from '@/pages/sales/InvoicesPage';
 import { ItemsPage } from '@/pages/items/ItemsPage';
+import { ItemFormPage } from '@/pages/items/ItemFormPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { LandingPage } from '@/pages/Landing/LandingPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -63,6 +64,8 @@ export function App() {
             <Route element={<AppLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/items" element={<ItemsPage />} />
+            <Route path="/items/new" element={<ItemFormPage />} />
+            <Route path="/items/:itemId/edit" element={<ItemFormPage />} />
 
             <Route path="/customers" element={<ContactsPage type="customer" />} />
             <Route path="/customers/new" element={<ContactFormPage type="customer" />} />

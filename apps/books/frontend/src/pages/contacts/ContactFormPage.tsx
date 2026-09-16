@@ -11,7 +11,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { accountingApi, contactsApi } from '@/api/endpoints';
 import type { Contact, ContactKind, ContactType, GstTreatment } from '@/api/types';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -228,10 +227,11 @@ function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
         }
       />
 
-      <div className="stack">
+      <div className="form-page">
       <FormError message={error} />
 
-      <Card title="Identity">
+      <section className="form-page-section">
+          <h3 className="form-section-title">Identity</h3>
         <div className="form-grid">
           <SelectField
             label={`${type === 'customer' ? 'Customer' : 'Vendor'} type`}
@@ -254,9 +254,10 @@ function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
           />
           <TextField label="Email" type="email" required={type === 'customer'} value={form.email} error={fieldErrors.email} onChange={(event) => set('email', event.target.value)} />
         </div>
-      </Card>
+      </section>
 
-      <Card title="Primary contact">
+      <section className="form-page-section">
+          <h3 className="form-section-title">Primary contact</h3>
         <div className="form-grid-3">
           <SelectField
             label="Salutation"
@@ -291,11 +292,13 @@ function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
             onChange={(event) => set('mobile', event.target.value.replace(/\D/g, '').slice(0, 10))}
           />
         </div>
-      </Card>
+      </section>
 
       {/* Money goes out to vendors, so only they need bank details. */}
       {type === 'vendor' ? (
-        <Card title="Bank details" subtitle="Where this vendor gets paid — saved so a payment run does not need it re-keyed.">
+        <section className="form-page-section">
+          <h3 className="form-section-title">Bank details</h3>
+          <p className="form-section-note">Where this vendor gets paid — saved so a payment run does not need it re-keyed.</p>
           <div className="form-grid">
             <TextField
               label="Account holder name"
@@ -331,10 +334,11 @@ function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
               onChange={(event) => set('bankIfsc', event.target.value.toUpperCase())}
             />
           </div>
-        </Card>
+        </section>
       ) : null}
 
-      <Card title="Tax and terms">
+      <section className="form-page-section">
+          <h3 className="form-section-title">Tax and terms</h3>
         <div className="form-grid">
           <TextField
             label="GSTIN"
@@ -386,15 +390,16 @@ function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
             onChange={(event) => set('language', event.target.value)}
           />
         </div>
-      </Card>
+      </section>
 
-      <Card title="Addresses">
+      <section className="form-page-section">
+          <h3 className="form-section-title">Addresses</h3>
         <div className="form-grid">
           <TextAreaField label="Billing address" value={form.billingAddress} error={fieldErrors.billingAddress} onChange={(event) => set('billingAddress', event.target.value)} />
           <TextAreaField label="Shipping address" value={form.shippingAddress} error={fieldErrors.shippingAddress} onChange={(event) => set('shippingAddress', event.target.value)} />
         </div>
         <TextAreaField label="Notes" rows={2} value={form.notes} error={fieldErrors.notes} onChange={(event) => set('notes', event.target.value)} />
-      </Card>
+      </section>
       </div>
 
       <div className="form-actions-bar">
