@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { CheckboxField, SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { useAuth } from '@/auth/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
@@ -78,9 +79,19 @@ export function ItemFormPage() {
   const navigate = useNavigate();
   const isEdit = Boolean(itemId);
 
+  // Reading the chart of accounts is Admin/Viewer only, while Staff may create
+  // items - so a Staff user must not be made to load accounts just to open the
+  // form. The account pickers are hidden for them and the item saves without,
+  // falling back to the org defaults on the server.
+  const { can } = useAuth();
+  const canChooseAccounts = can('admin', 'viewer');
+
   const existing = useAsync(() => (itemId ? itemsApi.get(itemId) : Promise.resolve(null)), [itemId]);
   const refs = useAsync(async (): Promise<SelectOptions> => {
-    const [accounts, vendorPage] = await Promise.all([accountingApi.accounts(), contactsApi.list({ type: 'vendor', page_size: 200 })]);
+    const [accounts, vendorPage] = await Promise.all([
+      canChooseAccounts ? accountingApi.accounts() : Promise.resolve([]),
+      contactsApi.list({ type: 'vendor', page_size: 200 }),
+    ]);
     return {
       salesAccounts: accounts.filter((a) => a.type === 'income').map((a) => ({ value: a.id, label: `${a.code} · ${a.name}` })),
       purchaseAccounts: accounts
@@ -88,7 +99,7 @@ export function ItemFormPage() {
         .map((a) => ({ value: a.id, label: `${a.code} · ${a.name}` })),
       vendors: vendorPage.items.map((v) => ({ value: v.id, label: v.displayName })),
     };
-  }, []);
+  }, [canChooseAccounts]);
 
   if ((isEdit && existing.loading) || refs.loading) return <LoadingBlock label="Loading item…" />;
   if (isEdit && existing.error) return <ErrorBlock message={existing.error} onRetry={existing.reload} />;

@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/Button';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { useAuth } from '@/auth/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
@@ -119,13 +120,18 @@ interface ContactFormProps {
 
 function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
   const toast = useToast();
+  // Reading the chart of accounts is Admin/Viewer only, but Staff may create
+  // contacts - so only ask for the accounts when the signed-in role is allowed
+  // them, otherwise the form 403s on open for a role that is entitled to use it.
+  const { can } = useAuth();
+  const canChooseAccount = can('admin', 'viewer');
   const [form, setForm] = useState<FormState>(() => initialForm(contact, type));
   const { submitting, error, fieldErrors, run } = useSubmit();
   // Receivables for a customer, payables for a vendor - the only accounts it
   // makes sense to point a contact at.
   const ledgerAccounts = useAsync(
-    () => accountingApi.accounts({ type: type === 'customer' ? 'asset' : 'liability' }),
-    [type],
+    () => (canChooseAccount ? accountingApi.accounts({ type: type === 'customer' ? 'asset' : 'liability' }) : Promise.resolve([])),
+    [type, canChooseAccount],
   );
   const [phoneError, setPhoneError] = useState<string | undefined>();
 
@@ -372,6 +378,7 @@ function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
             error={fieldErrors.paymentTermsDays}
             onChange={(event) => set('paymentTermsDays', event.target.value)}
           />
+          {canChooseAccount ? (
           <SelectField
             label={type === 'customer' ? 'Accounts receivable' : 'Accounts payable'}
             value={form.ledgerAccountId}
@@ -381,6 +388,7 @@ function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
             hint={`Leave as default unless this ${singular} posts to its own account`}
             onChange={(event) => set('ledgerAccountId', event.target.value)}
           />
+          ) : null}
           <SelectField
             label="Language"
             value={form.language}

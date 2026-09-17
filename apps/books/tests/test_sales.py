@@ -118,7 +118,10 @@ def test_payments_partial_full_and_delete(client, org):
     )
     assert p1.status_code == 201, p1.text
     state = client.get(f"/api/invoices/{inv['id']}", headers=h).json()
-    assert state["status"] == "partially_paid" and state["balanceDue"] == 6800
+    # Either status is correct depending on the day this runs: the fixed
+    # invoice date eventually falls past its own due date, which does not
+    # change what this test is about - how a part payment is applied.
+    assert state["status"] in ("partially_paid", "overdue") and state["balanceDue"] == 6800
     p2 = client.post(
         "/api/customer-payments",
         headers=h,

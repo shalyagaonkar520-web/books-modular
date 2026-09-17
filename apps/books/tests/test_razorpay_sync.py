@@ -324,7 +324,9 @@ def test_invoice_is_suggested_but_never_paid_without_confirmation(client, sync_o
     assert row["reconciliation_status"] == "partially_matched"
 
     # The invoice is still open until somebody confirms.
-    assert client.get(f"/api/invoices/{invoice['id']}", headers=sync_org["h"]).json()["status"] == "sent"
+    # Unpaid is the point here; "overdue" is just "sent" that has aged past
+    # its due date, which happens as the fixed dates in this test get older.
+    assert client.get(f"/api/invoices/{invoice['id']}", headers=sync_org["h"]).json()["status"] in ("sent", "overdue")
 
     matches = client.get(f"/api/razorpay/payments/{row['id']}/invoice-matches", headers=sync_org["h"]).json()
     assert matches["ambiguous"] is False
