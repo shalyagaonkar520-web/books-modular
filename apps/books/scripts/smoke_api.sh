@@ -14,13 +14,32 @@ say "health"
 curl -fsS "$BASE/api/health" | grep -q '"status":"healthy"'
 
 say "verify email"
-# Registration now requires a verified email first. The API echoes the OTP
-# back as devOtp when ENVIRONMENT=development (which this job sets) so CI
-# can drive the same flow a real signup goes through without needing SMTP.
-OTP=$(curl -fsS -X POST "$BASE/api/auth/send-verification-email" -H 'Content-Type: application/json' \
-  -d "{\"email\":\"$EMAIL\"}" | jqr "['devOtp']")
-curl -fsS -X POST "$BASE/api/auth/verify-otp" -H 'Content-Type: application/json' \
-  -d "{\"email\":\"$EMAIL\",\"otp\":\"$OTP\"}" > /dev/null
+# Registration requires a verified email first. For security the API never
+# returns the OTP (it is only emailed / logged server-side), so instead of
+# scraping it we seed a VERIFIED record directly, exactly as the test suite
+# bootstraps a signup. This runs on the same host with the same DATABASE_URL
+# as the API, so the row is visible when we register below.
+python3 - "$EMAIL" <<'PY'
+import sys
+from datetime import datetime, timedelta, timezone
+
+from backend.db import SessionLocal
+from backend.models import EmailVerification
+from backend.security import hash_token
+
+email = sys.argv[1].lower().strip()
+with SessionLocal() as db:
+    db.add(
+        EmailVerification(
+            email=email,
+            token_hash=hash_token("smoke:" + email),
+            status="VERIFIED",
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+            verified_at=datetime.now(timezone.utc),
+        )
+    )
+    db.commit()
+PY
 
 say "register organization"
 TOKEN=$(curl -fsS -X POST "$BASE/api/auth/register" -H 'Content-Type: application/json' \

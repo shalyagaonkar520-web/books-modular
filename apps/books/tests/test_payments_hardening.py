@@ -21,6 +21,17 @@ from backend.db import SessionLocal
 from backend.services import numbering
 from tests.conftest import auth, invite_and_accept, register_org
 
+
+def _sqlite_busy_timeout(db):
+    """Reduce 'database is locked' flakiness under concurrency on SQLite only.
+
+    PRAGMA is SQLite-specific syntax; PostgreSQL (the CI matrix DB) rejects it,
+    so this is a no-op on any other backend.
+    """
+    if db.bind is not None and db.bind.dialect.name == "sqlite":
+        db.execute(text("PRAGMA busy_timeout=5000"))
+
+
 _seq = {"n": 0}
 
 
@@ -223,7 +234,7 @@ def test_concurrent_numbering_is_unique_and_never_500s(client):
     # Materialise the counter row first so the concurrent workers exercise the
     # atomic-increment path rather than the one-time create-row race.
     with SessionLocal() as db:
-        db.execute(text("PRAGMA busy_timeout=5000"))
+        _sqlite_busy_timeout(db)
         numbering.next_number(db, org_id, kind)
         db.commit()
 
@@ -237,7 +248,7 @@ def test_concurrent_numbering_is_unique_and_never_500s(client):
         try:
             start.wait()
             with SessionLocal() as db:
-                db.execute(text("PRAGMA busy_timeout=5000"))
+                _sqlite_busy_timeout(db)
                 number = numbering.next_number(db, org_id, kind)
                 db.commit()
             with guard:
