@@ -123,11 +123,19 @@ def _apply_payload(db: Session, inv: Invoice, payload: InvoiceCreate, org_id: st
     customer = get_or_404(db, Contact, payload.customer_id, org_id, "Customer")
     if customer.type != "customer":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selected contact is not a customer")
+    # Inactive customers and items are retired: they cannot go on anything new,
+    # but an invoice that already carries one can still be edited and saved.
+    if not customer.is_active and customer.id != inv.customer_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Customer '{customer.display_name}' is inactive")
+    existing_item_ids = {line.item_id for line in inv.lines if line.item_id}
     if payload.project_id:
         project = get_or_404(db, Project, payload.project_id, org_id, "Project")
         if project.customer_id and project.customer_id != customer.id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Project belongs to a different customer")
-    computed, subtotal, tax_total = compute_lines(db, org_id, payload.lines)
+    computed, subtotal, tax_total = compute_lines(db, org_id, payload.lines, kind="invoice", discount=payload.discount_amount)
+    for line in computed:
+        if line.item and not line.item.is_active and line.item.id not in existing_item_ids:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Item '{line.item.name}' is inactive")
     inv.customer_id = customer.id
     inv.project_id = payload.project_id
     inv.date = payload.date
@@ -513,7 +521,20 @@ def send_invoice_via_gmail(
     inv = db.execute(_base_query(user.organization_id).where(Invoice.id == invoice_id)).scalar_one_or_none()
     if inv is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+    if inv.status == "void":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A void invoice cannot be emailed")
     org = db.get(Organization, user.organization_id)
+
+    # Emailing a draft issues it. Post and commit that first: posting can still
+    # be refused (not enough stock, say), and the customer must never receive
+    # an invoice the books then decline to record.
+    issued_now = inv.status == "draft"
+    if issued_now:
+        inv.status = "sent"
+        inv.sent_at = datetime.now(UTC)
+        post_invoice(db, inv, user)
+        audit.record(db, user, "update", "invoice", inv.id, f"Invoice {inv.invoice_number} marked sent for emailing")
+        db.commit()
 
     pdf_bytes = export_service.generate_invoice_pdf(inv, org) if payload.attach_pdf else None
     customer_name = inv.customer.display_name if inv.customer else "Valued Customer"
@@ -546,12 +567,10 @@ def send_invoice_via_gmail(
         )
 
     if not res.get("success"):
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail=res.get("error", "Gmail SMTP send failed"))
-
-    if inv.status == "draft":
-        inv.status = "sent"
-        inv.sent_at = datetime.now(UTC)
-        post_invoice(db, inv, user)
+        error = res.get("error", "Gmail SMTP send failed")
+        if issued_now:
+            error = f"{error}. The invoice has been marked as sent; the email can be retried."
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail=error)
 
     audit.record(
         db,
@@ -624,6 +643,9 @@ def change_status(invoice_id: str, payload: InvoiceStatusUpdate, user: User = De
         if inv.status != "draft":
             unpost_invoice(db, inv, user, "Invoice voided")
         inv.status = "void"
+        # Release billed time so it can go on a replacement invoice, as delete does.
+        for entry in db.execute(select(TimeEntry).where(TimeEntry.invoice_id == inv.id)).scalars():
+            entry.invoice_id = None
     elif target == "draft":
         if inv.status != "sent" or inv.amount_paid > 0:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only unpaid sent invoices can be reverted to draft")

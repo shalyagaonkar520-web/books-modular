@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import List, Literal, Optional
+from typing import ClassVar, List, Literal, Optional, Tuple
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
+from backend.schemas.accounting import NoExplicitNulls
 from backend.schemas.common import MAX_MONEY, MAX_QUANTITY, APIModel
 
 
@@ -18,7 +19,9 @@ class ProjectCreate(APIModel):
     budget_hours: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_QUANTITY)
 
 
-class ProjectUpdate(APIModel):
+class ProjectUpdate(NoExplicitNulls, APIModel):
+    non_nullable_fields: ClassVar[Tuple[str, ...]] = ("name", "billing_method", "hourly_rate", "budget_hours", "status")
+
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     customer_id: Optional[str] = None
     description: Optional[str] = None
@@ -54,7 +57,9 @@ class TimeEntryCreate(APIModel):
     user_id: Optional[str] = Field(default=None, description="Admins may log time for other users")
 
 
-class TimeEntryUpdate(APIModel):
+class TimeEntryUpdate(NoExplicitNulls, APIModel):
+    non_nullable_fields: ClassVar[Tuple[str, ...]] = ("date", "hours", "is_billable")
+
     date: Optional[date] = None
     hours: Optional[Decimal] = Field(default=None, gt=0, le=24)
     description: Optional[str] = None
@@ -82,3 +87,9 @@ class InvoiceFromTimeRequest(APIModel):
     due_date: Optional[date] = None
     time_entry_ids: Optional[List[str]] = None
     tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+
+    @model_validator(mode="after")
+    def _due_after_date(self):
+        if self.due_date and self.due_date < self.date:
+            raise ValueError("Due date cannot be before the invoice date")
+        return self

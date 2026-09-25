@@ -6,6 +6,10 @@ set -euo pipefail
 BASE="${1:-http://localhost:8000}"
 SUFFIX="$(date +%s)$$"
 EMAIL="smoke${SUFFIX}@example.com"
+# Dates are relative to today so a document never drifts into "overdue" as the
+# calendar moves past hardcoded dates (GNU date, with a BSD/macOS fallback).
+TODAY="$(date -u +%F)"
+DUE="$(date -u -d '+30 days' +%F 2>/dev/null || date -u -v+30d +%F)"
 
 say() { printf '\n== %s\n' "$1"; }
 jqr() { python3 -c "import sys,json;d=json.load(sys.stdin);print(eval('d'+sys.argv[1]))" "$1"; }
@@ -14,13 +18,32 @@ say "health"
 curl -fsS "$BASE/api/health" | grep -q '"status":"healthy"'
 
 say "verify email"
-# Registration now requires a verified email first. The API echoes the OTP
-# back as devOtp when ENVIRONMENT=development (which this job sets) so CI
-# can drive the same flow a real signup goes through without needing SMTP.
-OTP=$(curl -fsS -X POST "$BASE/api/auth/send-verification-email" -H 'Content-Type: application/json' \
-  -d "{\"email\":\"$EMAIL\"}" | jqr "['devOtp']")
-curl -fsS -X POST "$BASE/api/auth/verify-otp" -H 'Content-Type: application/json' \
-  -d "{\"email\":\"$EMAIL\",\"otp\":\"$OTP\"}" > /dev/null
+# Registration requires a verified email first. For security the API never
+# returns the OTP (it is only emailed / logged server-side), so instead of
+# scraping it we seed a VERIFIED record directly, exactly as the test suite
+# bootstraps a signup. This runs on the same host with the same DATABASE_URL
+# as the API, so the row is visible when we register below.
+python3 - "$EMAIL" <<'PY'
+import sys
+from datetime import datetime, timedelta, timezone
+
+from backend.db import SessionLocal
+from backend.models import EmailVerification
+from backend.security import hash_token
+
+email = sys.argv[1].lower().strip()
+with SessionLocal() as db:
+    db.add(
+        EmailVerification(
+            email=email,
+            token_hash=hash_token("smoke:" + email),
+            status="VERIFIED",
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+            verified_at=datetime.now(timezone.utc),
+        )
+    )
+    db.commit()
+PY
 
 say "register organization"
 TOKEN=$(curl -fsS -X POST "$BASE/api/auth/register" -H 'Content-Type: application/json' \
@@ -40,19 +63,19 @@ ITEM=$(curl -fsS -X POST "$BASE/api/items" "${AUTH[@]}" \
 
 say "raise and part-pay an invoice"
 INV=$(curl -fsS -X POST "$BASE/api/invoices" "${AUTH[@]}" \
-  -d "{\"customerId\":\"$CUST\",\"date\":\"2026-09-01\",\"status\":\"sent\",\"lines\":[{\"itemId\":\"$ITEM\",\"description\":\"Smoke Item\",\"quantity\":4,\"rate\":1000,\"taxRate\":18}]}")
+  -d "{\"customerId\":\"$CUST\",\"date\":\"$TODAY\",\"dueDate\":\"$DUE\",\"status\":\"sent\",\"lines\":[{\"itemId\":\"$ITEM\",\"description\":\"Smoke Item\",\"quantity\":4,\"rate\":1000,\"taxRate\":18}]}")
 INV_ID=$(echo "$INV" | jqr "['id']")
 echo "$INV" | grep -q '"total":4720'
 curl -fsS -X POST "$BASE/api/customer-payments" "${AUTH[@]}" \
-  -d "{\"customerId\":\"$CUST\",\"invoiceId\":\"$INV_ID\",\"bankAccountId\":\"$BANK\",\"date\":\"2026-09-05\",\"amount\":2000,\"mode\":\"upi\"}" > /dev/null
+  -d "{\"customerId\":\"$CUST\",\"invoiceId\":\"$INV_ID\",\"bankAccountId\":\"$BANK\",\"date\":\"$TODAY\",\"amount\":2000,\"mode\":\"upi\"}" > /dev/null
 curl -fsS "$BASE/api/invoices/$INV_ID" "${AUTH[@]}" | grep -q '"status":"partially_paid"'
 
 say "record a bill and an expense"
 curl -fsS -X POST "$BASE/api/bills" "${AUTH[@]}" \
-  -d "{\"vendorId\":\"$VEND\",\"date\":\"2026-09-02\",\"status\":\"open\",\"lines\":[{\"itemId\":\"$ITEM\",\"description\":\"Restock\",\"quantity\":10,\"rate\":580,\"taxRate\":18}]}" > /dev/null
+  -d "{\"vendorId\":\"$VEND\",\"date\":\"$TODAY\",\"status\":\"open\",\"lines\":[{\"itemId\":\"$ITEM\",\"description\":\"Restock\",\"quantity\":10,\"rate\":580,\"taxRate\":18}]}" > /dev/null
 RENT=$(curl -fsS "$BASE/api/accounting/accounts?type=expense" "${AUTH[@]}" | python3 -c "import sys,json;print(next(a['id'] for a in json.load(sys.stdin) if a['code']=='6300'))")
 curl -fsS -X POST "$BASE/api/expenses" "${AUTH[@]}" \
-  -d "{\"date\":\"2026-09-03\",\"accountId\":\"$RENT\",\"paidThroughAccountId\":\"$BANK\",\"amount\":15000,\"taxRate\":18}" > /dev/null
+  -d "{\"date\":\"$TODAY\",\"accountId\":\"$RENT\",\"paidThroughAccountId\":\"$BANK\",\"amount\":15000,\"taxRate\":18}" > /dev/null
 
 say "ledger integrity"
 python3 - "$BASE" "$TOKEN" <<'PY'

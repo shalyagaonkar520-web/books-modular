@@ -1,3 +1,4 @@
+import html
 import logging
 import smtplib
 from email.mime.application import MIMEApplication
@@ -29,6 +30,40 @@ def sender_identity() -> tuple[str, str]:
     return settings.smtp_sender_name, settings.smtp_user
 
 
+# Shown to API clients instead of the raw exception text, which can carry
+# server banners, hostnames or credential hints. The detail is logged.
+GENERIC_SEND_ERROR = "The email could not be sent. Please check the email settings and try again."
+
+
+def _esc(value: Any) -> str:
+    """HTML-escape a value for interpolation into an email body."""
+    return "" if value is None else html.escape(str(value), quote=True)
+
+
+def _multiline(value: Any) -> str:
+    """Escape user text, then keep its line breaks as <br/>."""
+    return _esc(value).replace("\r\n", "\n").replace("\n", "<br/>")
+
+
+def _header(value: Any) -> str:
+    """Header values must not contain line breaks (header injection)."""
+    return " ".join(str(value or "").splitlines()).strip()
+
+
+def _company(company_name: Optional[str] = None) -> str:
+    """The sending organization's name, or the configured sender name."""
+    return (company_name or "").strip() or _smtp().smtp_sender_name
+
+
+def _failure(kind: str, to_email: str, exc: Exception) -> Dict[str, Any]:
+    """Log the real error and hand the caller a message safe to show a client."""
+    if isinstance(exc, SmtpNotConfigured):
+        logger.warning("Cannot send %s email to %s: SMTP is not configured", kind, to_email)
+        return {"success": False, "error": str(exc)}
+    logger.error("Failed to send %s email to %s", kind, to_email, exc_info=exc)
+    return {"success": False, "error": GENERIC_SEND_ERROR}
+
+
 def get_smtp_connection():
     settings = _smtp()
     if not settings.smtp_configured:
@@ -49,18 +84,20 @@ def send_due_reminder_email(
     custom_notes: Optional[str] = None,
     pdf_bytes: Optional[bytes] = None,
     pdf_filename: Optional[str] = None,
+    company_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Send an official, professional overdue payment reminder email to customer with optional PDF attachment."""
     try:
         msg = MIMEMultipart("mixed") if pdf_bytes else MIMEMultipart("alternative")
-        msg["Subject"] = f"Payment Reminder: Invoice {invoice_id} is Overdue - Rooman Technologies"
+        msg["Subject"] = _header(f"Payment Reminder: Invoice {invoice_id} is Overdue - {_company(company_name)}")
         msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
-        msg["To"] = to_email
+        msg["To"] = _header(to_email)
+        company = _esc(_company(company_name))
 
         formatted_amount = f"₹{amount:,.2f}"
         note_block = (
             f"""<div style="background:#f1f5f9; border-left:4px solid #64748b; padding:12px; margin:16px 0; font-size:13.5px; color:#334155;">
-        <strong>Special Note from Accounts:</strong><br/>{custom_notes}
+        <strong>Special Note from Accounts:</strong><br/>{_multiline(custom_notes)}
         </div>"""
             if custom_notes
             else ""
@@ -93,15 +130,15 @@ def send_due_reminder_email(
 <body>
   <div class="container">
     <div class="header">
-      <h1>Rooman Technologies Pvt Ltd</h1>
+      <h1>{company}</h1>
       <p>Enterprise Financial Cloud & Accounting</p>
     </div>
     <div class="content">
-      <div class="salutation">Dear Accounts Payable Team ({customer_name}),</div>
-      <p>This is a formal communication from Rooman Technologies Accounts Department regarding the pending settlement of the invoice outlined below.</p>
+      <div class="salutation">Dear Accounts Payable Team ({_esc(customer_name)}),</div>
+      <p>This is a formal communication from the {company} accounts department regarding the pending settlement of the invoice outlined below.</p>
 
       <div class="notice-box">
-        <p><strong>Notice:</strong> This invoice was due on <strong>{due_date}</strong> ({days_overdue} days past due). Kindly arrange for the remittance at the earliest to prevent any service interruptions.</p>
+        <p><strong>Notice:</strong> This invoice was due on <strong>{_esc(due_date)}</strong> ({_esc(days_overdue)} days past due). Kindly arrange for the remittance at the earliest to prevent any service interruptions.</p>
       </div>
 
       {note_block}
@@ -114,29 +151,19 @@ def send_due_reminder_email(
           <th>Outstanding Balance</th>
         </tr>
         <tr>
-          <td><strong>{invoice_id}</strong></td>
-          <td>{due_date}</td>
+          <td><strong>{_esc(invoice_id)}</strong></td>
+          <td>{_esc(due_date)}</td>
           <td><span style="color:#ef4444; font-weight:600;">Overdue</span></td>
           <td class="amount-highlight">{formatted_amount}</td>
         </tr>
       </table>
 
-      <div class="bank-box">
-        <h3>Direct Settlement Account Details</h3>
-        <p>Beneficiary: <strong>Rooman Technologies Pvt Ltd</strong></p>
-        <p>Bank: <strong>HDFC Bank Ltd</strong></p>
-        <p>A/C Number: <strong>50200088921473</strong></p>
-        <p>IFSC Code: <strong>HDFC0000240</strong></p>
-        <p>UPI VPA: <strong>rooman.tech@hdfcbank</strong></p>
-      </div>
-
       <p style="font-size:13.5px; color:#475569;">If the payment has already been initiated, please reply to this email with the transaction UTR number so our finance desk can update your ledger.</p>
 
-      <p style="margin-top:24px; font-size:14px;">Warm regards,<br><strong>Finance & Accounts Desk</strong><br>Rooman Technologies Pvt Ltd</p>
+      <p style="margin-top:24px; font-size:14px;">Warm regards,<br><strong>Finance & Accounts Desk</strong><br>{company}</p>
     </div>
     <div class="footer">
-      Rooman House, #12 Rajajinagar, Bengaluru, Karnataka 560010<br>
-      Email: shalya@rooman.com • Tel: +91 80 4123 4567
+      {company}
     </div>
   </div>
 </body>
@@ -163,7 +190,7 @@ def send_due_reminder_email(
             "pdf_attached": bool(pdf_bytes),
         }
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return _failure("due_reminder", to_email, e)
 
 
 def send_invoice_email(
@@ -176,18 +203,20 @@ def send_invoice_email(
     custom_notes: Optional[str] = None,
     pdf_bytes: Optional[bytes] = None,
     pdf_filename: Optional[str] = None,
+    company_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Send an official GST Tax Invoice dispatch email to customer with optional PDF attachment."""
     try:
         msg = MIMEMultipart("mixed") if pdf_bytes else MIMEMultipart("alternative")
-        msg["Subject"] = f"Tax Invoice {invoice_id} from Rooman Technologies Pvt Ltd"
+        msg["Subject"] = _header(f"Tax Invoice {invoice_id} from {_company(company_name)}")
         msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
-        msg["To"] = to_email
+        msg["To"] = _header(to_email)
+        company = _esc(_company(company_name))
 
         formatted_amount = f"₹{amount:,.2f}"
         note_block = (
             f"""<div style="background:#f1f5f9; border-left:4px solid #2563eb; padding:12px; margin:16px 0; font-size:13.5px; color:#334155;">
-        <strong>Special Instructions:</strong><br/>{custom_notes}
+        <strong>Special Instructions:</strong><br/>{_multiline(custom_notes)}
         </div>"""
             if custom_notes
             else ""
@@ -211,24 +240,24 @@ def send_invoice_email(
 <body>
   <div class="container">
     <div class="header">
-      <h1>Rooman Technologies Pvt Ltd</h1>
+      <h1>{company}</h1>
       <p style="margin:4px 0 0 0; opacity:0.85; font-size:13px;">Official GST Tax Invoice Dispatch</p>
     </div>
     <div class="content">
-      <p>Dear <strong>{customer_name}</strong>,</p>
-      <p>Please find details of Tax Invoice <strong>{invoice_id}</strong> issued on your account.</p>
+      <p>Dear <strong>{_esc(customer_name)}</strong>,</p>
+      <p>Please find details of Tax Invoice <strong>{_esc(invoice_id)}</strong> issued on your account.</p>
 
       <div class="amount-box">
         <div class="amount-title">Total Invoice Amount (Incl. GST)</div>
         <div class="amount-val">{formatted_amount}</div>
-        <div style="font-size:13px; color:#64748b; margin-top:6px;">Payment Due: <strong>{due_date}</strong></div>
+        <div style="font-size:13px; color:#64748b; margin-top:6px;">Payment Due: <strong>{_esc(due_date)}</strong></div>
       </div>
 
       {note_block}
 
-      <p style="font-size:13.5px; color:#475569;">Description / Service: {items_summary or "Enterprise IT & Accounting Solutions"}</p>
+      <p style="font-size:13.5px; color:#475569;">Description / Service: {_esc(items_summary or "Enterprise IT & Accounting Solutions")}</p>
 
-      <p style="margin-top:28px; font-size:14px;">Regards,<br><strong>Rooman Technologies Billing Team</strong></p>
+      <p style="margin-top:28px; font-size:14px;">Regards,<br><strong>{company} Billing Team</strong></p>
     </div>
   </div>
 </body>
@@ -253,19 +282,22 @@ def send_invoice_email(
             "pdf_attached": bool(pdf_bytes),
         }
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return _failure("invoice", to_email, e)
 
 
-def send_custom_message_email(to_email: str, subject: str, message: str, recipient_name: Optional[str] = None) -> Dict[str, Any]:
+def send_custom_message_email(
+    to_email: str, subject: str, message: str, recipient_name: Optional[str] = None, company_name: Optional[str] = None
+) -> Dict[str, Any]:
     """Send a custom communication email to a customer, client, or other recipient via Gmail SMTP."""
     try:
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
+        msg["Subject"] = _header(subject)
         msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
-        msg["To"] = to_email
+        msg["To"] = _header(to_email)
+        company = _esc(_company(company_name))
 
-        formatted_msg = message.replace("\n", "<br/>")
-        salutation = f"Dear {recipient_name}," if recipient_name else "Hello,"
+        formatted_msg = _multiline(message)
+        salutation = f"Dear {_esc(recipient_name)}," if recipient_name else "Hello,"
 
         html_body = f"""<!DOCTYPE html>
 <html>
@@ -285,7 +317,7 @@ def send_custom_message_email(to_email: str, subject: str, message: str, recipie
 <body>
   <div class="container">
     <div class="header">
-      <h1>Rooman Technologies Pvt Ltd</h1>
+      <h1>{company}</h1>
       <p>Enterprise Financial Cloud & Client Communication</p>
     </div>
     <div class="content">
@@ -293,11 +325,10 @@ def send_custom_message_email(to_email: str, subject: str, message: str, recipie
       <div class="msg-box">
         {formatted_msg}
       </div>
-      <p style="margin-top:28px; font-size:14px;">Best regards,<br><strong>Accounts & Client Relations Team</strong><br>Rooman Technologies Pvt Ltd</p>
+      <p style="margin-top:28px; font-size:14px;">Best regards,<br><strong>Accounts & Client Relations Team</strong><br>{company}</p>
     </div>
     <div class="footer">
-      Rooman House, #12 Rajajinagar, Bengaluru, Karnataka 560010<br>
-      Email: shalya@rooman.com • Tel: +91 80 4123 4567
+      {company}
     </div>
   </div>
 </body>
@@ -311,7 +342,7 @@ def send_custom_message_email(to_email: str, subject: str, message: str, recipie
 
         return {"success": True, "message": f"Email successfully dispatched to {to_email}", "recipient": to_email, "subject": subject}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return _failure("custom_message", to_email, e)
 
 
 def send_payment_confirmation_request_email(
@@ -326,6 +357,7 @@ def send_payment_confirmation_request_email(
     payer_email: Optional[str] = None,
     invoice_number: Optional[str] = None,
     base_url: str = "http://localhost:8000",
+    company_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Send an urgent external payment approval request email via Gmail SMTP with YES/NO 1-click action buttons."""
     try:
@@ -333,9 +365,12 @@ def send_payment_confirmation_request_email(
         formatted_amount = f"₹{amount:,.2f}" if currency.upper() == "INR" else f"{currency.upper()} {amount:,.2f}"
         display_platform = platform.upper()
 
-        msg["Subject"] = f"⚡ ACTION REQUIRED: Confirm {display_platform} Payment of {formatted_amount} from {payer_name or 'Customer'}"
+        msg["Subject"] = _header(
+            f"⚡ ACTION REQUIRED: Confirm {display_platform} Payment of {formatted_amount} from {payer_name or 'Customer'}"
+        )
         msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
-        msg["To"] = to_email
+        msg["To"] = _header(to_email)
+        company = _esc(_company(company_name))
 
         yes_url = f"{base_url}/api/payments/external/confirm?token={approval_token}&decision=yes"
         no_url = f"{base_url}/api/payments/external/confirm?token={approval_token}&decision=no"
@@ -370,7 +405,7 @@ def send_payment_confirmation_request_email(
 <body>
   <div class="container">
     <div class="header">
-      <h1>Rooman Technologies Pvt Ltd</h1>
+      <h1>{company}</h1>
       <p>Automated Financial Cloud & Gateway Ingestion</p>
     </div>
     <div class="content">
@@ -384,29 +419,29 @@ def send_payment_confirmation_request_email(
       </div>
 
       <p style="font-size: 14px; color: #475569; line-height: 1.6;">
-        A payment notification has arrived from <strong>{display_platform}</strong>. Please confirm whether this payment should be recorded into Rooman Books and applied to the accounts.
+        A payment notification has arrived from <strong>{_esc(display_platform)}</strong>. Please confirm whether this payment should be recorded into Rooman Books and applied to the accounts.
       </p>
 
       <table class="details-table">
         <tr>
           <th>Platform / Gateway</th>
-          <td><strong>{display_platform}</strong></td>
+          <td><strong>{_esc(display_platform)}</strong></td>
         </tr>
         <tr>
           <th>Transaction / UTR #</th>
-          <td><code style="background:#e2e8f0; padding:2px 6px; border-radius:4px; font-size:13px;">{external_transaction_id}</code></td>
+          <td><code style="background:#e2e8f0; padding:2px 6px; border-radius:4px; font-size:13px;">{_esc(external_transaction_id)}</code></td>
         </tr>
         <tr>
           <th>Payer Name</th>
-          <td>{payer_name or "N/A"}</td>
+          <td>{_esc(payer_name or "N/A")}</td>
         </tr>
         <tr>
           <th>Payer Email</th>
-          <td>{payer_email or "N/A"}</td>
+          <td>{_esc(payer_email or "N/A")}</td>
         </tr>
         <tr>
           <th>Matched Invoice</th>
-          <td>{invoice_number or "Unassigned Customer Advance"}</td>
+          <td>{_esc(invoice_number or "Unassigned Customer Advance")}</td>
         </tr>
       </table>
 
@@ -414,8 +449,8 @@ def send_payment_confirmation_request_email(
         <h3>Confirmation Required (Gmail YES / NO)</h3>
         <p>Choose an action below to process this payment in your books:</p>
 
-        <a href="{yes_url}" class="btn-yes" target="_blank">✅ YES &mdash; APPROVE & RECORD</a>
-        <a href="{no_url}" class="btn-no" target="_blank">❌ NO &mdash; REJECT & DISCARD</a>
+        <a href="{_esc(yes_url)}" class="btn-yes" target="_blank">✅ YES &mdash; APPROVE & RECORD</a>
+        <a href="{_esc(no_url)}" class="btn-no" target="_blank">❌ NO &mdash; REJECT & DISCARD</a>
       </div>
 
       <p style="margin-top: 24px; font-size: 12px; color: #94a3b8; text-align: center;">
@@ -423,7 +458,7 @@ def send_payment_confirmation_request_email(
       </p>
     </div>
     <div class="footer">
-      Rooman House, #12 Rajajinagar, Bengaluru, Karnataka 560010<br>
+      {company}<br>
       Automated via Gmail SMTP &bull; Rooman Books Finance Operations Desk
     </div>
   </div>
@@ -441,10 +476,9 @@ def send_payment_confirmation_request_email(
             "message": f"Confirmation request email sent successfully to {to_email}",
             "payment_id": payment_id,
             "recipient": to_email,
-            "approval_token": approval_token,
         }
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return _failure("payment_confirmation_request", to_email, e)
 
 
 def send_customer_payment_email(
@@ -458,18 +492,20 @@ def send_customer_payment_email(
     custom_notes: Optional[str] = None,
     pdf_bytes: Optional[bytes] = None,
     pdf_filename: Optional[str] = None,
+    company_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Send official customer payment receipt via Gmail SMTP."""
     try:
         msg = MIMEMultipart("mixed") if pdf_bytes else MIMEMultipart("alternative")
-        msg["Subject"] = f"Official Payment Receipt: {payment_number} - Rooman Technologies"
+        msg["Subject"] = _header(f"Official Payment Receipt: {payment_number} - {_company(company_name)}")
         msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
-        msg["To"] = to_email
+        msg["To"] = _header(to_email)
+        company = _esc(_company(company_name))
 
         formatted_amount = f"₹{amount:,.2f}"
         note_block = (
             f"""<div style="background:#f1f5f9; border-left:4px solid #16a34a; padding:12px; margin:16px 0; font-size:13.5px; color:#334155;">
-        <strong>Notes from Rooman Accounts:</strong><br/>{custom_notes}
+        <strong>Notes from {company}:</strong><br/>{_multiline(custom_notes)}
         </div>"""
             if custom_notes
             else ""
@@ -481,28 +517,28 @@ def send_customer_payment_email(
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #1e293b;">
   <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden;">
     <div style="background: #16a34a; padding: 26px 32px; color: #ffffff;">
-      <h1 style="margin: 0; font-size: 20px;">Rooman Technologies Pvt Ltd</h1>
+      <h1 style="margin: 0; font-size: 20px;">{company}</h1>
       <p style="margin: 4px 0 0 0; opacity: 0.9; font-size: 13px;">Official Payment Receipt & Acknowledgment</p>
     </div>
     <div style="padding: 30px;">
-      <p style="font-size: 15px;">Dear <strong>{customer_name}</strong>,</p>
+      <p style="font-size: 15px;">Dear <strong>{_esc(customer_name)}</strong>,</p>
       <p style="font-size: 14px; color: #475569;">Thank you for your payment. We are pleased to acknowledge receipt of the funds detailed below:</p>
 
       <div style="background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
         <div style="font-size: 12px; color: #047857; text-transform: uppercase; font-weight: 700;">Amount Received</div>
         <div style="font-size: 28px; font-weight: 800; color: #065f46; margin-top: 4px;">{formatted_amount}</div>
-        <div style="font-size: 13px; color: #047857; margin-top: 6px;">Receipt #: <strong>{payment_number}</strong> &bull; Date: <strong>{payment_date}</strong></div>
+        <div style="font-size: 13px; color: #047857; margin-top: 6px;">Receipt #: <strong>{_esc(payment_number)}</strong> &bull; Date: <strong>{_esc(payment_date)}</strong></div>
       </div>
 
       <table style="width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 13.5px;">
-        <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;">Payment Mode</td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-weight: 600; text-align: right;">{payment_mode.upper()}</td></tr>
-        <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;">Reference / UTR</td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-family: monospace; text-align: right;">{reference or "N/A"}</td></tr>
+        <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;">Payment Mode</td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-weight: 600; text-align: right;">{_esc(payment_mode.upper())}</td></tr>
+        <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;">Reference / UTR</td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-family: monospace; text-align: right;">{_esc(reference or "N/A")}</td></tr>
       </table>
 
       {note_block}
 
       <p style="font-size: 13px; color: #64748b; margin-top: 24px;">The formal stamped receipt PDF is attached to this email for your accounting records.</p>
-      <p style="margin-top: 28px; font-size: 14px;">Warm regards,<br><strong>Finance & Billing Department</strong><br>Rooman Technologies Pvt Ltd</p>
+      <p style="margin-top: 28px; font-size: 14px;">Warm regards,<br><strong>Finance & Billing Department</strong><br>{company}</p>
     </div>
   </div>
 </body>
@@ -520,7 +556,7 @@ def send_customer_payment_email(
         server.quit()
         return {"success": True, "message": f"Payment receipt {payment_number} emailed to {to_email}"}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return _failure("customer_payment", to_email, e)
 
 
 def send_vendor_payment_email(
@@ -534,18 +570,20 @@ def send_vendor_payment_email(
     custom_notes: Optional[str] = None,
     pdf_bytes: Optional[bytes] = None,
     pdf_filename: Optional[str] = None,
+    company_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Send vendor remittance advice via Gmail SMTP."""
     try:
         msg = MIMEMultipart("mixed") if pdf_bytes else MIMEMultipart("alternative")
-        msg["Subject"] = f"Payment Remittance Advice: Voucher {payment_number} - Rooman Technologies"
+        msg["Subject"] = _header(f"Payment Remittance Advice: Voucher {payment_number} - {_company(company_name)}")
         msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
-        msg["To"] = to_email
+        msg["To"] = _header(to_email)
+        company = _esc(_company(company_name))
 
         formatted_amount = f"₹{amount:,.2f}"
         note_block = (
             f"""<div style="background:#f1f5f9; border-left:4px solid #2563eb; padding:12px; margin:16px 0; font-size:13.5px; color:#334155;">
-        <strong>Remittance Note:</strong><br/>{custom_notes}
+        <strong>Remittance Note:</strong><br/>{_multiline(custom_notes)}
         </div>"""
             if custom_notes
             else ""
@@ -557,28 +595,28 @@ def send_vendor_payment_email(
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #1e293b;">
   <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden;">
     <div style="background: #2563eb; padding: 26px 32px; color: #ffffff;">
-      <h1 style="margin: 0; font-size: 20px;">Rooman Technologies Pvt Ltd</h1>
+      <h1 style="margin: 0; font-size: 20px;">{company}</h1>
       <p style="margin: 4px 0 0 0; opacity: 0.9; font-size: 13px;">Payment Remittance Advice</p>
     </div>
     <div style="padding: 30px;">
-      <p style="font-size: 15px;">Dear <strong>{vendor_name}</strong>,</p>
+      <p style="font-size: 15px;">Dear <strong>{_esc(vendor_name)}</strong>,</p>
       <p style="font-size: 14px; color: #475569;">We have initiated a payment disbursement towards your pending bills/statements as follows:</p>
 
       <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
         <div style="font-size: 12px; color: #1d4ed8; text-transform: uppercase; font-weight: 700;">Amount Disbursed</div>
         <div style="font-size: 28px; font-weight: 800; color: #1e40af; margin-top: 4px;">{formatted_amount}</div>
-        <div style="font-size: 13px; color: #1d4ed8; margin-top: 6px;">Voucher #: <strong>{payment_number}</strong> &bull; Date: <strong>{payment_date}</strong></div>
+        <div style="font-size: 13px; color: #1d4ed8; margin-top: 6px;">Voucher #: <strong>{_esc(payment_number)}</strong> &bull; Date: <strong>{_esc(payment_date)}</strong></div>
       </div>
 
       <table style="width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 13.5px;">
-        <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;">Transfer Mode</td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-weight: 600; text-align: right;">{payment_mode.upper()}</td></tr>
-        <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;">UTR / Cheque Ref</td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-family: monospace; text-align: right;">{reference or "N/A"}</td></tr>
+        <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;">Transfer Mode</td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-weight: 600; text-align: right;">{_esc(payment_mode.upper())}</td></tr>
+        <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;">UTR / Cheque Ref</td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-family: monospace; text-align: right;">{_esc(reference or "N/A")}</td></tr>
       </table>
 
       {note_block}
 
       <p style="font-size: 13px; color: #64748b; margin-top: 24px;">Please find the attached remittance voucher PDF for your records.</p>
-      <p style="margin-top: 28px; font-size: 14px;">Best regards,<br><strong>Accounts Payable Team</strong><br>Rooman Technologies Pvt Ltd</p>
+      <p style="margin-top: 28px; font-size: 14px;">Best regards,<br><strong>Accounts Payable Team</strong><br>{company}</p>
     </div>
   </div>
 </body>
@@ -596,7 +634,7 @@ def send_vendor_payment_email(
         server.quit()
         return {"success": True, "message": f"Remittance advice {payment_number} emailed to {to_email}"}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return _failure("vendor_payment", to_email, e)
 
 
 def send_expense_email(
@@ -610,18 +648,20 @@ def send_expense_email(
     custom_notes: Optional[str] = None,
     pdf_bytes: Optional[bytes] = None,
     pdf_filename: Optional[str] = None,
+    company_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Send expense record/voucher via Gmail SMTP."""
     try:
         msg = MIMEMultipart("mixed") if pdf_bytes else MIMEMultipart("alternative")
-        msg["Subject"] = f"Expense Voucher: {expense_number} ({category}) - Rooman Technologies"
+        msg["Subject"] = _header(f"Expense Voucher: {expense_number} ({category}) - {_company(company_name)}")
         msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
-        msg["To"] = to_email
+        msg["To"] = _header(to_email)
+        company = _esc(_company(company_name))
 
         formatted_amount = f"₹{amount:,.2f}"
         note_block = (
             f"""<div style="background:#f1f5f9; border-left:4px solid #d97706; padding:12px; margin:16px 0; font-size:13.5px; color:#334155;">
-        <strong>Expense Details:</strong><br/>{custom_notes}
+        <strong>Expense Details:</strong><br/>{_multiline(custom_notes)}
         </div>"""
             if custom_notes
             else ""
@@ -633,26 +673,26 @@ def send_expense_email(
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #1e293b;">
   <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden;">
     <div style="background: #d97706; padding: 26px 32px; color: #ffffff;">
-      <h1 style="margin: 0; font-size: 20px;">Rooman Technologies Pvt Ltd</h1>
+      <h1 style="margin: 0; font-size: 20px;">{company}</h1>
       <p style="margin: 4px 0 0 0; opacity: 0.9; font-size: 13px;">Operating Expense Notification</p>
     </div>
     <div style="padding: 30px;">
-      <p style="font-size: 15px;">Hello <strong>{recipient_name}</strong>,</p>
-      <p style="font-size: 14px; color: #475569;">Here are the details for Expense Voucher <strong>{expense_number}</strong> recorded in Rooman Books:</p>
+      <p style="font-size: 15px;">Hello <strong>{_esc(recipient_name)}</strong>,</p>
+      <p style="font-size: 14px; color: #475569;">Here are the details for Expense Voucher <strong>{_esc(expense_number)}</strong> recorded in Rooman Books:</p>
 
       <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
         <div style="font-size: 12px; color: #b45309; text-transform: uppercase; font-weight: 700;">Expense Amount</div>
         <div style="font-size: 28px; font-weight: 800; color: #92400e; margin-top: 4px;">{formatted_amount}</div>
-        <div style="font-size: 13px; color: #b45309; margin-top: 6px;">Category: <strong>{category}</strong> &bull; Date: <strong>{expense_date}</strong></div>
+        <div style="font-size: 13px; color: #b45309; margin-top: 6px;">Category: <strong>{_esc(category)}</strong> &bull; Date: <strong>{_esc(expense_date)}</strong></div>
       </div>
 
       <table style="width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 13.5px;">
-        <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;">Payee</td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-weight: 600; text-align: right;">{payee}</td></tr>
+        <tr><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;">Payee</td><td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-weight: 600; text-align: right;">{_esc(payee)}</td></tr>
       </table>
 
       {note_block}
 
-      <p style="margin-top: 28px; font-size: 14px;">Regards,<br><strong>Accounting Operations Desk</strong><br>Rooman Technologies Pvt Ltd</p>
+      <p style="margin-top: 28px; font-size: 14px;">Regards,<br><strong>Accounting Operations Desk</strong><br>{company}</p>
     </div>
   </div>
 </body>
@@ -670,13 +710,13 @@ def send_expense_email(
         server.quit()
         return {"success": True, "message": f"Expense notification {expense_number} emailed to {to_email}"}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return _failure("expense", to_email, e)
 
 
 def send_overall_report_email(
     to_email: str,
     recipient_name: Optional[str] = "Finance & Management Team",
-    organization_name: str = "Rooman Technologies Pvt Ltd",
+    organization_name: Optional[str] = None,
     period_label: str = "This Fiscal Year",
     total_cash: float = 0.0,
     receivables_total: float = 0.0,
@@ -694,9 +734,10 @@ def send_overall_report_email(
     """Dispatch an Executive Overall Financial & Operations Report via Gmail SMTP."""
     try:
         msg = MIMEMultipart("mixed") if pdf_bytes else MIMEMultipart("alternative")
-        msg["Subject"] = f"Executive Overall Financial Report ({period_label}) - {organization_name}"
+        organization_name = _company(organization_name)
+        msg["Subject"] = _header(f"Executive Overall Financial Report ({period_label}) - {organization_name}")
         msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
-        msg["To"] = to_email
+        msg["To"] = _header(to_email)
 
         net_tone = "#059669" if net_profit >= 0 else "#dc2626"
         net_bg = "#ecfdf5" if net_profit >= 0 else "#fef2f2"
@@ -705,7 +746,7 @@ def send_overall_report_email(
 
         note_block = (
             f"""<div style="background:#f8fafc; border-left:4px solid #3b82f6; padding:12px 16px; margin:20px 0; border-radius:4px; font-size:13.5px; color:#334155;">
-        <strong style="color:#1e293b;">Executive Notes:</strong><br/>{custom_notes}
+        <strong style="color:#1e293b;">Executive Notes:</strong><br/>{_multiline(custom_notes)}
         </div>"""
             if custom_notes
             else ""
@@ -713,7 +754,7 @@ def send_overall_report_email(
 
         pdf_badge = (
             f"""<div style="margin:16px 0; padding:10px 14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; font-size:13px; color:#1e40af;">
-        📎 <strong>Attached:</strong> Complete Executive Financial &amp; Operations PDF Report ({pdf_filename or "Overall_Report.pdf"})
+        📎 <strong>Attached:</strong> Complete Executive Financial &amp; Operations PDF Report ({_esc(pdf_filename or "Overall_Report.pdf")})
         </div>"""
             if pdf_bytes
             else ""
@@ -726,14 +767,14 @@ def send_overall_report_email(
   <div style="max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
     <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px 32px; color: #ffffff;">
       <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #38bdf8; font-weight: 700;">Executive Financial Dispatch</div>
-      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 700;">{organization_name}</h1>
-      <p style="margin: 6px 0 0 0; opacity: 0.85; font-size: 13.5px;">Overall Performance Report &bull; <strong>{period_label}</strong></p>
+      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 700;">{_esc(organization_name)}</h1>
+      <p style="margin: 6px 0 0 0; opacity: 0.85; font-size: 13.5px;">Overall Performance Report &bull; <strong>{_esc(period_label)}</strong></p>
     </div>
 
     <div style="padding: 28px 32px;">
-      <p style="font-size: 15px; margin-top: 0;">Hello <strong>{recipient_name or "Team"}</strong>,</p>
+      <p style="font-size: 15px; margin-top: 0;">Hello <strong>{_esc(recipient_name or "Team")}</strong>,</p>
       <p style="font-size: 14px; color: #475569; line-height: 1.5;">
-        Here is the live executive summary report derived from posted accounting transactions for <strong>{period_label}</strong> in Rooman Books.
+        Here is the live executive summary report derived from posted accounting transactions for <strong>{_esc(period_label)}</strong> in Rooman Books.
       </p>
 
       <!-- Highlight Net Profit Card -->
@@ -782,7 +823,7 @@ def send_overall_report_email(
 
       <div style="margin-top: 30px; padding-top: 18px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b;">
         <p style="margin: 0 0 4px 0;">Dispatched directly from <strong>Rooman Books Cloud Accounting</strong> via Gmail SMTP.</p>
-        <p style="margin: 0; font-size: 12px; color: #94a3b8;">Email: shalya@rooman.com &bull; Accounts Operations</p>
+        <p style="margin: 0; font-size: 12px; color: #94a3b8;">Email: {_esc(_smtp().smtp_user)} &bull; Accounts Operations</p>
       </div>
     </div>
   </div>
@@ -805,7 +846,7 @@ def send_overall_report_email(
             "recipient": to_email,
         }
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return _failure("overall_report", to_email, e)
 
 
 def send_invite_email(
@@ -819,9 +860,9 @@ def send_invite_email(
     """Invite a new user by email with a link to set their own password via Gmail SMTP."""
     try:
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"You're invited to {organization_name} on Rooman Books"
+        msg["Subject"] = _header(f"You're invited to {organization_name} on Rooman Books")
         msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
-        msg["To"] = to_email
+        msg["To"] = _header(to_email)
 
         role_label = {"admin": "Administrator", "staff": "Staff", "viewer": "Viewer"}.get(role, role.title())
 
@@ -845,22 +886,22 @@ def send_invite_email(
 <body>
   <div class="container">
     <div class="header">
-      <h1>{organization_name}</h1>
+      <h1>{_esc(organization_name)}</h1>
       <p>You've been invited to Rooman Books</p>
     </div>
     <div class="content">
-      <p><strong>Hello {name},</strong></p>
-      <p>{inviter_name} has invited you to join <strong>{organization_name}</strong> on Rooman Books.</p>
-      <div><span class="role-badge">Role: {role_label}</span></div>
+      <p><strong>Hello {_esc(name)},</strong></p>
+      <p>{_esc(inviter_name)} has invited you to join <strong>{_esc(organization_name)}</strong> on Rooman Books.</p>
+      <div><span class="role-badge">Role: {_esc(role_label)}</span></div>
       <p>Click the button below to create your password. You'll then return here and sign in with your email and new password.</p>
       <p style="text-align:center; margin: 28px 0;">
-        <a href="{accept_url}" class="cta">Set your password</a>
+        <a href="{_esc(accept_url)}" class="cta">Set your password</a>
       </p>
-      <p class="link-fallback">Or paste this link into your browser:<br>{accept_url}</p>
+      <p class="link-fallback">Or paste this link into your browser:<br>{_esc(accept_url)}</p>
       <p style="margin-top:24px; font-size:13px; color:#64748b;">This link expires in 7 days. If you weren't expecting this invitation, you can safely ignore this email.</p>
     </div>
     <div class="footer">
-      Rooman House, #12 Rajajinagar, Bengaluru, Karnataka 560010
+      {_esc(organization_name)} &bull; Rooman Books
     </div>
   </div>
 </body>
@@ -878,7 +919,7 @@ def send_invite_email(
             "recipient": to_email,
         }
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return _failure("invite", to_email, e)
 
 
 def verify_smtp_credentials(host: str, port: int, username: str, password: str) -> None:
@@ -899,9 +940,9 @@ def send_test_email(to_email: str, organization_name: str) -> Dict[str, Any]:
     try:
         settings = _smtp()
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = "Rooman Books — outbound email is working"
+        msg["Subject"] = _header("Rooman Books — outbound email is working")
         msg["From"] = f"{settings.smtp_sender_name} <{settings.smtp_user}>"
-        msg["To"] = to_email
+        msg["To"] = _header(to_email)
 
         html_body = f"""<!DOCTYPE html>
 <html>
@@ -909,7 +950,7 @@ def send_test_email(to_email: str, organization_name: str) -> Dict[str, Any]:
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background:#f8fafc; margin:0; padding:24px; color:#1e293b;">
   <div style="max-width:560px; margin:0 auto; background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">
     <div style="background:#0f172a; padding:24px 28px; color:#fff;">
-      <h1 style="margin:0; font-size:18px;">{organization_name}</h1>
+      <h1 style="margin:0; font-size:18px;">{_esc(organization_name)}</h1>
       <p style="margin:4px 0 0; color:#94a3b8; font-size:13px;">Rooman Books</p>
     </div>
     <div style="padding:28px; font-size:15px; line-height:1.6; color:#334155;">
@@ -927,7 +968,7 @@ def send_test_email(to_email: str, organization_name: str) -> Dict[str, Any]:
         server.quit()
         return {"success": True, "message": f"Test email sent to {to_email}", "recipient": to_email}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return _failure("test", to_email, e)
 
 
 def send_verification_email(to_email: str, verify_url: str = "", otp: str = "") -> Dict[str, Any]:
@@ -946,12 +987,12 @@ def send_verification_email(to_email: str, verify_url: str = "", otp: str = "") 
     try:
         msg = MIMEMultipart("alternative")
         if otp:
-            msg["Subject"] = f"{otp} is your Rooman Books verification code"
+            msg["Subject"] = _header(f"{otp} is your Rooman Books verification code")
         else:
-            msg["Subject"] = "Verify your email to create your organization"
+            msg["Subject"] = _header("Verify your email to create your organization")
         from_addr = settings.smtp_from or settings.smtp_user
         msg["From"] = f"{settings.smtp_sender_name} <{from_addr}>"
-        msg["To"] = to_email
+        msg["To"] = _header(to_email)
 
         if otp:
             content_section = f"""
@@ -967,9 +1008,9 @@ def send_verification_email(to_email: str, verify_url: str = "", otp: str = "") 
             content_section = f"""
       <p>Click the button below to verify your email address and continue creating your organization on Rooman Books.</p>
       <p style="text-align:center; margin: 28px 0;">
-        <a href="{verify_url}" class="cta">Verify Email</a>
+        <a href="{_esc(verify_url)}" class="cta">Verify Email</a>
       </p>
-      <p class="link-fallback">Or paste this link into your browser:<br>{verify_url}</p>
+      <p class="link-fallback">Or paste this link into your browser:<br>{_esc(verify_url)}</p>
       <p style="margin-top:24px; font-size:13px; color:#64748b;">This verification link expires in 30 minutes. If you did not request this, you can safely ignore this email.</p>
 """
 
@@ -1012,8 +1053,7 @@ def send_verification_email(to_email: str, verify_url: str = "", otp: str = "") 
         server.quit()
         return {"success": True, "message": f"Verification email sent to {to_email}", "recipient": to_email}
     except Exception as e:
-        logger.warning("Failed to deliver verification email to %s: %s", to_email, e)
-        return {"success": False, "error": str(e)}
+        return _failure("verification", to_email, e)
 
 
 def send_password_reset_email(to_email: str, otp: str) -> Dict[str, Any]:
@@ -1030,10 +1070,10 @@ def send_password_reset_email(to_email: str, otp: str) -> Dict[str, Any]:
 
     try:
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"{otp} is your Rooman Books password reset code"
+        msg["Subject"] = _header(f"{otp} is your Rooman Books password reset code")
         from_addr = settings.smtp_from or settings.smtp_user
         msg["From"] = f"{settings.smtp_sender_name} <{from_addr}>"
-        msg["To"] = to_email
+        msg["To"] = _header(to_email)
 
         html_body = f"""<!DOCTYPE html>
 <html>
@@ -1057,7 +1097,7 @@ def send_password_reset_email(to_email: str, otp: str) -> Dict[str, Any]:
     </div>
     <div class="content">
       <p><strong>Hello,</strong></p>
-      <p>We received a request to reset the password for your Rooman Books account ({to_email}).</p>
+      <p>We received a request to reset the password for your Rooman Books account ({_esc(to_email)}).</p>
       <p>Use the 6-digit verification code below to set a new password:</p>
       <div style="text-align:center; margin: 28px 0;">
         <div style="display:inline-block; letter-spacing: 8px; font-size: 32px; font-weight: 800; color: #0f172a; background: #f1f5f9; padding: 14px 28px; border-radius: 8px; border: 1px solid #cbd5e1;">
@@ -1079,5 +1119,4 @@ def send_password_reset_email(to_email: str, otp: str) -> Dict[str, Any]:
         server.quit()
         return {"success": True, "message": f"Password reset email sent to {to_email}", "recipient": to_email}
     except Exception as e:
-        logger.warning("Failed to deliver password reset email to %s: %s", to_email, e)
-        return {"success": False, "error": str(e)}
+        return _failure("password_reset", to_email, e)

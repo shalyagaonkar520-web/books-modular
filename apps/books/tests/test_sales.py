@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 from tests.conftest import trial_balance_ok
 
 
@@ -55,16 +57,17 @@ def test_invoice_totals_due_date_numbering_and_posting(client, org):
     assert res.status_code == 201, res.text
     inv = res.json()
     assert inv["invoiceNumber"].startswith("INV-")
-    assert inv["subtotal"] == 20000 and inv["taxTotal"] == 3600 and inv["discountAmount"] == 1000 and inv["total"] == 22600
+    # GST is charged on the post-discount taxable value: tax = 18% of (20000 - 1000).
+    assert inv["subtotal"] == 20000 and inv["taxTotal"] == 3420 and inv["discountAmount"] == 1000 and inv["total"] == 22420
     assert inv["dueDate"] == "2026-09-16"  # customer terms 15 days
     assert inv["status"] in ("sent", "overdue")
-    assert inv["balanceDue"] == 22600
+    assert inv["balanceDue"] == 22420
     stock_after = client.get(f"/api/items/{org['item']['id']}", headers=h).json()["stockOnHand"]
     assert stock_after == stock_before - 2
     journals = client.get("/api/accounting/journals", headers=h, params={"source_type": "invoice"}).json()["items"]
     entry = next(j for j in journals if j["sourceId"] == inv["id"])
     debit_ar = sum(line["debit"] for line in entry["lines"] if line["accountCode"] == "1100")
-    assert debit_ar == 22600
+    assert debit_ar == 22420
     assert trial_balance_ok(client, h)
 
 
@@ -196,13 +199,17 @@ def test_unpaid_sent_invoice_can_be_deleted_and_reverses_the_ledger(client, org)
     invoices the bulk-delete had nothing to act on and looked broken. The API
     has always unposted a sent-but-unpaid invoice on the way out."""
     h = org["h"]
+    # Relative to today: a fixed due date turns the invoice "overdue" once it
+    # passes, and the status assertion below would start failing on its own.
+    today = date.today()
+    due = (today + timedelta(days=20)).isoformat()
     sent = client.post(
         "/api/invoices",
         headers=h,
         json={
             "customerId": org["customer"]["id"],
-            "date": "2026-09-01",
-            "dueDate": "2026-09-20",
+            "date": today.isoformat(),
+            "dueDate": due,
             "status": "sent",
             "lines": [{"itemId": org["service"]["id"], "description": "Work", "quantity": 1, "rate": 10000, "taxRate": 18}],
         },
@@ -220,8 +227,8 @@ def test_unpaid_sent_invoice_can_be_deleted_and_reverses_the_ledger(client, org)
         headers=h,
         json={
             "customerId": org["customer"]["id"],
-            "date": "2026-09-02",
-            "dueDate": "2026-09-20",
+            "date": today.isoformat(),
+            "dueDate": due,
             "status": "sent",
             "lines": [{"itemId": org["service"]["id"], "description": "Work", "quantity": 1, "rate": 8000, "taxRate": 0}],
         },
@@ -233,7 +240,7 @@ def test_unpaid_sent_invoice_can_be_deleted_and_reverses_the_ledger(client, org)
             "customerId": org["customer"]["id"],
             "invoiceId": paid["id"],
             "bankAccountId": org["bank"]["id"],
-            "date": "2026-09-05",
+            "date": today.isoformat(),
             "amount": 2000,
             "mode": "bank_transfer",
         },

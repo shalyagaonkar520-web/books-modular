@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>Rooman Books Architecture</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#f3f5f8; --surface:#ffffff; --surface-2:#e9edf2; --text:#17212b; --muted:#5f6d7c; --line:#d9e0e8;
+  --accent:#2457d6; --accent-ink:#ffffff; --scene:#e9edf3; --grid:#c9d2dd; --grid-2:#dde3ea;
+  --c-clients:#3e97b8; --c-edge:#d9962f; --c-web:#3b6ee8; --c-webcore:#6f86cf; --c-api:#2ba873; --c-apicore:#5fb893;
+  --c-svc:#8d5fe0; --c-model:#d9614f; --c-infra:#7a8592;
+  --shadow:0 1px 2px rgba(23,33,43,.06),0 8px 24px rgba(23,33,43,.08);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0c1219; --surface:#141c26; --surface-2:#1b2532; --text:#e6ecf2; --muted:#96a4b4; --line:#253140;
+    --accent:#6f9cff; --accent-ink:#0c1219; --scene:#0f1720; --grid:#2a3644; --grid-2:#1c2632;
+    --c-clients:#5fb6d6; --c-edge:#e6ad4f; --c-web:#6b93f5; --c-webcore:#8ea1dd; --c-api:#48c491; --c-apicore:#7fd1ab;
+    --c-svc:#ab84ec; --c-model:#ec8574; --c-infra:#98a3b0;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0c1219; --surface:#141c26; --surface-2:#1b2532; --text:#e6ecf2; --muted:#96a4b4; --line:#253140;
+  --accent:#6f9cff; --accent-ink:#0c1219; --scene:#0f1720; --grid:#2a3644; --grid-2:#1c2632;
+  --c-clients:#5fb6d6; --c-edge:#e6ad4f; --c-web:#6b93f5; --c-webcore:#8ea1dd; --c-api:#48c491; --c-apicore:#7fd1ab;
+  --c-svc:#ab84ec; --c-model:#ec8574; --c-infra:#98a3b0;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit}
+.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+.app{display:grid;height:100%;grid-template-rows:auto 1fr;grid-template-columns:280px 1fr 340px;grid-template-areas:"head head head" "side scene detail";gap:0}
+.head{grid-area:head;display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding-block:12px;padding-inline:16px;border-bottom:1px solid var(--line);background:var(--surface)}
+.head h1{margin:0;font-size:17px;font-weight:600;letter-spacing:-.01em;text-wrap:balance}
+.head h1 small{display:block;font-weight:400;color:var(--muted);font-size:12px;margin-top:1px}
+.stats{display:flex;gap:14px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.stat{display:flex;flex-direction:column;line-height:1.15}
+.stat b{font-size:16px;font-weight:600}
+.stat span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.controls{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.controls label{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.controls input[type=range]{width:110px;accent-color:var(--accent)}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn:focus-visible,select:focus-visible,input:focus-visible,.list button:focus-visible,.chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+select{border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:6px;padding:6px 8px;font:inherit;font-size:12px;max-width:220px}
+
+.side{grid-area:side;border-right:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;min-height:0}
+.side .section{padding-block:12px;padding-inline:14px;border-bottom:1px solid var(--line)}
+.side h2,.detail h2{margin:0 0 8px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.layers{display:flex;flex-direction:column;gap:4px}
+.layer-row{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;cursor:pointer;font-size:13px}
+.layer-row:hover{background:var(--surface-2)}
+.layer-row input{accent-color:var(--accent);margin:0}
+.sw{width:10px;height:10px;border-radius:2px;flex:none}
+.layer-row .n{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums;font-size:12px}
+.layer-row .focus{border:0;background:none;color:var(--muted);font-size:11px;padding:2px 4px;border-radius:4px;cursor:pointer}
+.layer-row .focus:hover{color:var(--accent);background:var(--surface-2)}
+.search{width:100%;border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:6px;padding:7px 9px;font:inherit;font-size:13px}
+.list{flex:1;overflow:auto;padding-block:6px;padding-inline:8px;min-height:0}
+.list .grp{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding:8px 6px 3px}
+.list button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:none;padding:5px 6px;border-radius:6px;cursor:pointer;font-size:13px}
+.list button:hover{background:var(--surface-2)}
+.list button.on{background:var(--accent);color:var(--accent-ink)}
+.list button .sw{width:8px;height:8px}
+
+.scene{grid-area:scene;position:relative;min-height:0;min-width:0;background:var(--scene)}
+.scene canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.scene canvas.grabbing{cursor:grabbing}
+.scene canvas.pick{cursor:pointer}
+.hint{position:absolute;left:12px;bottom:10px;font-size:11px;color:var(--muted);background:var(--surface);border:1px solid var(--line);padding:4px 8px;border-radius:6px;pointer-events:none;opacity:.9}
+.tip{position:absolute;pointer-events:none;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 9px;font-size:12px;box-shadow:var(--shadow);transform:translate(12px,12px);white-space:nowrap;max-width:280px}
+.tip .l{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.legend-key{position:absolute;right:12px;top:10px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:60%;pointer-events:none}
+.legend-key span{font-size:11px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:2px 8px;display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
+
+.detail{grid-area:detail;border-left:1px solid var(--line);background:var(--surface);overflow:auto;min-height:0;padding-block:14px;padding-inline:16px}
+.detail .eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.detail h3{margin:6px 0 4px;font-size:18px;font-weight:600;letter-spacing:-.01em;text-wrap:balance}
+.detail .path{font-size:12px;color:var(--muted);word-break:break-all;margin-bottom:10px}
+.detail p{margin:0 0 10px;max-width:60ch}
+.detail ul{margin:0 0 10px;padding-left:18px}
+.detail li{margin-bottom:3px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.chip{border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:3px 9px 3px 7px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.chip:hover{border-color:var(--accent)}
+.detail .ep{display:flex;flex-wrap:wrap;gap:4px 8px;margin-bottom:12px}
+.detail .ep code{font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11px;background:var(--surface-2);border-radius:4px;padding:1px 5px}
+.detail .ep code b{font-weight:500;color:var(--accent)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px;margin-bottom:12px}
+.kv dt{color:var(--muted)}.kv dd{margin:0}
+.flowsteps{counter-reset:s;margin:0 0 12px;padding:0;list-style:none}
+.flowsteps li{position:relative;padding-left:26px;margin-bottom:6px;cursor:pointer}
+.flowsteps li::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:1px;width:18px;height:18px;border-radius:50%;background:var(--surface-2);font-size:11px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-variant-numeric:tabular-nums}
+.flowsteps li:hover b{color:var(--accent)}
+.flowsteps li b{font-weight:600}
+.flowsteps li span{display:block;color:var(--muted);font-size:12px}
+
+@media (max-width: 1000px){
+  .app{grid-template-columns:240px 1fr;grid-template-rows:auto 1fr auto;grid-template-areas:"head head" "side scene" "detail detail"}
+  .detail{border-left:0;border-top:1px solid var(--line);max-height:40vh}
+}
+@media (max-width: 680px){
+  .app{grid-template-columns:1fr;grid-template-rows:auto minmax(52vh,1fr) auto auto;grid-template-areas:"head" "scene" "detail" "side";height:auto;min-height:100%}
+  .side{border-right:0;border-top:1px solid var(--line)}
+  .list{max-height:320px}
+  .controls{margin-left:0}
+  .legend-key{display:none}
+}
+@media (prefers-reduced-motion: reduce){ .list button, .chip, .btn{transition:none} }
+</style>
+
+<div class="app">
+  <header class="head">
+    <h1>Rooman Books architecture<small>Every module, from the browser down to the ledger tables. Drag to orbit, scroll to zoom, click a block.</small></h1>
+    <div class="stats" id="stats"></div>
+    <div class="controls">
+      <label>Trace a workflow
+        <select id="flowSel">
+          <option value="">None</option>
+        </select>
+      </label>
+      <label>Spread <input type="range" id="explode" min="1" max="2.4" step="0.05" value="1.35"></label>
+      <button class="btn" id="resetBtn" type="button">Reset view</button>
+    </div>
+  </header>
+
+  <aside class="side">
+    <div class="section">
+      <h2>Layers</h2>
+      <div class="layers" id="layerList"></div>
+    </div>
+    <div class="section">
+      <h2>Blocks</h2>
+      <input class="search" id="search" type="search" placeholder="Search a module, route or table" aria-label="Search blocks">
+    </div>
+    <div class="list" id="nodeList"></div>
+  </aside>
+
+  <main class="scene" id="sceneWrap">
+    <canvas id="c" aria-label="3D architecture diagram of Rooman Books"></canvas>
+    <div class="legend-key" id="legendKey"></div>
+    <div class="tip" id="tip" hidden></div>
+    <div class="hint">Drag to orbit · Wheel or pinch to zoom · Shift-drag to pan · Esc clears selection</div>
+  </main>
+
+  <section class="detail" id="detail"></section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+'use strict';
+
+/* ---------------- Data: the whole system ---------------- */
+const LAYERS = [
+  {k:'clients', name:'Who talks to it', sub:'Browsers, employees, customers and Razorpay', v:'--c-clients'},
+  {k:'edge',    name:'Edge',            sub:'TLS, nginx, static SPA and the /api proxy', v:'--c-edge'},
+  {k:'web',     name:'Web app modules', sub:'React 18 + TypeScript pages, one folder per module', v:'--c-web'},
+  {k:'webcore', name:'Web foundation',  sub:'Typed client, session, UI kit, hooks', v:'--c-webcore'},
+  {k:'api',     name:'API routers',     sub:'FastAPI, one router per area under /api', v:'--c-api'},
+  {k:'apicore', name:'API foundation',  sub:'Schemas, roles, tokens, settings', v:'--c-apicore'},
+  {k:'svc',     name:'Domain services', sub:'Ledger, stock, banking, exports, Razorpay', v:'--c-svc'},
+  {k:'model',   name:'Data models',     sub:'37 SQLAlchemy tables, all scoped by organization', v:'--c-model'},
+  {k:'infra',   name:'Storage & platform', sub:'Database, migrations, Docker, CI, outside services', v:'--c-infra'},
+];
+
+const N = [
+ /* clients */
+ {id:'u_browser', L:'clients', name:'Browser (admin · staff · viewer)', path:'React SPA at :3000', desc:'Owners and bookkeepers run the full application. Three roles: admin does everything, staff does day-to-day bookkeeping, viewer is read-only.', links:['nginx','landing','auth','dashboard']},
+ {id:'u_employee', L:'clients', name:'Employee (portal login)', path:'/portal', desc:'A payroll employee signs in with a portal-only role and sees just their own payslips, leave and time entries. No company data is reachable.', links:['nginx','portal']},
+ {id:'u_customer', L:'clients', name:'Customer (no login)', path:'Email link · Razorpay checkout', desc:'Customers never sign in. They pay an invoice online through Razorpay checkout, or confirm an externally recorded payment through a link in an email.', links:['nginx','r_razorpay','r_payments']},
+ {id:'u_rzp', L:'clients', name:'Razorpay webhooks', path:'POST /api/razorpay/webhook', desc:'Server-to-server events for captured payments, refunds and settlements. Each call is verified against the webhook signing secret before anything is recorded.', links:['nginx','r_razorpay']},
+ /* edge */
+ {id:'tls', L:'edge', name:'TLS termination', path:'Load balancer / ingress', desc:'TLS ends at your load balancer or ingress and is forwarded to the web container on port 80. COOKIE_SECURE marks the refresh cookie Secure behind HTTPS.', links:['nginx']},
+ {id:'nginx', L:'edge', name:'nginx web tier', path:'deployment/nginx.conf · nginx-ratelimit.conf', desc:'Serves the built SPA, proxies /api to the API container, rate-limits the authentication endpoints, caches hashed assets for a year and never caches the app shell.', links:['apiclient','main']},
+ /* web */
+ {id:'landing', L:'web', name:'Landing', path:'pages/Landing', desc:'Public marketing page at the root route. Leads to sign in or to creating an organization.', links:['auth']},
+ {id:'auth', L:'web', name:'Sign in & onboarding', path:'pages/auth', desc:'Login, registration that creates a brand-new organization, email verification with OTP, invitation acceptance, forgotten-password reset.', routes:['/login','/register','/verify-email','/accept-invite'], links:['authctx','apiclient','r_auth']},
+ {id:'dashboard', L:'web', name:'Dashboard', path:'pages/dashboard', desc:'Cash position, receivables and payables split current vs overdue, cash-flow and income-versus-expense charts, inventory health, unbilled time, recent activity and notifications.', routes:['/dashboard'], links:['uikit','r_dashboard']},
+ {id:'items', L:'web', name:'Items', path:'pages/items', desc:'Goods and services with HSN or SAC code and tax rate, selling and cost prices, perpetual inventory with reorder levels, and stock adjustments with an audit trail. Item form is a full page.', routes:['/items','/items/new','/items/:id/edit'], links:['uikit','r_items','r_adjust']},
+ {id:'contacts', L:'web', name:'Customers & vendors', path:'pages/contacts', desc:'Contact details, GST treatment, payment terms, per-contact language and receivables/payables account override, outstanding balance and a transaction summary. PDF and Excel export, bulk delete, send by Gmail.', routes:['/customers','/vendors','…/new','…/:id/edit'], links:['uikit','r_contacts']},
+ {id:'sales', L:'web', name:'Sales', path:'pages/sales', desc:'Invoices with line-level tax and discounts, draft and sent states, a printable invoice view, pay-online through Razorpay, payments received including unapplied advances, PDF/Excel export and sending by email.', routes:['/invoices','/invoices/new','/invoices/:id','/invoices/:id/edit','/payments-received'], links:['uikit','r_invoices','r_payments','r_razorpay','r_email']},
+ {id:'purchases', L:'web', name:'Purchases', path:'pages/purchases', desc:'Vendor bills on a full form page, bill detail, payments made, direct expenses paid from a bank or cash account, and an expense dashboard.', routes:['/bills','/bills/new','/bills/:id/edit','/expenses','/expense-dashboard','/payments-made'], links:['uikit','r_bills','r_expenses','r_payments']},
+ {id:'banking', L:'web', name:'Banking', path:'pages/banking', desc:'Bank, cash and credit-card accounts, opening balances, manual transactions, transfers between accounts and reconciliation. Admin and staff only.', routes:['/banking'], links:['uikit','r_banking']},
+ {id:'rzp_ui', L:'web', name:'Razorpay payments', path:'pages/payments', desc:'Overview, imported transactions, transaction detail, categories and rules, reconciliation against settlements, and sync history.', routes:['/razorpay-payments'], links:['uikit','r_razorpay']},
+ {id:'financial', L:'web', name:'Financial dashboards', path:'pages/financial', desc:'A financial dashboard built on Razorpay analytics plus a receivables and payables dashboard.', routes:['/financial-dashboard','/receivables-payables'], links:['uikit','r_razorpay','r_reports']},
+ {id:'time', L:'web', name:'Time tracking', path:'pages/timetracking', desc:'Projects with hourly or fixed billing, timesheets, and one-click invoicing of unbilled billable hours.', routes:['/time-tracking'], links:['uikit','r_projects']},
+ {id:'accounting', L:'web', name:'Accountant', path:'pages/accounting', desc:'Chart of accounts, manual journals with reversal, a general ledger per account and the trial balance. Admin only.', routes:['/accounting'], links:['uikit','r_accounting']},
+ {id:'reports', L:'web', name:'Reports', path:'pages/reports', desc:'Profit and loss, balance sheet, receivables and payables ageing, sales by customer, purchases by vendor, expenses by category, inventory summary and GST summary.', routes:['/reports'], links:['uikit','r_reports']},
+ {id:'documents', L:'web', name:'Documents', path:'pages/documents', desc:'Authenticated file vault with SHA-256 integrity hashes, category filters, upload card, edit and download.', routes:['/documents'], links:['uikit','r_documents']},
+ {id:'excel', L:'web', name:'Excel import', path:'components/layout/ExcelImportModal', desc:'Bulk import from a spreadsheet: the API categorises rows first, you review, then commit. A sample workbook is downloadable.', links:['layout','r_documents']},
+ {id:'payroll', L:'web', name:'Payroll', path:'pages/payroll', desc:'Employees with a salary structure and salary day, leave records, monthly pay runs with loss of pay, approval and payment posting, printable payslips. Admin only.', routes:['/payroll'], links:['uikit','r_payroll']},
+ {id:'portal', L:'web', name:'Employee portal', path:'pages/portal', desc:'What an employee sees after a portal login: their profile, payslips, leave and time entries.', routes:['/portal'], links:['uikit','r_portal']},
+ {id:'settings', L:'web', name:'Settings & profile', path:'pages/settings', desc:'Organization profile and fiscal year, users with roles and invitations, per-user dashboard and password reset, activity log, SMTP email settings, Razorpay integration, own profile and sessions.', routes:['/settings','/profile'], links:['uikit','r_org','r_razorpay','r_email','r_auth']},
+ /* webcore */
+ {id:'apiclient', L:'webcore', name:'Typed API client', path:'src/api/client.ts · endpoints.ts · types.ts', desc:'A fetch wrapper that attaches the access token, retries once through /api/auth/refresh on a 401, and converts FastAPI error bodies into a message plus per-field errors. One typed wrapper per endpoint.', links:['main']},
+ {id:'authctx', L:'webcore', name:'Session & route guards', path:'src/auth', desc:'Session context restored from the refresh cookie on load, and route guards that gate pages by role (admin, staff, viewer, employee).', links:['apiclient']},
+ {id:'uikit', L:'webcore', name:'UI kit & design system', path:'src/components/ui · styles/index.css', desc:'Plain-CSS design system with no UI framework: tables with sorting and pagination, modals, form pages with a pinned action bar, blue primary buttons, badges, stat tiles, toasts and dependency-free SVG charts.', links:[]},
+ {id:'layout', L:'webcore', name:'App shell', path:'src/components/layout', desc:'Sidebar navigation grouped by module, header with search and user menu, and the Excel import modal.', links:['uikit','authctx']},
+ {id:'hooks', L:'webcore', name:'Hooks & formatting', path:'src/hooks · src/utils/format.ts', desc:'useAsync for loads with abort handling, useSubmit for mutations with error surfacing, useDebounced for search inputs. All money and date formatting goes through format.ts. State is local; each page reloads after a mutation.', links:['apiclient']},
+ /* api */
+ {id:'r_auth', L:'api', name:'Authentication', path:'routers/auth.py', prefix:'/api/auth', ep:['POST register','POST login','POST refresh','POST logout','GET|PUT me','POST change-password','POST send-verification-email','POST verify-otp','POST verify-email','GET email-verification-status','GET invite/{token}','POST accept-invite','POST forgot-password','POST reset-password','GET sessions','DELETE sessions/{id}'], desc:'Registration creates the organization, its chart of accounts, a petty-cash account and the first administrator in one transaction. Login and registration are rate limited per IP.', links:['security','deps','ratelimit','coa','email_service','m_tenant','audit']},
+ {id:'r_portal', L:'api', name:'Employee portal', path:'routers/employee_portal.py', prefix:'/api/me', ep:['GET employee','GET payslips','GET leaves','GET time-entries'], desc:'The only router besides auth that is not gated on the full-app roles. Every query is limited to the employee record linked to the caller.', links:['deps','m_payroll','m_time']},
+ {id:'r_org', L:'api', name:'Organization, users & audit', path:'routers/organization.py', prefix:'/api', ep:['GET|PUT organization','GET|POST users','PATCH|DELETE users/{id}','POST users/{id}/reset-password','GET users/{id}/dashboard','GET users/{id}/pdf','GET audit-logs','GET|PUT settings/smtp','POST settings/smtp/test'], desc:'Organization profile and fiscal year, user management with invitations, the activity log, and SMTP settings with a test send.', links:['deps','email_service','export','audit','m_tenant','m_system']},
+ {id:'r_items', L:'api', name:'Items', path:'routers/items.py', prefix:'/api/items', ep:['GET|POST /','GET|PUT|DELETE {id}'], desc:'Goods and services with tax codes, prices and tracked stock.', links:['schemas','tenancy','m_items','audit']},
+ {id:'r_adjust', L:'api', name:'Inventory adjustments', path:'routers/items.py (adjustments_router)', prefix:'/api/inventory-adjustments', ep:['GET|POST /'], desc:'Stock corrections that post Dr or Cr Inventory Asset against Inventory Adjustments.', links:['inventory','ledger','m_items']},
+ {id:'r_contacts', L:'api', name:'Contacts', path:'routers/contacts.py', prefix:'/api/contacts', ep:['GET|POST /','GET|PUT|DELETE {id}','GET {id}/summary','GET export/pdf','GET export/excel','POST bulk-delete','POST {id}/send-gmail'], desc:'Customers and vendors with GST treatment, payment terms, language and account overrides, plus a per-contact transaction summary.', links:['schemas','tenancy','export','email_service','m_contacts']},
+ {id:'r_invoices', L:'api', name:'Invoices', path:'routers/invoices.py', prefix:'/api/invoices', ep:['GET|POST /','GET stats','GET|PUT|DELETE {id}','POST {id}/status','GET {id}/pdf','GET {id}/excel','POST {id}/send-gmail','GET export/pdf','GET export/excel','POST auto-remind-overdue'], desc:'Marking an invoice sent posts Dr Accounts Receivable and Discount Given, Cr income and Output GST; tracked goods also post COGS against Inventory Asset and reduce stock. Voiding posts a reversing entry. Overdue reminders are tracked per invoice.', links:['doc_totals','numbering','ledger','inventory','export','email_service','audit','m_sales']},
+ {id:'r_bills', L:'api', name:'Bills', path:'routers/bills.py', prefix:'/api/bills', ep:['GET|POST /','GET stats','GET|PUT|DELETE {id}','POST {id}/status','GET {id}/pdf','GET {id}/excel','POST {id}/send-gmail','GET export/pdf','GET export/excel'], desc:'Opening a bill posts Dr inventory or expense accounts and Input GST, Cr Accounts Payable and Purchase Discounts. Tracked goods increase stock and refresh the item cost price.', links:['doc_totals','numbering','ledger','inventory','export','email_service','m_purchases']},
+ {id:'r_expenses', L:'api', name:'Expenses', path:'routers/expenses.py', prefix:'/api/expenses', ep:['GET|POST /','GET|PUT|DELETE {id}','POST {id}/send-gmail','GET export/pdf','GET export/excel'], desc:'Direct expenses paid from a bank or cash account: Dr expense account and Input GST, Cr the account it was paid through.', links:['ledger','bank','export','m_purchases']},
+ {id:'r_payments', L:'api', name:'Payments received & made', path:'routers/payments.py', prefix:'/api', ep:['GET|POST customer-payments','DELETE customer-payments/{id}','GET customer-payments/{id}/pdf','POST customer-payments/{id}/send-gmail','GET customer-payments/export/pdf|excel','GET|POST vendor-payments','DELETE vendor-payments/{id}','GET vendor-payments/{id}/pdf','POST vendor-payments/{id}/send-gmail','GET vendor-payments/export/pdf|excel','POST payments/external/incoming','GET payments/external/confirm','GET payments/external','POST payments/external/{id}/resend-email'], desc:'Payment received posts Dr bank, Cr Accounts Receivable or Unearned Revenue for an advance. Payment made posts Dr Accounts Payable or Prepaid Expenses, Cr bank. External payments are confirmed by the customer through an emailed link without logging in.', links:['ledger','bank','export','email_service','m_sales','m_purchases','m_external']},
+ {id:'r_banking', L:'api', name:'Banking', path:'routers/banking.py', prefix:'/api/banking', ep:['GET|POST accounts','PUT accounts/{id}','GET summary','GET transactions','POST accounts/{id}/transactions','POST transfers','DELETE transactions/{id}','POST transactions/reconcile'], desc:'Bank, cash and credit-card accounts, manual movements, transfers and reconciliation, each mirrored in the ledger.', links:['bank','ledger','m_banking']},
+ {id:'r_accounting', L:'api', name:'Accountant', path:'routers/accounting.py', prefix:'/api/accounting', ep:['GET|POST accounts','PUT|DELETE accounts/{id}','GET|POST journals','GET journals/{id}','POST journals/{id}/reverse','GET ledger/{accountId}','GET trial-balance'], desc:'Chart of accounts, manual journals that must balance, journal reversal, general ledger and trial balance.', links:['ledger','periods','m_ledger']},
+ {id:'r_projects', L:'api', name:'Time tracking', path:'routers/projects.py', prefix:'/api', ep:['GET|POST projects','GET|PUT|DELETE projects/{id}','GET|POST time-entries','PUT|DELETE time-entries/{id}','POST time-entries/invoice'], desc:'Projects with hourly or fixed billing, time entries, and turning unbilled billable hours into an invoice.', links:['tenancy','m_time','r_invoices']},
+ {id:'r_documents', L:'api', name:'Documents & Excel import', path:'routers/documents.py', prefix:'/api/documents', ep:['GET|POST /','GET|PATCH|DELETE {id}','GET {id}/download','POST import-excel-categorize','POST import-excel-commit','GET download-sample-excel'], desc:'File vault with SHA-256 hashes stored under DATA_DIR, size-limited by MAX_UPLOAD_SIZE_MB, plus the two-step spreadsheet import.', links:['excel_import','m_documents','datadir']},
+ {id:'r_payroll', L:'api', name:'Payroll', path:'routers/payroll.py', prefix:'/api/payroll', ep:['GET|POST employees','GET employees/unlinked','PUT|DELETE employees/{id}','GET|POST employees/{id}/leaves','DELETE leaves/{id}','GET|POST pay-runs','GET|DELETE pay-runs/{id}','POST pay-runs/{id}/approve','POST pay-runs/{id}/pay','GET payslips/{id}'], desc:'Paying a run posts Dr Salaries and Wages, Cr provident fund, professional tax and TDS payable, Cr bank for the net. Employees can be linked to a portal login.', links:['ledger','bank','export','m_payroll']},
+ {id:'r_reports', L:'api', name:'Reports', path:'routers/reports.py', prefix:'/api/reports', ep:['GET profit-and-loss','GET balance-sheet','GET receivables-aging','GET payables-aging','GET sales-by-customer','GET purchases-by-vendor','GET expenses-by-category','GET inventory-summary','GET tax-summary'], desc:'Every statement is computed from journal lines, never from documents, so reports cannot drift from the books.', links:['ledger','periods','m_ledger']},
+ {id:'r_dashboard', L:'api', name:'Dashboard', path:'routers/dashboard.py', prefix:'/api/dashboard', ep:['GET summary?period=…','GET notifications'], desc:'Aggregates for the home screen: cash, receivables and payables ageing, charts, stock health, unbilled time and recent activity.', links:['ledger','bank','periods','m_ledger','m_sales','m_purchases']},
+ {id:'r_razorpay', L:'api', name:'Razorpay', path:'routers/razorpay.py', prefix:'/api/razorpay', ep:['GET config','POST create-order','POST verify-payment','POST webhook','POST refund','GET refunds','GET payments','GET payments/{id}','GET settlements','POST reconcile','GET reconciliations','GET analytics','GET financial-dashboard','GET transactions','GET reports/export','GET integration/status','POST integration/connect','POST integration/disconnect','POST sync','GET sync/logs','GET sync/logs/{id}','GET overview','GET categories','POST payments/{id}/category','GET payments/{id}/invoice-matches','POST payments/{id}/match-invoice','POST payments/{id}/reconciliation','GET|POST category-rules','PUT|DELETE category-rules/{id}','POST category-rules/reapply'], desc:'Online checkout for invoices, webhook intake, refunds, settlements, reconciliation, analytics, integration connect and disconnect, background sync, categorisation and invoice matching. The webhook is the one unauthenticated entry point and is signature-verified.', links:['rzp_service','rzp_sync','rzp_match','rzp_cat','rzp_post','m_razorpay']},
+ {id:'r_email', L:'api', name:'Email operations', path:'routes/email.py', prefix:'/api/email', ep:['POST send-due-reminder','POST send-invoice','POST send-message','GET status'], desc:'Outbound email actions. When no SMTP mailbox is configured the endpoints report themselves as skipped rather than failing.', links:['email_service']},
+ /* apicore */
+ {id:'main', L:'apicore', name:'App, middleware & health', path:'backend/main.py', desc:'Creates the FastAPI app with CORS, nosniff, DENY framing, referrer and HSTS headers, a public GET /api/health that returns 503 when the database is unreachable, and a lifespan hook that starts and stops the Razorpay sync loop. Most routers are mounted behind require_full_app_access.', links:['deps','config','rzp_sched']},
+ {id:'schemas', L:'apicore', name:'Pydantic schemas', path:'backend/schemas', desc:'Request validation and response shape. A shared APIModel base emits camelCase JSON and renders Decimal as numbers. Field validators enforce formats and input bounds. Lists return { items, total, page, pageSize }.', links:['money']},
+ {id:'deps', L:'apicore', name:'Dependencies & roles', path:'backend/deps.py', desc:'get_current_user, require_roles, require_admin, require_financial_write and require_full_app_access. Roles: admin, staff, viewer, and the portal-only employee.', links:['security','tenancy']},
+ {id:'security', L:'apicore', name:'Security', path:'backend/security.py', desc:'bcrypt password hashing with strength rules, short-lived JWT access tokens carrying the organization id, opaque refresh tokens stored as SHA-256 hashes in an httpOnly cookie scoped to /api/auth, rotated on refresh and revoked on password change.', links:['m_tenant']},
+ {id:'config', L:'apicore', name:'Settings & database session', path:'backend/config.py · db.py', desc:'Environment-driven settings (SECRET_KEY, DATABASE_URL, DATA_DIR, CORS_ORIGINS, cookie and token lifetimes, upload size, SMTP). The SQLAlchemy engine and session; AUTO_CREATE_TABLES is forced off in production.', links:['db']},
+ /* svc */
+ {id:'ledger', L:'svc', name:'Ledger', path:'services/ledger.py', desc:'post_entry writes a balanced journal entry and refuses one whose debits and credits differ, so an unbalanced state is unreachable. Reversal posts a mirror entry rather than deleting. Computes account balances for every report.', links:['money','m_ledger','audit']},
+ {id:'inventory', L:'svc', name:'Inventory', path:'services/inventory.py', desc:'Moves stock for invoices, bills and adjustments, posts the matching inventory value, and refreshes an item cost price on purchase. Voiding restores stock.', links:['ledger','m_items']},
+ {id:'bank', L:'svc', name:'Bank movements', path:'services/bank.py', desc:'Records bank transactions for payments, expenses, transfers and pay runs, and derives account balances.', links:['ledger','m_banking']},
+ {id:'doc_totals', L:'svc', name:'Document totals', path:'services/documents.py', desc:'Line-item and document totals with tax and discounts, shared by invoices and bills.', links:['money']},
+ {id:'numbering', L:'svc', name:'Document numbering', path:'services/numbering.py', desc:'Allocates per-organization sequences for invoices, bills, payments and pay runs.', links:['m_system']},
+ {id:'money', L:'svc', name:'Money', path:'services/money.py', desc:'Decimal rounding, half-up. Amounts are Numeric(14,2), quantities Numeric(14,3). Floats are never used for money.', links:[]},
+ {id:'periods', L:'svc', name:'Fiscal periods', path:'services/periods.py', desc:'Fiscal-year and period maths used by reports and the dashboard.', links:[]},
+ {id:'audit', L:'svc', name:'Audit trail', path:'services/audit.py', desc:'Writes the activity log shown in Settings, with user, action and record.', links:['m_system']},
+ {id:'coa', L:'svc', name:'Default chart of accounts', path:'services/chart_of_accounts.py', desc:'The accounts a new set of books needs: receivables, payables, GST, inventory, COGS, income, expenses, payroll liabilities. Created at registration; no sample data is seeded.', links:['m_ledger']},
+ {id:'tenancy', L:'svc', name:'Tenancy & pagination', path:'services/tenancy.py', desc:'Scoped lookups that always filter by the organization on the token, and shared pagination.', links:['m_tenant']},
+ {id:'ratelimit', L:'svc', name:'Auth rate limiter', path:'services/ratelimit.py', desc:'Per-IP limit on login and registration attempts (LOGIN_RATE_LIMIT_PER_MINUTE).', links:[]},
+ {id:'email_service', L:'svc', name:'Email service', path:'services/email_service.py', desc:'Sends invoices, bills, receipts, due reminders, verification codes, invitations and password resets through the configured SMTP mailbox. Disabled cleanly when SMTP_USER is empty.', links:['smtp_ext']},
+ {id:'excel_import', L:'svc', name:'Excel import', path:'services/excel_import.py', desc:'Parses uploaded spreadsheets, categorises rows and commits them as records.', links:['m_documents']},
+ {id:'export', L:'svc', name:'PDF & Excel export', path:'services/export_service.py', desc:'Renders invoices, bills, expenses, payments, contacts and user dashboards as PDF or Excel for download and email.', links:['money']},
+ {id:'rzp_service', L:'svc', name:'Razorpay client', path:'services/razorpay_service.py', desc:'Talks to the Razorpay API: orders, payments, refunds, settlements, and signature verification for checkout and webhooks. Keys come only from the server environment.', links:['rzp_ext','m_razorpay']},
+ {id:'rzp_sync', L:'svc', name:'Razorpay sync', path:'services/razorpay_sync.py', desc:'Incremental import of payments with a configurable overlap window so late captures are not missed. Every run is logged.', links:['rzp_service','rzp_cat','m_razorpay']},
+ {id:'rzp_match', L:'svc', name:'Invoice matching', path:'services/razorpay_matching.py', desc:'Suggests and records which invoice an imported payment settles.', links:['m_razorpay','m_sales']},
+ {id:'rzp_cat', L:'svc', name:'Categorisation rules', path:'services/razorpay_categorize.py', desc:'Applies user-defined rules to label imported payments, and can re-apply them across history.', links:['m_razorpay']},
+ {id:'rzp_post', L:'svc', name:'Razorpay posting', path:'services/razorpay_posting.py', desc:'Turns a matched, verified payment into a customer payment and a balanced ledger entry. Nothing is posted without an explicit match.', links:['ledger','bank','m_sales']},
+ {id:'rzp_sched', L:'svc', name:'Sync scheduler', path:'services/razorpay_scheduler.py', desc:'Background loop started by the app lifespan, running every RAZORPAY_SYNC_INTERVAL_MINUTES when RAZORPAY_SYNC_ENABLED.', links:['rzp_sync']},
+ {id:'helpers', L:'svc', name:'Environment & device helpers', path:'services/env_config.py · user_agent.py', desc:'Reads integration environment (Razorpay keys, mode) without defaults, and labels sessions by device from the user agent.', links:[]},
+ /* models */
+ {id:'m_tenant', L:'model', name:'Tenancy & identity', path:'Organization · User · RefreshToken · EmailVerification', desc:'The organization is the tenant boundary. Users carry a role; refresh tokens store a SHA-256 hash and the IP; email verifications hold OTP and invite tokens.', links:['db']},
+ {id:'m_ledger', L:'model', name:'Ledger', path:'Account · JournalEntry · JournalLine', desc:'The source of truth. Every financial document posts here and every report reads from here.', links:['db']},
+ {id:'m_items', L:'model', name:'Items & stock', path:'Item · InventoryAdjustment', desc:'Goods and services with tax codes, prices, stock on hand and reorder levels.', links:['db']},
+ {id:'m_contacts', L:'model', name:'Contacts', path:'Contact', desc:'Customers and vendors with GST treatment, terms, language and account overrides.', links:['db']},
+ {id:'m_sales', L:'model', name:'Sales', path:'Invoice · InvoiceLine · CustomerPayment', desc:'Invoices with lines and status, reminder tracking, and payments including unapplied advances.', links:['db']},
+ {id:'m_purchases', L:'model', name:'Purchases', path:'Bill · BillLine · VendorPayment · Expense', desc:'Vendor bills with lines, payments made, and direct expenses.', links:['db']},
+ {id:'m_banking', L:'model', name:'Banking', path:'BankAccount · BankTransaction', desc:'Bank, cash and card accounts and their movements with reconciliation flags.', links:['db']},
+ {id:'m_time', L:'model', name:'Time tracking', path:'Project · TimeEntry', desc:'Projects with billing method and rate, time entries with billable and invoiced state.', links:['db']},
+ {id:'m_documents', L:'model', name:'Documents', path:'Document', desc:'Uploaded files with category, size, SHA-256 hash and storage path.', links:['db','datadir']},
+ {id:'m_payroll', L:'model', name:'Payroll', path:'Employee · LeaveRecord · PayRun · Payslip', desc:'Salary structure and salary day, leave, pay runs with status, and payslips. An employee can be linked to a portal user.', links:['db']},
+ {id:'m_razorpay', L:'model', name:'Razorpay', path:'PaymentRecord · PaymentEvent · PaymentRefund · SettlementRecord · ReconciliationRecord · FinancialTransactionRecord · RazorpaySyncLog · RazorpayCategoryRule', desc:'Imported payments and their events, refunds, settlements, reconciliations, the financial transaction table, sync logs and categorisation rules.', links:['db']},
+ {id:'m_external', L:'model', name:'External payments', path:'ExternalPayment', desc:'Payments recorded from outside the app and confirmed by the customer through an emailed link.', links:['db']},
+ {id:'m_system', L:'model', name:'System', path:'DocumentSequence · AuditLog', desc:'Per-organization numbering sequences and the activity log.', links:['db']},
+ /* infra */
+ {id:'db', L:'infra', name:'PostgreSQL · SQLite', path:'DATABASE_URL', desc:'PostgreSQL in production, SQLite for local work. String UUID primary keys and an organization_id on every business table keep the schema portable between the two.', links:['alembic']},
+ {id:'datadir', L:'infra', name:'DATA_DIR volume', path:'./database/data', desc:'Holds the SQLite file and uploaded documents. Back it up together with PostgreSQL.', links:[]},
+ {id:'alembic', L:'infra', name:'Alembic migrations', path:'database/alembic · 13 revisions', desc:'Alembic owns the schema. The API container applies migrations on start, and CI runs upgrade head then alembic check so a model change without a migration cannot merge.', links:['ci']},
+ {id:'docker', L:'infra', name:'Docker images & compose', path:'deployment/', desc:'db + api + web. The API image runs Gunicorn with Uvicorn workers as a non-root user after its entrypoint applies migrations; the web image is nginx over the static build. Both declare health checks.', links:['nginx','main','db']},
+ {id:'ci', L:'infra', name:'GitHub Actions CI', path:'.github/workflows/ci.yml · pr-checks.yml', desc:'Six jobs on every pull request: backend lint (ruff), backend tests on SQLite, backend tests on PostgreSQL with migration check, frontend typecheck lint tests and build, Docker image builds with an API smoke test, and an integration run that asserts the ledger balances. PR checks require Conventional Commits titles and block committed secrets.', links:['tests']},
+ {id:'tests', L:'infra', name:'Test suites', path:'tests/ (21 pytest files) · Vitest · scripts/smoke_api.sh', desc:'Registration, login and refresh rotation, role enforcement, tenant isolation, sales, purchases, banking, ledger rules, payroll, employee portal, Excel import, PDF and Excel export, email, Razorpay and external payments. Several tests assert the trial balance still balances after each workflow.', links:[]},
+ {id:'rzp_ext', L:'infra', name:'Razorpay (outside)', path:'api.razorpay.com', desc:'The payment gateway itself. A rzp_test_ or rzp_live_ key pair decides which account is used; webhooks flow back in through the edge.', links:['u_rzp']},
+ {id:'smtp_ext', L:'infra', name:'SMTP mailbox (outside)', path:'SMTP_USER · SMTP_PASSWORD', desc:'The mailbox that sends invoices, reminders, receipts, verification codes and invitations. Credentials stay server-side.', links:['u_customer']},
+];
+
+const FLOWS = [
+ {k:'invoice', name:'Invoice marked sent', steps:[
+   ['u_browser','A staff user opens an invoice and marks it sent'],
+   ['sales','Sales page calls the status endpoint'],
+   ['apiclient','Bearer token attached, 401 would retry via refresh'],
+   ['r_invoices','POST /api/invoices/{id}/status'],
+   ['doc_totals','Line and document totals recomputed'],
+   ['numbering','Invoice number allocated for the organization'],
+   ['ledger','Dr Accounts Receivable, Cr income and Output GST, balanced or refused'],
+   ['inventory','Tracked goods: Dr COGS, Cr Inventory Asset, stock reduced'],
+   ['m_sales','Invoice status stored'],
+   ['m_ledger','Journal entry and lines written'],
+   ['db','Committed in one transaction']]},
+ {k:'online', name:'Customer pays online (Razorpay)', steps:[
+   ['u_customer','Customer opens Pay online on the invoice'],
+   ['r_razorpay','POST create-order, then verify-payment with the checkout signature'],
+   ['rzp_service','Signature verified against the key secret'],
+   ['u_rzp','Razorpay also posts a webhook, signature-verified'],
+   ['rzp_match','Payment matched to the invoice'],
+   ['rzp_post','Customer payment created and posted'],
+   ['ledger','Dr bank, Cr Accounts Receivable'],
+   ['m_razorpay','Payment record, events and settlement stored'],
+   ['m_sales','Customer payment stored against the invoice']]},
+ {k:'payrun', name:'Pay run paid', steps:[
+   ['u_browser','An admin approves then pays a monthly run'],
+   ['payroll','Payroll page, pay-run detail and pay modal'],
+   ['r_payroll','POST pay-runs/{id}/approve, then pay-runs/{id}/pay'],
+   ['ledger','Dr Salaries and Wages; Cr PF, professional tax and TDS payable'],
+   ['bank','Cr the bank account for the net pay'],
+   ['m_payroll','Pay run and payslips stored'],
+   ['export','Printable payslip PDF on demand'],
+   ['u_employee','Employee sees the payslip in the portal']]},
+ {k:'login', name:'Sign in and stay signed in', steps:[
+   ['u_browser','User submits email and password'],
+   ['nginx','Auth endpoints rate-limited at the edge'],
+   ['r_auth','POST /api/auth/login, also limited per IP'],
+   ['ratelimit','Per-IP counter checked'],
+   ['security','bcrypt verify, JWT access token, rotating httpOnly refresh cookie'],
+   ['m_tenant','Refresh token hash and IP stored'],
+   ['authctx','Session context holds the access token in memory'],
+   ['apiclient','On a 401, one silent retry through /api/auth/refresh']]},
+ {k:'reports', name:'Balance sheet requested', steps:[
+   ['u_browser','A viewer opens Reports'],
+   ['reports','Reports page picks the statement and period'],
+   ['r_reports','GET /api/reports/balance-sheet'],
+   ['periods','Fiscal year resolved'],
+   ['ledger','Balances summed from journal lines only, never from documents'],
+   ['m_ledger','Accounts, entries and lines read']]},
+];
+
+/* ---------------- Indexing ---------------- */
+const byId = {}; N.forEach(n=>byId[n.id]=n);
+const layerIdx = {}; LAYERS.forEach((l,i)=>layerIdx[l.k]=i);
+const usedBy = {}; N.forEach(n=>usedBy[n.id]=[]);
+N.forEach(n=>n.links.forEach(t=>{ if(byId[t]) usedBy[t].push(n.id); }));
+
+const cssVar = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const isDark = () => {
+  const t = document.documentElement.getAttribute('data-theme');
+  if (t==='dark') return true; if (t==='light') return false;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+};
+
+/* ---------------- Header stats & legend ---------------- */
+const routers = N.filter(n=>n.L==='api').length;
+const tables = N.filter(n=>n.L==='model').reduce((a,n)=>a+n.path.split('·').length,0);
+const endpoints = N.filter(n=>n.ep).reduce((a,n)=>a+n.ep.length,0);
+document.getElementById('stats').innerHTML = [
+  [LAYERS.length,'layers'],[N.length,'blocks'],[N.filter(n=>n.L==='web').length,'web modules'],[routers,'routers'],[endpoints,'endpoint groups'],[tables,'tables']
+].map(([v,l])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('');
+document.getElementById('legendKey').innerHTML = LAYERS.map(l=>`<span><i class="sw" style="background:var(${l.v})"></i>${l.name}</span>`).join('');
+
+/* ---------------- Sidebar ---------------- */
+const visible = {}; LAYERS.forEach(l=>visible[l.k]=true);
+const layerListEl = document.getElementById('layerList');
+layerListEl.innerHTML = LAYERS.map(l=>`<label class="layer-row"><input type="checkbox" id="vis_${l.k}" data-k="${l.k}" checked><i class="sw" style="background:var(${l.v})"></i>${l.name}<span class="n">${N.filter(n=>n.L===l.k).length}</span><button type="button" class="focus" data-focus="${l.k}" title="Fly to this layer">focus</button></label>`).join('');
+layerListEl.addEventListener('change', e=>{ const k=e.target.dataset.k; if(!k) return; visible[k]=e.target.checked; applyVisibility(); });
+layerListEl.addEventListener('click', e=>{ const k=e.target.dataset.focus; if(!k) return; e.preventDefault(); focusLayer(k); });
+
+const nodeListEl = document.getElementById('nodeList');
+function renderList(q){
+  q=(q||'').toLowerCase();
+  let html='';
+  LAYERS.forEach(l=>{
+    const rows=N.filter(n=>n.L===l.k && (!q || (n.name+' '+n.path+' '+(n.prefix||'')+' '+(n.routes||[]).join(' ')).toLowerCase().includes(q)));
+    if(!rows.length) return;
+    html+=`<div class="grp">${l.name}</div>`+rows.map(n=>`<button type="button" data-id="${n.id}" class="${selected===n.id?'on':''}"><i class="sw" style="background:var(${l.v})"></i>${n.name}</button>`).join('');
+  });
+  nodeListEl.innerHTML = html || '<div class="grp">No block matches</div>';
+}
+nodeListEl.addEventListener('click', e=>{ const b=e.target.closest('button'); if(b) select(b.dataset.id, true); });
+document.getElementById('search').addEventListener('input', e=>renderList(e.target.value));
+
+/* ---------------- Three.js scene ---------------- */
+const wrap = document.getElementById('sceneWrap');
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 400);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 0.85));
+const dir = new THREE.DirectionalLight(0xffffff, 0.75); dir.position.set(18, 30, 14); scene.add(dir);
+const dir2 = new THREE.DirectionalLight(0xffffff, 0.25); dir2.position.set(-20, 10, -16); scene.add(dir2);
+
+const BW=2.6, BD=1.35, BH=0.5, GX=0.5, GZ=0.7, MAXCOLS=7;
+const PLANE_W = MAXCOLS*(BW+GX)+2.2, PLANE_D = 3*(BD+GZ)+1.6;
+let spacing = parseFloat(document.getElementById('explode').value) * 2.6;
+
+const nodeGroup = new THREE.Group(); scene.add(nodeGroup);
+const layerGroup = new THREE.Group(); scene.add(layerGroup);
+const linkGroup = new THREE.Group(); scene.add(linkGroup);
+let grid;
+
+function makeLabel(text, opts){
+  opts=opts||{};
+  const fs = opts.size||44, pad=22, dpr=2;
+  const c=document.createElement('canvas'); const ctx=c.getContext('2d');
+  ctx.font=`${opts.weight||500} ${fs}px "Instrument Sans", system-ui, sans-serif`;
+  const w=Math.ceil(ctx.measureText(text).width)+pad*2, h=fs+pad*1.4;
+  c.width=w*dpr; c.height=h*dpr; ctx.scale(dpr,dpr);
+  ctx.font=`${opts.weight||500} ${fs}px "Instrument Sans", system-ui, sans-serif`;
+  const r=h/2; ctx.fillStyle=opts.bg||'rgba(14,20,28,0.86)';
+  ctx.beginPath(); ctx.moveTo(r,0); ctx.lineTo(w-r,0); ctx.arc(w-r,r,r,-Math.PI/2,Math.PI/2); ctx.lineTo(r,h); ctx.arc(r,r,r,Math.PI/2,-Math.PI/2); ctx.closePath(); ctx.fill();
+  if(opts.stroke){ ctx.strokeStyle=opts.stroke; ctx.lineWidth=3; ctx.stroke(); }
+  ctx.fillStyle=opts.color||'#ffffff'; ctx.textBaseline='middle'; ctx.fillText(text, pad, h/2+1);
+  const tex=new THREE.CanvasTexture(c); tex.minFilter=THREE.LinearFilter; tex.anisotropy=4;
+  const mat=new THREE.SpriteMaterial({map:tex, transparent:true, depthWrite:false});
+  const sp=new THREE.Sprite(mat); const H=opts.worldH||0.42; sp.scale.set(H*w/h, H, 1);
+  return sp;
+}
+
+const meshes=[]; const layerY={};
+function layerYFor(i){ return ((LAYERS.length-1)/2 - i)*spacing; }
+
+function build(){
+  LAYERS.forEach((l,i)=>{
+    const col=new THREE.Color(cssVar(l.v));
+    const y=layerYFor(i); layerY[l.k]=y;
+    const plane=new THREE.Mesh(new THREE.PlaneGeometry(PLANE_W,PLANE_D), new THREE.MeshBasicMaterial({color:col, transparent:true, opacity:0.10, side:THREE.DoubleSide, depthWrite:false}));
+    plane.rotation.x=-Math.PI/2; plane.position.y=y-0.02; plane.userData.layer=l.k; layerGroup.add(plane);
+    const edge=new THREE.LineSegments(new THREE.EdgesGeometry(plane.geometry), new THREE.LineBasicMaterial({color:col, transparent:true, opacity:0.55}));
+    edge.rotation.x=-Math.PI/2; edge.position.y=y-0.02; edge.userData.layer=l.k; layerGroup.add(edge);
+    const title=makeLabel(`${l.name}`, {size:40, weight:600, worldH:0.62, color:'#'+col.getHexString(), bg:'rgba(14,20,28,0.9)'});
+    title.position.set(-PLANE_W/2+title.scale.x/2+0.3, y+0.45, -PLANE_D/2-0.55); title.userData.layer=l.k; layerGroup.add(title);
+
+    const nodes=N.filter(n=>n.L===l.k);
+    const cols=Math.min(MAXCOLS, nodes.length), rows=Math.ceil(nodes.length/cols);
+    nodes.forEach((n,j)=>{
+      const c=j%cols, r=Math.floor(j/cols);
+      const x=(c-(cols-1)/2)*(BW+GX), z=(r-(rows-1)/2)*(BD+GZ);
+      const mat=new THREE.MeshStandardMaterial({color:col, roughness:0.55, metalness:0.08, transparent:true, opacity:1});
+      const m=new THREE.Mesh(new THREE.BoxGeometry(BW,BH,BD), mat);
+      m.position.set(x, y+BH/2, z); m.userData.id=n.id; m.userData.layer=l.k; m.userData.base={x,z};
+      const lbl=makeLabel(n.name, {size:44, worldH:0.40});
+      const maxW=BW-0.15; if(lbl.scale.x>maxW){ const s=maxW/lbl.scale.x; lbl.scale.set(maxW, lbl.scale.y*s, 1); }
+      lbl.position.set(x, y+BH+0.32, z); lbl.userData.layer=l.k; lbl.userData.id=n.id;
+      m.userData.label=lbl; nodeGroup.add(m); nodeGroup.add(lbl); meshes.push(m); n._mesh=m;
+    });
+  });
+  grid=new THREE.GridHelper(PLANE_W+8, 24, new THREE.Color(cssVar('--grid')), new THREE.Color(cssVar('--grid-2')));
+  grid.position.y=layerYFor(LAYERS.length-1)-0.9; scene.add(grid);
+  applyTheme();
+}
+function relayout(){
+  LAYERS.forEach((l,i)=>{ layerY[l.k]=layerYFor(i); });
+  layerGroup.children.forEach(o=>{
+    const y=layerY[o.userData.layer];
+    if(o.isSprite) o.position.y=y+0.45; else o.position.y=y-0.02;
+  });
+  meshes.forEach(m=>{ const y=layerY[m.userData.layer]; m.position.y=y+BH/2; m.userData.label.position.y=y+BH+0.32; });
+  grid.position.y=layerYFor(LAYERS.length-1)-0.9;
+  drawLinks();
+}
+function applyTheme(){
+  scene.background=new THREE.Color(cssVar('--scene'));
+  if(grid){ grid.material.color.set(cssVar('--grid')); }
+  LAYERS.forEach(l=>{ const col=new THREE.Color(cssVar(l.v));
+    layerGroup.children.forEach(o=>{ if(o.userData.layer===l.k && !o.isSprite) o.material.color.copy(col); });
+    meshes.forEach(m=>{ if(m.userData.layer===l.k){ m.userData.color=col.clone(); if(!m.userData.hot) m.material.color.copy(col); } });
+  });
+}
+
+/* ---------------- Camera controls (orbit, zoom, pan) ---------------- */
+const cam={theta:0.75, phi:1.02, radius:44, target:new THREE.Vector3(0,0,0)};
+const goal={theta:cam.theta, phi:cam.phi, radius:cam.radius, target:cam.target.clone()};
+const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let autoRotate=!reduced, lastInteract=0;
+function resetView(){ Object.assign(goal,{theta:0.75, phi:1.02, radius:44}); goal.target.set(0,0,0); autoRotate=!reduced; }
+function focusLayer(k){ const i=layerIdx[k]; goal.target.set(0, layerYFor(i), 0); goal.radius=26; goal.phi=0.95; autoRotate=false; }
+document.getElementById('resetBtn').addEventListener('click', resetView);
+
+let drag=null;
+canvas.addEventListener('pointerdown', e=>{ drag={x:e.clientX,y:e.clientY,moved:false,pan:e.shiftKey||e.button===2}; canvas.setPointerCapture(e.pointerId); canvas.classList.add('grabbing'); autoRotate=false; });
+canvas.addEventListener('pointermove', e=>{
+  if(drag){
+    const dx=e.clientX-drag.x, dy=e.clientY-drag.y; drag.x=e.clientX; drag.y=e.clientY;
+    if(Math.abs(dx)+Math.abs(dy)>2) drag.moved=true;
+    if(drag.pan){
+      const right=new THREE.Vector3().setFromMatrixColumn(camera.matrix,0), up=new THREE.Vector3().setFromMatrixColumn(camera.matrix,1);
+      const k=goal.radius*0.0016; goal.target.addScaledVector(right,-dx*k).addScaledVector(up,dy*k);
+    } else { goal.theta-=dx*0.006; goal.phi=Math.min(1.45, Math.max(0.15, goal.phi-dy*0.006)); }
+    hideTip();
+  } else hover(e);
+});
+function endDrag(e){ if(drag && !drag.moved) pick(e); drag=null; canvas.classList.remove('grabbing'); }
+canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', ()=>{drag=null;canvas.classList.remove('grabbing');});
+canvas.addEventListener('contextmenu', e=>e.preventDefault());
+canvas.addEventListener('pointerleave', ()=>{ if(hovered){ hovered.userData.hot=false; hovered=null; restyle(); } canvas.classList.remove('pick'); hideTip(); });
+canvas.addEventListener('wheel', e=>{ e.preventDefault(); goal.radius=Math.min(110, Math.max(9, goal.radius*(1+Math.sign(e.deltaY)*0.09))); autoRotate=false; }, {passive:false});
+let pinch=null;
+canvas.addEventListener('touchstart', e=>{ if(e.touches.length===2){ pinch=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY); drag=null; } }, {passive:true});
+canvas.addEventListener('touchmove', e=>{ if(pinch && e.touches.length===2){ const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY); goal.radius=Math.min(110, Math.max(9, goal.radius*(pinch/d))); pinch=d; } }, {passive:true});
+canvas.addEventListener('touchend', ()=>{ pinch=null; });
+window.addEventListener('keydown', e=>{ if(e.key==='Escape') select(null); });
+
+/* ---------------- Picking ---------------- */
+const ray=new THREE.Raycaster(), ptr=new THREE.Vector2();
+const tip=document.getElementById('tip');
+function castAt(e){
+  const r=canvas.getBoundingClientRect(); ptr.x=((e.clientX-r.left)/r.width)*2-1; ptr.y=-((e.clientY-r.top)/r.height)*2+1;
+  ray.setFromCamera(ptr, camera);
+  const hit=ray.intersectObjects(meshes.filter(m=>m.visible))[0];
+  return hit? hit.object : null;
+}
+let hovered=null;
+function hover(e){
+  const m=castAt(e);
+  if(hovered && hovered!==m){ hovered.userData.hot=false; restyle(); }
+  hovered=m;
+  if(m){ m.userData.hot=true; restyle(); canvas.classList.add('pick');
+    const n=byId[m.userData.id], l=LAYERS[layerIdx[n.L]];
+    tip.innerHTML=`<span class="l">${l.name}</span>${n.name}`; tip.hidden=false;
+    const r=canvas.getBoundingClientRect(); tip.style.left=(e.clientX-r.left)+'px'; tip.style.top=(e.clientY-r.top)+'px';
+  } else { canvas.classList.remove('pick'); hideTip(); }
+}
+function hideTip(){ tip.hidden=true; }
+function pick(e){ const m=castAt(e); select(m? m.userData.id : null); }
+
+/* ---------------- Selection, flows, highlighting ---------------- */
+let selected=null, flow=null;
+function relatedSet(){
+  const s=new Set();
+  if(flow){ flow.steps.forEach(st=>s.add(st[0])); return s; }
+  if(selected){ s.add(selected); byId[selected].links.forEach(t=>s.add(t)); usedBy[selected].forEach(t=>s.add(t)); }
+  return s;
+}
+function restyle(){
+  const rel=relatedSet(); const focusOn=rel.size>0;
+  meshes.forEach(m=>{
+    const id=m.userData.id, inRel=rel.has(id);
+    const dim=focusOn && !inRel;
+    m.material.opacity=dim?0.16:1; m.userData.label.material.opacity=dim?0.12:1;
+    const c=m.userData.color.clone();
+    if(id===selected){ c.offsetHSL(0,0.05,isDark()?0.22:0.12); }
+    else if(m.userData.hot){ c.offsetHSL(0,0.05,isDark()?0.14:0.08); }
+    m.material.color.copy(c);
+    m.material.emissive.set(id===selected? c.clone().multiplyScalar(0.35) : 0x000000);
+    m.scale.y = id===selected? 1.6 : 1;
+    m.position.y = layerY[m.userData.layer] + (BH*m.scale.y)/2;
+    m.userData.label.position.y = layerY[m.userData.layer] + BH*m.scale.y + 0.32;
+  });
+}
+function topOf(id){ const m=byId[id]._mesh; return new THREE.Vector3(m.position.x, layerY[m.userData.layer]+BH*m.scale.y+0.02, m.position.z); }
+function arc(a,b,color,opacity){
+  const mid=a.clone().add(b).multiplyScalar(0.5); mid.y+=Math.max(0.8, Math.abs(a.y-b.y)*0.25);
+  const curve=new THREE.QuadraticBezierCurve3(a,mid,b); const pts=curve.getPoints(28);
+  const geo=new THREE.BufferGeometry().setFromPoints(pts);
+  const line=new THREE.Line(geo, new THREE.LineBasicMaterial({color, transparent:true, opacity}));
+  linkGroup.add(line);
+  const dot=new THREE.Mesh(new THREE.SphereGeometry(0.11,10,10), new THREE.MeshBasicMaterial({color}));
+  dot.position.copy(b); linkGroup.add(dot);
+}
+function drawLinks(){
+  while(linkGroup.children.length) linkGroup.remove(linkGroup.children[0]);
+  const accent=new THREE.Color(cssVar('--accent'));
+  if(flow){
+    for(let i=0;i<flow.steps.length-1;i++){ const a=flow.steps[i][0], b=flow.steps[i+1][0]; if(byId[a]&&byId[b]) arc(topOf(a), topOf(b), accent, 0.95); }
+    return;
+  }
+  if(!selected) return;
+  const n=byId[selected];
+  n.links.forEach(t=>{ if(byId[t]) arc(topOf(selected), topOf(t), accent, 0.9); });
+  usedBy[selected].forEach(t=>{ const c=new THREE.Color(cssVar('--muted')); arc(topOf(t), topOf(selected), c, 0.55); });
+}
+function select(id, fly){
+  if(id && !byId[id]) id=null;
+  flow=null; document.getElementById('flowSel').value='';
+  selected=id; restyle(); drawLinks(); renderDetail(); renderList(document.getElementById('search').value);
+  if(id){ autoRotate=false; if(fly){ const p=byId[id]._mesh.position; goal.target.set(p.x*0.6, p.y, p.z*0.6); goal.radius=Math.min(goal.radius, 30); } }
+}
+function setFlow(k){
+  flow=FLOWS.find(f=>f.k===k)||null; selected=null; autoRotate=false;
+  restyle(); drawLinks(); renderDetail(); renderList(document.getElementById('search').value);
+  if(flow){ goal.target.set(0,0,0); goal.radius=Math.max(goal.radius, 40); }
+}
+const flowSel=document.getElementById('flowSel');
+FLOWS.forEach(f=>{ const o=document.createElement('option'); o.value=f.k; o.textContent=f.name; flowSel.appendChild(o); });
+flowSel.addEventListener('change', e=>setFlow(e.target.value));
+
+function applyVisibility(){
+  meshes.forEach(m=>{ const v=visible[m.userData.layer]; m.visible=v; m.userData.label.visible=v; });
+  layerGroup.children.forEach(o=>{ o.visible=visible[o.userData.layer]; });
+}
+
+/* ---------------- Detail panel ---------------- */
+const detail=document.getElementById('detail');
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function chip(id){ const n=byId[id]; if(!n) return ''; const l=LAYERS[layerIdx[n.L]]; return `<button type="button" class="chip" data-id="${id}"><i class="sw" style="background:var(${l.v})"></i>${esc(n.name)}</button>`; }
+function renderDetail(){
+  if(flow){
+    detail.innerHTML=`<span class="eyebrow">Workflow trace</span><h3>${esc(flow.name)}</h3>
+    <p>Each step is a block lit up in the scene, in order. Click a step to inspect that block.</p>
+    <ol class="flowsteps">${flow.steps.map(s=>`<li data-id="${s[0]}"><b>${esc(byId[s[0]]?byId[s[0]].name:s[0])}</b><span>${esc(s[1])}</span></li>`).join('')}</ol>
+    <p class="path mono">Every financial step ends in a balanced journal entry. The trial balance is asserted after each of these workflows in the test suite.</p>`;
+    return;
+  }
+  if(!selected){
+    detail.innerHTML=`<span class="eyebrow">Overview</span><h3>Double-entry accounting, nine layers deep</h3>
+    <p>Rooman Books is a multi-tenant accounting product: invoicing, purchases, inventory, banking, time tracking, payroll, Razorpay payments and financial reports. Documents record intent; the journal records effect.</p>
+    <dl class="kv"><dt>API</dt><dd>Python 3.11 · FastAPI · SQLAlchemy 2 · Alembic</dd><dt>Web</dt><dd>React 18 · TypeScript · Vite · plain CSS</dd><dt>Database</dt><dd>PostgreSQL in production, SQLite locally</dd><dt>Auth</dt><dd>bcrypt · JWT access · rotating httpOnly refresh cookie</dd><dt>Roles</dt><dd>admin · staff · viewer · employee (portal)</dd><dt>Deploy</dt><dd>Docker images for API and web, nginx in front, compose</dd></dl>
+    <h2>How to read the stack</h2>
+    <p>Top to bottom follows a request: who calls, the edge, the web modules and their shared foundation, the API routers and their foundation, the domain services, the tables, and the platform underneath. Blue arcs show what a block calls; grey arcs show what calls it.</p>
+    <h2>Start with the source of truth</h2>
+    <div class="chips">${chip('ledger')}${chip('m_ledger')}${chip('r_invoices')}${chip('r_razorpay')}${chip('security')}</div>
+    <h2>Or trace a workflow</h2>
+    <div class="chips">${FLOWS.map(f=>`<button type="button" class="chip" data-flow="${f.k}">${esc(f.name)}</button>`).join('')}</div>`;
+    return;
+  }
+  const n=byId[selected], l=LAYERS[layerIdx[n.L]];
+  let html=`<span class="eyebrow"><i class="sw" style="background:var(${l.v})"></i>${esc(l.name)}</span><h3>${esc(n.name)}</h3><div class="path mono">${esc(n.path)}${n.prefix?` · <b>${esc(n.prefix)}</b>`:''}</div><p>${esc(n.desc)}</p>`;
+  if(n.routes) html+=`<h2>Routes</h2><div class="ep">${n.routes.map(r=>`<code>${esc(r)}</code>`).join('')}</div>`;
+  if(n.ep) html+=`<h2>Endpoints</h2><div class="ep">${n.ep.map(e=>{ const sp=e.indexOf(' '); return `<code><b>${esc(e.slice(0,sp))}</b> ${esc(e.slice(sp+1))}</code>`; }).join('')}</div>`;
+  if(n.links.length) html+=`<h2>Calls</h2><div class="chips">${n.links.map(chip).join('')}</div>`;
+  if(usedBy[n.id].length) html+=`<h2>Called by</h2><div class="chips">${usedBy[n.id].map(chip).join('')}</div>`;
+  detail.innerHTML=html;
+}
+detail.addEventListener('click', e=>{
+  const li=e.target.closest('[data-id]'); if(li){ select(li.dataset.id, true); return; }
+  const f=e.target.closest('[data-flow]'); if(f){ flowSel.value=f.dataset.flow; setFlow(f.dataset.flow); }
+});
+
+/* ---------------- Explode slider, theme, resize, loop ---------------- */
+document.getElementById('explode').addEventListener('input', e=>{ spacing=parseFloat(e.target.value)*2.6; relayout(); restyle(); });
+
+const mq=window.matchMedia('(prefers-color-scheme: dark)');
+const onTheme=()=>{ applyTheme(); restyle(); drawLinks(); };
+if(mq.addEventListener) mq.addEventListener('change', onTheme); else mq.addListener(onTheme);
+new MutationObserver(onTheme).observe(document.documentElement,{attributes:true, attributeFilter:['data-theme']});
+
+function resize(){ const w=wrap.clientWidth, h=wrap.clientHeight; if(!w||!h) return; renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); }
+new ResizeObserver(resize).observe(wrap);
+
+build(); renderList(''); renderDetail(); resize();
+const lerp=(a,b,t)=>a+(b-a)*t;
+function frame(){
+  requestAnimationFrame(frame);
+  if(autoRotate) goal.theta+=0.0016;
+  const t=reduced?1:0.12;
+  cam.theta=lerp(cam.theta,goal.theta,t); cam.phi=lerp(cam.phi,goal.phi,t); cam.radius=lerp(cam.radius,goal.radius,t); cam.target.lerp(goal.target,t);
+  camera.position.set(cam.target.x+cam.radius*Math.sin(cam.phi)*Math.sin(cam.theta), cam.target.y+cam.radius*Math.cos(cam.phi), cam.target.z+cam.radius*Math.sin(cam.phi)*Math.cos(cam.theta));
+  camera.lookAt(cam.target);
+  renderer.render(scene, camera);
+}
+frame();
+})();
+</script>
+
+</body>
+</html>

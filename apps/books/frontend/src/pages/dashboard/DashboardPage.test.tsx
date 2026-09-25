@@ -36,7 +36,7 @@ const populatedSummary: DashboardSummary = {
   receivables: { totalUnpaidInvoices: 3, currentAmount: 40000, overdueAmount: 15400, totalReceivables: 55400 },
   payables: { totalUnpaidBills: 2, currentAmount: 30000, overdueAmount: 10120, totalPayables: 40120 },
   cashFlow: {
-    ...emptySummary.cashFlow,
+    ...emptySummary.cashFlow!,
     openingBalance: 100000,
     incomingAmount: 22000,
     outgoingAmount: 44500,

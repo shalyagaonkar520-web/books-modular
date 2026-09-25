@@ -1,6 +1,8 @@
 import { api, downloadFile, request } from './client';
 import type {
   Account,
+  AccountOption,
+  BankAccountOption,
   AgingReport,
   AuditLog,
   AuthResponse,
@@ -228,6 +230,8 @@ export const expensesApi = {
 
 export const bankingApi = {
   accounts: (query?: Query) => api.get<BankAccount[]>('/banking/accounts', query),
+  // Balance-free bank/cash/card list for "paid through" pickers, readable by staff.
+  accountOptions: () => api.get<BankAccountOption[]>('/banking/account-options'),
   summary: () => api.get<BankingSummary>('/banking/summary'),
   createAccount: (body: unknown) => api.post<BankAccount>('/banking/accounts', body),
   updateAccount: (id: string, body: unknown) => api.put<BankAccount>(`/banking/accounts/${id}`, body),
@@ -240,6 +244,8 @@ export const bankingApi = {
 
 export const accountingApi = {
   accounts: (query?: Query) => api.get<Account[]>('/accounting/accounts', query),
+  // Balance-free chart-of-accounts list for entry-form pickers, readable by staff.
+  accountOptions: (types?: string) => api.get<AccountOption[]>('/accounting/account-options', types ? { types } : undefined),
   createAccount: (body: unknown) => api.post<Account>('/accounting/accounts', body),
   updateAccount: (id: string, body: unknown) => api.put<Account>(`/accounting/accounts/${id}`, body),
   removeAccount: (id: string) => api.delete<Message>(`/accounting/accounts/${id}`),

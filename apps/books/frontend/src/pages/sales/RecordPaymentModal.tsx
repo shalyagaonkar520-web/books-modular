@@ -9,6 +9,7 @@ import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
+import { useAuth } from '@/auth/AuthContext';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, parseNumber, round2, todayIso } from '@/utils/format';
@@ -35,6 +36,11 @@ interface RecordPaymentModalProps {
 export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers = [] }: RecordPaymentModalProps) {
   const toast = useToast();
   const { submitting, error, fieldErrors, run, reset, setError } = useSubmit();
+  // The bank/cash account list is Admin/Viewer-only to read. A payment must name
+  // one, and there is no staff-readable account picker yet, so for Staff the form
+  // cannot be completed - don't fetch (and 403), and show a message instead.
+  const { can } = useAuth();
+  const canReadAccounts = can('admin', 'viewer');
   const customerMode = !invoice;
 
   const [customerId, setCustomerId] = useState('');
@@ -46,7 +52,22 @@ export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers 
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
 
-  const accounts = useAsync(async () => (open ? bankingApi.accounts() : []), [open]);
+  // Admin/viewer read the full banking list (with balances); staff use the
+  // balance-free options endpoint so they can still record payments.
+  const accounts = useAsync(
+    async () => (open ? (canReadAccounts ? bankingApi.accounts() : bankingApi.accountOptions()) : []),
+    [open, canReadAccounts],
+  );
+  const accountList = useMemo(
+    () =>
+      (accounts.data ?? []).map((a) => ({
+        id: a.id,
+        name: a.name,
+        label: 'bankName' in a && a.bankName ? `${a.name} · ${a.bankName}` : a.name,
+        isPrimary: 'isPrimary' in a ? a.isPrimary : false,
+      })),
+    [accounts.data],
+  );
   const openInvoices = useAsync(
     async (signal) =>
       open && customerMode && customerId
@@ -70,10 +91,10 @@ export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers 
 
   // Default to the primary bank account once the list arrives.
   useEffect(() => {
-    const list = accounts.data;
-    if (!list?.length) return;
+    const list = accountList;
+    if (!list.length) return;
     setBankAccountId((current) => (current && list.some((account) => account.id === current) ? current : (list.find((a) => a.isPrimary) ?? list[0]).id));
-  }, [accounts.data]);
+  }, [accountList]);
 
   const selectedInvoice = useMemo(
     () => (customerMode ? openInvoices.data?.items.find((item) => item.id === invoiceId) ?? null : null),
@@ -125,10 +146,7 @@ export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers 
     }
   };
 
-  const bankOptions = (accounts.data ?? []).map((account) => ({
-    value: account.id,
-    label: account.bankName ? `${account.name} · ${account.bankName}` : account.name,
-  }));
+  const bankOptions = accountList.map((account) => ({ value: account.id, label: account.label }));
 
   return (
     <Modal

@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
-from backend.deps import get_current_user
+from backend.deps import FINANCIAL_ROLES, get_current_user
 from backend.models import (
     Account,
     BankAccount,
@@ -83,10 +83,14 @@ def _cash_flow(db: Session, org_id: str, period: str, today: date, fiscal_start:
     for acct in accounts:
         if acct.opening_balance_date < start:
             opening += bank.current_balance(db, acct, as_of=start - timedelta(days=1))
+    # Only the accounts counted in the opening balance, so opening + net flow
+    # lands on the same figure as the total-cash tile. Card balances are
+    # signed like the rest (debt is negative), so card spend is outflow.
     txs = (
         db.execute(
             select(BankTransaction).where(
                 BankTransaction.organization_id == org_id,
+                BankTransaction.bank_account_id.in_([a.id for a in accounts]),
                 BankTransaction.date >= start,
                 BankTransaction.date <= end,
                 BankTransaction.source_type != "transfer",
@@ -185,16 +189,23 @@ def summary(
     today = date.today()
     fiscal_start = user.organization.fiscal_year_start_month
     start, end, _ = resolve_period(period, today, fiscal_start)
+    # Bank balances and cash flow are Banking data, which Staff may not read.
+    can_see_banking = user.role in FINANCIAL_ROLES
 
-    balances = bank.balances_for_org(db, org_id)
-    accounts = {
-        a.id: a
-        for a in db.execute(select(BankAccount).where(BankAccount.organization_id == org_id, BankAccount.is_active.is_(True))).scalars()
-    }
-    bank_balances = [
-        BankBalance(bank_account_id=aid, name=accounts[aid].name, type=accounts[aid].type, balance=bal) for aid, bal in balances.items()
-    ]
-    total_cash = money(sum((b.balance if b.type != "credit_card" else -b.balance for b in bank_balances), Decimal("0")))
+    bank_balances = None
+    total_cash = None
+    if can_see_banking:
+        balances = bank.balances_for_org(db, org_id)
+        accounts = {
+            a.id: a
+            for a in db.execute(select(BankAccount).where(BankAccount.organization_id == org_id, BankAccount.is_active.is_(True))).scalars()
+        }
+        bank_balances = [
+            BankBalance(bank_account_id=aid, name=accounts[aid].name, type=accounts[aid].type, balance=bal) for aid, bal in balances.items()
+        ]
+        # A credit card in debt has a negative balance, so a plain sum nets the
+        # card liability off the cash held (it used to be added to it).
+        total_cash = money(sum((b.balance for b in bank_balances), Decimal("0")))
 
     invoices = (
         db.execute(
@@ -292,7 +303,7 @@ def summary(
     return DashboardSummary(
         receivables=_receivables(db, org_id, today),
         payables=_payables(db, org_id, today),
-        cash_flow=_cash_flow(db, org_id, period, today, fiscal_start),
+        cash_flow=_cash_flow(db, org_id, period, today, fiscal_start) if can_see_banking else None,
         income_expense=_income_expense(db, org_id, period, today, fiscal_start),
         inventory=_inventory(db, org_id),
         bank_balances=bank_balances,
@@ -388,6 +399,8 @@ def notifications(user: User = Depends(get_current_user), db: Session = Depends(
         db.execute(select(BankTransaction.id).where(BankTransaction.organization_id == org_id, BankTransaction.is_reconciled.is_(False)))
         .scalars()
         .all()
+        if user.role in FINANCIAL_ROLES
+        else []
     )
     if len(unreconciled) >= 10:
         items.append(

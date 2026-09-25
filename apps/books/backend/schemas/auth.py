@@ -25,14 +25,23 @@ def _validate_password(value: str) -> str:
     return value
 
 
+def _not_null(value, info):
+    # PATCH-style models: a field may be omitted, but an explicit null for a
+    # NOT NULL column would otherwise reach the database as an IntegrityError.
+    if value is None:
+        raise ValueError(f"{info.field_name} cannot be null")
+    return value
+
+
 class SendEmailVerificationRequest(APIModel):
     email: EmailStr
 
 
+# The one-time code is only ever delivered by email (or, with SMTP not
+# configured, written to the server log) - never returned in a response.
 class SendEmailVerificationResponse(APIModel):
     message: str
     cooldown_seconds: int = 60
-    dev_otp: Optional[str] = None
 
 
 class VerifyEmailTokenRequest(APIModel):
@@ -51,7 +60,6 @@ class ForgotPasswordRequest(APIModel):
 class ForgotPasswordResponse(APIModel):
     message: str
     cooldown_seconds: int = 60
-    dev_otp: Optional[str] = None
 
 
 class ResetPasswordWithOtpRequest(APIModel):
@@ -153,6 +161,8 @@ class OrganizationUpdate(APIModel):
     invoice_terms: Optional[str] = None
     invoice_notes: Optional[str] = None
 
+    _required = field_validator("name", "country", "fiscal_year_start_month")(_not_null)
+
     @field_validator("phone")
     @classmethod
     def _phone(cls, value: Optional[str]) -> Optional[str]:
@@ -220,6 +230,17 @@ class UpdateUserRequest(APIModel):
     name: Optional[str] = Field(default=None, min_length=2, max_length=120)
     role: Optional[str] = Field(default=None, pattern="^(admin|staff|viewer|employee)$")
     is_active: Optional[bool] = None
+
+    _required = field_validator("name", "role", "is_active")(_not_null)
+
+
+class AdminResetPasswordRequest(APIModel):
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def _pw(cls, value: str) -> str:
+        return _validate_password(value)
 
 
 class AuditLogOut(APIModel):

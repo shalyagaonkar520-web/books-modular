@@ -84,16 +84,20 @@ export function DashboardPage() {
   if (!data) return null;
 
   const { receivables, payables, cashFlow, incomeExpense, inventory, bankBalances, topCustomers, recentActivity } = data;
+  // The API omits cash/bank figures for staff (no banking access); render the
+  // cash widgets only when they are present.
+  const showCash = cashFlow != null && bankBalances != null && data.totalCash != null;
   const hasAnyActivity =
     receivables.totalReceivables > 0 ||
     payables.totalPayables > 0 ||
-    data.totalCash !== 0 ||
+    (data.totalCash ?? 0) !== 0 ||
     recentActivity.length > 0 ||
     inventory.totalItemsCount > 0;
 
   // Trend sparklines for top KPI cards
-  const cashSparkline =
-    cashFlow.breakdown.length >= 2
+  const cashSparkline = !cashFlow
+    ? []
+    : cashFlow.breakdown.length >= 2
       ? cashFlow.breakdown.map((p) => p.incoming - p.outgoing)
       : [cashFlow.openingBalance, cashFlow.closingBalance];
 
@@ -165,13 +169,15 @@ export function DashboardPage() {
       ) : null}
 
       <div className="stat-grid">
-        <StatTile
-          label="Cash on hand"
-          value={formatCurrency(data.totalCash, currency)}
-          sublabel={`${bankBalances.length} account(s)`}
-          icon={<Landmark size={16} />}
-          chart={<Sparkline values={cashSparkline} tone={data.totalCash >= 0 ? 'positive' : 'negative'} />}
-        />
+        {showCash ? (
+          <StatTile
+            label="Cash on hand"
+            value={formatCurrency(data.totalCash ?? 0, currency)}
+            sublabel={`${bankBalances?.length ?? 0} account(s)`}
+            icon={<Landmark size={16} />}
+            chart={<Sparkline values={cashSparkline} tone={(data.totalCash ?? 0) >= 0 ? 'positive' : 'negative'} />}
+          />
+        ) : null}
         <StatTile
           label="Receivables"
           value={formatCurrency(receivables.totalReceivables, currency)}
@@ -337,24 +343,26 @@ export function DashboardPage() {
         currency={currency}
       />
 
-      <Card title="Cash flow" subtitle={`Bank movement from ${formatDate(cashFlow.startDate)} to ${formatDate(cashFlow.endDate)}`}>
-        <div className="stat-grid">
-          <StatTile label="Opening balance" value={formatCurrency(cashFlow.openingBalance, currency)} />
-          <StatTile label="Money in" value={formatCurrency(cashFlow.incomingAmount, currency)} tone="positive" />
-          <StatTile label="Money out" value={formatCurrency(cashFlow.outgoingAmount, currency)} tone="negative" />
-          <StatTile label="Closing balance" value={formatCurrency(cashFlow.closingBalance, currency)} tone={cashFlow.netCashFlow >= 0 ? 'positive' : 'negative'} />
-        </div>
-        <InteractiveSeriesChart
-          data={cashFlow.breakdown.map((point) => ({ label: point.label, incoming: point.incoming, outgoing: point.outgoing }))}
-          incomingLabel="Money in"
-          outgoingLabel="Money out"
-          netLabel="Net Cash Flow"
-          currency={currency}
-          selectedType={cashFlowChartType}
-          onTypeChange={setCashFlowChartType}
-          allowedTypes={['line', 'bar', 'area', 'net']}
-        />
-      </Card>
+      {cashFlow ? (
+        <Card title="Cash flow" subtitle={`Bank movement from ${formatDate(cashFlow.startDate)} to ${formatDate(cashFlow.endDate)}`}>
+          <div className="stat-grid">
+            <StatTile label="Opening balance" value={formatCurrency(cashFlow.openingBalance, currency)} />
+            <StatTile label="Money in" value={formatCurrency(cashFlow.incomingAmount, currency)} tone="positive" />
+            <StatTile label="Money out" value={formatCurrency(cashFlow.outgoingAmount, currency)} tone="negative" />
+            <StatTile label="Closing balance" value={formatCurrency(cashFlow.closingBalance, currency)} tone={cashFlow.netCashFlow >= 0 ? 'positive' : 'negative'} />
+          </div>
+          <InteractiveSeriesChart
+            data={cashFlow.breakdown.map((point) => ({ label: point.label, incoming: point.incoming, outgoing: point.outgoing }))}
+            incomingLabel="Money in"
+            outgoingLabel="Money out"
+            netLabel="Net Cash Flow"
+            currency={currency}
+            selectedType={cashFlowChartType}
+            onTypeChange={setCashFlowChartType}
+            allowedTypes={['line', 'bar', 'area', 'net']}
+          />
+        </Card>
+      ) : null}
 
       <Card title="Income and expense" subtitle="Accrual view from your ledger, by period">
         <InteractiveSeriesChart

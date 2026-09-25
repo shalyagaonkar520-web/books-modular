@@ -10,6 +10,11 @@ from sqlalchemy.orm import Session
 
 T = TypeVar("T")
 
+# Far beyond any real listing, but small enough that (page - 1) * page_size
+# stays a sane OFFSET. Unbounded, a page like 10**20 overflowed the driver's
+# 64-bit integer and surfaced as a 500.
+MAX_PAGE = 1_000_000
+
 
 def get_or_404(db: Session, model: Type[T], entity_id: str, organization_id: str, label: str = "Record") -> T:
     obj = db.get(model, entity_id)
@@ -27,7 +32,7 @@ def get_optional(db: Session, model: Type[T], entity_id: Optional[str], organiza
 class Pagination:
     def __init__(
         self,
-        page: int = Query(1, ge=1),
+        page: int = Query(1, ge=1, le=MAX_PAGE),
         page_size: int = Query(25, ge=1, le=200),
     ):
         self.page = page

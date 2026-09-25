@@ -57,8 +57,8 @@ export interface AuthResponse {
 export interface EmailVerificationStatus {
   email: string;
   status: string;
-  isVerified: boolean;
-  verifiedAt?: string | null;
+  verified: boolean;
+  expiresAt?: string | null;
 }
 
 export interface Page<T> {
@@ -332,6 +332,12 @@ export interface Expense {
   reference?: string | null;
   notes?: string | null;
   isBillable: boolean;
+  /** Set on creation but not exposed by the edit form; echoed back on update so
+   * the server does not reset them to its ExpenseUpdate defaults. */
+  category?: string | null;
+  paymentMethod?: string | null;
+  receiptUrl?: string | null;
+  status?: string | null;
   createdAt: string;
 }
 
@@ -392,6 +398,24 @@ export interface Account {
   isSystem: boolean;
   isActive: boolean;
   balance: number;
+}
+
+// Balance-free picker rows from the /account-options endpoints (readable by staff).
+export interface AccountOption {
+  id: string;
+  code: string;
+  name: string;
+  type: AccountType;
+  subtype?: string | null;
+  isActive: boolean;
+}
+
+export interface BankAccountOption {
+  id: string;
+  name: string;
+  type: string;
+  ledgerAccountId: string;
+  currency?: string | null;
 }
 
 export interface JournalLine {
@@ -696,6 +720,7 @@ export interface PeriodBreakdown {
 export interface DashboardSummary {
   receivables: { totalUnpaidInvoices: number; currentAmount: number; overdueAmount: number; totalReceivables: number };
   payables: { totalUnpaidBills: number; currentAmount: number; overdueAmount: number; totalPayables: number };
+  // Cash-derived figures are omitted (null) for staff, who cannot see banking.
   cashFlow: {
     period: string;
     startDate: string;
@@ -706,7 +731,7 @@ export interface DashboardSummary {
     netCashFlow: number;
     closingBalance: number;
     breakdown: PeriodBreakdown[];
-  };
+  } | null;
   incomeExpense: {
     startDate: string;
     endDate: string;
@@ -723,8 +748,8 @@ export interface DashboardSummary {
     totalInventoryValuation: number;
     lowStockItemsCount: number;
   };
-  bankBalances: Array<{ bankAccountId: string; name: string; type: string; balance: number }>;
-  totalCash: number;
+  bankBalances: Array<{ bankAccountId: string; name: string; type: string; balance: number }> | null;
+  totalCash: number | null;
   topCustomers: Array<{ contactId: string; contactName: string; amount: number }>;
   recentActivity: Array<{ id: string; type: string; number: string; contactName?: string | null; date: string; amount: number; status?: string | null }>;
   unbilledHours: number;

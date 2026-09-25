@@ -1,7 +1,32 @@
 import re
 from unittest.mock import MagicMock, patch
 
+from fastapi.testclient import TestClient
+
 from tests.conftest import auth, register_org
+
+
+def _capture_codes():
+    """Patches both OTP senders and records the code each would have emailed.
+
+    The code is never returned by the API, so tests read it from here - the
+    same place a real user reads it from (their inbox).
+    """
+    sent: dict = {}
+
+    def fake_verify(email, verify_url="", otp=""):
+        sent["verify"] = otp
+        return {"success": True}
+
+    def fake_reset(email, otp):
+        sent["reset"] = otp
+        return {"success": True}
+
+    return (
+        patch("backend.routers.auth.send_verification_email", side_effect=fake_verify),
+        patch("backend.routers.auth.send_password_reset_email", side_effect=fake_reset),
+        sent,
+    )
 
 
 def _extract_invite_token(mock_server) -> str:
@@ -76,11 +101,16 @@ def test_protected_routes_require_valid_token(client):
 def test_change_password_revokes_other_sessions(client):
     ctx = register_org(client, "Pw")
     h = auth(ctx["token"])
+    # A second browser signed in to the same account.
+    other = TestClient(client.app)
+    assert other.post("/api/auth/login", json={"email": ctx["email"], "password": ctx["password"]}).status_code == 200
     res = client.post("/api/auth/change-password", headers=h, json={"currentPassword": "nope", "newPassword": "NewStr0ngPass!"})
     assert res.status_code == 400
     res = client.post("/api/auth/change-password", headers=h, json={"currentPassword": ctx["password"], "newPassword": "NewStr0ngPass!"})
     assert res.status_code == 200
-    assert client.post("/api/auth/refresh").status_code == 401
+    # The other browser is signed out; the one that changed the password is not.
+    assert other.post("/api/auth/refresh").status_code == 401
+    assert client.post("/api/auth/refresh").status_code == 200
     assert client.post("/api/auth/login", json={"email": ctx["email"], "password": "NewStr0ngPass!"}).status_code == 200
 
 
@@ -200,19 +230,19 @@ def test_registration_without_email_verification_is_rejected(client):
 
 
 def test_send_verification_email_and_verify_token(client):
-    """Full strict verification lifecycle: send, verify token, check status, register."""
-    from backend.db import SessionLocal
-    from backend.models import EmailVerification
-
+    """Full strict verification lifecycle: send, verify code, check status, register."""
     email = "neworgadmin@acme.example.com"
+    p_verify, p_reset, sent = _capture_codes()
 
     # 1. Send verification email
-    send_res = client.post("/api/auth/send-verification-email", json={"email": email})
+    with p_verify:
+        send_res = client.post("/api/auth/send-verification-email", json={"email": email})
     assert send_res.status_code == 200
     assert "Verification" in send_res.json()["message"]
 
     # 2. Resend within 60 seconds triggers cooldown 429
-    cooldown_res = client.post("/api/auth/send-verification-email", json={"email": email})
+    with p_verify:
+        cooldown_res = client.post("/api/auth/send-verification-email", json={"email": email})
     assert cooldown_res.status_code == 429
 
     # 3. Status before verification
@@ -220,23 +250,13 @@ def test_send_verification_email_and_verify_token(client):
     assert status_res.status_code == 200
     assert status_res.json()["verified"] is False
 
-    # 4. Invalid token verification fails
+    # 4. The retired link endpoint says so clearly rather than 404ing
     bad_verify = client.post("/api/auth/verify-email", json={"token": "invalid-random-token-here"})
-    assert bad_verify.status_code == 404
+    assert bad_verify.status_code == 400
+    assert "6-digit code" in bad_verify.json()["detail"]
 
-    # 5. Extract token from DB verification record to simulate user clicking link
-    with SessionLocal() as db:
-        rec = db.query(EmailVerification).filter_by(email=email, status="PENDING").first()
-        assert rec is not None
-        # We can generate a known token to test verification
-        from backend.security import hash_token
-
-        raw_token = "test-secret-token-12345"
-        rec.token_hash = hash_token(raw_token)
-        db.commit()
-
-    # 6. User clicks verification link
-    verify_res = client.post("/api/auth/verify-email", json={"token": raw_token})
+    # 5-6. User enters the emailed code
+    verify_res = client.post("/api/auth/verify-otp", json={"email": email, "otp": sent["verify"]})
     assert verify_res.status_code == 200
     assert "Email verified successfully" in verify_res.json()["message"]
 
@@ -270,13 +290,15 @@ def test_send_verification_otp_and_verify(client):
     email = "otpadmin@acme.example.com"
 
     # 1. Send OTP
-    send_res = client.post("/api/auth/send-verification-email", json={"email": email})
+    p_verify, p_reset, sent = _capture_codes()
+    with p_verify:
+        send_res = client.post("/api/auth/send-verification-email", json={"email": email})
     assert send_res.status_code == 200
     data = send_res.json()
     assert "Verification" in data["message"]
-    # In dev mode, dev_otp is populated
-    dev_otp = data.get("devOtp") or data.get("dev_otp")
-    assert dev_otp is not None
+    # The code goes only to the inbox, never into the response
+    assert "devOtp" not in data and "dev_otp" not in data
+    dev_otp = sent["verify"]
     assert len(dev_otp) == 6
 
     # 2. Invalid OTP fails
@@ -306,20 +328,24 @@ def test_send_verification_otp_and_verify(client):
     assert reg_res.status_code == 201
 
 
-def test_forgot_password_unregistered_email_is_rejected(client):
-    """Forgot password must strictly reject and not send for unregistered emails."""
-    res = client.post("/api/auth/forgot-password", json={"email": "nonexistent@example.com"})
-    assert res.status_code == 404
-    assert "No registered account" in res.json()["detail"]
+def test_forgot_password_unregistered_email_is_not_sent(client):
+    """Unknown emails get the same answer as known ones, but nothing is sent."""
+    p_verify, p_reset, sent = _capture_codes()
+    with p_reset:
+        res = client.post("/api/auth/forgot-password", json={"email": "nonexistent@example.com"})
+    assert res.status_code == 200
+    assert "If an account exists" in res.json()["message"]
+    assert "reset" not in sent
 
 
 def test_forgot_password_and_reset_flow(client):
     """Full forgot-password and reset lifecycle for a registered user."""
     # First, register an active user
     email = "forgotpass_user@example.com"
-    send_res = client.post("/api/auth/send-verification-email", json={"email": email})
-    otp = send_res.json().get("devOtp") or send_res.json().get("dev_otp")
-    client.post("/api/auth/verify-otp", json={"email": email, "otp": otp})
+    p_verify, p_reset, sent = _capture_codes()
+    with p_verify:
+        client.post("/api/auth/send-verification-email", json={"email": email})
+    client.post("/api/auth/verify-otp", json={"email": email, "otp": sent["verify"]})
 
     reg_res = client.post(
         "/api/auth/register",
@@ -333,11 +359,11 @@ def test_forgot_password_and_reset_flow(client):
     assert reg_res.status_code == 201
 
     # Request forgot password
-    forgot_res = client.post("/api/auth/forgot-password", json={"email": email})
+    with p_reset:
+        forgot_res = client.post("/api/auth/forgot-password", json={"email": email})
     assert forgot_res.status_code == 200
-    forgot_data = forgot_res.json()
-    reset_otp = forgot_data.get("devOtp") or forgot_data.get("dev_otp")
-    assert reset_otp is not None
+    assert "devOtp" not in forgot_res.json()
+    reset_otp = sent["reset"]
     assert len(reset_otp) == 6
 
     # Bad OTP fails

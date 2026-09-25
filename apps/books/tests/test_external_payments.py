@@ -1,6 +1,24 @@
 """Tests for universal external payment ingestion and Gmail SMTP YES/NO confirmation flow."""
 
+import email
+import re
 from unittest.mock import MagicMock, patch
+
+
+def _sent_html(mock_server) -> str:
+    """Decoded HTML body of the last email handed to the mocked SMTP server."""
+    _, _, raw = mock_server.sendmail.call_args[0]
+    msg = email.message_from_string(raw)
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            return part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8")
+    raise AssertionError("no HTML part in the sent email")
+
+
+def _token_from_email(mock_server) -> str:
+    match = re.search(r"token=([\w\-]+)&amp;decision=yes", _sent_html(mock_server))
+    assert match, "confirmation email did not contain a YES link"
+    return match.group(1)
 
 
 @patch("backend.services.email_service.smtplib.SMTP")
@@ -16,20 +34,21 @@ def test_incoming_external_payment_and_email_dispatch(mock_smtp, client, org):
         "payer_name": "Rajesh Kumar",
         "payer_email": "rajesh.kumar@example.com",
         "payer_phone": "+91 9876543210",
-        "recipient_email": "shalya@rooman.com",
     }
 
-    res = client.post("/api/payments/external/incoming", json=payload)
+    res = client.post("/api/payments/external/incoming", headers=org["h"], json=payload)
     assert res.status_code == 201
     data = res.json()
     assert data["success"] is True
     assert data["platform"] == "upi"
     assert data["status"] == "pending_confirmation"
     assert data["email_dispatched"] is True
-    assert "approval_token" in data
+    # The token approves the payment: it travels only inside the email.
+    assert "approval_token" not in data
+    assert data["email_recipient"] == org["email"]
     assert mock_server.sendmail.called
 
-    token = data["approval_token"]
+    token = _token_from_email(mock_server)
 
     # Verify YES decision from Gmail 1-click confirmation link
     res_yes = client.get(f"/api/payments/external/confirm?token={token}&decision=yes")
@@ -59,9 +78,9 @@ def test_incoming_external_payment_rejection_flow(mock_smtp, client, org):
         "payer_email": "unknown@test.com",
     }
 
-    res = client.post("/api/payments/external/incoming", json=payload)
+    res = client.post("/api/payments/external/incoming", headers=org["h"], json=payload)
     assert res.status_code == 201
-    token = res.json()["approval_token"]
+    token = _token_from_email(mock_server)
 
     # Confirm NO rejection
     res_no = client.get(f"/api/payments/external/confirm?token={token}&decision=no")
@@ -94,11 +113,11 @@ def test_external_payments_list_and_resend(mock_smtp, client, org):
         "currency": "INR",
         "payer_name": "Anita Verma",
         "payer_email": "anita@example.com",
-        "organization_id": org["org"]["id"],
     }
-    create_res = client.post("/api/payments/external/incoming", json=payload)
+    create_res = client.post("/api/payments/external/incoming", headers=org["h"], json=payload)
     assert create_res.status_code == 201
     pay_id = create_res.json()["external_payment_id"]
+    first_token = _token_from_email(mock_server)
 
     # List payments with auth headers
     list_res = client.get("/api/payments/external", headers=org["h"])
@@ -110,3 +129,8 @@ def test_external_payments_list_and_resend(mock_smtp, client, org):
     resend_res = client.post(f"/api/payments/external/{pay_id}/resend-email", headers=org["h"])
     assert resend_res.status_code == 200
     assert "Confirmation email re-dispatched" in resend_res.json()["message"]
+
+    # Resending issues a fresh link; the earlier one no longer works.
+    second_token = _token_from_email(mock_server)
+    assert second_token != first_token
+    assert client.get(f"/api/payments/external/confirm?token={first_token}&decision=yes").status_code == 404

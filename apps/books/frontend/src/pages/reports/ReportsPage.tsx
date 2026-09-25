@@ -32,13 +32,15 @@ type ReportId =
 interface ReportMeta {
   id: ReportId;
   label: string;
+  /** Built from ledger balances; the API restricts these to admin/viewer. */
+  financialOnly?: boolean;
   subtitle: string;
   range: RangeKind;
 }
 
 const REPORTS: ReportMeta[] = [
-  { id: 'profit_and_loss', label: 'Profit & Loss', subtitle: 'Income, cost of sales and expenses for the period', range: 'period' },
-  { id: 'balance_sheet', label: 'Balance Sheet', subtitle: 'What the business owns and owes on a given date', range: 'as_of' },
+  { id: 'profit_and_loss', label: 'Profit & Loss', subtitle: 'Income, cost of sales and expenses for the period', range: 'period', financialOnly: true },
+  { id: 'balance_sheet', label: 'Balance Sheet', subtitle: 'What the business owns and owes on a given date', range: 'as_of', financialOnly: true },
   { id: 'receivables_ageing', label: 'Receivables Ageing', subtitle: 'How long customer invoices have been outstanding', range: 'as_of' },
   { id: 'payables_ageing', label: 'Payables Ageing', subtitle: 'How long vendor bills have been outstanding', range: 'as_of' },
   { id: 'sales_by_customer', label: 'Sales by Customer', subtitle: 'Invoiced, collected and outstanding per customer', range: 'period' },
@@ -57,16 +59,21 @@ function fiscalYearStartIso(fiscalStartMonth: number): string {
 }
 
 export function ReportsPage() {
-  const { organization } = useAuth();
+  const { organization, can } = useAuth();
   const fiscalStartMonth = organization?.fiscalYearStartMonth ?? 4;
   const defaultStart = useMemo(() => fiscalYearStartIso(fiscalStartMonth), [fiscalStartMonth]);
 
-  const [activeId, setActiveId] = useState<ReportId>('profit_and_loss');
+  // Profit & Loss and the Balance Sheet read ledger balances, which the API
+  // serves only to admin and viewer; hide them from staff so they don't land
+  // on a report that 403s.
+  const visibleReports = useMemo(() => REPORTS.filter((report) => !report.financialOnly || can('admin', 'viewer')), [can]);
+
+  const [activeId, setActiveId] = useState<ReportId>(() => (can('admin', 'viewer') ? 'profit_and_loss' : 'receivables_ageing'));
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(todayIso());
   const [asOf, setAsOf] = useState(todayIso());
 
-  const active = REPORTS.find((report) => report.id === activeId) ?? REPORTS[0];
+  const active = visibleReports.find((report) => report.id === activeId) ?? visibleReports[0];
 
   const renderReport = () => {
     switch (active.id) {
@@ -106,7 +113,7 @@ export function ReportsPage() {
       />
 
       <div className="no-print">
-        <Tabs tabs={REPORTS.map((report) => ({ id: report.id, label: report.label }))} active={active.id} onChange={(id) => setActiveId(id as ReportId)} />
+        <Tabs tabs={visibleReports.map((report) => ({ id: report.id, label: report.label }))} active={active.id} onChange={(id) => setActiveId(id as ReportId)} />
         {active.range === 'period' ? (
           <div className="form-grid-3">
             <TextField label="From" type="date" value={startDate} max={endDate} onChange={(event) => setStartDate(event.target.value)} />

@@ -134,7 +134,8 @@ def test_entry_numbers_increment_per_organization(client):
                 "date": "2026-09-01",
                 "lines": [
                     {"accountId": accounts["6200"]["id"], "debit": 10},
-                    {"accountId": accounts["1000"]["id"], "credit": 10},
+                    # Not 1000 Cash: that sits behind the default cash register, which manual journals may not touch.
+                    {"accountId": accounts["3000"]["id"], "credit": 10},
                 ],
             },
         )

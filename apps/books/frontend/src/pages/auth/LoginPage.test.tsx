@@ -124,7 +124,7 @@ describe('RegisterPage', () => {
     localStorage.setItem('rooman_verified_email', 'khadar@example.com');
     const { calls } = installMockApi({
       ...unauthenticated,
-      'GET /api/auth/email-verification-status': { email: 'khadar@example.com', status: 'VERIFIED', isVerified: true },
+      'GET /api/auth/email-verification-status': { email: 'khadar@example.com', status: 'VERIFIED', verified: true },
       'POST /api/auth/register': authResponse,
     });
     renderWithProviders(<RegisterPage />);
@@ -159,7 +159,7 @@ describe('RegisterPage', () => {
       ...unauthenticated,
       'POST /api/auth/send-verification-email': { message: 'Verification code sent', cooldownSeconds: 60, devOtp: '482915' },
       'POST /api/auth/verify-otp': { message: 'Email verified successfully' },
-      'GET /api/auth/email-verification-status': { email: 'admin@acme.com', status: 'VERIFIED', isVerified: true },
+      'GET /api/auth/email-verification-status': { email: 'admin@acme.com', status: 'VERIFIED', verified: true },
     });
     renderWithProviders(<RegisterPage />);
 

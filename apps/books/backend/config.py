@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     cors_origins: List[str] | str = Field(default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"])
     allow_public_signup: bool = Field(default=True, description="If false, only invited users can join")
     login_rate_limit_per_minute: int = 10
+    # Comma-separated IPs/CIDRs of reverse proxies whose X-Forwarded-For header
+    # is believed. Empty means never trust it (the header is client-controlled).
+    # Behind the bundled nginx set e.g. TRUSTED_PROXIES=172.16.0.0/12.
+    trusted_proxies: str = Field(default="", description="TRUSTED_PROXIES")
 
     # Uploads
     max_upload_size_mb: int = 25

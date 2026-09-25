@@ -40,7 +40,6 @@ export function RegisterPage() {
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
   const [otp, setOtp] = useState('');
-  const [devOtp, setDevOtp] = useState<string | null>(null);
   const [verificationNotice, setVerificationNotice] = useState<string | null>(null);
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
@@ -52,13 +51,12 @@ export function RegisterPage() {
     if (!clean || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) return;
     try {
       const res = await authApi.getEmailVerificationStatus(clean);
-      if (res.isVerified) {
+      if (res.verified) {
         setIsVerified(true);
         setVerificationSent(false);
         setVerificationNotice(null);
         setVerificationError(null);
         setOtp('');
-        setDevOtp(null);
       }
     } catch {
       // ignore status check failure
@@ -103,9 +101,6 @@ export function RegisterPage() {
       const res = await authApi.sendVerificationEmail(cleanEmail);
       setVerificationSent(true);
       setVerificationNotice(res.message || `Verification code sent to ${cleanEmail}`);
-      if (res.dev_otp) {
-        setDevOtp(res.dev_otp);
-      }
       setCooldown(res.cooldownSeconds || res.cooldown_seconds || 60);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to send verification code. Please try again.';
@@ -133,7 +128,6 @@ export function RegisterPage() {
       setVerificationNotice(null);
       setVerificationError(null);
       setOtp('');
-      setDevOtp(null);
       localStorage.setItem('rooman_verified_email', cleanEmail);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Invalid verification code. Please try again.';
@@ -147,15 +141,14 @@ export function RegisterPage() {
     setEmail(newVal);
     // Only reset verification state when something was actually set
     // This prevents unnecessary re-renders on every keystroke
-    if (isVerified || verificationSent || verificationNotice || verificationError || otp || devOtp) {
+    if (isVerified || verificationSent || verificationNotice || verificationError || otp) {
       setIsVerified(false);
       setVerificationSent(false);
       setVerificationNotice(null);
       setVerificationError(null);
       setOtp('');
-      setDevOtp(null);
     }
-  }, [isVerified, verificationSent, verificationNotice, verificationError, otp, devOtp]);
+  }, [isVerified, verificationSent, verificationNotice, verificationError, otp]);
 
   const handleResetEmail = () => {
     setEmail('');
@@ -164,7 +157,6 @@ export function RegisterPage() {
     setVerificationNotice(null);
     setVerificationError(null);
     setOtp('');
-    setDevOtp(null);
     try {
       localStorage.removeItem('rooman_verified_email');
     } catch {

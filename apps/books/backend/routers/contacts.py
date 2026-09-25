@@ -14,7 +14,21 @@ from sqlalchemy.orm import Session
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
-from backend.models import Account, Bill, Contact, CustomerPayment, Expense, Invoice, Organization, User, VendorPayment
+from backend.models import (
+    Account,
+    Bill,
+    Contact,
+    CustomerPayment,
+    Expense,
+    ExternalPayment,
+    Invoice,
+    Item,
+    Organization,
+    PaymentRecord,
+    Project,
+    User,
+    VendorPayment,
+)
 from backend.schemas.common import Message, Page
 from backend.schemas.contacts import ContactCreate, ContactOut, ContactSummary, ContactUpdate
 from backend.services import audit, export_service
@@ -71,6 +85,39 @@ def _sync_contact_person(contact: Contact) -> None:
     composed = " ".join(part.strip() for part in parts if part and part.strip())
     if composed:
         contact.contact_person = composed[:120]
+
+
+# The account a contact's documents post their receivable/payable to. Pointing
+# a customer at, say, a bank or income account would put the invoice total
+# somewhere the ageing, statements and payment matching never look.
+LEDGER_OVERRIDE = {
+    "customer": ("asset", "accounts_receivable", "an accounts receivable"),
+    "vendor": ("liability", "accounts_payable", "an accounts payable"),
+}
+
+
+def _validate_ledger_account(db: Session, org_id: str, contact_type: str, account_id: Optional[str]) -> None:
+    if not account_id:
+        return
+    account = get_or_404(db, Account, account_id, org_id, "Account")
+    acct_type, subtype, label = LEDGER_OVERRIDE[contact_type]
+    if account.type != acct_type or account.subtype != subtype or not account.is_active:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"A {contact_type}'s ledger account must be {label} account that is active",
+        )
+
+
+def _linked_contact_ids(db: Session, contact_ids: List[str]) -> set:
+    """Contacts referenced by records that are not transactions of their own -
+    a project, an item's preferred vendor, a gateway or external payment. The
+    foreign keys make a hard delete fail, so these are deactivated instead,
+    the same as a contact with documents."""
+    linked = set()
+    for column in (Project.customer_id, Item.preferred_vendor_id, PaymentRecord.customer_id, ExternalPayment.customer_id):
+        linked |= set(db.execute(select(column).where(column.in_(contact_ids)).distinct()).scalars().all())
+    linked.discard(None)
+    return linked
 
 
 def to_out(contact: Contact, outstanding: Optional[Decimal] = None) -> ContactOut:
@@ -189,8 +236,7 @@ def contact_summary(contact_id: str, user: User = Depends(get_current_user), db:
 
 @router.post("", response_model=ContactOut, status_code=status.HTTP_201_CREATED)
 def create_contact(payload: ContactCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
-    if payload.ledger_account_id:
-        get_or_404(db, Account, payload.ledger_account_id, user.organization_id, "Account")
+    _validate_ledger_account(db, user.organization_id, payload.type, payload.ledger_account_id)
     contact = Contact(organization_id=user.organization_id, **payload.model_dump())
     _sync_contact_person(contact)
     db.add(contact)
@@ -204,8 +250,8 @@ def create_contact(payload: ContactCreate, user: User = Depends(require_write), 
 def update_contact(contact_id: str, payload: ContactUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)):
     contact = get_or_404(db, Contact, contact_id, user.organization_id, "Contact")
     fields = payload.model_dump(exclude_unset=True)
-    if fields.get("ledger_account_id"):
-        get_or_404(db, Account, fields["ledger_account_id"], user.organization_id, "Account")
+    if fields.get("ledger_account_id") and fields["ledger_account_id"] != contact.ledger_account_id:
+        _validate_ledger_account(db, user.organization_id, contact.type, fields["ledger_account_id"])
     for field, value in fields.items():
         setattr(contact, field, value)
     if {"salutation", "first_name", "last_name"} & fields.keys():
@@ -266,7 +312,13 @@ def bulk_delete_contacts(
     expense_vendor_ids = set(db.execute(select(Expense.vendor_id).where(Expense.vendor_id.in_(contact_ids))).scalars().all())
     expense_customer_ids = set(db.execute(select(Expense.customer_id).where(Expense.customer_id.in_(contact_ids))).scalars().all())
     has_transactions_ids = (
-        invoices_contact_ids | bills_contact_ids | customer_payment_ids | vendor_payment_ids | expense_vendor_ids | expense_customer_ids
+        invoices_contact_ids
+        | bills_contact_ids
+        | customer_payment_ids
+        | vendor_payment_ids
+        | expense_vendor_ids
+        | expense_customer_ids
+        | _linked_contact_ids(db, contact_ids)
     )
 
     deleted_count = 0
@@ -324,6 +376,11 @@ def delete_contact(contact_id: str, user: User = Depends(require_write), db: Ses
         audit.record(db, user, "update", "contact", contact.id, f"Deactivated {contact.display_name} (has transactions)")
         db.commit()
         return Message(message="Contact has transactions and has been marked inactive instead of deleted")
+    if _linked_contact_ids(db, [contact.id]):
+        contact.is_active = False
+        audit.record(db, user, "update", "contact", contact.id, f"Deactivated {contact.display_name} (linked to other records)")
+        db.commit()
+        return Message(message="Contact is linked to a project, an item or a payment and has been marked inactive instead of deleted")
     db.delete(contact)
     audit.record(db, user, "delete", "contact", contact.id, f"Deleted {contact.display_name}")
     db.commit()

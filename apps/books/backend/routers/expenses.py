@@ -65,7 +65,11 @@ def _apply(db: Session, e: Expense, payload: ExpenseCreate, org_id: str) -> None
     account = get_or_404(db, Account, payload.account_id, org_id, "Expense account")
     if account.type != "expense":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Expense must be recorded against an expense account")
+    if not account.is_active:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Account {account.code} {account.name} is inactive")
     paid_through = get_or_404(db, BankAccount, payload.paid_through_account_id, org_id, "Paid through account")
+    if not paid_through.is_active and paid_through.id != e.paid_through_account_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"'{paid_through.name}' is inactive and cannot be used for new expenses")
     if payload.vendor_id:
         vendor = get_or_404(db, Contact, payload.vendor_id, org_id, "Vendor")
         if vendor.type != "vendor":
@@ -83,10 +87,17 @@ def _apply(db: Session, e: Expense, payload: ExpenseCreate, org_id: str) -> None
     e.tax_rate = Decimal(str(payload.tax_rate)).quantize(Decimal("0.01"))
     e.tax_amount = money(e.amount * e.tax_rate / Decimal("100"))
     e.total = money(e.amount + e.tax_amount)
-    e.category = payload.category or "Other"
-    e.payment_method = payload.payment_method or "bank_transfer"
-    e.receipt_url = payload.receipt_url
-    e.status = payload.status or "paid"
+    # On an update only the fields actually sent are changed (see ExpenseUpdate).
+    sent = payload.model_fields_set
+    is_update = isinstance(payload, ExpenseUpdate)
+    if not is_update or "category" in sent:
+        e.category = payload.category or "Other"
+    if not is_update or "payment_method" in sent:
+        e.payment_method = payload.payment_method or "bank_transfer"
+    if not is_update or "receipt_url" in sent:
+        e.receipt_url = payload.receipt_url
+    if not is_update or "status" in sent:
+        e.status = payload.status or "paid"
     e.reference = payload.reference
     e.notes = payload.notes
     e.is_billable = payload.is_billable
@@ -279,7 +290,7 @@ def send_expense_via_gmail(
 
     result = send_expense_email(
         to_email=payload.to_email,
-        recipient_name=payload.recipient_name or (e.vendor.display_name if e.vendor else (e.payee or "Team")),
+        recipient_name=payload.recipient_name or (e.vendor.display_name if e.vendor else "Team"),
         expense_number=e.expense_number,
         category=e.category or "Operating Expense",
         payee=(e.vendor.display_name if e.vendor else (e.customer.display_name if e.customer else "Payee")),

@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { FileDown, FileSpreadsheet, FileText, Mail, Pencil, Plus, Trash2, Users } from 'lucide-react';
 
-import { contactsApi, emailApi } from '@/api/endpoints';
+import { contactsApi } from '@/api/endpoints';
 import type { Contact, ContactType, GstTreatment } from '@/api/types';
 import { useAsync } from '@/hooks/useAsync';
 import { useDebounced } from '@/hooks/useDebounced';
@@ -674,11 +674,10 @@ function SendContactEmailModal({ contact, onClose, onSent }: SendContactEmailMod
   async function handleSend() {
     if (!contact.email) return;
     const result = await run(() =>
-      emailApi.sendMessage({
+      contactsApi.sendGmail(contact.id, {
         to_email: contact.email!,
         subject: subject.trim(),
         message: message.trim(),
-        recipient_name: contact.contactPerson || contact.displayName,
       })
     );
     if (result) {

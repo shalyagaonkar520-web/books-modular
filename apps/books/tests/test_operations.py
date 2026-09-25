@@ -106,7 +106,8 @@ def test_payroll_requires_admin(client, org):
     invite_and_accept(client, h, "Staffer", "staff@rooman.example.com", "staff", "Staff12345")
     login = client.post("/api/auth/login", json={"email": "staff@rooman.example.com", "password": "Staff12345"}).json()
     sh = {"Authorization": f"Bearer {login['accessToken']}"}
-    assert client.get("/api/payroll/employees", headers=sh).status_code == 200
+    # Payroll is Admin (write) / Viewer (read) only: Staff cannot even list salaries.
+    assert client.get("/api/payroll/employees", headers=sh).status_code == 403
     assert client.post("/api/payroll/pay-runs", headers=sh, json={"periodYear": 2026, "periodMonth": 7}).status_code == 403
 
 

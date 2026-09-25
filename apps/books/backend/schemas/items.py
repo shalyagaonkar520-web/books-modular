@@ -4,9 +4,11 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal, Optional
 
-from pydantic import Field, model_validator
+from pydantic import Field, ValidationInfo, field_validator, model_validator
+from pydantic.alias_generators import to_camel
 
-from backend.schemas.common import APIModel
+from backend.schemas import validators
+from backend.schemas.common import MAX_QUANTITY, APIModel
 
 ItemType = Literal["goods", "service"]
 
@@ -45,7 +47,12 @@ class ItemBase(APIModel):
 
 
 class ItemCreate(ItemBase):
-    pass
+    # An entry rule, so it sits here rather than on ItemBase: ItemOut extends
+    # ItemBase too, and a legacy row must still be readable.
+    @field_validator("image_url")
+    @classmethod
+    def _image_url(cls, value: Optional[str]) -> Optional[str]:
+        return validators.image_url(value)
 
 
 class ItemUpdate(APIModel):
@@ -53,7 +60,7 @@ class ItemUpdate(APIModel):
     type: Optional[ItemType] = None
     sku: Optional[str] = Field(default=None, min_length=1, max_length=50)
     unit: Optional[str] = Field(default=None, max_length=20)
-    hsn_sac: Optional[str] = None
+    hsn_sac: Optional[str] = Field(default=None, max_length=20)
     tax_rate: Optional[Decimal] = Field(default=None, ge=0, le=100)
     description: Optional[str] = None
     image_url: Optional[str] = None
@@ -68,8 +75,32 @@ class ItemUpdate(APIModel):
     opening_stock: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("99999999"))
     opening_stock_rate: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("999999999.99"))
     reorder_level: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("99999999"))
-    warehouse_location: Optional[str] = None
+    warehouse_location: Optional[str] = Field(default=None, max_length=120)
     is_active: Optional[bool] = None
+
+    @field_validator(
+        "name",
+        "type",
+        "sku",
+        "unit",
+        "tax_rate",
+        "selling_price",
+        "cost_price",
+        "track_inventory",
+        "opening_stock",
+        "opening_stock_rate",
+        "reorder_level",
+        "is_active",
+    )
+    @classmethod
+    def _required_columns_not_null(cls, value, info: ValidationInfo):
+        # Omitting a field keeps it; null is not a value these columns can hold.
+        return validators.not_null(value, to_camel(info.field_name))
+
+    @field_validator("image_url")
+    @classmethod
+    def _image_url(cls, value: Optional[str]) -> Optional[str]:
+        return validators.image_url(value)
 
 
 class ItemOut(ItemBase):
@@ -86,7 +117,9 @@ class ItemOut(ItemBase):
 class InventoryAdjustmentCreate(APIModel):
     item_id: str
     date: date
-    quantity_delta: Decimal
+    # Same cap as a document line: beyond it the Numeric(14, 3) stock column
+    # overflows and the database driver answers with a 500.
+    quantity_delta: Decimal = Field(ge=-MAX_QUANTITY, le=MAX_QUANTITY)
     reason: str = Field(min_length=1, max_length=120)
     notes: Optional[str] = None
 

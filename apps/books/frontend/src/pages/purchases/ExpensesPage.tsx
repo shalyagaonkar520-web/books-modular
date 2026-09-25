@@ -33,7 +33,11 @@ function monthStart(): string {
 export function ExpensesPage() {
   const toast = useToast();
   const { download } = useDownload();
-  const { canWrite } = useAuth();
+  const { canWrite, can } = useAuth();
+  // Reading the chart of accounts and bank accounts is Admin/Viewer only, but
+  // Staff may still record an expense - so skip those fetches for them rather
+  // than 403 the account pickers.
+  const canReadAccounts = can('admin', 'viewer');
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [startDate, setStartDate] = useState(monthStart);
@@ -52,13 +56,13 @@ export function ExpensesPage() {
 
   const refs = useAsync(async (): Promise<ExpenseRefs> => {
     const [expenseAccounts, bankAccounts, vendorPage, customerPage] = await Promise.all([
-      accountingApi.accounts({ type: 'expense' }),
-      bankingApi.accounts(),
+      canReadAccounts ? accountingApi.accounts({ type: 'expense' }) : accountingApi.accountOptions('expense'),
+      canReadAccounts ? bankingApi.accounts() : bankingApi.accountOptions(),
       contactsApi.list({ type: 'vendor', page_size: 200 }),
       contactsApi.list({ type: 'customer', page_size: 200 }),
     ]);
     return { expenseAccounts, bankAccounts, vendors: vendorPage.items, customers: customerPage.items };
-  }, []);
+  }, [canReadAccounts]);
 
   const filters = useMemo(
     () => ({

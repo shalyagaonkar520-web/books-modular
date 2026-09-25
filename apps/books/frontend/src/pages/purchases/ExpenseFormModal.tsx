@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { expensesApi } from '@/api/endpoints';
-import type { Account, BankAccount, Contact, Expense } from '@/api/types';
+import type { Account, Contact, Expense } from '@/api/types';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { CheckboxField, SelectField, TextAreaField, TextField } from '@/components/ui/Field';
@@ -16,8 +16,10 @@ const TAX_OPTIONS = TAX_RATES.map((rate) => ({ value: String(rate), label: `${ra
 
 /** Reference data the expense form needs; loaded once by the page. */
 export interface ExpenseRefs {
-  expenseAccounts: Account[];
-  bankAccounts: BankAccount[];
+  // Minimal picker shapes so both the full account lists (admin/viewer) and the
+  // balance-free /account-options lists (staff) can populate the form.
+  expenseAccounts: Array<Pick<Account, 'id' | 'code' | 'name'>>;
+  bankAccounts: Array<{ id: string; name: string; currentBalance?: number }>;
   vendors: Contact[];
   customers: Contact[];
 }
@@ -43,6 +45,13 @@ export function ExpenseFormModal({ refs, expense, onClose, onSaved }: ExpenseFor
   const [isBillable, setIsBillable] = useState(expense?.isBillable ?? false);
   const [reference, setReference] = useState(expense?.reference ?? '');
   const [notes, setNotes] = useState(expense?.notes ?? '');
+  // These are recorded on the expense but this form does not expose them. Carry
+  // the loaded values so they are echoed back on update - otherwise ExpenseUpdate
+  // resets category/paymentMethod/receiptUrl/status to its defaults on save.
+  const [category] = useState(expense?.category ?? '');
+  const [paymentMethod] = useState(expense?.paymentMethod ?? '');
+  const [receiptUrl] = useState(expense?.receiptUrl ?? '');
+  const [status] = useState(expense?.status ?? '');
 
   const parsedAmount = parseNumber(amount, 0);
   const taxAmount = round2((parsedAmount * parseNumber(taxRate, 0)) / 100);
@@ -65,7 +74,7 @@ export function ExpenseFormModal({ refs, expense, onClose, onSaved }: ExpenseFor
       setError('Pick the customer this expense will be billed to.');
       return;
     }
-    const body = {
+    const body: Record<string, unknown> = {
       date,
       accountId,
       paidThroughAccountId,
@@ -77,6 +86,14 @@ export function ExpenseFormModal({ refs, expense, onClose, onSaved }: ExpenseFor
       notes: notes.trim() || null,
       isBillable,
     };
+    if (expense) {
+      // Preserve the fields this form does not edit; otherwise the server's
+      // ExpenseUpdate defaults would silently overwrite them on save.
+      body.category = category || null;
+      body.paymentMethod = paymentMethod || null;
+      body.receiptUrl = receiptUrl || null;
+      if (status) body.status = status;
+    }
     const result = await run(() => (expense ? expensesApi.update(expense.id, body) : expensesApi.create(body)));
     if (result) {
       toast.success(expense ? `Expense ${result.expenseNumber} updated` : `Expense ${result.expenseNumber} recorded`);
@@ -122,7 +139,10 @@ export function ExpenseFormModal({ refs, expense, onClose, onSaved }: ExpenseFor
           value={paidThroughAccountId}
           placeholder="Select an account"
           error={fieldErrors.paidThroughAccountId}
-          options={refs.bankAccounts.map((account) => ({ value: account.id, label: `${account.name} · ${formatCurrency(account.currentBalance)}` }))}
+          options={refs.bankAccounts.map((account) => ({
+            value: account.id,
+            label: typeof account.currentBalance === 'number' ? `${account.name} · ${formatCurrency(account.currentBalance)}` : account.name,
+          }))}
           onChange={(event) => setPaidThroughAccountId(event.target.value)}
         />
         <SelectField

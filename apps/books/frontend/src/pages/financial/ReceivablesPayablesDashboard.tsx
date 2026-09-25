@@ -164,7 +164,7 @@ export function ReceivablesPayablesDashboard() {
   ];
 
   const cashSparkline = [
-    summary?.cashFlow.openingBalance ?? 0,
+    summary?.cashFlow?.openingBalance ?? 0,
     summary?.totalCash ?? 0,
   ];
 
@@ -175,7 +175,7 @@ export function ReceivablesPayablesDashboard() {
       key: 'contactName',
       header: 'Customer',
       render: (r) => (
-        <Link to={`/invoices?search=${encodeURIComponent(r.contactName)}`} className="cell-stack">
+        <Link to={`/invoices?customer=${encodeURIComponent(r.contactId)}&status=unpaid`} className="cell-stack">
           <span className="strong">{r.contactName}</span>
           <small className="text-muted">Click to view invoices</small>
         </Link>
@@ -208,7 +208,7 @@ export function ReceivablesPayablesDashboard() {
       key: 'contactName',
       header: 'Vendor / Supplier',
       render: (r) => (
-        <Link to={`/bills?search=${encodeURIComponent(r.contactName)}`} className="cell-stack">
+        <Link to={`/bills?vendor=${encodeURIComponent(r.contactId)}&status=unpaid`} className="cell-stack">
           <span className="strong">{r.contactName}</span>
           <small className="text-muted">Click to view bills</small>
         </Link>
@@ -320,7 +320,7 @@ export function ReceivablesPayablesDashboard() {
         <StatTile
           label="Cash on Hand"
           value={formatCurrency(summary?.totalCash ?? 0, currency)}
-          sublabel={`${summary?.bankBalances.length ?? 0} bank/cash account(s) available`}
+          sublabel={`${summary?.bankBalances?.length ?? 0} bank/cash account(s) available`}
           tone={(summary?.totalCash ?? 0) >= apTotals.total ? 'positive' : 'warning'}
           icon={<Wallet size={16} />}
           chart={<Sparkline values={cashSparkline} tone={(summary?.totalCash ?? 0) >= apTotals.total ? 'positive' : 'warning'} />}

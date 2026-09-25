@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
+import html
 import json
 import secrets
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import HTMLResponse, Response
-from pydantic import BaseModel
-from sqlalchemy import select
+from pydantic import Field
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
+from backend.config import get_settings
 from backend.db import get_db
-from backend.deps import require_full_app_access, require_write
+from backend.deps import ROLE_ADMIN, require_full_app_access, require_write
 from backend.models import (
     BankAccount,
     Bill,
@@ -27,7 +29,7 @@ from backend.models import (
     User,
     VendorPayment,
 )
-from backend.schemas.common import APIModel, Message, Page
+from backend.schemas.common import MAX_MONEY, APIModel, Message, Page
 from backend.schemas.purchases import VendorPaymentCreate, VendorPaymentOut
 from backend.schemas.sales import CustomerPaymentCreate, CustomerPaymentOut
 from backend.services import audit, bank, export_service, ledger, numbering
@@ -36,18 +38,121 @@ from backend.services.email_service import (
     send_customer_payment_email,
     send_payment_confirmation_request_email,
     send_vendor_payment_email,
-    sender_identity,
 )
 from backend.services.money import money
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
 router = APIRouter(prefix="/api", tags=["Payments"])
 
+# Tolerance for comparing money columns in SQL. PostgreSQL stores exact
+# NUMERIC(14, 2) values, where ">= amount - half a paisa" is identical to
+# ">= amount"; SQLite computes total - amount_paid in floating point, where an
+# exact full payment can otherwise miss by 1e-12 and be refused.
+_HALF_PAISA = Decimal("0.005")
+_PAYABLE_INVOICE_STATUSES = ("sent", "partially_paid")
+_PAYABLE_BILL_STATUSES = ("open", "partially_paid")
 
-class SendPaymentEmailRequest(BaseModel):
+
+class SendPaymentEmailRequest(APIModel):
     to_email: str
     custom_notes: Optional[str] = None
     attach_pdf: bool = True
+
+
+def _receivable_account_id(db: Session, org_id: str, customer: Contact) -> str:
+    """The AR account the customer's invoices were posted to (see post_invoice)."""
+    return customer.ledger_account_id or get_account_by_code(db, org_id, "1100").id
+
+
+def _payable_account_id(db: Session, org_id: str, vendor: Contact) -> str:
+    """The AP account the vendor's bills were posted to (see post_bill)."""
+    return vendor.ledger_account_id or get_account_by_code(db, org_id, "2000").id
+
+
+def _apply_invoice_payment(db: Session, invoice: Invoice, amount: Decimal) -> None:
+    """Add a payment to an invoice atomically, or raise 400 if it no longer fits.
+
+    The balance check and the increment are one UPDATE, so two requests racing
+    to pay the same invoice cannot both pass a stale "balance is enough" read:
+    the database serialises them on the row (PostgreSQL) or the write lock
+    (SQLite) and the loser's WHERE clause no longer matches. Call this before
+    posting anything, so a refused payment leaves no ledger entries behind.
+    """
+    result = db.execute(
+        update(Invoice)
+        .where(
+            Invoice.id == invoice.id,
+            Invoice.organization_id == invoice.organization_id,
+            Invoice.status.in_(_PAYABLE_INVOICE_STATUSES),
+            Invoice.total - Invoice.amount_paid >= amount - _HALF_PAISA,
+        )
+        .values(amount_paid=func.round(Invoice.amount_paid + amount, 2))
+        .execution_options(synchronize_session=False)
+    )
+    db.refresh(invoice)
+    if result.rowcount != 1:
+        if invoice.status not in _PAYABLE_INVOICE_STATUSES:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, f"Payments can only be applied to sent invoices (current status: {invoice.status})"
+            )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the invoice balance of {money(invoice.balance_due)}")
+    _refresh_invoice_status(invoice)
+
+
+def _remove_invoice_payment(db: Session, invoice: Invoice, amount: Decimal) -> None:
+    """Take a deleted payment back off an invoice, atomically."""
+    db.execute(
+        update(Invoice)
+        .where(Invoice.id == invoice.id, Invoice.organization_id == invoice.organization_id)
+        .values(amount_paid=func.round(Invoice.amount_paid - amount, 2))
+        .execution_options(synchronize_session=False)
+    )
+    db.refresh(invoice)
+    _refresh_invoice_status(invoice)
+
+
+def _apply_bill_payment(db: Session, bill: Bill, amount: Decimal) -> None:
+    """Bill counterpart of _apply_invoice_payment."""
+    result = db.execute(
+        update(Bill)
+        .where(
+            Bill.id == bill.id,
+            Bill.organization_id == bill.organization_id,
+            Bill.status.in_(_PAYABLE_BILL_STATUSES),
+            Bill.total - Bill.amount_paid >= amount - _HALF_PAISA,
+        )
+        .values(amount_paid=func.round(Bill.amount_paid + amount, 2))
+        .execution_options(synchronize_session=False)
+    )
+    db.refresh(bill)
+    if result.rowcount != 1:
+        if bill.status not in _PAYABLE_BILL_STATUSES:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payments can only be applied to open bills (current status: {bill.status})")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the bill balance of {money(bill.balance_due)}")
+    _refresh_bill_status(bill)
+
+
+def _remove_bill_payment(db: Session, bill: Bill, amount: Decimal) -> None:
+    db.execute(
+        update(Bill)
+        .where(Bill.id == bill.id, Bill.organization_id == bill.organization_id)
+        .values(amount_paid=func.round(Bill.amount_paid - amount, 2))
+        .execution_options(synchronize_session=False)
+    )
+    db.refresh(bill)
+    _refresh_bill_status(bill)
+
+
+def _check_cash_withdrawal(db: Session, bank_acct: BankAccount, amount: Decimal) -> None:
+    """bank.check_cash_overdraft, holding the account row so concurrent
+    withdrawals from the same cash drawer cannot both pass the check.
+    (SQLite has no row locks; there the write lock taken by the request's
+    first UPDATE already serialises it.)"""
+    if bank_acct.type != "cash":
+        return
+    if db.bind is not None and db.bind.dialect.name != "sqlite":
+        db.execute(select(BankAccount.id).where(BankAccount.id == bank_acct.id).with_for_update())
+    bank.check_cash_overdraft(db, bank_acct, amount)
 
 
 def _refresh_invoice_status(inv: Invoice) -> None:
@@ -199,12 +304,15 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
         invoice = get_or_404(db, Invoice, payload.invoice_id, org_id, "Invoice")
         if invoice.customer_id != customer.id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invoice belongs to a different customer")
-        if invoice.status not in ("sent", "partially_paid"):
+        if invoice.status not in _PAYABLE_INVOICE_STATUSES:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, f"Payments can only be applied to sent invoices (current status: {invoice.status})"
             )
         if amount > money(invoice.balance_due):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the invoice balance of {invoice.balance_due}")
+        # The checks above are a friendly early answer; this is the one that
+        # holds under concurrency. It must run first, before anything is posted.
+        _apply_invoice_payment(db, invoice, amount)
     payment = CustomerPayment(
         organization_id=org_id,
         payment_number=numbering.next_number(db, org_id, "customer_payment"),
@@ -221,9 +329,11 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
     db.add(payment)
     db.flush()
 
-    ar = get_account_by_code(db, org_id, "1100")
-    unearned = get_account_by_code(db, org_id, "2400")
-    credit_account = ar.id if invoice else unearned.id  # unapplied payments sit as customer advances
+    if invoice:
+        # Clear the same receivables account the invoice was posted to.
+        credit_account = _receivable_account_id(db, org_id, customer)
+    else:
+        credit_account = get_account_by_code(db, org_id, "2400").id  # unapplied payments sit as customer advances
     desc = f"Payment {payment.payment_number} from {customer.display_name}" + (f" for {invoice.invoice_number}" if invoice else "")
     entry = ledger.post_entry(
         db,
@@ -250,9 +360,6 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
         entry.id,
     )
 
-    if invoice:
-        invoice.amount_paid = money(invoice.amount_paid) + amount
-        _refresh_invoice_status(invoice)
     audit.record(db, user, "create", "customer_payment", payment.id, desc)
     db.commit()
     db.refresh(payment)
@@ -262,12 +369,27 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
 @router.delete("/customer-payments/{payment_id}", response_model=Message)
 def delete_customer_payment(payment_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
     payment = get_or_404(db, CustomerPayment, payment_id, user.organization_id, "Payment")
+    number = payment.payment_number
     ledger.reverse_entries_for_source(db, user.organization_id, "customer_payment", payment.id, date.today(), user.id, "Payment deleted")
+    # Removing a receipt takes its deposit back out of the account; a cash
+    # drawer cannot go below zero (same rule as paying out of it). Checked
+    # while the deposit is still counted, after the first write above.
+    _check_cash_withdrawal(db, payment.bank_account, money(payment.amount))
     bank.remove_movements(db, "customer_payment", payment.id)
     if payment.invoice:
-        payment.invoice.amount_paid = money(payment.invoice.amount_paid) - money(payment.amount)
-        _refresh_invoice_status(payment.invoice)
-    number = payment.payment_number
+        _remove_invoice_payment(db, payment.invoice, money(payment.amount))
+    # A payment recorded from an approved external payment is still referenced
+    # by it (foreign key). Unlink it and mark the external payment reversed so
+    # its history stays visible and the same UTR can be recorded again.
+    for ext in db.execute(
+        select(ExternalPayment).where(
+            ExternalPayment.organization_id == user.organization_id, ExternalPayment.customer_payment_id == payment.id
+        )
+    ).scalars():
+        ext.customer_payment_id = None
+        ext.status = "reversed"
+        ext.rejection_reason = f"Recorded payment {number} was deleted by {user.name}"
+    db.flush()
     db.delete(payment)
     audit.record(db, user, "delete", "customer_payment", payment_id, f"Deleted payment {number}")
     db.commit()
@@ -324,9 +446,10 @@ def send_customer_payment_receipt_gmail(
         custom_notes=payload.custom_notes,
         pdf_bytes=pdf_bytes,
         pdf_filename=f"Receipt_{payment.payment_number}.pdf",
+        company_name=org.name if org else None,
     )
     if not result.get("success"):
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Gmail SMTP error: {result.get('error')}")
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, result.get("error"))
     audit.record(db, user, "email", "customer_payment", payment.id, f"Emailed receipt {payment.payment_number} to {payload.to_email}")
     db.commit()
     return result
@@ -457,10 +580,12 @@ def create_vendor_payment(payload: VendorPaymentCreate, user: User = Depends(req
         bill = get_or_404(db, Bill, payload.bill_id, org_id, "Bill")
         if bill.vendor_id != vendor.id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Bill belongs to a different vendor")
-        if bill.status not in ("open", "partially_paid"):
+        if bill.status not in _PAYABLE_BILL_STATUSES:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payments can only be applied to open bills (current status: {bill.status})")
         if amount > money(bill.balance_due):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the bill balance of {bill.balance_due}")
+        # Authoritative, race-free check-and-apply; runs before anything is posted.
+        _apply_bill_payment(db, bill, amount)
     payment = VendorPayment(
         organization_id=org_id,
         payment_number=numbering.next_number(db, org_id, "vendor_payment"),
@@ -477,9 +602,11 @@ def create_vendor_payment(payload: VendorPaymentCreate, user: User = Depends(req
     db.add(payment)
     db.flush()
 
-    ap = get_account_by_code(db, org_id, "2000")
-    prepaid = get_account_by_code(db, org_id, "1400")
-    debit_account = ap.id if bill else prepaid.id  # advances to vendors
+    if bill:
+        # Clear the same payables account the bill was posted to.
+        debit_account = _payable_account_id(db, org_id, vendor)
+    else:
+        debit_account = get_account_by_code(db, org_id, "1400").id  # advances to vendors
     desc = f"Payment {payment.payment_number} to {vendor.display_name}" + (f" for {bill.bill_number}" if bill else "")
     entry = ledger.post_entry(
         db,
@@ -491,7 +618,8 @@ def create_vendor_payment(payload: VendorPaymentCreate, user: User = Depends(req
         reference=payment.reference or payment.payment_number,
         created_by=user.id,
     )
-    bank.check_cash_overdraft(db, bank_acct, amount)
+    # After the first write, so on SQLite this request already holds the lock.
+    _check_cash_withdrawal(db, bank_acct, amount)
     bank.record_movement(
         db,
         bank_acct,
@@ -507,9 +635,6 @@ def create_vendor_payment(payload: VendorPaymentCreate, user: User = Depends(req
         entry.id,
     )
 
-    if bill:
-        bill.amount_paid = money(bill.amount_paid) + amount
-        _refresh_bill_status(bill)
     audit.record(db, user, "create", "vendor_payment", payment.id, desc)
     db.commit()
     db.refresh(payment)
@@ -522,8 +647,7 @@ def delete_vendor_payment(payment_id: str, user: User = Depends(require_write), 
     ledger.reverse_entries_for_source(db, user.organization_id, "vendor_payment", payment.id, date.today(), user.id, "Payment deleted")
     bank.remove_movements(db, "vendor_payment", payment.id)
     if payment.bill:
-        payment.bill.amount_paid = money(payment.bill.amount_paid) - money(payment.amount)
-        _refresh_bill_status(payment.bill)
+        _remove_bill_payment(db, payment.bill, money(payment.amount))
     number = payment.payment_number
     db.delete(payment)
     audit.record(db, user, "delete", "vendor_payment", payment_id, f"Deleted payment {number}")
@@ -581,9 +705,10 @@ def send_vendor_payment_remittance_gmail(
         custom_notes=payload.custom_notes,
         pdf_bytes=pdf_bytes,
         pdf_filename=f"Remittance_{payment.payment_number}.pdf",
+        company_name=org.name if org else None,
     )
     if not result.get("success"):
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Gmail SMTP error: {result.get('error')}")
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, result.get("error"))
     audit.record(db, user, "email", "vendor_payment", payment.id, f"Emailed remittance {payment.payment_number} to {payload.to_email}")
     db.commit()
     return result
@@ -592,26 +717,33 @@ def send_vendor_payment_remittance_gmail(
 # --------------------------------------------------------------------------- #
 # External Payments & Gmail SMTP YES/NO Confirmation Flow
 # --------------------------------------------------------------------------- #
+# A confirmation link is good for this long after the payment was received.
+CONFIRM_TOKEN_TTL = timedelta(hours=72)
+
+
 class IncomingExternalPayment(APIModel):
-    platform: str = "upi"
-    external_transaction_id: str
-    amount: Decimal
-    currency: str = "INR"
-    payer_name: Optional[str] = None
-    payer_email: Optional[str] = None
-    payer_phone: Optional[str] = None
-    invoice_id: Optional[str] = None
-    invoice_number: Optional[str] = None
-    customer_id: Optional[str] = None
-    bank_account_id: Optional[str] = None
-    organization_id: Optional[str] = None
-    notes: Optional[str] = None
+    # The organization comes from the signed-in user, the confirmation email
+    # goes to that organization's admins and its links point at the configured
+    # app URL - none of these are taken from the request body any more (extra
+    # fields such as organizationId, recipientEmail or baseUrl are ignored).
+    platform: str = Field(default="upi", min_length=1, max_length=50)
+    external_transaction_id: str = Field(min_length=1, max_length=100)
+    amount: Decimal = Field(gt=0, le=MAX_MONEY)
+    currency: str = Field(default="INR", min_length=3, max_length=3)
+    payer_name: Optional[str] = Field(default=None, max_length=120)
+    payer_email: Optional[str] = Field(default=None, max_length=120)
+    payer_phone: Optional[str] = Field(default=None, max_length=40)
+    invoice_id: Optional[str] = Field(default=None, max_length=32)
+    invoice_number: Optional[str] = Field(default=None, max_length=30)
+    customer_id: Optional[str] = Field(default=None, max_length=32)
+    bank_account_id: Optional[str] = Field(default=None, max_length=32)
+    notes: Optional[str] = Field(default=None, max_length=2000)
     raw_payload: Optional[Dict[str, Any]] = None
-    recipient_email: Optional[str] = None
-    base_url: Optional[str] = None
 
 
 class ExternalPaymentOut(APIModel):
+    # approval_token is deliberately absent: it is the secret that approves
+    # the payment and must only ever travel inside the confirmation email.
     id: str
     platform: str
     external_transaction_id: str
@@ -624,7 +756,6 @@ class ExternalPaymentOut(APIModel):
     customer_id: Optional[str] = None
     bank_account_id: Optional[str] = None
     status: str
-    approval_token: str
     approved_at: Optional[datetime] = None
     approved_by: Optional[str] = None
     rejection_reason: Optional[str] = None
@@ -648,7 +779,6 @@ def ext_out(p: ExternalPayment) -> ExternalPaymentOut:
         customer_id=p.customer_id,
         bank_account_id=p.bank_account_id,
         status=p.status,
-        approval_token=p.approval_token,
         approved_at=p.approved_at,
         approved_by=p.approved_by,
         rejection_reason=p.rejection_reason,
@@ -659,29 +789,154 @@ def ext_out(p: ExternalPayment) -> ExternalPaymentOut:
     )
 
 
+def _token_expired(ext_pay: ExternalPayment) -> bool:
+    created = ext_pay.created_at
+    if created is None:
+        return True
+    if created.tzinfo is None:  # SQLite hands back naive UTC datetimes
+        created = created.replace(tzinfo=UTC)
+    return datetime.now(UTC) - created > CONFIRM_TOKEN_TTL
+
+
+def _confirmation_recipients(db: Session, org_id: str) -> List[str]:
+    """Who approves external payments: the organization's own active admins,
+    falling back to the organization's contact email."""
+    emails = (
+        db.execute(
+            select(User.email)
+            .where(
+                User.organization_id == org_id,
+                User.role == ROLE_ADMIN,
+                User.is_active.is_(True),
+                User.password_hash.is_not(None),  # skip invites nobody has accepted yet
+            )
+            .order_by(User.created_at)
+        )
+        .scalars()
+        .all()
+    )
+    recipients = list(dict.fromkeys(e for e in emails if e))
+    if not recipients:
+        org = db.get(Organization, org_id)
+        if org and org.email:
+            recipients = [org.email]
+    return recipients
+
+
+def _confirmation_base_url() -> str:
+    # The web app proxies /api to this backend, so the configured app origin
+    # serves the confirm links - never a host taken from the request.
+    return get_settings().frontend_url.rstrip("/")
+
+
+def _send_confirmation_requests(db: Session, ext_pay: ExternalPayment) -> Dict[str, Any]:
+    recipients = _confirmation_recipients(db, ext_pay.organization_id)
+    if not recipients:
+        return {"success": False, "recipients": [], "error": "This organization has no admin email address to send the confirmation to"}
+    org = db.get(Organization, ext_pay.organization_id)
+    sent: List[str] = []
+    error: Optional[str] = None
+    for recipient in recipients:
+        result = send_payment_confirmation_request_email(
+            to_email=recipient,
+            payment_id=ext_pay.id,
+            platform=ext_pay.platform,
+            amount=float(ext_pay.amount),
+            currency=ext_pay.currency,
+            external_transaction_id=ext_pay.external_transaction_id,
+            approval_token=ext_pay.approval_token,
+            payer_name=ext_pay.payer_name,
+            payer_email=ext_pay.payer_email,
+            invoice_number=ext_pay.invoice.invoice_number if ext_pay.invoice else None,
+            base_url=_confirmation_base_url(),
+            company_name=org.name if org else None,
+        )
+        if result.get("success"):
+            sent.append(recipient)
+        else:
+            error = result.get("error")
+    return {"success": bool(sent), "recipients": sent or recipients, "error": None if sent else error}
+
+
+def _check_duplicate_external(db: Session, org_id: str, platform: str, txn_id: str, exclude_id: Optional[str], statuses) -> None:
+    stmt = select(ExternalPayment.id).where(
+        ExternalPayment.organization_id == org_id,
+        ExternalPayment.platform == platform,
+        ExternalPayment.external_transaction_id == txn_id,
+        ExternalPayment.status.in_(statuses),
+    )
+    if exclude_id:
+        stmt = stmt.where(ExternalPayment.id != exclude_id)
+    if db.execute(stmt).first():
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"A {platform.upper()} payment with transaction reference {txn_id} has already been recorded"
+        )
+
+
 def process_approved_external_payment(
     db: Session,
     ext_pay: ExternalPayment,
     approved_by: str = "Gmail SMTP Confirmation",
 ) -> CustomerPayment:
+    """Record an external payment in the books.
+
+    Applies the same rules as create_customer_payment and raises HTTPException
+    (leaving the caller to roll back) when the payment cannot be recorded.
+    """
     org_id = ext_pay.organization_id
 
-    # 1. Resolve Customer
+    # 0. Claim the payment. Only one request can move it out of
+    # pending_confirmation, so two clicks on YES cannot both post it. This is
+    # also the transaction's first write, which serialises the checks below.
+    claimed = db.execute(
+        update(ExternalPayment)
+        .where(ExternalPayment.id == ext_pay.id, ExternalPayment.status == "pending_confirmation")
+        .values(status="approved")
+        .execution_options(synchronize_session=False)
+    ).rowcount
+    if claimed != 1:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This payment has already been processed")
+
+    amount = money(ext_pay.amount)
+    if amount <= 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Payment amount must be greater than zero")
+    _check_duplicate_external(db, org_id, ext_pay.platform, ext_pay.external_transaction_id, ext_pay.id, ("approved",))
+
+    # 1. Resolve the invoice (always within this organization)
+    invoice = None
+    if ext_pay.invoice_id:
+        invoice = db.get(Invoice, ext_pay.invoice_id)
+        if invoice is None or invoice.organization_id != org_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "The invoice this payment was matched to no longer exists")
+
+    # 2. Resolve Customer
     customer = None
     if ext_pay.customer_id:
         customer = db.get(Contact, ext_pay.customer_id)
-    if not customer and ext_pay.invoice_id:
-        inv = db.get(Invoice, ext_pay.invoice_id)
-        if inv:
-            customer = db.get(Contact, inv.customer_id)
+        if customer is None or customer.organization_id != org_id or customer.type != "customer":
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "The customer this payment was matched to no longer exists")
+    if not customer and invoice:
+        customer = invoice.customer
+    if invoice and customer and invoice.customer_id != customer.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invoice belongs to a different customer")
     if not customer and ext_pay.payer_email:
-        customer = db.execute(
-            select(Contact).where(Contact.organization_id == org_id, Contact.email == ext_pay.payer_email)
-        ).scalar_one_or_none()
+        customer = (
+            db.execute(
+                select(Contact).where(Contact.organization_id == org_id, Contact.type == "customer", Contact.email == ext_pay.payer_email)
+            )
+            .scalars()
+            .first()
+        )
     if not customer and ext_pay.payer_name:
-        customer = db.execute(
-            select(Contact).where(Contact.organization_id == org_id, Contact.display_name == ext_pay.payer_name)
-        ).scalar_one_or_none()
+        customer = (
+            db.execute(
+                select(Contact).where(
+                    Contact.organization_id == org_id, Contact.type == "customer", Contact.display_name == ext_pay.payer_name
+                )
+            )
+            .scalars()
+            .first()
+        )
     if not customer:
         customer = Contact(
             organization_id=org_id,
@@ -693,13 +948,24 @@ def process_approved_external_payment(
         db.add(customer)
         db.flush()
 
-    # 2. Resolve Bank Account
+    # 3. Apply to the invoice atomically before anything is posted (status
+    # must be sent/partially_paid and the amount must fit the balance).
+    if invoice:
+        _apply_invoice_payment(db, invoice, amount)
+
+    # 4. Resolve Bank Account
     bank_acct = None
     if ext_pay.bank_account_id:
         bank_acct = db.get(BankAccount, ext_pay.bank_account_id)
+        if bank_acct is not None and bank_acct.organization_id != org_id:
+            bank_acct = None
     if not bank_acct:
         bank_acct = (
-            db.execute(select(BankAccount).where(BankAccount.organization_id == org_id).order_by(BankAccount.is_active.desc()))
+            db.execute(
+                select(BankAccount)
+                .where(BankAccount.organization_id == org_id)
+                .order_by(BankAccount.is_active.desc(), BankAccount.is_primary.desc())
+            )
             .scalars()
             .first()
         )
@@ -721,14 +987,7 @@ def process_approved_external_payment(
         db.add(bank_acct)
         db.flush()
 
-    amount = money(ext_pay.amount)
-    invoice = None
-    if ext_pay.invoice_id:
-        invoice = db.get(Invoice, ext_pay.invoice_id)
-        if invoice and invoice.organization_id != org_id:
-            invoice = None
-
-    # 3. Create Internal CustomerPayment
+    # 5. Create Internal CustomerPayment
     payment = CustomerPayment(
         organization_id=org_id,
         payment_number=numbering.next_number(db, org_id, "customer_payment"),
@@ -745,10 +1004,11 @@ def process_approved_external_payment(
     db.add(payment)
     db.flush()
 
-    # 4. Post Ledger & Bank Movement
-    ar = get_account_by_code(db, org_id, "1100")
-    unearned = get_account_by_code(db, org_id, "2400")
-    credit_account = ar.id if invoice else unearned.id
+    # 6. Post Ledger & Bank Movement
+    if invoice:
+        credit_account = _receivable_account_id(db, org_id, customer)
+    else:
+        credit_account = get_account_by_code(db, org_id, "2400").id
     desc = f"Payment {payment.payment_number} ({ext_pay.platform.upper()}) from {customer.display_name}" + (
         f" for {invoice.invoice_number}" if invoice else ""
     )
@@ -777,11 +1037,7 @@ def process_approved_external_payment(
         entry.id,
     )
 
-    if invoice:
-        invoice.amount_paid = money(invoice.amount_paid) + amount
-        _refresh_invoice_status(invoice)
-
-    # 5. Mark ExternalPayment as approved
+    # 7. Mark ExternalPayment as approved
     ext_pay.status = "approved"
     ext_pay.approved_at = datetime.now(UTC)
     ext_pay.approved_by = approved_by
@@ -800,58 +1056,58 @@ def process_approved_external_payment(
 @router.post("/payments/external/incoming", status_code=status.HTTP_201_CREATED)
 def receive_external_payment(
     payload: IncomingExternalPayment,
-    request: Request,
+    user: User = Depends(require_write),
     db: Session = Depends(get_db),
 ):
     """Universal intake endpoint for payments from ANY outside platform (UPI, bank transfer, card gateway, wallet, etc.).
-    Records payment in pending confirmation state and dispatches confirmation email via Gmail SMTP.
+    Records payment in pending confirmation state and emails the organization's admins a YES/NO confirmation.
     """
-    # 1. Resolve Organization
-    org_id = payload.organization_id
-    invoice = None
-    if not org_id and payload.invoice_id:
-        invoice = db.get(Invoice, payload.invoice_id)
-        if invoice:
-            org_id = invoice.organization_id
-    if not org_id and payload.invoice_number:
-        invoice = db.execute(select(Invoice).where(Invoice.invoice_number == payload.invoice_number)).scalar_one_or_none()
-        if invoice:
-            org_id = invoice.organization_id
-    if not org_id and payload.customer_id:
-        cust = db.get(Contact, payload.customer_id)
-        if cust:
-            org_id = cust.organization_id
-    if not org_id:
-        org = db.execute(select(Organization)).scalars().first()
-        if org:
-            org_id = org.id
-        else:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "No active organization found in database")
+    org_id = user.organization_id
+    platform = payload.platform.strip().lower()
+    amount = money(payload.amount)
 
-    # Match invoice if provided
-    if not invoice and payload.invoice_id:
-        invoice = db.get(Invoice, payload.invoice_id)
-    if not invoice and payload.invoice_number:
+    invoice = None
+    if payload.invoice_id:
+        invoice = get_or_404(db, Invoice, payload.invoice_id, org_id, "Invoice")
+    elif payload.invoice_number:
         invoice = db.execute(
             select(Invoice).where(Invoice.organization_id == org_id, Invoice.invoice_number == payload.invoice_number)
         ).scalar_one_or_none()
-
-    approval_token = secrets.token_urlsafe(32)
+        if invoice is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+    customer = None
+    if payload.customer_id:
+        customer = get_or_404(db, Contact, payload.customer_id, org_id, "Customer")
+        if customer.type != "customer":
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selected contact is not a customer")
+    if payload.bank_account_id:
+        get_or_404(db, BankAccount, payload.bank_account_id, org_id, "Bank account")
+    if invoice:
+        if customer and invoice.customer_id != customer.id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invoice belongs to a different customer")
+        if invoice.status not in _PAYABLE_INVOICE_STATUSES:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, f"Payments can only be applied to sent invoices (current status: {invoice.status})"
+            )
+        if amount > money(invoice.balance_due):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the invoice balance of {invoice.balance_due}")
+    # The same UTR cannot be pending or recorded twice for one platform.
+    _check_duplicate_external(db, org_id, platform, payload.external_transaction_id, None, ("pending_confirmation", "approved"))
 
     ext_payment = ExternalPayment(
         organization_id=org_id,
-        platform=payload.platform.lower(),
+        platform=platform,
         external_transaction_id=payload.external_transaction_id,
-        amount=money(payload.amount),
-        currency=payload.currency or "INR",
+        amount=amount,
+        currency=(payload.currency or "INR").upper(),
         payer_name=payload.payer_name or (invoice.customer.display_name if invoice and invoice.customer else None),
         payer_email=payload.payer_email or (invoice.customer.email if invoice and invoice.customer else None),
         payer_phone=payload.payer_phone,
         invoice_id=invoice.id if invoice else None,
-        customer_id=payload.customer_id or (invoice.customer_id if invoice else None),
+        customer_id=customer.id if customer else (invoice.customer_id if invoice else None),
         bank_account_id=payload.bank_account_id,
         status="pending_confirmation",
-        approval_token=approval_token,
+        approval_token=secrets.token_urlsafe(32),
         raw_payload=json.dumps(payload.raw_payload) if payload.raw_payload else None,
         notes=payload.notes,
     )
@@ -859,28 +1115,13 @@ def receive_external_payment(
     db.commit()
     db.refresh(ext_payment)
 
-    base_url = payload.base_url
-    if not base_url:
-        req_base = str(request.base_url).rstrip("/")
-        base_url = req_base if req_base else "http://localhost:8000"
-
-    recipient = payload.recipient_email or sender_identity()[1]
-    email_result = send_payment_confirmation_request_email(
-        to_email=recipient,
-        payment_id=ext_payment.id,
-        platform=ext_payment.platform,
-        amount=float(ext_payment.amount),
-        currency=ext_payment.currency,
-        external_transaction_id=ext_payment.external_transaction_id,
-        approval_token=ext_payment.approval_token,
-        payer_name=ext_payment.payer_name,
-        payer_email=ext_payment.payer_email,
-        invoice_number=invoice.invoice_number if invoice else None,
-        base_url=base_url,
+    email_result = _send_confirmation_requests(db, ext_payment)
+    recipient_label = ", ".join(email_result["recipients"])[:120] or None
+    ext_payment.confirmation_email_sent = email_result["success"]
+    ext_payment.confirmation_email_recipient = recipient_label
+    audit.record(
+        db, user, "create", "external_payment", ext_payment.id, f"External {platform.upper()} payment {ext_payment.external_transaction_id}"
     )
-
-    ext_payment.confirmation_email_sent = email_result.get("success", False)
-    ext_payment.confirmation_email_recipient = recipient
     db.commit()
 
     return {
@@ -891,179 +1132,197 @@ def receive_external_payment(
         "external_transaction_id": ext_payment.external_transaction_id,
         "amount": float(ext_payment.amount),
         "status": ext_payment.status,
-        "approval_token": ext_payment.approval_token,
         "email_dispatched": ext_payment.confirmation_email_sent,
-        "email_recipient": recipient,
-        "email_details": email_result,
+        "email_recipient": recipient_label,
+        "email_error": email_result["error"],
     }
+
+
+_PAGE_STYLE = (
+    "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f8fafc;"
+    "padding:40px;display:flex;justify-content:center;}"
+    ".card{background:#fff;padding:32px;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.1);max-width:500px;text-align:center;}"
+)
+
+
+def _simple_page(title: str, heading: str, message: str, color: str, status_code: int = 200) -> HTMLResponse:
+    """Small result page. `message` must already be HTML-safe."""
+    return HTMLResponse(
+        status_code=status_code,
+        content=(
+            f'<!DOCTYPE html><html><head><meta charset="utf-8"><title>{html.escape(title)}</title><style>{_PAGE_STYLE}</style></head>'
+            f'<body><div class="card"><h2 style="color:{color};">{html.escape(heading)}</h2><p>{message}</p></div></body></html>'
+        ),
+    )
+
+
+def _result_page(title: str, heading: str, subtitle: str, icon: str, color: str, rows: List[tuple], footer: str) -> HTMLResponse:
+    """The full approved/rejected card. Every value is escaped here."""
+    row_html = "".join(
+        f"""
+      <div class="info-row">
+        <span class="info-lbl">{html.escape(label)}</span>
+        <span class="info-val"{f' style="{style}"' if style else ""}>{html.escape(str(value))}</span>
+      </div>"""
+        for label, value, style in rows
+    )
+    return HTMLResponse(
+        content=f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{html.escape(title)}</title>
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #0f172a; margin: 0; padding: 40px 16px; color: #1e293b; display: flex; justify-content: center; align-items: center; min-height: 80vh; }}
+    .card {{ background: #ffffff; max-width: 520px; width: 100%; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3); overflow: hidden; text-align: center; }}
+    .status-header {{ background: {color}; color: white; padding: 32px 24px; }}
+    .icon {{ font-size: 48px; margin-bottom: 8px; }}
+    .status-title {{ font-size: 24px; font-weight: 800; margin: 0; }}
+    .status-subtitle {{ font-size: 14px; opacity: 0.9; margin: 6px 0 0 0; }}
+    .body-content {{ padding: 32px 24px; text-align: left; }}
+    .info-row {{ display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f1f5f9; font-size: 14px; }}
+    .info-lbl {{ color: #64748b; font-weight: 500; }}
+    .info-val {{ color: #0f172a; font-weight: 700; }}
+    .footer-note {{ background: #f8fafc; padding: 16px 24px; font-size: 13px; color: #64748b; text-align: center; border-top: 1px solid #e2e8f0; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="status-header">
+      <div class="icon">{icon}</div>
+      <h1 class="status-title">{html.escape(heading)}</h1>
+      <p class="status-subtitle">{html.escape(subtitle)}</p>
+    </div>
+    <div class="body-content">{row_html}
+    </div>
+    <div class="footer-note">
+      {html.escape(footer)}
+    </div>
+  </div>
+</body>
+</html>
+"""
+    )
 
 
 @router.get("/payments/external/confirm", response_class=HTMLResponse)
 def confirm_external_payment_from_email(
-    token: str = Query(..., description="Approval token from Gmail confirmation email"),
-    decision: str = Query(..., description="yes or no"),
+    token: str = Query(..., max_length=128, description="Approval token from Gmail confirmation email"),
+    decision: str = Query(..., max_length=10, description="yes or no"),
     db: Session = Depends(get_db),
 ):
-    """Processes 1-click YES or NO confirmation directly from the Gmail SMTP email."""
+    """Processes 1-click YES or NO confirmation directly from the Gmail SMTP email.
+
+    Unauthenticated by design: the unguessable token, sent only to the
+    organization's admins, is the credential. A token decides a payment once
+    (the status change is atomic) and stops working CONFIRM_TOKEN_TTL after the
+    payment was received.
+    """
     ext_pay = db.execute(select(ExternalPayment).where(ExternalPayment.approval_token == token)).scalar_one_or_none()
 
     if not ext_pay:
-        return HTMLResponse(
-            status_code=404,
-            content="""<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;">
-            <h2 style="color:#ef4444;">Invalid or Expired Link</h2>
-            <p>The payment confirmation token was not found or has expired.</p>
-            </body></html>""",
+        return _simple_page(
+            "Invalid Link", "Invalid or Expired Link", "The payment confirmation token was not found or has expired.", "#ef4444", 404
         )
 
+    org = db.get(Organization, ext_pay.organization_id)
+    desk = f"{org.name if org else get_settings().smtp_sender_name} Accounts Desk"
     formatted_amount = f"₹{ext_pay.amount:,.2f}" if ext_pay.currency == "INR" else f"{ext_pay.currency} {ext_pay.amount:,.2f}"
+    platform = (ext_pay.platform or "").upper()
+    txn = ext_pay.external_transaction_id
     decision_clean = decision.strip().lower()
 
+    if decision_clean not in ("yes", "no"):
+        return _simple_page("Invalid Decision", "Invalid Decision", "Expected decision=yes or decision=no.", "#0f172a", 400)
+
+    if ext_pay.status == "approved":
+        if decision_clean == "yes":
+            return _simple_page(
+                "Already Approved",
+                "Payment Already Approved",
+                f"This {html.escape(platform)} transaction of <strong>{html.escape(formatted_amount)}</strong> "
+                f"(Ref: {html.escape(txn)}) has already been approved and recorded in Rooman Books.",
+                "#16a34a",
+            )
+        return _simple_page(
+            "Cannot Reject", "Cannot Reject", "This payment has already been approved and committed to the financial ledger.", "#ef4444"
+        )
+    if ext_pay.status == "rejected":
+        if decision_clean == "yes":
+            return _simple_page(
+                "Previously Rejected", "Payment Previously Rejected", "This transaction was already marked as rejected.", "#dc2626"
+            )
+        return _simple_page("Already Rejected", "Payment Already Rejected", "This transaction was already marked as rejected.", "#dc2626")
+    if ext_pay.status != "pending_confirmation":
+        return _simple_page(
+            "Link No Longer Valid", "Link No Longer Valid", "This payment is no longer awaiting confirmation.", "#64748b", 410
+        )
+    if _token_expired(ext_pay):
+        hours = int(CONFIRM_TOKEN_TTL.total_seconds() // 3600)
+        return _simple_page(
+            "Link Expired",
+            "Confirmation Link Expired",
+            f"Confirmation links are valid for {hours} hours. Record this payment from Rooman Books instead.",
+            "#ef4444",
+            410,
+        )
+
     if decision_clean == "yes":
-        if ext_pay.status == "approved":
-            return HTMLResponse(
-                content=f"""<!DOCTYPE html><html><head><title>Already Approved</title><style>body{{font-family:sans-serif;background:#f8fafc;padding:40px;display:flex;justify-content:center;}}.card{{background:#fff;padding:32px;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.1);max-width:500px;text-align:center;}}</style></head><body><div class="card"><h2 style="color:#16a34a;">Payment Already Approved</h2><p>This {ext_pay.platform.upper()} transaction of <strong>{formatted_amount}</strong> (Ref: {ext_pay.external_transaction_id}) has already been approved and recorded in Rooman Books.</p></div></body></html>"""
-            )
-        if ext_pay.status == "rejected":
-            return HTMLResponse(
-                content="""<!DOCTYPE html><html><head><title>Previously Rejected</title><style>body{font-family:sans-serif;background:#f8fafc;padding:40px;display:flex;justify-content:center;}.card{background:#fff;padding:32px;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.1);max-width:500px;text-align:center;}</style></head><body><div class="card"><h2 style="color:#dc2626;">Payment Previously Rejected</h2><p>This transaction was already marked as rejected.</p></div></body></html>"""
-            )
+        try:
+            cust_payment = process_approved_external_payment(db, ext_pay, approved_by="Gmail SMTP 1-Click Action")
+        except HTTPException as exc:
+            db.rollback()
+            if exc.status_code == status.HTTP_409_CONFLICT and "already been processed" in str(exc.detail):
+                db.refresh(ext_pay)
+                return _simple_page(
+                    "Already Processed", "Payment Already Processed", f"This payment is already {html.escape(ext_pay.status)}.", "#64748b"
+                )
+            return _simple_page("Cannot Approve", "Payment Could Not Be Recorded", html.escape(str(exc.detail)), "#dc2626", exc.status_code)
 
-        cust_payment = process_approved_external_payment(db, ext_pay, approved_by="Gmail SMTP 1-Click Action")
-
-        return HTMLResponse(
-            content=f"""<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Payment Approved - Rooman Books</title>
-  <style>
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #0f172a; margin: 0; padding: 40px 16px; color: #1e293b; display: flex; justify-content: center; align-items: center; min-height: 80vh; }}
-    .card {{ background: #ffffff; max-width: 520px; width: 100%; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3); overflow: hidden; text-align: center; }}
-    .status-header {{ background: #16a34a; color: white; padding: 32px 24px; }}
-    .icon {{ font-size: 48px; margin-bottom: 8px; }}
-    .status-title {{ font-size: 24px; font-weight: 800; margin: 0; }}
-    .status-subtitle {{ font-size: 14px; opacity: 0.9; margin: 6px 0 0 0; }}
-    .body-content {{ padding: 32px 24px; text-align: left; }}
-    .info-row {{ display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f1f5f9; font-size: 14px; }}
-    .info-lbl {{ color: #64748b; font-weight: 500; }}
-    .info-val {{ color: #0f172a; font-weight: 700; }}
-    .footer-note {{ background: #f8fafc; padding: 16px 24px; font-size: 13px; color: #64748b; text-align: center; border-top: 1px solid #e2e8f0; }}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="status-header">
-      <div class="icon">✅</div>
-      <h1 class="status-title">Payment Approved & Recorded</h1>
-      <p class="status-subtitle">Transaction successfully confirmed into Rooman Books</p>
-    </div>
-    <div class="body-content">
-      <div class="info-row">
-        <span class="info-lbl">Amount Confirmed:</span>
-        <span class="info-val" style="color: #16a34a; font-size: 16px;">{formatted_amount}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-lbl">Origin Platform:</span>
-        <span class="info-val">{ext_pay.platform.upper()}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-lbl">Transaction Ref / UTR:</span>
-        <span class="info-val"><code>{ext_pay.external_transaction_id}</code></span>
-      </div>
-      <div class="info-row">
-        <span class="info-lbl">Rooman Voucher #:</span>
-        <span class="info-val">{cust_payment.payment_number}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-lbl">General Ledger:</span>
-        <span class="info-val" style="color: #2563eb;">Posted (Bank & Accounts Updated)</span>
-      </div>
-    </div>
-    <div class="footer-note">
-      Confirmed via Gmail SMTP &bull; Rooman Technologies Accounts Desk
-    </div>
-  </div>
-</body>
-</html>
-"""
+        return _result_page(
+            "Payment Approved - Rooman Books",
+            "Payment Approved & Recorded",
+            "Transaction successfully confirmed into Rooman Books",
+            "✅",
+            "#16a34a",
+            [
+                ("Amount Confirmed:", formatted_amount, "color: #16a34a; font-size: 16px;"),
+                ("Origin Platform:", platform, ""),
+                ("Transaction Ref / UTR:", txn, ""),
+                ("Rooman Voucher #:", cust_payment.payment_number, ""),
+                ("General Ledger:", "Posted (Bank & Accounts Updated)", "color: #2563eb;"),
+            ],
+            f"Confirmed via Gmail SMTP • {desk}",
         )
 
-    elif decision_clean == "no":
-        if ext_pay.status == "rejected":
-            return HTMLResponse(
-                content="""<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;"><h2 style="color:#dc2626;">Payment Already Rejected</h2><p>This transaction was already marked as rejected.</p></body></html>"""
-            )
-        if ext_pay.status == "approved":
-            return HTMLResponse(
-                content="""<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;"><h2 style="color:#ef4444;">Cannot Reject</h2><p>This payment has already been approved and committed to the financial ledger.</p></body></html>"""
-            )
-
-        ext_pay.status = "rejected"
-        ext_pay.rejection_reason = "Rejected via Gmail SMTP confirmation link"
-        db.commit()
-
-        return HTMLResponse(
-            content=f"""<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Payment Rejected - Rooman Books</title>
-  <style>
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #0f172a; margin: 0; padding: 40px 16px; color: #1e293b; display: flex; justify-content: center; align-items: center; min-height: 80vh; }}
-    .card {{ background: #ffffff; max-width: 520px; width: 100%; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3); overflow: hidden; text-align: center; }}
-    .status-header {{ background: #dc2626; color: white; padding: 32px 24px; }}
-    .icon {{ font-size: 48px; margin-bottom: 8px; }}
-    .status-title {{ font-size: 24px; font-weight: 800; margin: 0; }}
-    .status-subtitle {{ font-size: 14px; opacity: 0.9; margin: 6px 0 0 0; }}
-    .body-content {{ padding: 32px 24px; text-align: left; }}
-    .info-row {{ display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f1f5f9; font-size: 14px; }}
-    .info-lbl {{ color: #64748b; font-weight: 500; }}
-    .info-val {{ color: #0f172a; font-weight: 700; }}
-    .footer-note {{ background: #f8fafc; padding: 16px 24px; font-size: 13px; color: #64748b; text-align: center; border-top: 1px solid #e2e8f0; }}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="status-header">
-      <div class="icon">❌</div>
-      <h1 class="status-title">Payment Rejected & Discarded</h1>
-      <p class="status-subtitle">Transaction has been marked as rejected</p>
-    </div>
-    <div class="body-content">
-      <div class="info-row">
-        <span class="info-lbl">Amount Discarded:</span>
-        <span class="info-val">{formatted_amount}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-lbl">Platform:</span>
-        <span class="info-val">{ext_pay.platform.upper()}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-lbl">Transaction Ref / UTR:</span>
-        <span class="info-val"><code>{ext_pay.external_transaction_id}</code></span>
-      </div>
-      <div class="info-row">
-        <span class="info-lbl">Status:</span>
-        <span class="info-val" style="color: #dc2626;">Rejected</span>
-      </div>
-      <div class="info-row">
-        <span class="info-lbl">Books Impact:</span>
-        <span class="info-val">No ledger entries posted</span>
-      </div>
-    </div>
-    <div class="footer-note">
-      Rejected via Gmail SMTP &bull; Rooman Technologies Accounts Desk
-    </div>
-  </div>
-</body>
-</html>
-"""
+    # decision == "no": atomic, so it cannot race an approval.
+    rejected = db.execute(
+        update(ExternalPayment)
+        .where(ExternalPayment.id == ext_pay.id, ExternalPayment.status == "pending_confirmation")
+        .values(status="rejected", rejection_reason="Rejected via Gmail SMTP confirmation link")
+        .execution_options(synchronize_session=False)
+    ).rowcount
+    db.commit()
+    db.refresh(ext_pay)
+    if rejected != 1:
+        return _simple_page(
+            "Already Processed", "Payment Already Processed", f"This payment is already {html.escape(ext_pay.status)}.", "#64748b"
         )
 
-    return HTMLResponse(
-        status_code=400,
-        content="""<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;"><h2>Invalid Decision</h2><p>Expected decision=yes or decision=no.</p></body></html>""",
+    return _result_page(
+        "Payment Rejected - Rooman Books",
+        "Payment Rejected & Discarded",
+        "Transaction has been marked as rejected",
+        "❌",
+        "#dc2626",
+        [
+            ("Amount Discarded:", formatted_amount, ""),
+            ("Platform:", platform, ""),
+            ("Transaction Ref / UTR:", txn, ""),
+            ("Status:", "Rejected", "color: #dc2626;"),
+            ("Books Impact:", "No ledger entries posted", ""),
+        ],
+        f"Rejected via Gmail SMTP • {desk}",
     )
 
 
@@ -1089,35 +1348,29 @@ def list_external_payments(
 @router.post("/payments/external/{payment_id}/resend-email", response_model=Message)
 def resend_external_payment_confirmation_email(
     payment_id: str,
-    request: Request,
     user: User = Depends(require_write),
     db: Session = Depends(get_db),
 ):
-    """Resend the Gmail SMTP confirmation request email for a pending payment."""
+    """Resend the Gmail SMTP confirmation request email for a pending payment.
+
+    A fresh token is issued, so links in earlier emails stop working."""
     ext_pay = get_or_404(db, ExternalPayment, payment_id, user.organization_id, "External Payment")
     if ext_pay.status != "pending_confirmation":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment is already {ext_pay.status}")
+    if _token_expired(ext_pay):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "The confirmation window for this payment has passed; record it as a customer payment instead"
+        )
 
-    base_url = str(request.base_url).rstrip("/") or "http://localhost:8000"
-    recipient = ext_pay.confirmation_email_recipient or sender_identity()[1]
-
-    inv_num = ext_pay.invoice.invoice_number if ext_pay.invoice else None
-    result = send_payment_confirmation_request_email(
-        to_email=recipient,
-        payment_id=ext_pay.id,
-        platform=ext_pay.platform,
-        amount=float(ext_pay.amount),
-        currency=ext_pay.currency,
-        external_transaction_id=ext_pay.external_transaction_id,
-        approval_token=ext_pay.approval_token,
-        payer_name=ext_pay.payer_name,
-        payer_email=ext_pay.payer_email,
-        invoice_number=inv_num,
-        base_url=base_url,
-    )
-    if not result.get("success"):
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Failed to send email: {result.get('error')}")
-
-    ext_pay.confirmation_email_sent = True
+    # Commit before talking to the mail server so no lock is held meanwhile.
+    ext_pay.approval_token = secrets.token_urlsafe(32)
     db.commit()
-    return Message(message=f"Confirmation email re-dispatched to {recipient}")
+    result = _send_confirmation_requests(db, ext_pay)
+    if not result["success"]:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, result["error"] or "Failed to send the confirmation email")
+
+    recipients = ", ".join(result["recipients"])
+    ext_pay.confirmation_email_sent = True
+    ext_pay.confirmation_email_recipient = recipients[:120]
+    db.commit()
+    return Message(message=f"Confirmation email re-dispatched to {recipients}")

@@ -52,8 +52,8 @@ export function BillsPage() {
   const { canWrite } = useAuth();
   const [searchParams] = useSearchParams();
 
-  const [statusTab, setStatusTab] = useState('all');
-  const [search, setSearch] = useState('');
+  const [statusTab, setStatusTab] = useState(() => searchParams.get('status') ?? 'all');
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '');
   const [vendorId, setVendorId] = useState(() => searchParams.get('vendor') ?? '');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');

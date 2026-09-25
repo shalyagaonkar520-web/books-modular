@@ -4,7 +4,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal, Optional
 
-from pydantic import EmailStr, Field, field_validator
+from pydantic import EmailStr, Field, ValidationInfo, field_validator
+from pydantic.alias_generators import to_camel
 
 from backend.schemas import validators
 from backend.schemas.common import APIModel
@@ -26,7 +27,11 @@ class _ContactFieldRules:
     @field_validator("display_name")
     @classmethod
     def _display_name(cls, value: Optional[str]) -> Optional[str]:
-        return validators.person_name(value, "Name")
+        # The name a contact is billed under is most often a business name, and
+        # "3M India" or "7-Eleven" are real ones - so the business rule (some
+        # letters, digits allowed) applies, not the person-name rule. The
+        # person fields below keep that stricter rule.
+        return validators.business_name(value, "Display name")
 
     @field_validator("contact_person")
     @classmethod
@@ -136,6 +141,12 @@ class ContactUpdate(_ContactFieldRules, APIModel):
     payment_terms_days: Optional[int] = Field(default=None, ge=0, le=365)
     notes: Optional[str] = None
     is_active: Optional[bool] = None
+
+    @field_validator("contact_type", "display_name", "gst_treatment", "payment_terms_days", "is_active")
+    @classmethod
+    def _required_columns_not_null(cls, value, info: ValidationInfo):
+        # Omitting a field keeps it; null is not a value these columns can hold.
+        return validators.not_null(value, to_camel(info.field_name))
 
 
 class ContactOut(ContactBase):

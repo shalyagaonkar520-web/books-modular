@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import secrets
 from datetime import UTC, date, datetime, timedelta
-from typing import Optional
+from functools import lru_cache
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
@@ -46,8 +46,8 @@ from backend.security import (
 )
 from backend.services import audit
 from backend.services.chart_of_accounts import bootstrap_accounts
-from backend.services.email_service import send_password_reset_email, send_verification_email
-from backend.services.ratelimit import RateLimiter, client_ip
+from backend.services.email_service import send_password_reset_email, send_verification_email, smtp_configured
+from backend.services.ratelimit import FailureCounter, RateLimiter, client_ip
 from backend.services.user_agent import parse_user_agent
 
 logger = logging.getLogger("roomanbooks.auth")
@@ -55,7 +55,58 @@ settings = get_settings()
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 login_limiter = RateLimiter(limit=settings.login_rate_limit_per_minute, window_seconds=60)
 
+# A 6-digit code has only 900k values, so wrong guesses are capped per email
+# (not per IP, which an attacker can rotate). Reaching the cap also burns the
+# outstanding code, so a new one has to be requested once the window passes.
+OTP_MAX_FAILURES = 5
+OTP_FAILURE_WINDOW_SECONDS = 15 * 60
+otp_failures = FailureCounter(limit=OTP_MAX_FAILURES, window_seconds=OTP_FAILURE_WINDOW_SECONDS)
+OTP_LOCKED_MESSAGE = "Too many incorrect codes. Please wait 15 minutes and request a new code."
+
+# A rotated refresh token presented again within this many seconds is treated
+# as a benign race (two tabs refreshing at once), not as theft.
+REFRESH_REUSE_GRACE_SECONDS = 30
+
 REFRESH_COOKIE = "rb_refresh"
+
+
+@lru_cache(maxsize=1)
+def _dummy_password_hash() -> str:
+    # Verified against when the email is unknown, so a failed login costs the
+    # same bcrypt work whether or not the account exists.
+    return hash_password(secrets.token_urlsafe(16))
+
+
+def _aware(value: datetime) -> datetime:
+    # SQLite hands timestamps back naive; they are stored as UTC.
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
+
+
+def _revoke_user_tokens(db: Session, user_id: str, now: datetime) -> None:
+    for tok in db.execute(select(RefreshToken).where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))).scalars():
+        tok.revoked_at = now
+
+
+def _burn_pending_codes(db: Session, email: str, reset: bool) -> None:
+    """Expire the outstanding sign-up (reset=False) or password-reset (reset=True) code."""
+    owner = EmailVerification.user_id.is_not(None) if reset else EmailVerification.user_id.is_(None)
+    for rec in db.execute(
+        select(EmailVerification).where(EmailVerification.email == email, EmailVerification.status == "PENDING", owner)
+    ).scalars():
+        rec.status = "EXPIRED"
+    db.commit()
+
+
+def _check_otp_lock(key: str) -> None:
+    if otp_failures.is_blocked(key):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, OTP_LOCKED_MESSAGE)
+
+
+def _wrong_otp(db: Session, key: str, email: str, reset: bool) -> HTTPException:
+    if otp_failures.record_failure(key):
+        _burn_pending_codes(db, email, reset)
+        return HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, OTP_LOCKED_MESSAGE)
+    return HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid verification code. Please check and try again.")
 
 
 def _issue_tokens(db: Session, user: User, response: Response, request: Request) -> str:
@@ -138,7 +189,6 @@ def send_email_verification(payload: SendEmailVerificationRequest, request: Requ
 
     # Generate a 6-digit numeric OTP code
     otp = f"{secrets.randbelow(900000) + 100000}"
-    raw_token = secrets.token_urlsafe(32)
     t_hash = hash_token(f"{email}:{otp}")
     expires_at = datetime.now(UTC) + timedelta(minutes=EMAIL_TOKEN_EXPIRE_MINUTES)
 
@@ -151,32 +201,35 @@ def send_email_verification(payload: SendEmailVerificationRequest, request: Requ
     db.add(verification)
     db.commit()
 
-    app_url = (settings.app_url or "http://localhost:3000").rstrip("/")
-    verify_url = f"{app_url}/verify-email?token={raw_token}"
-
-    send_res = send_verification_email(email, verify_url=verify_url, otp=otp)
-    dev_otp: Optional[str] = None
-    if settings.environment == "development" or not send_res.get("success"):
-        dev_otp = otp
+    # The code only ever leaves the server by email. With SMTP not configured
+    # (local development) it is written to the server log instead - never
+    # returned in the response, whatever the environment.
+    if not smtp_configured():
         logger.info("[DEV OTP] Verification code for %s is %s", email, otp)
-
+    send_res = send_verification_email(email, otp=otp)
     if not send_res.get("success"):
-        logger.warning("SMTP delivery notice: %s", send_res.get("error"))
-        msg = f"Verification code generated: {otp} (Gmail delivery failed or in dev mode)"
-    else:
-        msg = "Verification code sent to your email. Please check your inbox."
+        logger.error("Could not deliver verification email to %s: %s", email, send_res.get("error"))
+        # Nobody can receive this code; drop it so the cooldown doesn't block a retry.
+        verification.status = "EXPIRED"
+        db.commit()
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "We couldn't send the verification email right now. Please try again in a few minutes.",
+        )
 
     return SendEmailVerificationResponse(
-        message=msg,
+        message="Verification code sent to your email. Please check your inbox.",
         cooldown_seconds=60,
-        dev_otp=dev_otp,
     )
 
 
 @router.post("/verify-otp", response_model=Message)
-def verify_email_otp(payload: VerifyOtpRequest, db: Session = Depends(get_db)):
+def verify_email_otp(payload: VerifyOtpRequest, request: Request, db: Session = Depends(get_db)):
+    login_limiter.check(f"verify-otp:{client_ip(request)}")
     email = payload.email.lower().strip()
     otp = payload.otp.strip()
+    failure_key = f"verify:{email}"
+    _check_otp_lock(failure_key)
     t_hash = hash_token(f"{email}:{otp}")
 
     verification = db.execute(
@@ -187,7 +240,7 @@ def verify_email_otp(payload: VerifyOtpRequest, db: Session = Depends(get_db)):
     ).scalar_one_or_none()
 
     if verification is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid verification code. Please check and try again.")
+        raise _wrong_otp(db, failure_key, email, reset=False)
 
     if verification.status == "VERIFIED":
         return Message(message="Email already verified")
@@ -204,40 +257,24 @@ def verify_email_otp(payload: VerifyOtpRequest, db: Session = Depends(get_db)):
     verification.status = "VERIFIED"
     verification.verified_at = datetime.now(UTC)
     db.commit()
+    otp_failures.clear(failure_key)
 
     return Message(message="Email verified successfully")
 
 
 @router.post("/verify-email", response_model=Message)
-def verify_email_token(payload: VerifyEmailTokenRequest, db: Session = Depends(get_db)):
-    tok = payload.token.strip()
-    t_hash = hash_token(tok)
-    verification = db.execute(
-        select(EmailVerification).where(
-            (EmailVerification.token_hash == t_hash) | (EmailVerification.token_hash == hash_token(f"{EmailVerification.email}:{tok}"))
-        )
-    ).scalar_one_or_none()
+def verify_email_token(payload: VerifyEmailTokenRequest, request: Request):
+    """Retired: sign-up email is verified with the 6-digit code (/verify-otp).
 
-    if verification is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Verification link is invalid or has expired.")
-
-    if verification.status == "VERIFIED":
-        return Message(message="Email already verified")
-
-    if verification.status != "PENDING":
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Verification link is invalid or has already been used.")
-
-    exp = verification.expires_at.replace(tzinfo=UTC) if verification.expires_at.tzinfo is None else verification.expires_at
-    if exp < datetime.now(UTC):
-        verification.status = "EXPIRED"
-        db.commit()
-        raise HTTPException(status.HTTP_410_GONE, "Verification link has expired. Please request a new one.")
-
-    verification.status = "VERIFIED"
-    verification.verified_at = datetime.now(UTC)
-    db.commit()
-
-    return Message(message="Email verified successfully")
+    Only hash("email:code") is stored, so a link token was never recoverable
+    and this path could not succeed; the emails carry only the code. Old links
+    get a clear error pointing at the code instead of a misleading 404.
+    """
+    login_limiter.check(f"verify-email:{client_ip(request)}")
+    raise HTTPException(
+        status.HTTP_400_BAD_REQUEST,
+        "Verification links are no longer supported. Enter the 6-digit code from your email on the sign-up page instead.",
+    )
 
 
 @router.get("/email-verification-status", response_model=EmailVerificationStatusResponse)
@@ -390,8 +427,9 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
     user = db.execute(select(User).where(User.email == email_clean)).scalar_one_or_none()
     if user and user.password_hash is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "This invitation hasn't been accepted yet. Check your email for the setup link.")
-    password_ok = user is not None and (
-        verify_password(payload.password, user.password_hash) or verify_password(payload.password.strip(), user.password_hash)
+    stored_hash = user.password_hash if user is not None else _dummy_password_hash()
+    password_ok = (verify_password(payload.password, stored_hash) or verify_password(payload.password.strip(), stored_hash)) and (
+        user is not None
     )
     if not user or not password_ok:
         logger.warning("Login failed for email '%s' (user_found: %s)", email_clean, user is not None)
@@ -405,36 +443,20 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
     return _auth_response(access, user)
 
 
+FORGOT_PASSWORD_MESSAGE = "If an account exists for this email, a password reset code has been sent. Please check your inbox."
+
+
 @router.post("/forgot-password", response_model=ForgotPasswordResponse)
 def forgot_password(payload: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
     login_limiter.check(f"forgot-password:{client_ip(request)}")
     email = payload.email.lower().strip()
+    # Every outcome (unknown, deactivated, cooling down, sent) answers the same,
+    # so this endpoint can't be used to find out which emails have accounts.
+    generic = ForgotPasswordResponse(message=FORGOT_PASSWORD_MESSAGE, cooldown_seconds=60)
 
-    # CORE REQUIREMENT: Only send if registered
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
-    if not user:
-        # Check if they verified email during setup but didn't finish creating organization
-        verified_ev = db.execute(
-            select(EmailVerification).where(
-                EmailVerification.email == email,
-                EmailVerification.status == "VERIFIED",
-            )
-        ).first()
-        if verified_ev:
-            raise HTTPException(
-                status.HTTP_404_NOT_FOUND,
-                "This email was verified, but registration was not completed. Please create your organization on the registration page first.",
-            )
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND,
-            "No registered account found with this email address.",
-        )
-
-    if not user.is_active:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            "Your account has been deactivated. Please contact your administrator.",
-        )
+    if not user or not user.is_active:
+        return generic
 
     # Resend cooldown: 60 seconds
     recent = db.execute(
@@ -445,10 +467,7 @@ def forgot_password(payload: ForgotPasswordRequest, request: Request, db: Sessio
         )
     ).scalar_one_or_none()
     if recent:
-        raise HTTPException(
-            status.HTTP_429_TOO_MANY_REQUESTS,
-            "Please wait 60 seconds before requesting another reset code.",
-        )
+        return generic
 
     # Invalidate older pending reset tokens for this email
     pending_records = (
@@ -478,22 +497,19 @@ def forgot_password(payload: ForgotPasswordRequest, request: Request, db: Sessio
     db.add(verification)
     db.commit()
 
-    send_res = send_password_reset_email(email, otp)
-    dev_otp: Optional[str] = None
-    if settings.environment == "development" or not send_res.get("success"):
-        dev_otp = otp
+    # As with sign-up, the code is never returned; without SMTP it is logged.
+    if not smtp_configured():
         logger.info("[DEV OTP] Password reset code for %s is %s", email, otp)
-
+    send_res = send_password_reset_email(email, otp)
     if not send_res.get("success"):
-        msg = "Password reset code sent. Please check your email inbox."
-    else:
-        msg = "Password reset code sent to your email. Please check your inbox."
+        # Deliberately not a 503: failing only for registered emails would
+        # reveal which ones exist. The code is dropped so a retry isn't
+        # blocked by the cooldown.
+        logger.error("Could not deliver password reset email to %s: %s", email, send_res.get("error"))
+        verification.status = "EXPIRED"
+        db.commit()
 
-    return ForgotPasswordResponse(
-        message=msg,
-        cooldown_seconds=60,
-        dev_otp=dev_otp,
-    )
+    return generic
 
 
 @router.post("/reset-password", response_model=Message)
@@ -501,12 +517,11 @@ def reset_password_with_otp(payload: ResetPasswordWithOtpRequest, request: Reque
     login_limiter.check(f"reset-password:{client_ip(request)}")
     email = payload.email.lower().strip()
     otp = payload.otp.strip()
+    failure_key = f"reset:{email}"
+    _check_otp_lock(failure_key)
     t_hash = hash_token(f"reset:{email}:{otp}")
 
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
-    if not user:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No registered account found with this email address.")
-
     verification = db.execute(
         select(EmailVerification).where(
             EmailVerification.email == email,
@@ -514,8 +529,9 @@ def reset_password_with_otp(payload: ResetPasswordWithOtpRequest, request: Reque
         )
     ).scalar_one_or_none()
 
-    if verification is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid verification code. Please check and try again.")
+    # Unknown email and wrong code answer the same, so this can't enumerate accounts.
+    if user is None or verification is None:
+        raise _wrong_otp(db, failure_key, email, reset=True)
 
     if verification.status != "PENDING":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Verification code has already been used or expired.")
@@ -531,13 +547,12 @@ def reset_password_with_otp(payload: ResetPasswordWithOtpRequest, request: Reque
     verification.status = "USED"
     verification.used_at = datetime.now(UTC)
 
-    # Invalidate existing refresh tokens so user logs in cleanly
-    existing_tokens = db.execute(select(RefreshToken).where(RefreshToken.user_id == user.id)).scalars().all()
-    for tok in existing_tokens:
-        tok.revoked = True
+    # Sign out every existing session: whoever prompted the reset may hold one.
+    _revoke_user_tokens(db, user.id, datetime.now(UTC))
 
     audit.record(db, user, "reset_password", "user", user.id, "Password reset via OTP")
     db.commit()
+    otp_failures.clear(failure_key)
 
     return Message(message="Password reset successfully. You can now sign in with your new password.")
 
@@ -549,6 +564,16 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No refresh token")
     token = db.execute(select(RefreshToken).where(RefreshToken.token_hash == hash_token(raw))).scalar_one_or_none()
     now = datetime.now(UTC)
+    if token is not None and token.revoked_at is not None:
+        revoked_at = _aware(token.revoked_at)
+        # Rotation stamps expires_at == revoked_at (see below), which tells a
+        # replayed rotated token apart from one revoked by logout or a remote
+        # sign-out. A replay means the token was copied: end every session.
+        rotated = _aware(token.expires_at) == revoked_at
+        if rotated and now - revoked_at > timedelta(seconds=REFRESH_REUSE_GRACE_SECONDS):
+            logger.warning("Refresh token reuse detected for user %s; revoking all sessions", token.user_id)
+            _revoke_user_tokens(db, token.user_id, now)
+            db.commit()
     if token is None or token.revoked_at is not None or token.expires_at.replace(tzinfo=UTC) < now:
         _clear_cookie(response)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Refresh token is invalid or expired")
@@ -557,6 +582,7 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
         _clear_cookie(response)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User is inactive")
     token.revoked_at = now  # rotate
+    token.expires_at = now  # marks it as rotated, for reuse detection above
     access = _issue_tokens(db, user, response, request)
     db.commit()
     return TokenResponse(access_token=access, expires_in=settings.access_token_expire_minutes * 60)
@@ -590,13 +616,20 @@ def update_profile(payload: UpdateProfileRequest, user: User = Depends(get_curre
 
 
 @router.post("/change-password", response_model=Message)
-def change_password(payload: ChangePasswordRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def change_password(
+    payload: ChangePasswordRequest,
+    request: Request,
+    response: Response,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     if not verify_password(payload.current_password, user.password_hash):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Current password is incorrect")
     user.password_hash = hash_password(payload.new_password)
-    # Revoke all refresh tokens so other sessions must log in again.
-    for token in db.execute(select(RefreshToken).where(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None))).scalars():
-        token.revoked_at = datetime.now(UTC)
+    # Revoke all refresh tokens so other sessions must log in again, then give
+    # this browser a fresh one so the tab that changed the password stays in.
+    _revoke_user_tokens(db, user.id, datetime.now(UTC))
+    _issue_tokens(db, user, response, request)
     audit.record(db, user, "update", "user", user.id, "Password changed")
     db.commit()
     return Message(message="Password updated. Other sessions have been signed out.")

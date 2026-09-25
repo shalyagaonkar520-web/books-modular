@@ -55,8 +55,8 @@ export function InvoicesPage() {
   const { download } = useDownload();
   const { submitting, error: actionError, run, reset } = useSubmit();
 
-  const [status, setStatus] = useState('all');
-  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState(searchParams.get('status') ?? 'all');
+  const [search, setSearch] = useState(searchParams.get('search') ?? '');
   const [customerId, setCustomerId] = useState(searchParams.get('customer') ?? '');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');

@@ -10,6 +10,14 @@ from backend.schemas.common import MAX_MONEY, APIModel
 from backend.schemas.sales import LineInput, LineOut, PaymentMode
 
 BillStatus = Literal["draft", "open", "partially_paid", "paid", "void", "overdue"]
+# An expense is always paid out of a bank/cash/card account the moment it is
+# recorded (it posts the withdrawal), so "paid" is its only honest status -
+# money owed but not yet paid belongs on a bill. Free text here previously let
+# an "unpaid" expense still debit the bank.
+ExpenseStatus = Literal["paid"]
+# The payment modes used elsewhere, plus "razorpay" for gateway fees the
+# Razorpay sync books as expenses.
+ExpensePaymentMethod = Literal["cash", "bank_transfer", "upi", "cheque", "card", "other", "razorpay"]
 
 
 class BillCreate(APIModel):
@@ -126,14 +134,23 @@ class ExpenseCreate(APIModel):
     reference: Optional[str] = Field(default=None, max_length=120)
     notes: Optional[str] = None
     is_billable: bool = False
-    category: str = "Other"
-    payment_method: str = "bank_transfer"
-    receipt_url: Optional[str] = None
-    status: str = "paid"
+    # Category stays free text: spreadsheet imports carry whatever heads the
+    # business uses. It is bounded to the column so it cannot overflow.
+    category: str = Field(default="Other", min_length=1, max_length=60)
+    payment_method: ExpensePaymentMethod = "bank_transfer"
+    receipt_url: Optional[str] = Field(default=None, max_length=500)
+    status: ExpenseStatus = "paid"
 
 
 class ExpenseUpdate(ExpenseCreate):
-    pass
+    """Same body as create, but category, payment method, receipt and status
+    are only changed when sent - the edit form does not send them, and
+    defaulting them here wiped an imported category back to "Other"."""
+
+    category: Optional[str] = Field(default=None, min_length=1, max_length=60)
+    payment_method: Optional[ExpensePaymentMethod] = None
+    receipt_url: Optional[str] = Field(default=None, max_length=500)
+    status: Optional[ExpenseStatus] = None
 
 
 class ExpenseOut(APIModel):

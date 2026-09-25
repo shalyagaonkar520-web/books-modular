@@ -15,13 +15,16 @@ def _bill_payload(org, qty=5, rate=6800, status="open", **extra):
 
 def test_bill_increases_stock_updates_cost_and_posts_ap(client, org):
     h = org["h"]
-    before = client.get(f"/api/items/{org['item']['id']}", headers=h).json()["stockOnHand"]
+    item_before = client.get(f"/api/items/{org['item']['id']}", headers=h).json()
+    before = item_before["stockOnHand"]
     res = client.post("/api/bills", headers=h, json=_bill_payload(org))
     assert res.status_code == 201, res.text
     bill = res.json()
     assert bill["billNumber"].startswith("BILL-") and bill["total"] == 40120 and bill["dueDate"] == "2026-10-01"
     item = client.get(f"/api/items/{org['item']['id']}", headers=h).json()
-    assert item["stockOnHand"] == before + 5 and item["costPrice"] == 6800
+    # Weighted-average cost, not the latest purchase rate.
+    expected_cost = round((before * item_before["costPrice"] + 5 * 6800) / (before + 5), 2) if before > 0 else 6800
+    assert item["stockOnHand"] == before + 5 and abs(item["costPrice"] - expected_cost) < 0.01
     journals = client.get("/api/accounting/journals", headers=h, params={"source_type": "bill"}).json()["items"]
     entry = next(j for j in journals if j["sourceId"] == bill["id"])
     assert sum(line["credit"] for line in entry["lines"] if line["accountCode"] == "2000") == 40120

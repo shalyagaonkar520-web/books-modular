@@ -14,12 +14,14 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
-import { addDaysIso, formatCurrency, formatQuantity, parseNumber, round2, todayIso } from '@/utils/format';
+import { addDaysIso, formatCurrency, formatQuantity, parseNumber, round2, round3, todayIso } from '@/utils/format';
 import { TAX_RATES } from '@/utils/status';
 
 interface LineDraft {
   key: string;
   itemId: string;
+  /** The line's posting account, carried through so editing keeps it. */
+  accountId: string;
   description: string;
   quantity: string;
   rate: string;
@@ -27,9 +29,11 @@ interface LineDraft {
 }
 
 let lineCounter = 0;
-const newLine = (): LineDraft => ({ key: `line-${++lineCounter}`, itemId: '', description: '', quantity: '1', rate: '0', taxRate: '0' });
+const newLine = (): LineDraft => ({ key: `line-${++lineCounter}`, itemId: '', accountId: '', description: '', quantity: '1', rate: '0', taxRate: '0' });
 
-const lineAmount = (line: LineDraft): number => round2(parseNumber(line.quantity) * parseNumber(line.rate));
+// Match the backend, which rounds quantity to 3dp and rate to 2dp before
+// multiplying, so the previewed total equals the saved total.
+const lineAmount = (line: LineDraft): number => round2(round3(parseNumber(line.quantity)) * round2(parseNumber(line.rate)));
 const lineTax = (line: LineDraft): number => round2((lineAmount(line) * parseNumber(line.taxRate)) / 100);
 
 export function InvoiceFormPage() {
@@ -52,6 +56,9 @@ export function InvoiceFormPage() {
   const [discountAmount, setDiscountAmount] = useState('0');
   const [lines, setLines] = useState<LineDraft[]>(() => [newLine()]);
   const [keepSent, setKeepSent] = useState(false);
+  // The form has no project/line-account pickers, but an existing invoice may
+  // carry both - preserve them so editing does not silently strip them.
+  const [projectId, setProjectId] = useState('');
 
   const customers = useAsync((signal) => contactsApi.list({ type: 'customer', page_size: 200 }, signal), []);
   const items = useAsync((signal) => itemsApi.list({ page_size: 200 }, signal), []);
@@ -76,11 +83,13 @@ export function InvoiceFormPage() {
     setTerms(loaded.terms ?? '');
     setDiscountAmount(String(loaded.discountAmount));
     setKeepSent(loaded.status === 'sent' || loaded.status === 'overdue');
+    setProjectId(loaded.projectId ?? '');
     setLines(
       loaded.lines.length
         ? loaded.lines.map((line) => ({
             key: line.id ?? `line-${++lineCounter}`,
             itemId: line.itemId ?? '',
+            accountId: line.accountId ?? '',
             description: line.description,
             quantity: String(line.quantity),
             rate: String(line.rate),
@@ -142,6 +151,7 @@ export function InvoiceFormPage() {
     }
     const payload = {
       customerId,
+      projectId: projectId || null,
       date,
       dueDate,
       reference: reference.trim() || null,
@@ -154,6 +164,7 @@ export function InvoiceFormPage() {
       status,
       lines: lines.map((line) => ({
         itemId: line.itemId || null,
+        accountId: line.accountId || null,
         description: line.description.trim(),
         quantity: parseNumber(line.quantity),
         rate: round2(parseNumber(line.rate)),

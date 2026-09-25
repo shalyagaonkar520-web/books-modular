@@ -123,7 +123,15 @@ export function App() {
             />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
-            <Route path="/payroll" element={<PayrollPage />} />
+            <Route
+              path="/payroll"
+              element={
+                <RequireRole roles={['admin', 'viewer']}>
+                  <PayrollPage />
+                </RequireRole>
+              }
+            />
+
 
             <Route path="/profile" element={<ProfilePage />} />
             <Route

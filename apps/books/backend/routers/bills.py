@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
-from backend.models import Bill, BillLine, Contact, Organization, User
+from backend.models import Bill, BillLine, Contact, Item, Organization, User
 from backend.schemas.common import Message, Page
 from backend.schemas.purchases import BillCreate, BillListItem, BillOut, BillStats, BillStatusUpdate, BillUpdate
 from backend.schemas.sales import LineOut
@@ -22,7 +22,7 @@ from backend.services import audit, export_service, inventory, ledger, numbering
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.documents import compute_lines, group_by_account, totals
 from backend.services.email_service import get_smtp_connection, sender_identity
-from backend.services.money import money
+from backend.services.money import money, qty
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
 router = APIRouter(prefix="/api/bills", tags=["Purchases"])
@@ -99,7 +99,7 @@ def _apply_payload(db: Session, bill: Bill, payload: BillCreate, org_id: str) ->
     vendor = get_or_404(db, Contact, payload.vendor_id, org_id, "Vendor")
     if vendor.type != "vendor":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selected contact is not a vendor")
-    computed, subtotal, tax_total = compute_lines(db, org_id, payload.lines)
+    computed, subtotal, tax_total = compute_lines(db, org_id, payload.lines, kind="bill", discount=payload.discount_amount)
     bill.vendor_id = vendor.id
     bill.vendor_bill_number = payload.vendor_bill_number
     bill.order_number = payload.order_number
@@ -128,6 +128,43 @@ def _apply_payload(db: Session, bill: Bill, payload: BillCreate, org_id: str) ->
         )
 
 
+def _stock_on_hand(db: Session, item: Item) -> Decimal:
+    return qty(db.execute(select(Item.stock_on_hand).where(Item.id == item.id)).scalar_one())
+
+
+def _receive_at_average_cost(item: Item, on_hand: Decimal, quantity: Decimal, rate: Decimal) -> None:
+    """Weighted-average costing: fold a receipt into the item's unit cost.
+
+    Overwriting cost_price with the latest purchase rate revalued every unit
+    already on the shelf at that rate, so COGS on the next sale was wrong.
+    """
+    if rate <= 0 or quantity <= 0:
+        return
+    if on_hand > 0:
+        item.cost_price = money((on_hand * money(item.cost_price) + quantity * rate) / (on_hand + quantity))
+    else:
+        item.cost_price = money(rate)
+
+
+def _unreceive_at_average_cost(item: Item, on_hand: Decimal, quantity: Decimal, rate: Decimal) -> None:
+    """Undo _receive_at_average_cost when a bill is voided, edited or deleted.
+
+    Sales in between relieve stock at the average cost and leave it unchanged,
+    so taking the receipt back out restores the earlier average. When that
+    cannot be worked out (no stock would remain, or the result would be
+    negative) the current cost is left as it is rather than corrupted.
+    """
+    if rate <= 0 or quantity <= 0:
+        return
+    remaining = on_hand - quantity
+    if remaining <= 0:
+        return
+    value = on_hand * money(item.cost_price) - quantity * rate
+    if value < 0:
+        return
+    item.cost_price = money(value / remaining)
+
+
 def post_bill(db: Session, bill: Bill, user: User) -> None:
     """Journal: Dr expense/inventory accounts, Dr Input GST; Cr AP total, Cr Purchase Discounts."""
     org_id = bill.organization_id
@@ -143,13 +180,11 @@ def post_bill(db: Session, bill: Bill, user: User) -> None:
         item = line.item
         if item and item.track_inventory:
             debit_pairs.append((inventory_acct.id, line.amount))
-            unit_cost = money(line.rate)
+            on_hand = _stock_on_hand(db, item)
             inventory.adjust_stock(
                 db, item, line.quantity, bill.date, "bill_stock", bill.id, f"Received on {bill.bill_number}", user.id, rate=Decimal("0")
             )
-            # Keep the item's cost price in sync with the latest purchase rate.
-            if unit_cost > 0:
-                item.cost_price = unit_cost
+            _receive_at_average_cost(item, on_hand, qty(line.quantity), money(line.rate))
         else:
             account_id = line.account_id or (item.purchase_account_id if item and item.purchase_account_id else default_expense.id)
             debit_pairs.append((account_id, line.amount))
@@ -171,6 +206,7 @@ def unpost_bill(db: Session, bill: Bill, user: User, reason: str) -> None:
     ledger.reverse_entries_for_source(db, bill.organization_id, "bill", bill.id, today, user.id, reason)
     for line in bill.lines:
         if line.item and line.item.track_inventory:
+            _unreceive_at_average_cost(line.item, _stock_on_hand(db, line.item), qty(line.quantity), money(line.rate))
             inventory.adjust_stock(
                 db,
                 line.item,

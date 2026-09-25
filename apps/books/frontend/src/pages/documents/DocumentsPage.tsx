@@ -73,8 +73,8 @@ export function DocumentsPage() {
       toast.success(result.message);
       setDeleting(null);
       refreshAll();
-    } else if (remove.error) {
-      toast.error(remove.error);
+    } else if (remove.errorRef.current) {
+      toast.error(remove.errorRef.current);
     }
   };
 
