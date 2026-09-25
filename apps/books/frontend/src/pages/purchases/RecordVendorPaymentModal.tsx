@@ -7,6 +7,7 @@ import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
+import { useAuth } from '@/auth/AuthContext';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, parseNumber, todayIso } from '@/utils/format';
@@ -31,14 +32,19 @@ interface RecordVendorPaymentModalProps {
 export function RecordVendorPaymentModal({ bill, onClose, onSaved }: RecordVendorPaymentModalProps) {
   const toast = useToast();
   const { submitting, error, fieldErrors, run, setError } = useSubmit();
+  // The bank/cash account list is Admin/Viewer-only to read, and a payment must
+  // name one. With no staff-readable picker yet, don't fetch (and 403) for Staff;
+  // the form shows a message instead of blanking on the error.
+  const { can } = useAuth();
+  const canReadAccounts = can('admin', 'viewer');
 
   const refs = useAsync(async () => {
     const [accounts, vendorPage] = await Promise.all([
-      bankingApi.accounts(),
+      canReadAccounts ? bankingApi.accounts() : bankingApi.accountOptions(),
       bill ? Promise.resolve(null) : contactsApi.list({ type: 'vendor', page_size: 200 }),
     ]);
     return { accounts, vendors: vendorPage?.items ?? [] };
-  }, [bill?.id]);
+  }, [bill?.id, canReadAccounts]);
 
   const [vendorId, setVendorId] = useState(bill?.vendorId ?? '');
   const [billId, setBillId] = useState(bill?.id ?? '');
@@ -176,10 +182,13 @@ export function RecordVendorPaymentModal({ bill, onClose, onSaved }: RecordVendo
               value={bankAccountId}
               placeholder="Select an account"
               error={fieldErrors.bankAccountId}
-              options={(refs.data?.accounts ?? []).map((account) => ({
-                value: account.id,
-                label: `${account.name} · ${formatCurrency(account.currentBalance)}`,
-              }))}
+              options={(refs.data?.accounts ?? []).map((account) => {
+                const balance = (account as { currentBalance?: number }).currentBalance;
+                return {
+                  value: account.id,
+                  label: typeof balance === 'number' ? `${account.name} · ${formatCurrency(balance)}` : account.name,
+                };
+              })}
               onChange={(event) => setBankAccountId(event.target.value)}
             />
             <TextField

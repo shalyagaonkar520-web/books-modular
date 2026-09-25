@@ -85,11 +85,12 @@ class BankBalance(APIModel):
 class DashboardSummary(APIModel):
     receivables: ReceivablesSummary
     payables: PayablesSummary
-    cash_flow: CashFlowSummary
+    # Null for roles outside Admin/Viewer: these are Banking figures.
+    cash_flow: Optional[CashFlowSummary] = None
     income_expense: IncomeExpenseSummary
     inventory: InventorySummary
-    bank_balances: List[BankBalance]
-    total_cash: Decimal
+    bank_balances: Optional[List[BankBalance]] = None
+    total_cash: Optional[Decimal] = None
     top_customers: List[TopCustomer]
     recent_activity: List[RecentActivity]
     unbilled_hours: Decimal

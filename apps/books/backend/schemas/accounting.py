@@ -2,13 +2,32 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import List, Literal, Optional
+from typing import ClassVar, List, Literal, Optional, Tuple
 
 from pydantic import Field, model_validator
+from pydantic.alias_generators import to_camel
 
 from backend.schemas.common import MAX_MONEY, APIModel
 
 AccountType = Literal["asset", "liability", "equity", "income", "expense"]
+
+
+class NoExplicitNulls:
+    """For partial-update bodies: a field may be left out, but a column that
+    cannot hold NULL may not be sent as ``null`` - that used to reach the
+    database and come back as a 500 instead of a validation error."""
+
+    non_nullable_fields: ClassVar[Tuple[str, ...]] = ()
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_explicit_nulls(cls, data):
+        if isinstance(data, dict):
+            for field in cls.non_nullable_fields:
+                for key in {field, to_camel(field)}:
+                    if key in data and data[key] is None:
+                        raise ValueError(f"{to_camel(field)} cannot be null")
+        return data
 
 
 class AccountCreate(APIModel):
@@ -19,7 +38,9 @@ class AccountCreate(APIModel):
     description: Optional[str] = None
 
 
-class AccountUpdate(APIModel):
+class AccountUpdate(NoExplicitNulls, APIModel):
+    non_nullable_fields: ClassVar[Tuple[str, ...]] = ("name", "is_active")
+
     name: Optional[str] = Field(default=None, min_length=1, max_length=120)
     subtype: Optional[str] = None
     description: Optional[str] = None
@@ -36,6 +57,18 @@ class AccountOut(APIModel):
     is_system: bool
     is_active: bool
     balance: Decimal = Decimal("0")
+
+
+class AccountOptionOut(APIModel):
+    """A slim chart-of-accounts row for pickers on entry forms: no balances,
+    so every role that may create documents can read it."""
+
+    id: str
+    code: str
+    name: str
+    type: str
+    subtype: Optional[str] = None
+    is_active: bool
 
 
 class JournalLineInput(APIModel):

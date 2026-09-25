@@ -26,6 +26,12 @@ const ROLE_OPTIONS: Array<{ value: Role; label: string }> = [
   { value: 'employee', label: 'Employee (portal only)' },
 ];
 
+// "employee" is a portal-only role that can only be granted through the invite
+// flow (which links a payroll employee); setting it inline would leave a user
+// with a portal role but no employee record, 404-ing their portal. So it is not
+// offered as an inline choice - only shown, disabled, when already in effect.
+const ASSIGNABLE_ROLE_OPTIONS = ROLE_OPTIONS.filter((option) => option.value !== 'employee');
+
 export function UsersSettings() {
   const toast = useToast();
   const { user: currentUser, isAdmin } = useAuth();
@@ -47,8 +53,8 @@ export function UsersSettings() {
       toast.success(result.message);
       setDeletingUser(null);
       reload();
-    } else if (deleteSubmit.error) {
-      toast.error(deleteSubmit.error);
+    } else if (deleteSubmit.errorRef.current) {
+      toast.error(deleteSubmit.errorRef.current);
     }
   };
 
@@ -59,8 +65,8 @@ export function UsersSettings() {
     if (result) {
       toast.success(successMessage);
       reload();
-    } else if (action.error) {
-      toast.error(action.error);
+    } else if (action.errorRef.current) {
+      toast.error(action.errorRef.current);
     }
   };
 
@@ -97,7 +103,12 @@ export function UsersSettings() {
               )
             }
           >
-            {ROLE_OPTIONS.map((option) => (
+            {row.role === 'employee' ? (
+              <option value="employee" disabled>
+                Employee (portal only)
+              </option>
+            ) : null}
+            {ASSIGNABLE_ROLE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>

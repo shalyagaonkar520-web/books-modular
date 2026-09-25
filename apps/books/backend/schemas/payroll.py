@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import ClassVar, List, Optional, Tuple
 
 from pydantic import EmailStr, Field, field_validator
 
 from backend.schemas import validators
+from backend.schemas.accounting import NoExplicitNulls
 from backend.schemas.common import MAX_MONEY, APIModel
 
 
@@ -55,7 +56,19 @@ class EmployeeCreate(_EmployeeFieldRules, APIModel):
     tds: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
 
 
-class EmployeeUpdate(_EmployeeFieldRules, APIModel):
+class EmployeeUpdate(NoExplicitNulls, _EmployeeFieldRules, APIModel):
+    non_nullable_fields: ClassVar[Tuple[str, ...]] = (
+        "name",
+        "date_of_joining",
+        "basic_salary",
+        "hra",
+        "other_allowances",
+        "pf_employee",
+        "professional_tax",
+        "tds",
+        "is_active",
+    )
+
     name: Optional[str] = Field(default=None, min_length=1, max_length=120)
     email: Optional[EmailStr] = None
     designation: Optional[str] = None

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
-from backend.models import Account, BillLine, Contact, InventoryAdjustment, InvoiceLine, Item, User
+from backend.models import Account, Bill, BillLine, Contact, InventoryAdjustment, Invoice, InvoiceLine, Item, User
 from backend.schemas.common import Message, Page
 from backend.schemas.items import (
     InventoryAdjustmentCreate,
@@ -54,6 +54,45 @@ def _validate_refs(db: Session, org_id: str, data: dict) -> None:
         vendor = get_or_404(db, Contact, data["preferred_vendor_id"], org_id, "Vendor")
         if vendor.type != "vendor":
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Preferred vendor must be a vendor contact")
+
+
+# Fields that decide what the opening Inventory Asset entry is. Once stock has
+# moved (a sale, a purchase, an adjustment), re-deriving stock on hand from them
+# would disagree with the ledger - e.g. lowering opening stock after sales drove
+# stock negative, and toggling tracking forgot the movements entirely.
+_STOCK_FIELDS = ("type", "track_inventory", "opening_stock", "opening_stock_rate")
+
+
+def _stock_fields_changing(item: Item, data: dict) -> bool:
+    for field in _STOCK_FIELDS:
+        if field not in data:
+            continue
+        new, old = data[field], getattr(item, field)
+        if field == "opening_stock":
+            new, old = qty(new), qty(old)
+        elif field == "opening_stock_rate":
+            new, old = money(new), money(old)
+        if new != old:
+            return True
+    return False
+
+
+def _has_stock_movements(db: Session, item: Item) -> bool:
+    """Anything beyond the opening entry: an adjustment, or the item on an
+    invoice or bill that has been posted (voided ones included - they moved
+    stock and moved it back, and that history is in the ledger)."""
+    return bool(
+        db.execute(select(InventoryAdjustment.id).where(InventoryAdjustment.item_id == item.id).limit(1)).first()
+        or db.execute(
+            select(InvoiceLine.id)
+            .join(Invoice, Invoice.id == InvoiceLine.invoice_id)
+            .where(InvoiceLine.item_id == item.id, Invoice.status != "draft")
+            .limit(1)
+        ).first()
+        or db.execute(
+            select(BillLine.id).join(Bill, Bill.id == BillLine.bill_id).where(BillLine.item_id == item.id, Bill.status != "draft").limit(1)
+        ).first()
+    )
 
 
 def _sku_taken(db: Session, org_id: str, sku: str, exclude_id: Optional[str] = None) -> bool:
@@ -148,23 +187,39 @@ def update_item(item_id: str, payload: ItemUpdate, user: User = Depends(require_
     old_opening = qty(item.opening_stock)
     old_rate = money(item.opening_stock_rate or item.cost_price)
 
+    if _stock_fields_changing(item, data) and _has_stock_movements(db, item):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This item has already been bought, sold or adjusted, so its type, inventory tracking, opening stock "
+            "and opening stock rate can no longer be changed. Record an inventory adjustment to correct the stock instead.",
+        )
+
     for field, value in data.items():
         setattr(item, field, value)
 
-    # Reconcile inventory when tracking toggles or opening stock changes.
+    # Reconcile inventory when tracking toggles or opening stock changes. Past
+    # the guard above, this only runs for an item with no movement beyond its
+    # opening entry, so re-posting that entry is the whole story; stock moves
+    # by the change in opening quantity rather than being reset to it.
+    new_rate = money(item.opening_stock_rate or item.cost_price)
     if item.track_inventory and not was_tracked:
-        item.stock_on_hand = qty(item.opening_stock)
+        item.stock_on_hand = qty(item.stock_on_hand) + qty(item.opening_stock)
         inventory.post_opening_stock(db, item, user.id)
     elif not item.track_inventory and was_tracked:
         ledger.reverse_entries_for_source(
             db, user.organization_id, "item_opening", item.id, date.today(), user.id, "Inventory tracking disabled"
         )
         item.stock_on_hand = Decimal("0")
-    elif item.track_inventory and (qty(item.opening_stock) != old_opening or money(item.opening_stock_rate or item.cost_price) != old_rate):
-        delta_qty = qty(item.opening_stock) - old_opening
-        item.stock_on_hand = qty(item.stock_on_hand) + delta_qty
-        ledger.reverse_entries_for_source(db, user.organization_id, "item_opening", item.id, date.today(), user.id, "Opening stock changed")
-        inventory.post_opening_stock(db, item, user.id)
+    elif item.track_inventory and (qty(item.opening_stock) != old_opening or new_rate != old_rate):
+        # A cost price edit on an item whose opening rate falls back to cost
+        # lands here too; once the item has moved, the opening entry stays at
+        # the rate it was booked at.
+        if not _has_stock_movements(db, item):
+            item.stock_on_hand = qty(item.stock_on_hand) + (qty(item.opening_stock) - old_opening)
+            ledger.reverse_entries_for_source(
+                db, user.organization_id, "item_opening", item.id, date.today(), user.id, "Opening stock changed"
+            )
+            inventory.post_opening_stock(db, item, user.id)
 
     audit.record(db, user, "update", "item", item.id, f"Updated item {item.name}")
     db.commit()
@@ -178,6 +233,7 @@ def delete_item(item_id: str, user: User = Depends(require_write), db: Session =
     used = (
         db.execute(select(InvoiceLine.id).where(InvoiceLine.item_id == item.id).limit(1)).first()
         or db.execute(select(BillLine.id).where(BillLine.item_id == item.id).limit(1)).first()
+        or db.execute(select(InventoryAdjustment.id).where(InventoryAdjustment.item_id == item.id).limit(1)).first()
     )
     if used:
         item.is_active = False

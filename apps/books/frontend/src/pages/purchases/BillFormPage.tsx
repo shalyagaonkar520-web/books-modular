@@ -3,16 +3,17 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Trash2 } from 'lucide-react';
 
 import { accountingApi, billsApi, contactsApi, itemsApi } from '@/api/endpoints';
-import type { Account, Contact, Item } from '@/api/types';
+import type { Contact, Item } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
+import { useAuth } from '@/auth/AuthContext';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
-import { addDaysIso, formatCurrency, parseNumber, round2, todayIso } from '@/utils/format';
+import { addDaysIso, formatCurrency, parseNumber, round2, round3, todayIso } from '@/utils/format';
 import { TAX_RATES } from '@/utils/status';
 
 interface LineDraft {
@@ -34,7 +35,9 @@ function emptyLine(): LineDraft {
 const TAX_OPTIONS = TAX_RATES.map((rate) => ({ value: String(rate), label: `${rate}%` }));
 
 function lineAmount(line: LineDraft): number {
-  return round2(parseNumber(line.quantity, 0) * parseNumber(line.rate, 0));
+  // Match the backend, which rounds quantity to 3dp and rate to 2dp before
+  // multiplying, so the previewed total equals the saved total.
+  return round2(round3(parseNumber(line.quantity, 0)) * round2(parseNumber(line.rate, 0)));
 }
 
 export function BillFormPage() {
@@ -43,19 +46,27 @@ export function BillFormPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const { submitting, error, fieldErrors, run, setError } = useSubmit();
+  // Reading the chart of accounts is Admin/Viewer only, but Staff may record a
+  // bill - so only fetch the accounts when the role can read them, otherwise the
+  // whole form 403s on open. The per-line account picker then falls back to the
+  // "Default expense account" option and the server applies its default.
+  const { can } = useAuth();
+  const canReadAccounts = can('admin', 'viewer');
 
   const refs = useAsync(async () => {
     const [vendorPage, itemPage, accounts] = await Promise.all([
       contactsApi.list({ type: 'vendor', page_size: 200 }),
       itemsApi.list({ page_size: 200 }),
-      accountingApi.accounts(),
+      // Staff can't read the full chart of accounts, but bill lines still need
+      // an account: the options endpoint serves the allowed expense/asset rows.
+      canReadAccounts ? accountingApi.accounts() : accountingApi.accountOptions('expense,asset'),
     ]);
     return {
       vendors: vendorPage.items as Contact[],
       items: itemPage.items as Item[],
-      accounts: accounts.filter((account: Account) => account.type === 'expense' || account.type === 'asset'),
+      accounts: accounts.filter((account) => account.type === 'expense' || account.type === 'asset'),
     };
-  }, []);
+  }, [canReadAccounts]);
 
   const existing = useAsync(async () => (billId ? billsApi.get(billId) : null), [billId]);
 

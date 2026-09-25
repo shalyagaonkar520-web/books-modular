@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
+from backend.config import get_settings
 from backend.db import SessionLocal
 from backend.main import app
 from backend.models import EmailVerification
@@ -158,21 +159,31 @@ class ComprehensiveBackendE2ETest(unittest.TestCase):
 
     # ── 6. EMAIL & SMTP ENDPOINTS ──
     def test_08_email_service_status(self):
-        res = self.client.get("/api/email/status")
+        # The email endpoints now require an authenticated app user; anonymous
+        # access is rejected rather than leaking the sender configuration.
+        self.assertEqual(self.client.get("/api/email/status").status_code, 401)
+
+        res = self.client.get("/api/email/status", headers=self.headers)
         self.assertEqual(res.status_code, 200)
         data = res.json()
+        # SMTP is configured in the test environment (see conftest), and the
+        # sender comes from settings rather than a hardcoded address.
         self.assertEqual(data["status"], "operational")
-        self.assertEqual(data["sender"], "shalya@rooman.com")
-        self.assertIn("smtp.gmail.com", data["smtp_server"])
+        self.assertEqual(data["sender"], get_settings().smtp_user)
+        self.assertIn(get_settings().smtp_host, data["smtp_server"])
 
     def test_09_email_validation_and_errors(self):
-        bad_req = self.client.post("/api/email/send-due-reminder", json={})
+        # Without auth every send endpoint is rejected before validation.
+        self.assertEqual(self.client.post("/api/email/send-due-reminder", json={}).status_code, 401)
+
+        # Authenticated but empty bodies fail validation.
+        bad_req = self.client.post("/api/email/send-due-reminder", headers=self.headers, json={})
         self.assertEqual(bad_req.status_code, 422)
 
-        bad_inv = self.client.post("/api/email/send-invoice", json={})
+        bad_inv = self.client.post("/api/email/send-invoice", headers=self.headers, json={})
         self.assertEqual(bad_inv.status_code, 422)
 
-        bad_msg = self.client.post("/api/email/send-message", json={})
+        bad_msg = self.client.post("/api/email/send-message", headers=self.headers, json={})
         self.assertEqual(bad_msg.status_code, 422)
 
     # ── 7. ERROR HANDLING AND 404s ──

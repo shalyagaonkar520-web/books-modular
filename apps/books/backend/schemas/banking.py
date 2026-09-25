@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import List, Literal, Optional
+from typing import ClassVar, List, Literal, Optional, Tuple
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from backend.schemas import validators
+from backend.schemas.accounting import NoExplicitNulls
 from backend.schemas.common import MAX_MONEY, APIModel
 
 BankAccountType = Literal["bank", "cash", "credit_card"]
@@ -38,8 +39,18 @@ class BankAccountCreate(_BankFieldRules, APIModel):
     opening_balance_date: date
     is_primary: bool = False
 
+    @model_validator(mode="after")
+    def _cash_cannot_open_negative(self):
+        # A cash drawer cannot hold less than nothing; only bank overdrafts and
+        # credit cards may open below zero.
+        if self.type == "cash" and self.opening_balance < 0:
+            raise ValueError("A cash account cannot have a negative opening balance")
+        return self
 
-class BankAccountUpdate(_BankFieldRules, APIModel):
+
+class BankAccountUpdate(NoExplicitNulls, _BankFieldRules, APIModel):
+    non_nullable_fields: ClassVar[Tuple[str, ...]] = ("name", "is_primary", "is_active")
+
     name: Optional[str] = Field(default=None, min_length=1, max_length=120)
     bank_name: Optional[str] = None
     account_number: Optional[str] = None
@@ -64,6 +75,16 @@ class BankAccountOut(APIModel):
     is_primary: bool
     ledger_account_id: str
     created_at: datetime
+
+
+class BankAccountOptionOut(APIModel):
+    """A balance-free bank/cash/card row for "paid through" pickers on entry forms."""
+
+    id: str
+    name: str
+    type: str
+    ledger_account_id: str
+    currency: Optional[str] = None
 
 
 class BankTransactionCreate(APIModel):

@@ -6,15 +6,16 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.config import get_settings
 from backend.db import get_db
 from backend.deps import get_current_user, require_admin
-from backend.models import AuditLog, Document, Employee, PayRun, Payslip, Project, TimeEntry, User
+from backend.models import AuditLog, Document, Employee, PayRun, Payslip, Project, RefreshToken, TimeEntry, User
 from backend.schemas.auth import (
+    AdminResetPasswordRequest,
     AuditLogOut,
     InviteUserRequest,
     OrganizationOut,
@@ -64,7 +65,9 @@ def update_organization(payload: OrganizationUpdate, user: User = Depends(requir
 
 
 @router.get("/users", response_model=List[UserOut])
-def list_users(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_users(user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    # Admin-only: the web app lists users only in Settings > Users and in the
+    # admin's "log time for" picker, and the list carries every login email.
     rows = db.execute(select(User).where(User.organization_id == user.organization_id).order_by(User.created_at)).scalars().all()
     return [UserOut.model_validate(u) for u in rows]
 
@@ -184,14 +187,20 @@ def delete_user(user_id: str, user: User = Depends(require_admin), db: Session =
 @router.post("/users/{user_id}/reset-password", response_model=Message)
 def reset_password(
     user_id: str,
-    new_password: str = Query(min_length=8),
+    payload: AdminResetPasswordRequest,
     user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    # JSON body, not a query string, so the password stays out of access logs;
+    # and the same strength rules as sign-up and change-password apply.
     target = db.get(User, user_id)
     if target is None or target.organization_id != user.organization_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
-    target.password_hash = hash_password(new_password)
+    target.password_hash = hash_password(payload.new_password)
+    # Whoever knew the old password may still hold a session: end them all.
+    now = datetime.now(UTC)
+    for token in db.execute(select(RefreshToken).where(RefreshToken.user_id == target.id, RefreshToken.revoked_at.is_(None))).scalars():
+        token.revoked_at = now
     audit.record(db, user, "update", "user", target.id, f"Password reset for {target.email}")
     db.commit()
     return Message(message="Password reset")

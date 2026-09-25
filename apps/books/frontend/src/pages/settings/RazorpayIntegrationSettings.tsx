@@ -53,7 +53,7 @@ export function RazorpayIntegrationSettings() {
 
   const [keyId, setKeyId] = useState('');
   const [keySecret, setKeySecret] = useState('');
-  const [webhookSecret, setWebhookSecret] = useState('rooman_books_webhook_secret_2026');
+  const [webhookSecret, setWebhookSecret] = useState('');
   const [mode, setMode] = useState<'test' | 'live'>('test');
 
   const { data, loading, error, reload, setData } = useAsync<IntegrationStatus>(
@@ -136,14 +136,6 @@ export function RazorpayIntegrationSettings() {
     } finally {
       setDisconnecting(false);
     }
-  };
-
-  const fillSandboxPreset = () => {
-    setKeyId('rzp_test_StCGrX25cCk27O');
-    setKeySecret('dXNiyM3czTHNM9H5MUDIl5uR');
-    setWebhookSecret('rooman_books_webhook_secret_2026');
-    setMode('test');
-    toast.notify('Test sandbox credentials loaded. Click "Connect & Verify Razorpay" to save.', 'info');
   };
 
   const copyWebhookUrl = () => {
@@ -406,10 +398,6 @@ export function RazorpayIntegrationSettings() {
                 gap: '10px',
               }}
             >
-              <Button variant="secondary" size="sm" type="button" onClick={fillSandboxPreset}>
-                Quick Fill Test Sandbox Credentials
-              </Button>
-
               <div className="row" style={{ gap: '8px' }}>
                 {connected && (
                   <Button variant="ghost" size="md" type="button" onClick={() => setFormOpen(false)}>
@@ -448,7 +436,7 @@ export function RazorpayIntegrationSettings() {
           <li className="row" style={{ gap: '8px', alignItems: 'center' }}>
             <span className="badge badge-neutral" style={{ fontSize: '11px' }}>3</span>
             <span>Secret:</span>
-            <code className="code-tag">{data.webhook_configured ? 'Configured in Rooman Books' : webhookSecret || 'rooman_books_webhook_secret_2026'}</code>
+            <code className="code-tag">{data.webhook_configured ? 'Configured in Rooman Books' : webhookSecret || 'Set a webhook secret above'}</code>
           </li>
           <li className="row" style={{ gap: '8px', alignItems: 'flex-start' }}>
             <span className="badge badge-neutral" style={{ fontSize: '11px' }}>4</span>

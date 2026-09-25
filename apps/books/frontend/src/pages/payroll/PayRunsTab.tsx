@@ -41,8 +41,8 @@ export function PayRunsTab() {
       toast.success(`${result.periodLabel} pay run approved.`);
       setApproving(null);
       reload();
-    } else if (action.error) {
-      toast.error(action.error);
+    } else if (action.errorRef.current) {
+      toast.error(action.errorRef.current);
     }
   };
 
@@ -53,8 +53,8 @@ export function PayRunsTab() {
       toast.success(result.message);
       setDeleting(null);
       reload();
-    } else if (action.error) {
-      toast.error(action.error);
+    } else if (action.errorRef.current) {
+      toast.error(action.errorRef.current);
     }
   };
 

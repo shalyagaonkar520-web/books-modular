@@ -331,8 +331,8 @@ export function ProfilePage() {
     if (result) {
       toast.success(`Signed out ${session.device} • ${session.browser}`);
       reloadSessions();
-    } else if (revokeSubmit.error) {
-      toast.error(revokeSubmit.error);
+    } else if (revokeSubmit.errorRef.current) {
+      toast.error(revokeSubmit.errorRef.current);
     }
   };
 

@@ -76,7 +76,7 @@ const LOWER_LINKS: NavEntry[] = [
   { to: '/accounting', label: 'Accountant', icon: BarChart3, staffBlocked: true },
   { to: '/reports', label: 'Reports', icon: BarChart3 },
   { to: '/documents', label: 'Documents', icon: FolderOpen },
-  { to: '/payroll', label: 'Payroll', icon: Users },
+  { to: '/payroll', label: 'Payroll', icon: Users, staffBlocked: true },
 ];
 
 export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () => void }) {

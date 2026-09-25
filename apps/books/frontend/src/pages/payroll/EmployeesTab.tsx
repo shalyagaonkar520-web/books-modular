@@ -43,8 +43,8 @@ export function EmployeesTab() {
       toast.success(result.message);
       setDeleting(null);
       reload();
-    } else if (remove.error) {
-      toast.error(remove.error);
+    } else if (remove.errorRef.current) {
+      toast.error(remove.errorRef.current);
     }
   };
 

@@ -7,7 +7,8 @@ def test_bank_account_opening_balance_and_summary(client, org):
     operating = next(a for a in accounts if a["name"] == "Operating Account")
     assert operating["isPrimary"] is True and operating["ledgerAccountId"]
     summary = client.get("/api/banking/summary", headers=h).json()
-    assert summary["totalBalance"] == sum(a["currentBalance"] for a in summary["accounts"] if a["type"] != "credit_card")
+    # Card balances are signed (debt is negative), so the total is a plain sum that nets card debt off cash.
+    assert summary["totalBalance"] == round(sum(a["currentBalance"] for a in summary["accounts"]), 2)
 
 
 def test_manual_transaction_transfer_and_reconcile(client, org):
@@ -83,7 +84,8 @@ def test_chart_of_accounts_management(client, org):
 
 def test_manual_journal_must_balance_and_can_be_reversed(client, org):
     h = org["h"]
-    a, b = org["accounts"]["6200"]["id"], org["accounts"]["1000"]["id"]
+    # 1400 rather than 1000 Cash: bank/cash-register ledgers are off limits to manual journals.
+    a, b = org["accounts"]["6200"]["id"], org["accounts"]["1400"]["id"]
     unbalanced = client.post(
         "/api/accounting/journals",
         headers=h,

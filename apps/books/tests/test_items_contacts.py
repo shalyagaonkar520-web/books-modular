@@ -150,11 +150,16 @@ def test_contacts_crud_and_filters(client, org):
 
 
 def test_contact_person_names_reject_digits_but_company_names_keep_them(client, org):
-    """People's names are names, not codes - but "3M India" is a real company."""
+    """People's names are names, not codes - but "3M India" is a real company.
+
+    The display name is the name a contact is billed under, usually a business
+    name, so it follows the company rule: digits allowed, bare numbers not.
+    """
     h = org["h"]
-    bad_name = client.post("/api/contacts", headers=h, json={"type": "customer", "displayName": "Shivani 123", "email": "s1@x.com"})
-    assert bad_name.status_code == 422
-    assert "cannot contain numbers" in bad_name.text
+    digits_ok = client.post("/api/contacts", headers=h, json={"type": "customer", "displayName": "7-Eleven", "email": "s1@x.com"})
+    assert digits_ok.status_code == 201, digits_ok.text
+    bare_number = client.post("/api/contacts", headers=h, json={"type": "customer", "displayName": "12345", "email": "s0@x.com"})
+    assert bare_number.status_code == 422
 
     bad_person = client.post(
         "/api/contacts",
@@ -178,9 +183,10 @@ def test_contact_person_names_reject_digits_but_company_names_keep_them(client, 
     assert ok.status_code == 201, ok.text
     assert ok.json()["companyName"] == "3M India"
 
-    # The same rule applies on update.
-    renamed = client.put(f"/api/contacts/{ok.json()['id']}", headers=h, json={"displayName": "Acme 2"})
+    # The same rules apply on update.
+    renamed = client.put(f"/api/contacts/{ok.json()['id']}", headers=h, json={"contactPerson": "Ravi 2"})
     assert renamed.status_code == 422
+    assert client.put(f"/api/contacts/{ok.json()['id']}", headers=h, json={"displayName": "999"}).status_code == 422
 
 
 def test_existing_names_with_digits_can_still_be_read_back(client, org):
@@ -201,10 +207,13 @@ def test_existing_names_with_digits_can_still_be_read_back(client, org):
     assert listing.status_code == 200, listing.text
     assert "Flipkart Wholesale B2B" in [c["displayName"] for c in listing.json()["items"]]
 
-    # Creating one through the API is still rejected.
+    # Creating one through the API is still rejected where the entry rule
+    # applies - a person's name.
     assert (
         client.post(
-            "/api/contacts", headers=org["h"], json={"type": "customer", "displayName": "Typed 123", "email": "t123@x.com"}
+            "/api/contacts",
+            headers=org["h"],
+            json={"type": "customer", "displayName": "Typed Co", "contactPerson": "Typed 123", "email": "t123@x.com"},
         ).status_code
         == 422
     )

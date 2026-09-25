@@ -119,3 +119,35 @@ def bank_account_number(value: Optional[str], label: str = "Bank account number"
     if not 9 <= len(cleaned) <= 18:
         raise ValueError(f"{label} must be between 9 and 18 digits")
     return cleaned
+
+
+def not_null(value, label: str = "This field"):
+    """For PATCH-style update models, where leaving a field out means "keep it".
+
+    An explicit null for a column the database requires is not a way to clear
+    it - there is no empty value to store - so it is refused here as a 422
+    instead of reaching the database and failing with a 500.
+    """
+    if value is None:
+        raise ValueError(f"{label} cannot be null; leave it out to keep the current value")
+    return value
+
+
+def image_url(value: Optional[str], label: str = "Image URL") -> Optional[str]:
+    """Only a web address or an inline raster image.
+
+    The value ends up as an <img src> (and potentially a link) on screen and in
+    exports, so anything else - javascript:, vbscript:, data:text/html, and
+    data:image/svg+xml, which can carry script of its own - is refused.
+    """
+    if _blank(value):
+        return value
+    cleaned = value.strip()
+    lowered = cleaned.lower()
+    if lowered.startswith(("http://", "https://")):
+        if len(cleaned) > 2048:
+            raise ValueError(f"{label} is too long")
+        return cleaned
+    if lowered.startswith("data:image/") and not lowered.startswith("data:image/svg"):
+        return cleaned
+    raise ValueError(f"{label} must be an http(s) address or an uploaded image")

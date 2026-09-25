@@ -8,11 +8,11 @@ from decimal import Decimal
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
-from backend.deps import get_current_user, require_admin, require_write
+from backend.deps import require_admin, require_financial_read
 from backend.models import BankAccount, Employee, LeaveRecord, PayRun, Payslip, User
 from backend.schemas.common import Message
 from backend.schemas.payroll import (
@@ -105,6 +105,18 @@ def employee_out(e: Employee, today: date | None = None) -> EmployeeOut:
     )
 
 
+def _check_net_salary(e: Employee) -> None:
+    """Deductions larger than gross would make every pay run for this employee
+    fail later; refuse the salary structure up front instead."""
+    gross = money((e.basic_salary or 0) + (e.hra or 0) + (e.other_allowances or 0))
+    deductions = money((e.pf_employee or 0) + (e.professional_tax or 0) + (e.tds or 0))
+    if deductions > gross:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Deductions ({deductions}) cannot exceed gross salary ({gross}) - net salary would be negative",
+        )
+
+
 def leave_out(rec: LeaveRecord) -> LeaveRecordOut:
     return LeaveRecordOut(
         id=rec.id,
@@ -167,7 +179,7 @@ def payrun_out(run: PayRun, include_slips: bool = True) -> PayRunOut:
 
 
 @router.get("/employees", response_model=List[EmployeeOut])
-def list_employees(include_inactive: bool = False, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_employees(include_inactive: bool = False, user: User = Depends(require_financial_read), db: Session = Depends(get_db)):
     stmt = select(Employee).where(Employee.organization_id == user.organization_id)
     if not include_inactive:
         stmt = stmt.where(Employee.is_active.is_(True))
@@ -186,12 +198,13 @@ def list_unlinked_employees(user: User = Depends(require_admin), db: Session = D
 
 
 @router.post("/employees", response_model=EmployeeOut, status_code=status.HTTP_201_CREATED)
-def create_employee(payload: EmployeeCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def create_employee(payload: EmployeeCreate, user: User = Depends(require_admin), db: Session = Depends(get_db)):
     data = payload.model_dump()
     code = data.pop("employee_code") or numbering.next_number(db, user.organization_id, "employee")
     if db.execute(select(Employee.id).where(Employee.organization_id == user.organization_id, Employee.employee_code == code)).first():
         raise HTTPException(status.HTTP_409_CONFLICT, f"Employee code {code} already exists")
     emp = Employee(organization_id=user.organization_id, employee_code=code, **data)
+    _check_net_salary(emp)
     db.add(emp)
     db.flush()
     audit.record(db, user, "create", "employee", emp.id, f"Added employee {emp.name} ({code})")
@@ -200,10 +213,11 @@ def create_employee(payload: EmployeeCreate, user: User = Depends(require_write)
 
 
 @router.put("/employees/{employee_id}", response_model=EmployeeOut)
-def update_employee(employee_id: str, payload: EmployeeUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def update_employee(employee_id: str, payload: EmployeeUpdate, user: User = Depends(require_admin), db: Session = Depends(get_db)):
     emp = get_or_404(db, Employee, employee_id, user.organization_id, "Employee")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(emp, field, value)
+    _check_net_salary(emp)
     if emp.is_active is False and emp.user:
         # Deactivating the employee record locks their portal login too.
         emp.user.is_active = False
@@ -231,14 +245,14 @@ def delete_employee(employee_id: str, user: User = Depends(require_admin), db: S
 
 
 @router.get("/employees/{employee_id}/leaves", response_model=List[LeaveRecordOut])
-def list_employee_leaves(employee_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_employee_leaves(employee_id: str, user: User = Depends(require_financial_read), db: Session = Depends(get_db)):
     emp = get_or_404(db, Employee, employee_id, user.organization_id, "Employee")
     stmt = select(LeaveRecord).where(LeaveRecord.employee_id == emp.id).order_by(LeaveRecord.date.desc())
     return [leave_out(rec) for rec in db.execute(stmt).scalars()]
 
 
 @router.post("/employees/{employee_id}/leaves", response_model=LeaveRecordOut, status_code=status.HTTP_201_CREATED)
-def create_employee_leave(employee_id: str, payload: LeaveRecordCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def create_employee_leave(employee_id: str, payload: LeaveRecordCreate, user: User = Depends(require_admin), db: Session = Depends(get_db)):
     emp = get_or_404(db, Employee, employee_id, user.organization_id, "Employee")
     if db.execute(select(LeaveRecord.id).where(LeaveRecord.employee_id == emp.id, LeaveRecord.date == payload.date)).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "A leave record already exists for this employee on this date")
@@ -258,7 +272,7 @@ def create_employee_leave(employee_id: str, payload: LeaveRecordCreate, user: Us
 
 
 @router.delete("/leaves/{leave_id}", response_model=Message)
-def delete_leave(leave_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def delete_leave(leave_id: str, user: User = Depends(require_admin), db: Session = Depends(get_db)):
     rec = get_or_404(db, LeaveRecord, leave_id, user.organization_id, "Leave record")
     description = f"Removed leave record for {rec.employee.name} on {rec.date}"
     db.delete(rec)
@@ -268,7 +282,7 @@ def delete_leave(leave_id: str, user: User = Depends(require_write), db: Session
 
 
 @router.get("/pay-runs", response_model=List[PayRunOut])
-def list_pay_runs(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_pay_runs(user: User = Depends(require_financial_read), db: Session = Depends(get_db)):
     rows = (
         db.execute(
             select(PayRun)
@@ -283,7 +297,7 @@ def list_pay_runs(user: User = Depends(get_current_user), db: Session = Depends(
 
 
 @router.get("/pay-runs/{run_id}", response_model=PayRunOut)
-def get_pay_run(run_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_pay_run(run_id: str, user: User = Depends(require_financial_read), db: Session = Depends(get_db)):
     run = db.execute(
         select(PayRun)
         .where(PayRun.id == run_id, PayRun.organization_id == user.organization_id)
@@ -335,16 +349,31 @@ def create_pay_run(payload: PayRunCreate, user: User = Depends(require_admin), d
     )
     total_gross = total_ded = total_net = Decimal("0")
     for emp in employees:
+        # Someone who joined part-way through the month is only paid for the
+        # days they were employed; the same fraction scales their deductions
+        # so a late joiner's fixed deductions cannot exceed their pay.
+        if emp.date_of_joining > period_start:
+            days_employed = Decimal((period_end - emp.date_of_joining).days + 1)
+        else:
+            days_employed = days_in_month
         if emp.id in payload.loss_of_pay:
             lop_days = Decimal(str(payload.loss_of_pay[emp.id]))
         else:
             lop_days = Decimal(auto_lop_counts.get(emp.id, 0))
-        if lop_days < 0 or lop_days > days_in_month:
+        if lop_days < 0 or lop_days > days_employed:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Invalid loss-of-pay days for {emp.name}")
         full_gross = money(emp.basic_salary + emp.hra + emp.other_allowances)
+        if days_employed < days_in_month:
+            earned_gross = money(full_gross * days_employed / days_in_month)
+            pf = money(emp.pf_employee * days_employed / days_in_month)
+            pt = money(emp.professional_tax * days_employed / days_in_month)
+            tds = money(emp.tds * days_employed / days_in_month)
+        else:
+            earned_gross = full_gross
+            pf, pt, tds = money(emp.pf_employee), money(emp.professional_tax), money(emp.tds)
         lop_amount = money(full_gross * lop_days / days_in_month) if lop_days else Decimal("0")
-        gross = money(full_gross - lop_amount)
-        deductions = money(emp.pf_employee + emp.professional_tax + emp.tds)
+        gross = money(earned_gross - lop_amount)
+        deductions = money(pf + pt + tds)
         net = money(gross - deductions)
         if net < 0:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Deductions exceed pay for {emp.name}")
@@ -355,9 +384,9 @@ def create_pay_run(payload: PayRunCreate, user: User = Depends(require_admin), d
                 hra=emp.hra,
                 other_allowances=emp.other_allowances,
                 gross=gross,
-                pf_employee=emp.pf_employee,
-                professional_tax=emp.professional_tax,
-                tds=emp.tds,
+                pf_employee=pf,
+                professional_tax=pt,
+                tds=tds,
                 loss_of_pay_days=lop_days,
                 loss_of_pay_amount=lop_amount,
                 total_deductions=deductions,
@@ -378,9 +407,18 @@ def create_pay_run(payload: PayRunCreate, user: User = Depends(require_admin), d
 @router.post("/pay-runs/{run_id}/approve", response_model=PayRunOut)
 def approve_pay_run(run_id: str, user: User = Depends(require_admin), db: Session = Depends(get_db)):
     run = get_or_404(db, PayRun, run_id, user.organization_id, "Pay run")
-    if run.status != "draft":
+    # Compare-and-set in the database so two concurrent approvals cannot both
+    # pass a status check made on a stale copy of the row.
+    result = db.execute(
+        update(PayRun)
+        .where(PayRun.id == run.id, PayRun.organization_id == user.organization_id, PayRun.status == "draft")
+        .values(status="approved")
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only draft pay runs can be approved")
-    run.status = "approved"
+    db.refresh(run)
     audit.record(db, user, "update", "pay_run", run.id, "Pay run approved")
     db.commit()
     return get_pay_run(run.id, user, db)
@@ -393,6 +431,27 @@ def pay_pay_run(run_id: str, payload: PayRunPay, user: User = Depends(require_ad
     if run.status != "approved":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Approve the pay run before recording payment")
     bank_acct = get_or_404(db, BankAccount, payload.bank_account_id, org_id, "Bank account")
+    if not bank_acct.is_active:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Salaries cannot be paid from an inactive bank account")
+    period_start = date(run.period_year, run.period_month, 1)
+    if payload.pay_date < period_start:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Pay date cannot be before the start of the pay period")
+    if payload.pay_date < bank_acct.opening_balance_date:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Pay date cannot be before the bank account's opening balance date")
+    # Claim the run atomically before posting anything: only the request whose
+    # UPDATE actually flips approved -> paid may post the journal and the bank
+    # withdrawal. Concurrent duplicates see rowcount 0 and are refused, instead
+    # of each paying salaries again.
+    result = db.execute(
+        update(PayRun)
+        .where(PayRun.id == run.id, PayRun.organization_id == org_id, PayRun.status == "approved")
+        .values(status="paid", pay_date=payload.pay_date, bank_account_id=bank_acct.id)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "This pay run has already been paid")
+    db.refresh(run)
     salary_exp = get_account_by_code(db, org_id, "6400")
     pf_payable = get_account_by_code(db, org_id, "2310")
     pt_payable = get_account_by_code(db, org_id, "2320")
@@ -414,9 +473,6 @@ def pay_pay_run(run_id: str, payload: PayRunPay, user: User = Depends(require_ad
     bank.record_movement(
         db, bank_acct, payload.pay_date, "withdrawal", run.total_net, label, "payroll", run.id, user.id, None, salary_exp.id, entry.id
     )
-    run.status = "paid"
-    run.pay_date = payload.pay_date
-    run.bank_account_id = bank_acct.id
     audit.record(db, user, "update", "pay_run", run.id, f"{label} paid from {bank_acct.name}")
     db.commit()
     return get_pay_run(run.id, user, db)
@@ -434,7 +490,7 @@ def delete_pay_run(run_id: str, user: User = Depends(require_admin), db: Session
 
 
 @router.get("/payslips/{payslip_id}", response_model=PayslipOut)
-def get_payslip(payslip_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_payslip(payslip_id: str, user: User = Depends(require_financial_read), db: Session = Depends(get_db)):
     slip = db.get(Payslip, payslip_id)
     if slip is None or slip.pay_run.organization_id != user.organization_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Payslip not found")

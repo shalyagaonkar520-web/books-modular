@@ -18,6 +18,7 @@ import {
 import { accountingApi, bankingApi, contactsApi, expensesApi } from '@/api/endpoints';
 import type { Expense } from '@/api/types';
 import { IfCanWrite } from '@/auth/RouteGuards';
+import { useAuth } from '@/auth/AuthContext';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { StatTile } from '@/components/ui/Card';
@@ -32,31 +33,50 @@ import { ExpenseFormModal, type ExpenseRefs } from '../purchases/ExpenseFormModa
 
 type PeriodKey = 'this_month' | 'last_month' | 'this_quarter' | 'this_fiscal_year' | 'all';
 
-function getPeriodDates(period: PeriodKey): { startDate?: string; endDate?: string } {
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * First day of a month as a local `yyyy-mm-01` string. `month` is 0-based.
+ * Built from the calendar fields directly rather than through `toISOString()`,
+ * which shifts to UTC and can land the boundary on the previous day in IST.
+ */
+function firstOfMonthIso(year: number, month: number): string {
+  return `${year}-${pad2(month + 1)}-01`;
+}
+
+/** Last day of a month as a local `yyyy-mm-dd` string. `month` is 0-based. */
+function lastOfMonthIso(year: number, month: number): string {
+  // Day 0 of the next month is the last day of this one; only the day-of-month
+  // is read back, so no timezone conversion is involved.
+  const day = new Date(year, month + 1, 0).getDate();
+  return `${year}-${pad2(month + 1)}-${pad2(day)}`;
+}
+
+function getPeriodDates(period: PeriodKey, fiscalStartMonth: number): { startDate?: string; endDate?: string } {
   const today = new Date();
   const year = today.getFullYear();
   const month = today.getMonth();
 
   switch (period) {
     case 'this_month': {
-      const start = new Date(year, month, 1).toISOString().slice(0, 10);
-      return { startDate: start, endDate: todayIso() };
+      return { startDate: firstOfMonthIso(year, month), endDate: todayIso() };
     }
     case 'last_month': {
-      const start = new Date(year, month - 1, 1).toISOString().slice(0, 10);
-      const end = new Date(year, month, 0).toISOString().slice(0, 10);
-      return { startDate: start, endDate: end };
+      const prev = new Date(year, month - 1, 1);
+      return {
+        startDate: firstOfMonthIso(prev.getFullYear(), prev.getMonth()),
+        endDate: lastOfMonthIso(prev.getFullYear(), prev.getMonth()),
+      };
     }
     case 'this_quarter': {
       const quarterMonth = Math.floor(month / 3) * 3;
-      const start = new Date(year, quarterMonth, 1).toISOString().slice(0, 10);
-      return { startDate: start, endDate: todayIso() };
+      return { startDate: firstOfMonthIso(year, quarterMonth), endDate: todayIso() };
     }
     case 'this_fiscal_year': {
-      // April 1st of current fiscal year (Indian fiscal year)
-      const fyStartYear = month >= 3 ? year : year - 1;
-      const start = new Date(fyStartYear, 3, 1).toISOString().slice(0, 10);
-      return { startDate: start, endDate: todayIso() };
+      // fiscalStartMonth is 1-based; the FY that contains today started this
+      // calendar year if we are already at/after its start month, else last year.
+      const fyStartYear = month + 1 >= fiscalStartMonth ? year : year - 1;
+      return { startDate: `${fyStartYear}-${pad2(fiscalStartMonth)}-01`, endDate: todayIso() };
     }
     case 'all':
     default:
@@ -64,32 +84,46 @@ function getPeriodDates(period: PeriodKey): { startDate?: string; endDate?: stri
   }
 }
 
+const MAX_SUMMARY_PAGES = 50;
+
 export function ExpenseDashboardPage() {
   const navigate = useNavigate();
+  const { organization, can } = useAuth();
+  const fiscalStartMonth = organization?.fiscalYearStartMonth ?? 4;
+  // Reading the chart of accounts and bank accounts is Admin/Viewer only; Staff
+  // may still record an expense, so don't fetch (and 403) the account pickers for
+  // them - the form degrades to an admin having to choose the accounts.
+  const canReadAccounts = can('admin', 'viewer');
   const [period, setPeriod] = useState<PeriodKey>('this_month');
   const [creating, setCreating] = useState(false);
 
-  const dates = useMemo(() => getPeriodDates(period), [period]);
+  const dates = useMemo(() => getPeriodDates(period, fiscalStartMonth), [period, fiscalStartMonth]);
 
   const refs = useAsync(async (): Promise<ExpenseRefs> => {
     const [expenseAccounts, bankAccounts, vendorPage, customerPage] = await Promise.all([
-      accountingApi.accounts({ type: 'expense' }),
-      bankingApi.accounts(),
+      canReadAccounts ? accountingApi.accounts({ type: 'expense' }) : accountingApi.accountOptions('expense'),
+      canReadAccounts ? bankingApi.accounts() : bankingApi.accountOptions(),
       contactsApi.list({ type: 'vendor', page_size: 200 }),
       contactsApi.list({ type: 'customer', page_size: 200 }),
     ]);
     return { expenseAccounts, bankAccounts, vendors: vendorPage.items, customers: customerPage.items };
-  }, []);
+  }, [canReadAccounts]);
 
   const expensesQuery = useAsync(async () => {
-    // Fetch up to 200 items for detailed dashboard calculations
-    const res = await expensesApi.list({
-      start_date: dates.startDate,
-      end_date: dates.endDate,
-      page: 1,
-      page_size: 200,
-    });
-    return res.items;
+    // Page through every expense in the horizon so the KPIs and breakdowns are
+    // not silently capped at the first 200 rows.
+    const rows: Expense[] = [];
+    for (let current = 1; current <= MAX_SUMMARY_PAGES; current += 1) {
+      const res = await expensesApi.list({
+        start_date: dates.startDate,
+        end_date: dates.endDate,
+        page: current,
+        page_size: 200,
+      });
+      rows.push(...res.items);
+      if (res.items.length === 0 || rows.length >= res.total) break;
+    }
+    return rows;
   }, [dates.startDate, dates.endDate]);
 
   const items = useMemo(() => expensesQuery.data ?? [], [expensesQuery.data]);

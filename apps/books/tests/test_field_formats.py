@@ -123,8 +123,8 @@ def test_postal_code_must_be_six_digits(client, h):
 
 
 def test_person_names_reject_digits_everywhere_they_are_entered(client, h):
-    assert _contact(client, h, displayName="Shivani 123").status_code == 422
     assert _contact(client, h, contactPerson="Ravi 99").status_code == 422
+    assert _contact(client, h, firstName="Shivani 123").status_code == 422
     assert _employee(client, h, name="Asha 42").status_code == 422
 
 

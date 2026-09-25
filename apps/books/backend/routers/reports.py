@@ -6,12 +6,12 @@ from datetime import date
 from decimal import Decimal
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
-from backend.deps import get_current_user
+from backend.deps import get_current_user, require_financial_read
 from backend.models import Account, Bill, Expense, Invoice, Item, User
 from backend.schemas.reports import (
     AgingBucket,
@@ -37,6 +37,8 @@ router = APIRouter(prefix="/api/reports", tags=["Reports"])
 
 
 def _default_range(user: User, start: Optional[date], end: Optional[date]):
+    if start and end and start > end:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The start date cannot be after the end date")
     fy_start, fy_end = fiscal_year_bounds(date.today(), user.organization.fiscal_year_start_month)
     return start or fy_start, end or min(fy_end, date.today())
 
@@ -63,7 +65,8 @@ def profit_and_loss(
     # Also accept the snake_case form so existing callers aren't broken
     start_date_snake: Optional[date] = Query(default=None, alias="start_date"),
     end_date_snake: Optional[date] = Query(default=None, alias="end_date"),
-    user: User = Depends(get_current_user),
+    # Ledger account balances: Admin and Viewer only, like Accounting.
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     effective_start = start_date or start_date_snake
@@ -91,7 +94,7 @@ def profit_and_loss(
 
 
 @router.get("/balance-sheet", response_model=BalanceSheet)
-def balance_sheet(as_of: Optional[date] = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def balance_sheet(as_of: Optional[date] = None, user: User = Depends(require_financial_read), db: Session = Depends(get_db)):
     as_of = as_of or date.today()
     accounts = db.execute(select(Account).where(Account.organization_id == user.organization_id).order_by(Account.code)).scalars().all()
     balances = ledger.account_balances(db, user.organization_id, end=as_of)

@@ -33,7 +33,7 @@ function currentWeek(): { start: string; end: string } {
 }
 
 export function TimesheetsTab({ projects, onEntriesChanged }: { projects: Project[]; onEntriesChanged: () => void }) {
-  const { canWrite } = useAuth();
+  const { canWrite, user: currentUser, isAdmin } = useAuth();
   const toast = useToast();
   const week = currentWeek();
   const [page, setPage] = useState(1);
@@ -127,28 +127,33 @@ export function TimesheetsTab({ projects, onEntriesChanged }: { projects: Projec
             header: '',
             align: 'right' as const,
             width: '80px',
-            render: (entry: TimeEntry) => (
-              <div className="row-actions" title={entry.invoiceId ? 'Invoiced time entries cannot be edited or deleted' : undefined}>
-                <button
-                  type="button"
-                  className="action-btn"
-                  aria-label={`Edit time entry from ${formatDate(entry.date)}`}
-                  disabled={!!entry.invoiceId}
-                  onClick={() => setModal({ open: true, entry })}
-                >
-                  <Pencil size={15} />
-                </button>
-                <button
-                  type="button"
-                  className="action-btn is-danger"
-                  aria-label={`Delete time entry from ${formatDate(entry.date)}`}
-                  disabled={!!entry.invoiceId}
-                  onClick={() => setDeleteTarget(entry)}
-                >
-                  <Trash2 size={15} />
-                </button>
-              </div>
-            ),
+            render: (entry: TimeEntry) => {
+              // The backend only lets you edit/delete your own entries unless you
+              // are an admin, so don't offer the buttons on other people's rows.
+              if (!isAdmin && entry.userId !== currentUser?.id) return null;
+              return (
+                <div className="row-actions" title={entry.invoiceId ? 'Invoiced time entries cannot be edited or deleted' : undefined}>
+                  <button
+                    type="button"
+                    className="action-btn"
+                    aria-label={`Edit time entry from ${formatDate(entry.date)}`}
+                    disabled={!!entry.invoiceId}
+                    onClick={() => setModal({ open: true, entry })}
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    className="action-btn is-danger"
+                    aria-label={`Delete time entry from ${formatDate(entry.date)}`}
+                    disabled={!!entry.invoiceId}
+                    onClick={() => setDeleteTarget(entry)}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              );
+            },
           },
         ]
       : []),

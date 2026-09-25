@@ -46,8 +46,8 @@ export function EmployeeLeaveModal({ employee, onClose, onChanged }: EmployeeLea
       toast.success(result.message);
       reload();
       onChanged();
-    } else if (remove.error) {
-      toast.error(remove.error);
+    } else if (remove.errorRef.current) {
+      toast.error(remove.errorRef.current);
     }
   };
 

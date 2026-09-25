@@ -11,10 +11,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
-from backend.deps import require_financial_read, require_financial_write
+from backend.deps import require_financial_read, require_financial_write, require_full_app_access
 from backend.models import Account, BankAccount, BankTransaction, User
 from backend.schemas.banking import (
     BankAccountCreate,
+    BankAccountOptionOut,
     BankAccountOut,
     BankAccountUpdate,
     BankingSummary,
@@ -91,10 +92,34 @@ def list_accounts(include_inactive: bool = False, user: User = Depends(require_f
     return [to_out(db, a, counts.get(a.id)) for a in rows]
 
 
+@router.get("/account-options", response_model=List[BankAccountOptionOut])
+def account_options(user: User = Depends(require_full_app_access), db: Session = Depends(get_db)):
+    """Active bank, cash and card accounts for "paid through" pickers.
+
+    Open to every role that can raise documents (Staff included) because it
+    carries no balances or account numbers - the full list stays financial-only.
+    """
+    rows = (
+        db.execute(
+            select(BankAccount)
+            .where(BankAccount.organization_id == user.organization_id, BankAccount.is_active.is_(True))
+            .order_by(BankAccount.is_primary.desc(), BankAccount.name)
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        BankAccountOptionOut(id=a.id, name=a.name, type=a.type, ledger_account_id=a.ledger_account_id, currency=a.currency) for a in rows
+    ]
+
+
 @router.get("/summary", response_model=BankingSummary)
 def banking_summary(user: User = Depends(require_financial_read), db: Session = Depends(get_db)):
     accounts = list_accounts(False, user, db)
-    total = sum((a.current_balance if a.type != "credit_card" else -a.current_balance for a in accounts), Decimal("0"))
+    # Balances are signed the same way for every account type: a credit card
+    # in debt carries a negative balance, so a plain sum nets card liabilities
+    # off the cash held rather than adding them to it.
+    total = sum((a.current_balance for a in accounts), Decimal("0"))
     return BankingSummary(total_balance=money(total), accounts=accounts, unreconciled_count=sum(a.unreconciled_count for a in accounts))
 
 
@@ -132,6 +157,13 @@ def update_account(
 ):
     acct = get_or_404(db, BankAccount, account_id, user.organization_id, "Bank account")
     data = payload.model_dump(exclude_unset=True)
+    if data.get("is_active") is False and acct.is_active:
+        balance = bank.current_balance(db, acct)
+        if balance != 0:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"'{acct.name}' still holds {balance}. Transfer the balance out before deactivating it.",
+            )
     if data.get("is_primary"):
         for other in db.execute(select(BankAccount).where(BankAccount.organization_id == user.organization_id)).scalars():
             other.is_primary = False
@@ -190,9 +222,17 @@ def create_transaction(
 ):
     org_id = user.organization_id
     acct = get_or_404(db, BankAccount, account_id, org_id, "Bank account")
+    bank.require_active(acct)
     counter = get_or_404(db, Account, payload.counter_account_id, org_id, "Account")
     if counter.id == acct.ledger_account_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Counter account cannot be the same bank account")
+    if not counter.is_active:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Account {counter.code} {counter.name} is inactive")
+    if bank.is_bank_ledger_account(db, org_id, counter.id):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "The other side is a bank, cash or card account. Record money moving between them as a transfer instead.",
+        )
     amount = money(payload.amount)
     if payload.type == "deposit":
         lines = [
@@ -237,6 +277,8 @@ def transfer(payload: TransferCreate, user: User = Depends(require_financial_wri
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose two different accounts")
     src = get_or_404(db, BankAccount, payload.from_account_id, org_id, "Source account")
     dst = get_or_404(db, BankAccount, payload.to_account_id, org_id, "Destination account")
+    bank.require_active(src, "Source account")
+    bank.require_active(dst, "Destination account")
     amount = money(payload.amount)
     desc = payload.description or f"Transfer from {src.name} to {dst.name}"
     entry = ledger.post_entry(
@@ -273,6 +315,22 @@ def delete_transaction(transaction_id: str, user: User = Depends(require_financi
         )
     if tx.is_reconciled:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unreconcile the transaction before deleting it")
+    if tx.source_type == "transfer":
+        # Deleting a transfer removes both of its movements, so the other side
+        # must not have been reconciled against a statement either.
+        other_reconciled = db.execute(
+            select(BankTransaction.id).where(
+                BankTransaction.organization_id == user.organization_id,
+                BankTransaction.source_type == "transfer",
+                BankTransaction.source_id == (tx.source_id or tx.id),
+                BankTransaction.is_reconciled.is_(True),
+            )
+        ).first()
+        if other_reconciled:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "The other side of this transfer is reconciled. Unreconcile it before deleting the transfer.",
+            )
     source_type = "bank_transaction" if tx.source_type == "manual" else "transfer"
     ledger.reverse_entries_for_source(
         db, user.organization_id, source_type, tx.source_id or tx.id, date.today(), user.id, "Transaction deleted"

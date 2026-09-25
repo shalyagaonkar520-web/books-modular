@@ -7,7 +7,9 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import HTTPException, status
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 
 from backend.models import Item
 from backend.services import ledger
@@ -33,13 +35,29 @@ def adjust_stock(
     delta = qty(delta)
     if delta == 0:
         return
-    new_qty = qty(item.stock_on_hand) + delta
-    if new_qty < 0 and not allow_negative:
+    # One conditional UPDATE, not read-modify-write: two requests selling the
+    # last units at the same moment would otherwise both read the same stock
+    # figure, both pass the check and both write, overselling. The database
+    # applies the decrement and the "enough stock" test together under its row
+    # lock (SQLite: write lock), so exactly one of them can take the last unit.
+    stmt = (
+        update(Item)
+        .where(Item.id == item.id, Item.organization_id == item.organization_id)
+        .values(stock_on_hand=Item.stock_on_hand + delta)
+        .execution_options(synchronize_session=False)
+    )
+    if delta < 0 and not allow_negative:
+        stmt = stmt.where(Item.stock_on_hand >= -delta)
+    matched = db.execute(stmt).rowcount
+    current = db.execute(select(Item.stock_on_hand).where(Item.id == item.id)).scalar_one()
+    # Keep the loaded object in step with the row without marking it dirty, so
+    # a later flush cannot write a stale figure back over the UPDATE above.
+    set_committed_value(item, "stock_on_hand", qty(current))
+    if matched == 0:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            f"Insufficient stock for '{item.name}': {item.stock_on_hand} {item.unit} available",
+            f"Insufficient stock for '{item.name}': {qty(current)} {item.unit} available",
         )
-    item.stock_on_hand = new_qty
     unit_rate = money(rate if rate is not None else item.cost_price)
     value = money(delta * unit_rate)
     if value == 0:

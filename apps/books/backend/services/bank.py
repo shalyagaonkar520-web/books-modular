@@ -29,6 +29,31 @@ def create_ledger_account(db: Session, org_id: str, name: str, account_type: str
     return account
 
 
+def bank_ledger_account_ids(db: Session, org_id: str) -> set:
+    """Ledger accounts that sit behind a bank, cash or card register.
+
+    Posting to one of these from anywhere other than a bank movement (manual
+    journal, a bill line, a bank transaction's counter side) would move the
+    ledger balance without a matching register row, so the register and the
+    books would silently disagree. Money between them goes through transfers.
+    """
+    return set(db.execute(select(BankAccount.ledger_account_id).where(BankAccount.organization_id == org_id)).scalars())
+
+
+def is_bank_ledger_account(db: Session, org_id: str, account_id: str) -> bool:
+    return account_id in bank_ledger_account_ids(db, org_id)
+
+
+def require_active(bank_acct: BankAccount, label: str = "Bank account") -> None:
+    from fastapi import HTTPException
+    from fastapi import status as http_status
+
+    if not bank_acct.is_active:
+        raise HTTPException(
+            http_status.HTTP_400_BAD_REQUEST, f"{label} '{bank_acct.name}' is inactive and cannot be used for new transactions"
+        )
+
+
 def post_opening_balance(db: Session, bank: BankAccount, created_by: Optional[str]) -> None:
     amount = money(bank.opening_balance)
     if amount == 0:

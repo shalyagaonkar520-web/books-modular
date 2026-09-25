@@ -2,19 +2,33 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
-from backend.deps import require_financial_read, require_financial_write
-from backend.models import Account, JournalEntry, JournalLine, User
+from backend.deps import require_financial_read, require_financial_write, require_full_app_access
+from backend.models import (
+    Account,
+    BankAccount,
+    BankTransaction,
+    BillLine,
+    Contact,
+    Expense,
+    InvoiceLine,
+    Item,
+    JournalEntry,
+    JournalLine,
+    User,
+)
 from backend.schemas.accounting import (
     AccountCreate,
+    AccountOptionOut,
     AccountOut,
     AccountUpdate,
     JournalCreate,
@@ -26,7 +40,7 @@ from backend.schemas.accounting import (
     TrialBalanceRow,
 )
 from backend.schemas.common import Message, Page
-from backend.services import audit, ledger
+from backend.services import audit, bank, ledger
 from backend.services.money import money
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
@@ -59,6 +73,31 @@ def list_accounts(
         d, c = balances.get(acct.id, (Decimal("0"), Decimal("0")))
         out.append(account_out(acct, ledger.natural_balance(acct.type, d, c)))
     return out
+
+
+ACCOUNT_TYPES = ("asset", "liability", "equity", "income", "expense")
+
+
+@router.get("/account-options", response_model=List[AccountOptionOut])
+def account_options(
+    types: Optional[str] = Query(None, description="Comma-separated account types, e.g. expense,asset"),
+    user: User = Depends(require_full_app_access),
+    db: Session = Depends(get_db),
+):
+    """Active accounts for pickers on entry forms (bills, expenses, items...).
+
+    Carries no balances, so it is open to Staff, who cannot read the full chart
+    of accounts but still need to choose an account on the documents they raise.
+    """
+    stmt = select(Account).where(Account.organization_id == user.organization_id, Account.is_active.is_(True))
+    if types:
+        wanted = {t.strip().lower() for t in types.split(",") if t.strip()}
+        unknown = wanted - set(ACCOUNT_TYPES)
+        if unknown:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Unknown account type(s): {', '.join(sorted(unknown))}")
+        if wanted:
+            stmt = stmt.where(Account.type.in_(wanted))
+    return [AccountOptionOut.model_validate(a) for a in db.execute(stmt.order_by(Account.code)).scalars()]
 
 
 @router.post("/accounts", response_model=AccountOut, status_code=status.HTTP_201_CREATED)
@@ -98,9 +137,32 @@ def delete_account(account_id: str, user: User = Depends(require_financial_write
         acct.is_active = False
         db.commit()
         return Message(message="Account has transactions and has been deactivated instead")
+    # Other records can point at an account without having posted to it yet;
+    # deleting it then fails on the foreign key, so name what still uses it.
+    references = (
+        ("items", select(Item.id).where(or_(Item.sales_account_id == acct.id, Item.purchase_account_id == acct.id))),
+        ("contacts", select(Contact.id).where(Contact.ledger_account_id == acct.id)),
+        ("bank accounts", select(BankAccount.id).where(BankAccount.ledger_account_id == acct.id)),
+        ("expenses", select(Expense.id).where(Expense.account_id == acct.id)),
+        ("bill lines", select(BillLine.id).where(BillLine.account_id == acct.id)),
+        ("invoice lines", select(InvoiceLine.id).where(InvoiceLine.account_id == acct.id)),
+        ("bank transactions", select(BankTransaction.id).where(BankTransaction.counter_account_id == acct.id)),
+    )
+    for label, stmt in references:
+        if db.execute(stmt.limit(1)).first():
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Account {acct.code} is still used by {label}. Point them at another account, or deactivate this one instead.",
+            )
     db.delete(acct)
     audit.record(db, user, "delete", "account", account_id, f"Deleted account {acct.code}")
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f"Account {acct.code} is still referenced by other records. Deactivate it instead."
+        ) from None
     return Message(message="Account deleted")
 
 
@@ -173,6 +235,31 @@ def get_journal(entry_id: str, user: User = Depends(require_financial_read), db:
 
 @router.post("/journals", response_model=JournalOut, status_code=status.HTTP_201_CREATED)
 def create_journal(payload: JournalCreate, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
+    org_id = user.organization_id
+    account_ids = {ln.account_id for ln in payload.lines}
+    accounts = {
+        a.id: a for a in db.execute(select(Account).where(Account.organization_id == org_id, Account.id.in_(account_ids))).scalars()
+    }
+    if len(accounts) != len(account_ids):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "One or more accounts do not belong to this organization")
+    inactive = [a for a in accounts.values() if not a.is_active]
+    if inactive:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f"Account {inactive[0].code} {inactive[0].name} is inactive and cannot be posted to"
+        )
+    bank_linked = bank.bank_ledger_account_ids(db, org_id) & account_ids
+    if bank_linked:
+        acct = accounts[next(iter(bank_linked))]
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"{acct.name} is a bank, cash or card account. Record its movements in Banking (a transaction or a transfer), "
+            "not as a manual journal.",
+        )
+    contact_ids = {ln.contact_id for ln in payload.lines if ln.contact_id}
+    if contact_ids:
+        found = set(db.execute(select(Contact.id).where(Contact.organization_id == org_id, Contact.id.in_(contact_ids))).scalars())
+        if found != contact_ids:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "One or more contacts do not belong to this organization")
     lines = [(ln.account_id, ln.debit, ln.credit, ln.description, ln.contact_id) for ln in payload.lines]
     entry = ledger.post_entry(
         db, user.organization_id, payload.date, lines, "manual", None, reference=payload.reference, notes=payload.notes, created_by=user.id
@@ -193,8 +280,11 @@ def reverse_journal(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only manual journals can be reversed here. Void the source document instead.")
     if entry.is_reversal:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This entry is already a reversal")
+    effective_date = reversal_date or date.today()
+    if effective_date < entry.date:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The reversal date cannot be before the original journal's date")
     reversals = ledger.reverse_entries_for_source(
-        db, user.organization_id, "manual", entry.source_id or entry.id, reversal_date or date.today(), user.id, "Manual reversal"
+        db, user.organization_id, "manual", entry.source_id or entry.id, effective_date, user.id, "Manual reversal"
     )
     if not reversals:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This journal has already been reversed")
@@ -213,10 +303,13 @@ def general_ledger(
 ):
     acct = get_or_404(db, Account, account_id, user.organization_id, "Account")
     opening = Decimal("0")
-    if start_date:
-        d, c = ledger.account_balances(
-            db, user.organization_id, end=start_date.__class__.fromordinal(start_date.toordinal() - 1), account_ids=[acct.id]
-        ).get(acct.id, (Decimal("0"), Decimal("0")))
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The start date cannot be after the end date")
+    # date.min has no day before it, and nothing can have been posted before it either.
+    if start_date and start_date > date.min:
+        d, c = ledger.account_balances(db, user.organization_id, end=start_date - timedelta(days=1), account_ids=[acct.id]).get(
+            acct.id, (Decimal("0"), Decimal("0"))
+        )
         opening = ledger.natural_balance(acct.type, d, c)
     stmt = (
         select(JournalLine, JournalEntry)

@@ -7,7 +7,7 @@ from tests.conftest import trial_balance_ok
 
 
 def razorpay_signature(body: str) -> str:
-    secret = get_settings().razorpay_webhook_secret or "rooman_books_webhook_secret_2026"
+    secret = get_settings().razorpay_webhook_secret or "example_webhook_secret_not_real"
     return hmac.new(secret.encode("utf-8"), body.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
@@ -212,16 +212,20 @@ def test_financial_dashboard_and_analytics(client, org):
     assert "text/csv" in exp.headers["content-type"]
 
 
-def test_razorpay_connect_and_disconnect(client, org):
+def test_razorpay_connect_and_disconnect(client, org, tmp_path, monkeypatch):
+    # The connect/disconnect endpoints write RAZORPAY_* into a .env file
+    # relative to the working directory. Run from a throwaway directory so the
+    # suite never rewrites the repo's real .env (which it did before this).
+    monkeypatch.chdir(tmp_path)
     h = org["h"]
     # 1. Connect
     connect_res = client.post(
         "/api/razorpay/integration/connect",
         headers=h,
         json={
-            "key_id": "rzp_test_StCGrX25cCk27O",
-            "key_secret": "dXNiyM3czTHNM9H5MUDIl5uR",
-            "webhook_secret": "rooman_books_webhook_secret_2026",
+            "key_id": "rzp_test_EXAMPLE0000000000",
+            "key_secret": "example_key_secret_not_real",
+            "webhook_secret": "example_webhook_secret_not_real",
             "mode": "test",
         },
     )
@@ -245,9 +249,9 @@ def test_razorpay_connect_and_disconnect(client, org):
         "/api/razorpay/integration/connect",
         headers=h,
         json={
-            "key_id": "rzp_test_StCGrX25cCk27O",
-            "key_secret": "dXNiyM3czTHNM9H5MUDIl5uR",
-            "webhook_secret": "rooman_books_webhook_secret_2026",
+            "key_id": "rzp_test_EXAMPLE0000000000",
+            "key_secret": "example_key_secret_not_real",
+            "webhook_secret": "example_webhook_secret_not_real",
             "mode": "test",
         },
     )
