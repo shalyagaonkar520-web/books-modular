@@ -6,6 +6,7 @@ import { FormError } from '@/components/ui/Feedback';
 import { CheckboxField, SelectField, TextField } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
+import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 
 import { PASSWORD_HINT } from '@/pages/settings/passwordRules';
@@ -114,21 +115,32 @@ export function CreatePlatformUserModal({ organizations, defaultOrganizationId, 
 
 interface EditUserModalProps {
   user: PlatformUser;
+  organizations?: OrgSummary[];
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function EditPlatformUserModal({ user, onClose, onSaved }: EditUserModalProps) {
+export function EditPlatformUserModal({ user, organizations, onClose, onSaved }: EditUserModalProps) {
   const toast = useToast();
   const { submitting, error, fieldErrors, run } = useSubmit();
   const [name, setName] = useState(user.name);
+  const [email, setEmail] = useState(user.email);
+  const [organizationId, setOrganizationId] = useState(user.organizationId);
   const [role, setRole] = useState<PlatformRole>((ROLE_OPTIONS.find((r) => r.value === user.role)?.value) ?? 'staff');
   const [isActive, setIsActive] = useState(user.isActive);
+
+  const orgsAsync = useAsync(
+    (signal) => (organizations ? Promise.resolve(null) : platformApi.organizations.list({ page: 1, page_size: 200 }, signal)),
+    [organizations],
+  );
+  const availableOrgs = organizations ?? orgsAsync.data?.items ?? [];
 
   const save = async () => {
     const updated = await run(() =>
       platformApi.users.update(user.id, {
         name: name.trim(),
+        email: email.trim().toLowerCase(),
+        organizationId: organizationId !== user.organizationId ? organizationId : undefined,
         role,
         isActive,
       }),
@@ -154,7 +166,7 @@ export function EditPlatformUserModal({ user, onClose, onSaved }: EditUserModalP
           <Button variant="secondary" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={save} loading={submitting} disabled={!name.trim()}>
+          <Button variant="primary" onClick={save} loading={submitting} disabled={!name.trim() || !email.trim()}>
             Save changes
           </Button>
         </>
@@ -162,7 +174,18 @@ export function EditPlatformUserModal({ user, onClose, onSaved }: EditUserModalP
     >
       <div className="stack">
         <FormError message={error} />
+        {availableOrgs.length > 0 ? (
+          <SelectField
+            label="Organization"
+            value={organizationId}
+            hint="Reassign or transfer this user to an organization"
+            options={availableOrgs.map((org) => ({ value: org.id, label: org.name }))}
+            error={fieldErrors.organizationId}
+            onChange={(event) => setOrganizationId(event.target.value)}
+          />
+        ) : null}
         <TextField label="Full name" value={name} required error={fieldErrors.name} onChange={(event) => setName(event.target.value)} />
+        <TextField label="Email address" type="email" value={email} required error={fieldErrors.email} onChange={(event) => setEmail(event.target.value)} />
         <SelectField
           label="Role"
           value={role}

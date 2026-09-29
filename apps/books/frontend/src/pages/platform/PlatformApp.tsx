@@ -10,7 +10,9 @@ import { OrganizationsPage } from './OrganizationsPage';
 import { PlatformDashboardPage } from './PlatformDashboardPage';
 import { PlatformLoginPage } from './PlatformLoginPage';
 import { PlatformSettingsPage } from './PlatformSettingsPage';
+import { SubscriptionsPage } from './SubscriptionsPage';
 import { UsersPage } from './UsersPage';
+import { WebsitePage } from './WebsitePage';
 
 function RequirePlatformAuth() {
   const { admin } = usePlatformAuth();
@@ -38,8 +40,10 @@ export function PlatformApp() {
           <Route index element={<PlatformDashboardPage />} />
           <Route path="organizations" element={<OrganizationsPage />} />
           <Route path="users" element={<UsersPage />} />
+          <Route path="subscriptions" element={<SubscriptionsPage />} />
           <Route path="audit-logs" element={<AuditLogsPage />} />
           <Route path="admins" element={<AdminsPage />} />
+          <Route path="website" element={<WebsitePage />} />
           <Route path="settings" element={<PlatformSettingsPage />} />
         </Route>
       </Route>

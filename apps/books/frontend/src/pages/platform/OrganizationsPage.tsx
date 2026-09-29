@@ -15,14 +15,16 @@ import { formatCurrency, formatDate, formatDateTime } from '@/utils/format';
 
 import { CreateOrganizationModal } from './CreateOrganizationModal';
 import { OrgDetailDrawer } from './OrgDetailDrawer';
-import { OpenInAppMenu, OrgRowMenu, OrgStatusBadge, useOrgLifecycle } from './orgActions';
+import { OpenInAppMenu, OrgApprovalButtons, OrgRowMenu, OrgStatusBadge, useOrgApproval, useOrgLifecycle } from './orgActions';
 
 const PAGE_SIZE = 25;
 
 const STATUS_OPTIONS: Array<{ value: OrgStatusFilter | ''; label: string }> = [
-  { value: '', label: 'Active & suspended' },
+  { value: '', label: 'All except archived' },
+  { value: 'pending', label: 'Pending approval' },
   { value: 'active', label: 'Active' },
   { value: 'suspended', label: 'Suspended' },
+  { value: 'rejected', label: 'Rejected' },
   { value: 'archived', label: 'Archived' },
   { value: 'all', label: 'All (incl. archived)' },
 ];
@@ -30,11 +32,24 @@ const STATUS_OPTIONS: Array<{ value: OrgStatusFilter | ''; label: string }> = [
 export function OrganizationsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<OrgStatusFilter | ''>('');
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   const { download, downloading } = useDownload();
   const debouncedSearch = useDebounced(search);
+
+  // The status filter lives in the URL so the dashboard can deep-link to e.g. ?status=pending.
+  const rawStatus = searchParams.get('status') ?? '';
+  const status = (STATUS_OPTIONS.some((option) => option.value === rawStatus) ? rawStatus : '') as OrgStatusFilter | '';
+  const setStatus = (next: OrgStatusFilter | '') => {
+    setSearchParams(
+      (params) => {
+        if (next) params.set('status', next);
+        else params.delete('status');
+        return params;
+      },
+      { replace: true },
+    );
+  };
 
   const openOrgId = searchParams.get('org');
   const setOpenOrgId = (id: string | null) => {
@@ -71,6 +86,11 @@ export function OrganizationsPage() {
     },
   });
 
+  const approval = useOrgApproval({
+    onApproved: () => orgs.reload(),
+    onRejected: () => orgs.reload(),
+  });
+
   const rows = orgs.data?.items ?? [];
   const hasFilters = Boolean(debouncedSearch || status);
 
@@ -81,7 +101,10 @@ export function OrganizationsPage() {
       render: (row) => (
         <div className="cell-stack">
           <span className="strong">{row.name}</span>
-          <small>Created {formatDate(row.createdAt)}</small>
+          <small>
+            Created {formatDate(row.createdAt)}
+            {row.adminEmail ? ` · ${row.adminEmail}` : ''}
+          </small>
         </div>
       ),
     },
@@ -101,8 +124,12 @@ export function OrganizationsPage() {
       align: 'right',
       render: (row) => (
         <div className="row-actions">
-          <OpenInAppMenu org={row} variant="ghost" />
-          <OrgRowMenu org={row} onView={() => setOpenOrgId(row.id)} lifecycle={lifecycle} />
+          {row.approvalStatus === 'pending' ? (
+            <OrgApprovalButtons org={row} approval={approval} />
+          ) : (
+            <OpenInAppMenu org={row} variant="ghost" />
+          )}
+          <OrgRowMenu org={row} onView={() => setOpenOrgId(row.id)} lifecycle={lifecycle} approval={approval} />
         </div>
       ),
     },
@@ -193,6 +220,7 @@ export function OrganizationsPage() {
         <OrgDetailDrawer orgId={openOrgId} onClose={() => setOpenOrgId(null)} onChanged={orgs.reload} />
       ) : null}
       {lifecycle.dialogs}
+      {approval.dialogs}
     </>
   );
 }

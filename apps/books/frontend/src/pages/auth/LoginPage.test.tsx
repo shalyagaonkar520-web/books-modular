@@ -57,6 +57,28 @@ describe('LoginPage', () => {
     expect(await screen.findByText('Invalid email or password')).toBeInTheDocument();
   });
 
+  it.each([
+    ['PENDING_APPROVAL: Your organization is awaiting approval.', /awaiting approval/i, 'is-pending'],
+    ['REGISTRATION_REJECTED: Your registration was rejected.', /registration not approved/i, 'is-rejected'],
+  ])('shows a friendly notice for %s', async (detail, heading, className) => {
+    installMockApi({
+      'GET /api/auth/me': new Response(JSON.stringify({ detail: 'Not authenticated' }), { status: 401, headers: { 'content-type': 'application/json' } }),
+      'POST /api/auth/login': new Response(JSON.stringify({ detail }), { status: 403, headers: { 'content-type': 'application/json' } }),
+    });
+
+    renderWithProviders(<LoginPage />);
+
+    fireEvent.change(screen.getByLabelText(/work email/i), { target: { value: 'owner@example.com' } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'Str0ngPass!' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    const notice = await screen.findByRole('alert');
+    expect(notice).toHaveClass(className);
+    expect(notice).toHaveTextContent(heading);
+    expect(notice.textContent).not.toMatch(/PENDING_APPROVAL|REGISTRATION_REJECTED/);
+    expect(notice).toHaveTextContent(detail.slice(detail.indexOf(':') + 1).trim());
+  });
+
   it('toggles password visibility', () => {
     installMockApi({ 'GET /api/auth/me': new Response(JSON.stringify({ detail: 'x' }), { status: 401, headers: { 'content-type': 'application/json' } }) });
     renderWithProviders(<LoginPage />);
@@ -151,6 +173,35 @@ describe('RegisterPage', () => {
         gstin: '29ABCDE1234F1Z5',
       });
     });
+  });
+
+  it('shows a submitted-for-approval state instead of signing in when approval is required', async () => {
+    localStorage.setItem('rooman_verified_email', 'khadar@example.com');
+    installMockApi({
+      ...unauthenticated,
+      'GET /api/auth/email-verification-status': { email: 'khadar@example.com', status: 'VERIFIED', verified: true },
+      'POST /api/auth/register': new Response(
+        JSON.stringify({
+          status: 'pending_approval',
+          message: 'A platform administrator will review your organization shortly.',
+          organizationName: 'Rooman Technologies',
+          email: 'khadar@example.com',
+        }),
+        { status: 202, headers: { 'content-type': 'application/json' } },
+      ),
+    });
+    renderWithProviders(<RegisterPage />);
+
+    fireEvent.change(screen.getByLabelText(/organization name/i), { target: { value: 'Rooman Technologies' } });
+    fireEvent.change(screen.getByLabelText(/your name/i), { target: { value: 'Khadar Basha' } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'Str0ngPass!' } });
+    fireEvent.change(screen.getByLabelText(/confirm password/i), { target: { value: 'Str0ngPass!' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: /create organization/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole('button', { name: /create organization/i }));
+
+    expect(await screen.findByRole('heading', { name: /organization submitted for approval/i })).toBeInTheDocument();
+    expect(screen.getByText(/will review your organization shortly/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /back to sign in/i })).toHaveAttribute('href', '/login');
   });
 
   it('allows user to send OTP, verify OTP, and proceed to create organization', async () => {

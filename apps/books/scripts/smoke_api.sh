@@ -46,9 +46,34 @@ with SessionLocal() as db:
 PY
 
 say "register organization"
-TOKEN=$(curl -fsS -X POST "$BASE/api/auth/register" -H 'Content-Type: application/json' \
-  -d "{\"name\":\"Smoke Admin\",\"email\":\"$EMAIL\",\"password\":\"Str0ngPass!\",\"organizationName\":\"Smoke Org $SUFFIX\"}" \
-  | jqr "['accessToken']")
+REG=$(curl -fsS -X POST "$BASE/api/auth/register" -H 'Content-Type: application/json' \
+  -d "{\"name\":\"Smoke Admin\",\"email\":\"$EMAIL\",\"password\":\"Str0ngPass!\",\"organizationName\":\"Smoke Org $SUFFIX\"}")
+if echo "$REG" | grep -q '"pending_approval"'; then
+  # New organizations wait for a super-admin (REQUIRE_ORG_APPROVAL, on by
+  # default). Approve it the way an operator would, straight in the same DB
+  # the API uses, then sign in normally.
+  say "approve pending organization"
+  python3 - "$EMAIL" <<'PY'
+import sys
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+
+from backend.db import SessionLocal
+from backend.models import Organization, User
+
+with SessionLocal() as db:
+    user = db.execute(select(User).where(User.email == sys.argv[1].lower())).scalar_one()
+    org = db.get(Organization, user.organization_id)
+    org.approval_status = "approved"
+    org.approved_at = datetime.now(timezone.utc)
+    db.commit()
+PY
+  TOKEN=$(curl -fsS -X POST "$BASE/api/auth/login" -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$EMAIL\",\"password\":\"Str0ngPass!\"}" | jqr "['accessToken']")
+else
+  TOKEN=$(echo "$REG" | jqr "['accessToken']")
+fi
 AUTH=(-H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json')
 
 say "create bank account"

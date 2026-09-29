@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
+  Ban,
   BookMarked,
   BookOpen,
   Eye,
   EyeOff,
   FileSpreadsheet,
   Landmark,
+  Clock,
   LogIn,
   ShieldCheck,
   Sparkles,
@@ -21,6 +23,63 @@ import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { useSubmit } from '@/hooks/useSubmit';
 
+/** Sign-in refusals the API marks with a machine-readable prefix on `detail`. */
+const ACCOUNT_STATE_PREFIXES = {
+  PENDING_APPROVAL: 'pending',
+  REGISTRATION_REJECTED: 'rejected',
+} as const;
+
+type AccountState = (typeof ACCOUNT_STATE_PREFIXES)[keyof typeof ACCOUNT_STATE_PREFIXES];
+
+function parseAccountState(message: string | null): { kind: AccountState; text: string } | null {
+  if (!message) return null;
+  for (const [code, kind] of Object.entries(ACCOUNT_STATE_PREFIXES)) {
+    if (message.startsWith(`${code}:`)) {
+      return { kind, text: message.slice(code.length + 1).trim() };
+    }
+  }
+  return null;
+}
+
+function AccountStateNotice({ kind, text }: { kind: AccountState; text: string }) {
+  const pending = kind === 'pending';
+  return (
+    <div
+      role="alert"
+      className={`auth-account-notice is-${kind}`}
+      style={{
+        display: 'flex',
+        gap: '10px',
+        alignItems: 'flex-start',
+        marginBottom: '14px',
+        padding: '10px 12px',
+        borderRadius: '8px',
+        fontSize: '13px',
+        lineHeight: 1.5,
+        background: pending ? '#fffbeb' : '#fef2f2',
+        border: `1px solid ${pending ? '#fde68a' : '#fecaca'}`,
+        borderLeft: `4px solid ${pending ? '#d97706' : '#dc2626'}`,
+        color: pending ? '#92400e' : '#991b1b',
+      }}
+    >
+      {pending ? (
+        <Clock size={16} style={{ flexShrink: 0, marginTop: '2px' }} aria-hidden="true" />
+      ) : (
+        <Ban size={16} style={{ flexShrink: 0, marginTop: '2px' }} aria-hidden="true" />
+      )}
+      <div>
+        <strong style={{ display: 'block' }}>{pending ? 'Awaiting approval' : 'Registration not approved'}</strong>
+        <span>
+          {text ||
+            (pending
+              ? 'Your organization is still waiting for approval by the platform team.'
+              : 'Your organization registration was rejected.')}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function LoginPage() {
   const { login, isEmployee } = useAuth();
   const navigate = useNavigate();
@@ -31,6 +90,7 @@ export function LoginPage() {
   const [email, setEmail] = useState((location.state as { email?: string } | null)?.email ?? '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const accountState = parseAccountState(error);
 
   // Forgot password state
   const [forgotOpen, setForgotOpen] = useState(false);
@@ -206,7 +266,7 @@ export function LoginPage() {
           <p className="auth-subtitle">Sign in to your organization&apos;s books.</p>
 
           <form onSubmit={onSubmit} noValidate>
-            <FormError message={error} />
+            {accountState ? <AccountStateNotice kind={accountState.kind} text={accountState.text} /> : <FormError message={error} />}
 
             <TextField
               label="Work email"
@@ -273,6 +333,23 @@ export function LoginPage() {
           <p className="auth-footer">
             New to Rooman Books? <Link to="/register">Create an organization</Link>
           </p>
+
+          <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #f1f5f9', textAlign: 'center' }}>
+            <Link
+              to="/platform/login"
+              style={{
+                fontSize: '12px',
+                color: '#64748b',
+                textDecoration: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+            >
+              <ShieldCheck size={14} />
+              <span>Platform Admin Console &rarr;</span>
+            </Link>
+          </div>
         </div>
       </div>
 

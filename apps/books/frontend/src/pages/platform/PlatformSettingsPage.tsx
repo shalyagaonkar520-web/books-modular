@@ -17,11 +17,19 @@ export function PlatformSettingsPage() {
   const { data, loading, error, reload, setData } = useAsync((signal) => platformApi.settings.get(signal), []);
   const saveSubmit = useSubmit();
 
-  const toggleSignup = async (next: boolean) => {
-    const updated = await saveSubmit.run(() => platformApi.settings.update({ allowPublicSignup: next }));
+  const toggle = async (key: 'allowPublicSignup' | 'requireOrgApproval', next: boolean) => {
+    const updated = await saveSubmit.run(() => platformApi.settings.update({ [key]: next }));
     if (updated) {
       setData(updated);
-      toast.success(next ? 'Public tenant signup is now enabled.' : 'Public tenant signup is now disabled.');
+      if (key === 'allowPublicSignup') {
+        toast.success(next ? 'Public tenant signup is now enabled.' : 'Public tenant signup is now disabled.');
+      } else {
+        toast.success(
+          next
+            ? 'New organizations now need your approval before they can sign in.'
+            : 'New organizations can sign in straight away.',
+        );
+      }
     } else if (saveSubmit.errorRef.current) {
       toast.error(saveSubmit.errorRef.current);
     }
@@ -48,14 +56,21 @@ export function PlatformSettingsPage() {
         </div>
       ) : data ? (
         <div className="stack">
-          <Card title="Tenant signup" subtitle="Control whether new organizations can self-register.">
+          <Card title="Tenant signup" subtitle="Control whether new organizations can self-register, and whether they need approval first.">
             <FormError message={saveSubmit.error} />
             <CheckboxField
               label="Allow public tenant signup"
               hint="When enabled, anyone can create a new organization from the public signup page."
               checked={data.allowPublicSignup}
               disabled={saveSubmit.submitting}
-              onChange={(event) => void toggleSignup(event.target.checked)}
+              onChange={(event) => void toggle('allowPublicSignup', event.target.checked)}
+            />
+            <CheckboxField
+              label="Require admin approval for new organizations"
+              hint="New self-registered organizations stay pending, and their users cannot sign in, until a platform admin approves them."
+              checked={Boolean(data.requireOrgApproval)}
+              disabled={saveSubmit.submitting}
+              onChange={(event) => void toggle('requireOrgApproval', event.target.checked)}
             />
           </Card>
 

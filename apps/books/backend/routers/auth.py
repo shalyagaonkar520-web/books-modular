@@ -8,12 +8,13 @@ from datetime import UTC, date, datetime, timedelta
 from functools import lru_cache
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.config import get_settings
 from backend.db import get_db
-from backend.deps import get_current_user
+from backend.deps import get_current_user, org_approval_error
 from backend.models import BankAccount, EmailVerification, Organization, RefreshToken, User
 from backend.schemas.auth import (
     AcceptInviteRequest,
@@ -25,6 +26,7 @@ from backend.schemas.auth import (
     InviteInfo,
     LoginRequest,
     OrganizationOut,
+    PendingRegistrationResponse,
     RegisterRequest,
     ResetPasswordWithOtpRequest,
     SendEmailVerificationRequest,
@@ -311,7 +313,22 @@ def check_email_verification_status(email: str, db: Session = Depends(get_db)):
     )
 
 
-@router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
+PENDING_REGISTRATION_MESSAGE = (
+    "Your organization has been submitted for approval. You will be able to sign in once an administrator approves it."
+)
+
+
+@router.post(
+    "/register",
+    response_model=AuthResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_202_ACCEPTED: {
+            "model": PendingRegistrationResponse,
+            "description": "Organization created but awaiting super-admin approval; no session is issued.",
+        }
+    },
+)
 def register(payload: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     # A super-admin can toggle public signup at runtime; that DB override takes
     # precedence over the compile-time default.
@@ -357,12 +374,15 @@ def register(payload: RegisterRequest, request: Request, response: Response, db:
         )
 
     defaults = platform_settings.get_org_defaults(db)
+    needs_approval = platform_settings.require_org_approval(db)
     org = Organization(
         name=payload.organization_name,
         gstin=payload.gstin or None,
         currency=defaults.currency,
         default_tax_rate=defaults.tax_rate,
         default_payment_terms_days=defaults.payment_terms_days,
+        approval_status="pending" if needs_approval else "approved",
+        approved_at=None if needs_approval else datetime.now(UTC),
     )
     db.add(org)
     db.flush()
@@ -386,7 +406,7 @@ def register(payload: RegisterRequest, request: Request, response: Response, db:
         email=email,
         password_hash=hash_password(payload.password),
         role="admin",
-        last_login_at=datetime.now(UTC),
+        last_login_at=None if needs_approval else datetime.now(UTC),
     )
     db.add(user)
     db.flush()
@@ -396,6 +416,21 @@ def register(payload: RegisterRequest, request: Request, response: Response, db:
     verification.status = "USED"
     verification.used_at = datetime.now(UTC)
     verification.user_id = user.id
+
+    if needs_approval:
+        # No session until a super-admin approves the org: no access token, no
+        # refresh cookie. The admin signs in normally once approved.
+        audit.record(db, user, "register", "organization", org.id, f"Organization '{org.name}' submitted for approval")
+        db.commit()
+        return JSONResponse(
+            status_code=status.HTTP_202_ACCEPTED,
+            content={
+                "status": "pending_approval",
+                "message": PENDING_REGISTRATION_MESSAGE,
+                "organizationName": org.name,
+                "email": email,
+            },
+        )
 
     audit.record(db, user, "register", "organization", org.id, f"Organization '{org.name}' created")
     access = _issue_tokens(db, user, response, request)
@@ -449,6 +484,9 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
     # Archived orgs are suspended too, so this covers both.
     if user.organization is not None and user.organization.is_suspended:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This organization has been suspended. Contact support.")
+    approval_error = org_approval_error(user.organization)
+    if approval_error:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, approval_error)
     user.last_login_at = datetime.now(UTC)
     access = _issue_tokens(db, user, response, request)
     audit.record(db, user, "login", "user", user.id, f"{user.email} signed in")
@@ -594,6 +632,10 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
     if user is None or not user.is_active:
         _clear_cookie(response)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User is inactive")
+    approval_error = org_approval_error(user.organization)
+    if approval_error:
+        _clear_cookie(response)
+        raise HTTPException(status.HTTP_403_FORBIDDEN, approval_error)
     token.revoked_at = now  # rotate
     token.expires_at = now  # marks it as rotated, for reuse detection above
     access = _issue_tokens(db, user, response, request)

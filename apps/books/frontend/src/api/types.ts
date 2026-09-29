@@ -58,6 +58,20 @@ export interface AuthResponse {
   organization: Organization;
 }
 
+/** 202 from POST /auth/register when the platform requires approval: no token is issued. */
+export interface RegisterPendingResponse {
+  status: 'pending_approval';
+  message: string;
+  organizationName: string;
+  email: string;
+}
+
+export type RegisterResponse = AuthResponse | RegisterPendingResponse;
+
+export function isRegisterPending(response: RegisterResponse): response is RegisterPendingResponse {
+  return (response as RegisterPendingResponse).status === 'pending_approval';
+}
+
 export interface EmailVerificationStatus {
   email: string;
   status: string;

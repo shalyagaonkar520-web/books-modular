@@ -3,6 +3,7 @@
  * All JSON is camelCase; query params are snake_case. See platformClient.ts.
  */
 import { platformClient, platformDownload, platformRefresh, platformRequest } from './platformClient';
+import type { SiteContent } from './siteContent';
 
 // ---------------------------------------------------------------------------
 // Shared shapes
@@ -40,10 +41,19 @@ export interface ChartPoint {
   value: number;
 }
 
+/** Self-registered organizations may need a platform admin's approval first. */
+export type OrgApprovalStatus = 'approved' | 'pending' | 'rejected';
+
 export interface OrgSummary {
   id: string;
   name: string;
   isSuspended: boolean;
+  /** Absent on older payloads, which predate approval — treat as approved. */
+  approvalStatus?: OrgApprovalStatus;
+  approvedAt?: string | null;
+  rejectionReason?: string | null;
+  /** Email of the organization's first administrator (the registrant). */
+  adminEmail?: string | null;
   /** Soft-deleted: users are locked out but the data is kept (restorable). */
   isArchived?: boolean;
   deletedAt?: string | null;
@@ -93,6 +103,9 @@ export interface PlatformDashboard {
   totalBills: number;
   totalPaidToVendors: number;
   newOrganizationsThisMonth: number;
+  /** Organizations waiting for approval. */
+  pendingOrganizations?: number;
+  pendingApprovals?: OrgSummary[];
   organizationGrowth: ChartPoint[];
   revenueByMonth: ChartPoint[];
   topOrganizations: OrgSummary[];
@@ -117,7 +130,16 @@ export interface OrgDetail {
   defaultPaymentTermsDays?: number | null;
   invoiceTerms?: string | null;
   invoiceNotes?: string | null;
+  pan?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
   isSuspended: boolean;
+  approvalStatus?: OrgApprovalStatus;
+  approvedAt?: string | null;
+  rejectionReason?: string | null;
+  adminEmail?: string | null;
   suspendedAt?: string | null;
   suspendedReason?: string | null;
   isArchived?: boolean;
@@ -164,12 +186,22 @@ export interface UpdateOrganizationBody {
   defaultPaymentTermsDays?: number;
   invoiceTerms?: string | null;
   invoiceNotes?: string | null;
+  pan?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  country?: string;
   isSuspended?: boolean;
   suspendedReason?: string;
 }
 
-/** `status` filter accepted by GET /platform/organizations (default excludes archived). */
-export type OrgStatusFilter = 'active' | 'suspended' | 'archived' | 'all';
+/** `status` filter accepted by GET /platform/organizations (default excludes archived, includes pending). */
+export type OrgStatusFilter = 'active' | 'suspended' | 'pending' | 'rejected' | 'archived' | 'all';
+
+export interface RejectOrganizationBody {
+  reason?: string;
+}
 
 // ---------------------------------------------------------------------------
 // Users
@@ -185,8 +217,10 @@ export interface CreateUserBody {
 
 export interface UpdateUserBody {
   name?: string;
+  email?: string;
   role?: PlatformRole;
   isActive?: boolean;
+  organizationId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -225,6 +259,8 @@ export interface ChangePasswordBody {
 
 export interface PlatformSettings {
   allowPublicSignup: boolean;
+  /** New self-registered organizations wait for a platform admin to approve them. */
+  requireOrgApproval?: boolean;
   environment: string;
   razorpayConfigured: boolean;
   smtpConfigured: boolean;
@@ -236,6 +272,7 @@ export interface PlatformSettings {
 
 export interface UpdatePlatformSettingsBody {
   allowPublicSignup?: boolean;
+  requireOrgApproval?: boolean;
   defaultTaxRate?: number;
   defaultPaymentTermsDays?: number;
   defaultCurrency?: string;
@@ -330,6 +367,9 @@ export const platformApi = {
     /** Soft delete: locks every user out but keeps the data. Reversible via restore. */
     archive: (id: string) => platformClient.post<OrgDetail>(`/platform/organizations/${id}/archive`),
     restore: (id: string) => platformClient.post<OrgDetail>(`/platform/organizations/${id}/restore`),
+    approve: (id: string) => platformClient.post<OrgDetail>(`/platform/organizations/${id}/approve`),
+    reject: (id: string, body: RejectOrganizationBody = {}) =>
+      platformClient.post<OrgDetail>(`/platform/organizations/${id}/reject`, body),
     /** PERMANENT delete — destroys the organization and all of its data. */
     remove: (id: string) => platformClient.delete<Message>(`/platform/organizations/${id}`),
     users: (
@@ -361,6 +401,12 @@ export const platformApi = {
       platformDownload('/platform/users/export', 'users.csv', query),
   },
 
+
+  siteContent: {
+    get: (signal?: AbortSignal) => platformClient.get<SiteContent>('/platform/site-content', undefined, signal),
+    update: (body: SiteContent) => platformClient.put<SiteContent>('/platform/site-content', body),
+    reset: () => platformClient.post<SiteContent>('/platform/site-content/reset'),
+  },
 
   auditLogs: (
     query: { page?: number; page_size?: number; organization_id?: string },

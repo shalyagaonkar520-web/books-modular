@@ -2,14 +2,28 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { onUnauthorized, setAccessToken } from '@/api/client';
 import { authApi, orgApi } from '@/api/endpoints';
-import type { Organization, Role, User } from '@/api/types';
+import { isRegisterPending, type Organization, type Role, type User } from '@/api/types';
+
+export interface RegisterPayload {
+  name: string;
+  email: string;
+  password: string;
+  organizationName: string;
+  gstin?: string;
+}
+
+/** What `register` resolved to: signed in, or submitted and waiting for platform approval. */
+export type RegisterResult =
+  | { pending: false }
+  | { pending: true; message: string; organizationName: string; email: string };
 
 interface AuthContextValue {
   user: User | null;
   organization: Organization | null;
   initializing: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (payload: { name: string; email: string; password: string; organizationName: string; gstin?: string }) => Promise<void>;
+  /** Signs in on success; when the platform requires approval nothing is signed in and `pending` is true. */
+  register: (payload: RegisterPayload) => Promise<RegisterResult>;
   logout: () => Promise<void>;
   refreshOrganization: () => Promise<void>;
   /** Take over a session from an externally issued access token (e.g. platform
@@ -79,8 +93,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const register = useCallback(
-    async (payload: { name: string; email: string; password: string; organizationName: string; gstin?: string }) => {
-      applyAuth(await authApi.register(payload));
+    async (payload: RegisterPayload): Promise<RegisterResult> => {
+      const response = await authApi.register(payload);
+      if (isRegisterPending(response)) {
+        return {
+          pending: true,
+          message: response.message,
+          organizationName: response.organizationName ?? payload.organizationName,
+          email: response.email ?? payload.email,
+        };
+      }
+      applyAuth(response);
+      return { pending: false };
     },
     [applyAuth],
   );

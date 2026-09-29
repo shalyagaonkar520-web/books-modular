@@ -144,6 +144,13 @@ def create_app() -> FastAPI:
     app.include_router(platform_admin.auth_router)
     app.include_router(platform_admin.router, dependencies=[Depends(require_superuser)])
 
+    # Editable public-website content: read openly by the landing page, edited
+    # only through the guarded platform router.
+    from backend.routers import platform_site, public_site
+
+    app.include_router(public_site.router)
+    app.include_router(platform_site.router, dependencies=[Depends(require_superuser)])
+
     @app.get("/api/health", tags=["Health"])
     def health():
         db_status = "ok"

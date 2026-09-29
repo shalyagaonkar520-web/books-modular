@@ -360,7 +360,9 @@ def test_dashboard_counts_archived(client, super_admin):
     client.post(f"/api/platform/organizations/{org_id}/archive", headers=super_admin["h"])
     total1, active1, susp1, arch1 = counts()
     assert total1 == total0 and arch1 == arch0 + 1 and active1 == active0 - 1 and susp1 == susp0
-    assert active1 + susp1 + arch1 == total1
+    # Orgs awaiting (or declined) sign-up approval are not "active" either.
+    d = client.get("/api/platform/dashboard", headers=super_admin["h"]).json()
+    assert active1 + susp1 + arch1 + d["pendingOrganizations"] + d["rejectedOrganizations"] == total1
 
     client.post(f"/api/platform/organizations/{org_id}/restore", headers=super_admin["h"])
     assert counts() == (total0, active0, susp0, arch0)

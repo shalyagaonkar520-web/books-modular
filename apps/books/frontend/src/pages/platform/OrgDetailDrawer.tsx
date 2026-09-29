@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Archive, ArchiveRestore, Ban, CheckCircle2, KeyRound, Trash2, UserCheck, UserX } from 'lucide-react';
+import { Archive, ArchiveRestore, Ban, CheckCircle2, Clock, KeyRound, Pencil, Plus, Trash2, UserCheck, UserX } from 'lucide-react';
 
 import {
   platformApi,
   type OrgDetail,
+  type OrgSummary,
   type PlatformAudit,
   type PlatformInvoice,
   type PlatformUser,
@@ -25,8 +26,22 @@ import { formatCurrency, formatDate, formatDateTime, formatPercent, titleCase } 
 import { statusLabel, statusTone } from '@/utils/status';
 
 import { ImpersonateButton } from './ImpersonateButton';
-import { OpenInAppMenu, OrgStatusBadge, isOrgArchived, useOrgLifecycle } from './orgActions';
-import { ResetPlatformUserPasswordModal } from './PlatformUserModals';
+import {
+  OpenInAppMenu,
+  OrgApprovalButtons,
+  OrgStatusBadge,
+  approvalBlocker,
+  isOrgArchived,
+  isOrgPending,
+  isOrgRejected,
+  useOrgApproval,
+  useOrgLifecycle,
+} from './orgActions';
+import {
+  CreatePlatformUserModal,
+  EditPlatformUserModal,
+  ResetPlatformUserPasswordModal,
+} from './PlatformUserModals';
 
 const TAB_PAGE_SIZE = 10;
 
@@ -89,6 +104,17 @@ export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerPr
     },
   });
 
+  const approval = useOrgApproval({
+    onApproved: (updated) => {
+      setData(updated);
+      onChanged();
+    },
+    onRejected: (updated) => {
+      setData(updated);
+      onChanged();
+    },
+  });
+
   const toggleSuspend = async (org: OrgDetail) => {
     const next = !org.isSuspended;
     const updated = await suspendSubmit.run(() =>
@@ -143,11 +169,13 @@ export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerPr
             <OpenInAppMenu org={data} detail={data} size="sm" />
           </div>
 
+          <ApprovalBanner data={data} approval={approval} />
+
           <Tabs tabs={TABS} active={tab} onChange={(id) => setTab(id as TabId)} />
 
           {tab === 'overview' ? (
             <>
-              <OverviewTab data={data} />
+              <OverviewTab data={data} viewAsBlocker={approvalBlocker(data)} />
               <DangerZone
                 data={data}
                 suspending={suspendSubmit.submitting}
@@ -200,6 +228,7 @@ export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerPr
             onCancel={() => setConfirmingSuspend(false)}
           />
           {lifecycle.dialogs}
+          {approval.dialogs}
         </div>
       ) : null}
     </Modal>
@@ -207,10 +236,40 @@ export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerPr
 }
 
 // ---------------------------------------------------------------------------
+// Approval banner
+// ---------------------------------------------------------------------------
+
+function ApprovalBanner({ data, approval }: { data: OrgDetail; approval: ReturnType<typeof useOrgApproval> }) {
+  const pending = isOrgPending(data);
+  if (!pending && !isOrgRejected(data)) return null;
+  return (
+    <div
+      className={pending ? 'approval-callout is-pending' : 'approval-callout is-rejected'}
+      role="status"
+    >
+      <div className="approval-callout-text">
+        {pending ? <Clock size={16} aria-hidden="true" /> : <Ban size={16} aria-hidden="true" />}
+        <div>
+          <strong>{pending ? 'Awaiting approval' : 'Registration rejected'}</strong>
+          <p>
+            {pending
+              ? `Registered ${formatDateTime(data.createdAt)}${data.adminEmail ? ` by ${data.adminEmail}` : ''}. Its users cannot sign in until you approve it.`
+              : data.rejectionReason
+                ? `Reason: ${data.rejectionReason}`
+                : 'No reason was recorded. Its users cannot sign in.'}
+          </p>
+        </div>
+      </div>
+      <OrgApprovalButtons org={data} approval={approval} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Overview tab
 // ---------------------------------------------------------------------------
 
-function OverviewTab({ data }: { data: OrgDetail }) {
+function OverviewTab({ data, viewAsBlocker }: { data: OrgDetail; viewAsBlocker: string | null }) {
   const adminColumns: Array<Column<PlatformUser>> = [
     {
       key: 'name',
@@ -239,7 +298,7 @@ function OverviewTab({ data }: { data: OrgDetail }) {
       align: 'right',
       render: (row) => (
         <div className="row-actions">
-          <ImpersonateButton user={row} />
+          <ImpersonateButton user={row} disabledReason={viewAsBlocker} />
         </div>
       ),
     },
@@ -304,6 +363,12 @@ function OverviewTab({ data }: { data: OrgDetail }) {
           <dt>Last login</dt>
           <dd>{data.lastLoginAt ? formatDateTime(data.lastLoginAt) : 'Never'}</dd>
         </div>
+        {data.approvedAt ? (
+          <div className="detail-item">
+            <dt>Approved</dt>
+            <dd>{formatDateTime(data.approvedAt)}</dd>
+          </div>
+        ) : null}
       </dl>
 
       <div>
@@ -406,8 +471,14 @@ interface SettingsForm {
   name: string;
   legalName: string;
   gstin: string;
+  pan: string;
   email: string;
   phone: string;
+  address: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
   currency: string;
   fiscalYearStartMonth: string;
   defaultTaxRate: string;
@@ -421,8 +492,14 @@ function toSettingsForm(org: OrgDetail): SettingsForm {
     name: org.name,
     legalName: org.legalName ?? '',
     gstin: org.gstin ?? '',
+    pan: org.pan ?? '',
     email: org.email ?? '',
     phone: org.phone ?? '',
+    address: org.address ?? '',
+    city: org.city ?? '',
+    state: org.state ?? '',
+    postalCode: org.postalCode ?? '',
+    country: org.country ?? 'India',
     currency: org.currency ?? '',
     fiscalYearStartMonth: String(org.fiscalYearStartMonth ?? 4),
     defaultTaxRate: typeof org.defaultTaxRate === 'number' ? String(org.defaultTaxRate) : '',
@@ -470,12 +547,18 @@ function OrgSettingsTab({ data, onSaved }: { data: OrgDetail; onSaved: (updated:
       name: form.name.trim(),
       legalName: form.legalName.trim() || null,
       gstin: form.gstin.trim() || null,
+      pan: form.pan.trim() || null,
       email: form.email.trim() || null,
       phone: form.phone.trim() || null,
+      address: form.address.trim() || null,
+      city: form.city.trim() || null,
+      state: form.state.trim() || null,
+      postalCode: form.postalCode.trim() || null,
       fiscalYearStartMonth: Number(form.fiscalYearStartMonth),
       invoiceTerms: form.invoiceTerms.trim() || null,
       invoiceNotes: form.invoiceNotes.trim() || null,
     };
+    if (form.country.trim()) body.country = form.country.trim();
     if (form.currency.trim()) body.currency = form.currency.trim();
     if (form.defaultTaxRate.trim()) body.defaultTaxRate = Number(form.defaultTaxRate);
     if (form.defaultPaymentTermsDays.trim()) body.defaultPaymentTermsDays = Number(form.defaultPaymentTermsDays);
@@ -503,8 +586,13 @@ function OrgSettingsTab({ data, onSaved }: { data: OrgDetail; onSaved: (updated:
         <TextField label="Display name" value={form.name} required maxLength={200} error={errorFor('name')} onChange={set('name')} />
         <TextField label="Legal name" value={form.legalName} error={errorFor('legalName')} onChange={set('legalName')} />
         <TextField label="GSTIN" value={form.gstin} maxLength={15} error={errorFor('gstin')} hint="15 characters" onChange={set('gstin')} />
+        <TextField label="PAN" value={form.pan} maxLength={10} error={errorFor('pan')} hint="10 characters" onChange={set('pan')} />
         <TextField label="Email" type="email" value={form.email} error={errorFor('email')} onChange={set('email')} />
         <TextField label="Phone" type="tel" value={form.phone} error={errorFor('phone')} onChange={set('phone')} />
+        <TextField label="Country" value={form.country} maxLength={100} error={errorFor('country')} onChange={set('country')} />
+        <TextField label="City" value={form.city} maxLength={100} error={errorFor('city')} onChange={set('city')} />
+        <TextField label="State" value={form.state} maxLength={100} error={errorFor('state')} onChange={set('state')} />
+        <TextField label="Postal code" value={form.postalCode} maxLength={20} error={errorFor('postalCode')} onChange={set('postalCode')} />
         <TextField
           label="Currency"
           value={form.currency}
@@ -547,6 +635,7 @@ function OrgSettingsTab({ data, onSaved }: { data: OrgDetail; onSaved: (updated:
         />
       </div>
 
+      <TextAreaField label="Address" value={form.address} rows={2} error={errorFor('address')} onChange={set('address')} />
       <TextAreaField label="Default invoice terms" value={form.invoiceTerms} rows={3} error={errorFor('invoiceTerms')} onChange={set('invoiceTerms')} />
       <TextAreaField label="Default invoice notes" value={form.invoiceNotes} rows={3} error={errorFor('invoiceNotes')} onChange={set('invoiceNotes')} />
 
@@ -579,6 +668,8 @@ function OrgSettingsTab({ data, onSaved }: { data: OrgDetail; onSaved: (updated:
 function OrgUsersTab({ orgId, orgName, onChanged }: { orgId: string; orgName: string; onChanged: () => void }) {
   const toast = useToast();
   const [page, setPage] = useState(1);
+  const [editing, setEditing] = useState<PlatformUser | null>(null);
+  const [adding, setAdding] = useState(false);
   const [resetting, setResetting] = useState<PlatformUser | null>(null);
   const [deleting, setDeleting] = useState<PlatformUser | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -646,6 +737,7 @@ function OrgUsersTab({ orgId, orgName, onChanged }: { orgId: string; orgName: st
             iconOnly
             disabled={togglingId === row.id}
             items={[
+              { key: 'edit', label: 'Edit user', icon: <Pencil size={14} />, onSelect: () => setEditing(row) },
               { key: 'reset', label: 'Reset password', icon: <KeyRound size={14} />, onSelect: () => setResetting(row) },
               row.isActive
                 ? { key: 'deactivate', label: 'Deactivate', icon: <UserX size={14} />, onSelect: () => void toggleActive(row) }
@@ -681,7 +773,33 @@ function OrgUsersTab({ orgId, orgName, onChanged }: { orgId: string; orgName: st
 
   return (
     <div aria-busy={users.loading}>
+      <div className="row-between" style={{ marginBottom: 12 }}>
+        <span className="text-muted small">
+          {users.data?.total ?? rows.length} user{(users.data?.total ?? rows.length) === 1 ? '' : 's'}
+        </span>
+        <Button variant="secondary" size="sm" icon={<Plus size={14} />} onClick={() => setAdding(true)}>
+          Add user
+        </Button>
+      </div>
+
       {body}
+
+      {editing ? (
+        <EditPlatformUserModal
+          user={editing}
+          onClose={() => setEditing(null)}
+          onSaved={refresh}
+        />
+      ) : null}
+
+      {adding ? (
+        <CreatePlatformUserModal
+          defaultOrganizationId={orgId}
+          organizations={[{ id: orgId, name: orgName } as OrgSummary]}
+          onClose={() => setAdding(false)}
+          onCreated={refresh}
+        />
+      ) : null}
 
       {resetting ? (
         <ResetPlatformUserPasswordModal user={{ ...resetting, organizationName: resetting.organizationName || orgName }} onClose={() => setResetting(null)} />

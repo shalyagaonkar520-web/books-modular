@@ -32,6 +32,22 @@ WRITE_ROLES = (ROLE_ADMIN, ROLE_STAFF)
 FINANCIAL_ROLES = (ROLE_ADMIN, ROLE_VIEWER)
 
 
+PENDING_APPROVAL_DETAIL = (
+    "PENDING_APPROVAL: Your organization is awaiting approval by an administrator. You'll be able to sign in once it's approved."
+)
+REJECTED_DETAIL = "REGISTRATION_REJECTED: Your organization's registration was declined."
+
+
+def org_approval_error(org: Organization | None) -> str | None:
+    """The 403 detail for an org whose sign-up is not (yet) approved, else None."""
+    if org is None or org.approval_status in (None, "approved"):
+        return None
+    if org.approval_status == "rejected":
+        reason = (org.rejection_reason or "").strip()
+        return f"{REJECTED_DETAIL} Reason: {reason}" if reason else REJECTED_DETAIL
+    return PENDING_APPROVAL_DETAIL
+
+
 def get_current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
@@ -48,6 +64,9 @@ def get_current_user(
     org = db.get(Organization, user.organization_id)
     if org is not None and org.is_suspended:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This organization has been suspended. Contact support.")
+    approval_error = org_approval_error(org)
+    if approval_error:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=approval_error)
     request.state.user = user
     return user
 

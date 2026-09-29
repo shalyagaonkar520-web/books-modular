@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Archive, Building2, ExternalLink, FileText, Globe, IndianRupee, LogIn, ShieldAlert, Users, Wallet } from 'lucide-react';
+import { Archive, Building2, Clock, ExternalLink, FileText, Globe, IndianRupee, LogIn, ShieldAlert, Users, Wallet } from 'lucide-react';
 
 import { platformApi, type OrgSummary, type PlatformAudit } from '@/api/platform';
 import { Button } from '@/components/ui/Button';
@@ -10,12 +10,13 @@ import { ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useAsync } from '@/hooks/useAsync';
 
-import { OpenInAppButton, OrgStatusBadge } from './orgActions';
-import { formatCurrency, formatCurrencyCompact, formatDateTime, formatNumber, titleCase } from '@/utils/format';
+import { OpenInAppButton, OrgApprovalButtons, OrgStatusBadge, useOrgApproval } from './orgActions';
+import { formatCurrency, formatCurrencyCompact, formatDate, formatDateTime, formatNumber, titleCase } from '@/utils/format';
 
 export function PlatformDashboardPage() {
   const navigate = useNavigate();
   const { data, loading, error, reload } = useAsync((signal) => platformApi.dashboard(signal), []);
+  const approval = useOrgApproval({ onApproved: reload, onRejected: reload });
 
   if (loading && !data) return <LoadingBlock label="Building the platform dashboard…" />;
   if (error) return <ErrorBlock message={error} onRetry={reload} />;
@@ -42,6 +43,32 @@ export function PlatformDashboardPage() {
   ];
 
   const archivedOrganizations = data.archivedOrganizations ?? 0;
+  const pendingOrganizations = data.pendingOrganizations ?? 0;
+  const pendingApprovals = data.pendingApprovals ?? [];
+
+  const pendingColumns: Array<Column<OrgSummary>> = [
+    {
+      key: 'name',
+      header: 'Organization',
+      render: (row) => (
+        <div className="cell-stack">
+          <span className="strong">{row.name}</span>
+          <small style={{ wordBreak: 'break-all' }}>{row.adminEmail ?? 'No administrator email'}</small>
+        </div>
+      ),
+    },
+    { key: 'created', header: 'Registered', render: (row) => formatDate(row.createdAt) },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      render: (row) => (
+        <div className="row-actions">
+          <OrgApprovalButtons org={{ ...row, approvalStatus: row.approvalStatus ?? 'pending' }} approval={approval} />
+        </div>
+      ),
+    },
+  ];
 
   const activityColumns: Array<Column<PlatformAudit>> = [
     {
@@ -65,7 +92,45 @@ export function PlatformDashboardPage() {
         subtitle="Live position across every organization on Rooman Books."
       />
 
+      <Card
+        title="Pending approvals"
+        subtitle={
+          pendingOrganizations > 0
+            ? `${formatNumber(pendingOrganizations, 0)} organization(s) waiting for review`
+            : 'New self-registered organizations appear here when approval is required'
+        }
+        className={pendingOrganizations > 0 ? 'card-attention' : undefined}
+        actions={
+          <button type="button" className="btn btn-link btn-sm" onClick={() => navigate('/platform/organizations?status=pending')}>
+            <span>View all pending</span>
+          </button>
+        }
+      >
+        {pendingApprovals.length === 0 ? (
+          <p className="text-muted small" style={{ margin: 0 }}>
+            {pendingOrganizations > 0
+              ? 'Open the pending list to review them.'
+              : 'No organizations are waiting for approval.'}
+          </p>
+        ) : (
+          <DataTable
+            columns={pendingColumns}
+            rows={pendingApprovals}
+            rowKey={(row) => row.id}
+            onRowClick={(row) => navigate(`/platform/organizations?org=${row.id}`)}
+            caption="Organizations pending approval"
+          />
+        )}
+      </Card>
+
       <div className="stat-grid">
+        <StatTile
+          label="Pending approval"
+          value={formatNumber(pendingOrganizations, 0)}
+          sublabel={pendingOrganizations > 0 ? 'Waiting for your review' : 'Nothing to review'}
+          tone={pendingOrganizations > 0 ? 'warning' : 'neutral'}
+          icon={<Clock size={16} />}
+        />
         <StatTile
           label="Organizations"
           value={formatNumber(data.totalOrganizations, 0)}
@@ -242,6 +307,7 @@ export function PlatformDashboardPage() {
           <DataTable columns={activityColumns} rows={data.recentActivity} rowKey={(row) => row.id} caption="Recent activity" />
         )}
       </div>
+      {approval.dialogs}
     </>
   );
 }

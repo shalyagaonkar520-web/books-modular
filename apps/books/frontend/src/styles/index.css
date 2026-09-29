@@ -2923,3 +2923,220 @@ th.sortable {
 .danger-callout p {
   margin: 0;
 }
+
+/* Platform: count badge on a sidebar link (e.g. organizations awaiting approval) */
+.nav-count-badge {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--warning);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* Platform: org approval state callout (drawer) */
+.approval-callout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--warning);
+  border-left-width: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--warning-soft);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.approval-callout.is-rejected {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.approval-callout-text {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.approval-callout-text svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.approval-callout-text p {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Platform dashboard: a card that needs the operator's attention */
+.card.card-attention {
+  border-color: var(--warning);
+  box-shadow: inset 4px 0 0 var(--warning);
+}
+
+/* Platform: website (public site) editor */
+.site-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.site-editor-section {
+  margin: 0;
+}
+
+.site-editor-heading {
+  margin: 0;
+  font-size: inherit;
+}
+
+.site-editor-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 18px;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: inherit;
+}
+
+.site-editor-toggle:hover {
+  background: var(--surface-alt);
+}
+
+.site-editor-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.site-editor-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.site-editor-section.is-open .site-editor-chevron {
+  transform: rotate(90deg);
+}
+
+.site-editor-heading-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.site-editor-heading-text .card-title,
+.site-editor-heading-text .card-subtitle {
+  margin: 0;
+}
+
+.site-editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.site-editor-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+.site-editor-limit {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-muted);
+}
+
+.site-editor-limit.is-over {
+  color: var(--danger);
+  font-weight: 650;
+}
+
+.site-editor-empty {
+  margin: 0;
+}
+
+.site-editor-item {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-alt);
+}
+
+.site-editor-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.site-editor-item-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-editor-string-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.site-editor-string-row > .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.site-editor-row-controls {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.site-editor-string-row > .site-editor-row-controls {
+  /* Line the buttons up with the input rather than its label or hint. */
+  margin-bottom: 14px;
+}
+
+@media (max-width: 720px) {
+  .site-editor-toggle {
+    padding: 12px 14px;
+  }
+
+  .site-editor-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   Building2,
+  CreditCard,
+  Globe,
   KeyRound,
   LayoutDashboard,
   LogOut,
@@ -13,18 +15,22 @@ import {
   Users,
   } from 'lucide-react';
 
+import { platformApi } from '@/api/platform';
 import { usePlatformAuth } from '@/auth/PlatformAuthContext';
 import { initials } from '@/utils/format';
 
 import { ChangePasswordModal } from '@/pages/platform/ChangePasswordModal';
+import { ORG_APPROVAL_CHANGED_EVENT } from '@/pages/platform/orgActions';
 import { PlatformGlobalSearch } from './PlatformGlobalSearch';
 
 const NAV_LINKS = [
   { to: '/platform', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/platform/organizations', label: 'Organizations', icon: Building2, end: false },
   { to: '/platform/users', label: 'Users', icon: Users, end: false },
+  { to: '/platform/subscriptions', label: 'Subscriptions & Pricing', icon: CreditCard, end: false },
   { to: '/platform/audit-logs', label: 'Audit log', icon: ScrollText, end: false },
   { to: '/platform/admins', label: 'Admins', icon: UserCog, end: false },
+  { to: '/platform/website', label: 'Website', icon: Globe, end: false },
   { to: '/platform/settings', label: 'Settings', icon: Settings, end: false },
 ];
 
@@ -37,6 +43,26 @@ export function PlatformLayout() {
   useEffect(() => {
     setSidebarOpen(false);
   }, [location.pathname]);
+
+  // Organizations awaiting approval, for the nav badge. A one-row page is enough
+  // to read the total; refreshed on navigation and after an approval decision.
+  const [pendingCount, setPendingCount] = useState(0);
+  const [pendingNonce, setPendingNonce] = useState(0);
+  useEffect(() => {
+    const bump = () => setPendingNonce((n) => n + 1);
+    window.addEventListener(ORG_APPROVAL_CHANGED_EVENT, bump);
+    return () => window.removeEventListener(ORG_APPROVAL_CHANGED_EVENT, bump);
+  }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    platformApi.organizations
+      .list({ status: 'pending', page: 1, page_size: 1 }, controller.signal)
+      .then((result) => setPendingCount(result.total ?? 0))
+      .catch(() => {
+        // The badge is a hint; a failed count simply leaves it as it was.
+      });
+    return () => controller.abort();
+  }, [location.pathname, pendingNonce]);
 
   return (
     <div className="app-shell">
@@ -132,6 +158,12 @@ export function PlatformLayout() {
               >
                 <entry.icon size={17} aria-hidden="true" />
                 <span>{entry.label}</span>
+                {entry.to === '/platform/organizations' && pendingCount > 0 ? (
+                  <span className="nav-count-badge" title={`${pendingCount} awaiting approval`}>
+                    {pendingCount > 99 ? '99+' : pendingCount}
+                    <span className="sr-only"> awaiting approval</span>
+                  </span>
+                ) : null}
               </NavLink>
             ))}
           </nav>

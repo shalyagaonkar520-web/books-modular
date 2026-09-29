@@ -7,6 +7,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   AppWindow,
+  BadgeCheck,
+  Ban,
   Archive,
   ArchiveRestore,
   Banknote,
@@ -26,12 +28,12 @@ import {
 } from 'lucide-react';
 
 import { ApiError } from '@/api/client';
-import { platformApi, type OrgDetail, type PlatformUser } from '@/api/platform';
+import { platformApi, type OrgApprovalStatus, type OrgDetail, type PlatformUser } from '@/api/platform';
 import { ActionMenu, type ActionMenuItem } from '@/components/ui/ActionMenu';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { FormError } from '@/components/ui/Feedback';
-import { TextField } from '@/components/ui/Field';
+import { TextAreaField, TextField } from '@/components/ui/Field';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { useSubmit } from '@/hooks/useSubmit';
@@ -45,14 +47,32 @@ export interface OrgTarget {
   isSuspended: boolean;
   isArchived?: boolean;
   deletedAt?: string | null;
+  approvalStatus?: OrgApprovalStatus;
 }
 
 export function isOrgArchived(org: Pick<OrgTarget, 'isArchived' | 'deletedAt'>): boolean {
   return Boolean(org.isArchived || org.deletedAt);
 }
 
-/** Status badge that puts Archived ahead of Suspended ahead of Active. */
+export function isOrgPending(org: Pick<OrgTarget, 'approvalStatus'>): boolean {
+  return org.approvalStatus === 'pending';
+}
+
+export function isOrgRejected(org: Pick<OrgTarget, 'approvalStatus'>): boolean {
+  return org.approvalStatus === 'rejected';
+}
+
+/** Why the org cannot be signed into because of its approval state, or null. */
+export function approvalBlocker(org: Pick<OrgTarget, 'approvalStatus'>): string | null {
+  if (isOrgPending(org)) return 'This organization is awaiting approval. Approve it first.';
+  if (isOrgRejected(org)) return 'This organization’s registration was rejected. Approve it first.';
+  return null;
+}
+
+/** Status badge: Pending / Rejected first, then Archived, Suspended, Active. */
 export function OrgStatusBadge({ org }: { org: OrgTarget }) {
+  if (isOrgPending(org)) return <Badge tone="warning">Pending approval</Badge>;
+  if (isOrgRejected(org)) return <Badge tone="danger">Rejected</Badge>;
   if (isOrgArchived(org)) return <Badge tone="neutral">Archived</Badge>;
   if (org.isSuspended) return <Badge tone="danger">Suspended</Badge>;
   return <Badge tone="success">Active</Badge>;
@@ -233,6 +253,166 @@ export function useOrgLifecycle({ onArchived, onRestored, onDeleted }: Lifecycle
 }
 
 // ---------------------------------------------------------------------------
+// Approve / reject (organizations awaiting platform approval)
+// ---------------------------------------------------------------------------
+
+/** Fired on window after an approval decision so e.g. the nav badge can refresh. */
+export const ORG_APPROVAL_CHANGED_EVENT = 'platform:org-approval-changed';
+
+interface ApprovalCallbacks {
+  onApproved?: (org: OrgDetail) => void;
+  onRejected?: (org: OrgDetail) => void;
+}
+
+const REJECT_REASON_MAX = 500;
+
+/**
+ * Approve runs straight away (it only grants access); reject opens a modal for
+ * an optional reason. Render `dialogs` once, outside any clickable row.
+ */
+export function useOrgApproval({ onApproved, onRejected }: ApprovalCallbacks = {}) {
+  const toast = useToast();
+  const approveSubmit = useSubmit();
+  const rejectSubmit = useSubmit();
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<OrgTarget | null>(null);
+  const [reason, setReason] = useState('');
+
+  const notify = () => window.dispatchEvent(new Event(ORG_APPROVAL_CHANGED_EVENT));
+
+  const approve = async (org: OrgTarget) => {
+    if (approvingId) return;
+    setApprovingId(org.id);
+    const updated = await approveSubmit.run(() => platformApi.organizations.approve(org.id));
+    setApprovingId(null);
+    if (updated) {
+      toast.success(`${org.name} was approved. Its users can now sign in.`);
+      notify();
+      onApproved?.(updated);
+    } else if (approveSubmit.errorRef.current) {
+      toast.error(approveSubmit.errorRef.current);
+    }
+  };
+
+  const { reset: resetReject } = rejectSubmit;
+  const requestReject = useCallback(
+    (org: OrgTarget) => {
+      resetReject();
+      setReason('');
+      setRejecting(org);
+    },
+    [resetReject],
+  );
+
+  const cancelReject = () => {
+    if (!rejectSubmit.submitting) setRejecting(null);
+  };
+
+  const confirmReject = async () => {
+    if (!rejecting) return;
+    const org = rejecting;
+    const trimmed = reason.trim();
+    const updated = await rejectSubmit.run(() => platformApi.organizations.reject(org.id, trimmed ? { reason: trimmed } : {}));
+    if (updated) {
+      toast.success(`${org.name} was rejected.`);
+      setRejecting(null);
+      notify();
+      onRejected?.(updated);
+    }
+  };
+
+  const dialogs = (
+    <Modal
+      open={!!rejecting}
+      title="Reject organization"
+      size="sm"
+      onClose={cancelReject}
+      footer={
+        <>
+          <Button variant="secondary" onClick={cancelReject} disabled={rejectSubmit.submitting}>
+            Cancel
+          </Button>
+          <Button variant="danger" icon={<Ban size={14} />} loading={rejectSubmit.submitting} onClick={() => void confirmReject()}>
+            Reject registration
+          </Button>
+        </>
+      }
+    >
+      {rejecting ? (
+        <form
+          className="stack"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            void confirmReject();
+          }}
+        >
+          <FormError message={rejectSubmit.error} />
+          <p style={{ margin: 0 }}>
+            Reject <strong>{rejecting.name}</strong>? Its users will not be able to sign in. You can still approve it later.
+          </p>
+          <TextAreaField
+            label="Reason (optional)"
+            rows={3}
+            maxLength={REJECT_REASON_MAX}
+            value={reason}
+            error={rejectSubmit.fieldErrors.reason}
+            hint={`Kept with the organization and may be shown to the applicant. ${reason.length}/${REJECT_REASON_MAX}`}
+            onChange={(event) => setReason(event.target.value)}
+            autoFocus
+          />
+        </form>
+      ) : null}
+    </Modal>
+  );
+
+  return { approve, requestReject, approvingId, dialogs };
+}
+
+export type OrgApprovalActions = Pick<ReturnType<typeof useOrgApproval>, 'approve' | 'requestReject' | 'approvingId'>;
+
+interface ApprovalButtonsProps {
+  org: OrgTarget;
+  approval: OrgApprovalActions;
+  size?: 'sm' | 'md';
+}
+
+/** Inline Approve / Reject for a pending organization (Approve only for a rejected one). */
+export function OrgApprovalButtons({ org, approval, size = 'sm' }: ApprovalButtonsProps) {
+  if (!isOrgPending(org) && !isOrgRejected(org)) return null;
+  const busy = approval.approvingId === org.id;
+  return (
+    <RowSafe>
+      <span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
+        <Button
+          variant="primary"
+          size={size}
+          icon={<BadgeCheck size={14} />}
+          loading={busy}
+          disabled={Boolean(approval.approvingId) && !busy}
+          aria-label={`Approve ${org.name}`}
+          onClick={() => void approval.approve(org)}
+        >
+          Approve
+        </Button>
+        {isOrgPending(org) ? (
+          <Button
+            variant="secondary"
+            size={size}
+            icon={<Ban size={14} />}
+            disabled={busy}
+            aria-label={`Reject ${org.name}`}
+            onClick={() => approval.requestReject(org)}
+          >
+            Reject
+          </Button>
+        ) : null}
+      </span>
+    </RowSafe>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Open in app
 // ---------------------------------------------------------------------------
 
@@ -263,6 +443,8 @@ export function firstActiveAdmin(detail: Pick<OrgDetail, 'admins'> | null | unde
 
 /** Why "Open in app" cannot be used right now, or null when it can. */
 export function openInAppBlocker(org: OrgTarget, detail: Pick<OrgDetail, 'admins'> | null | undefined): string | null {
+  const approval = approvalBlocker(org);
+  if (approval) return approval;
   if (isOrgArchived(org)) return 'Archived organizations cannot be opened. Restore it first.';
   if (org.isSuspended) return 'Suspended organizations cannot be opened. Unsuspend it first.';
   if (detail && !firstActiveAdmin(detail)) return 'This organization has no active administrator to sign in as.';
@@ -472,12 +654,28 @@ interface OrgRowMenuProps {
   org: OrgTarget;
   onView: () => void;
   lifecycle: Pick<ReturnType<typeof useOrgLifecycle>, 'requestArchive' | 'requestRestore' | 'requestDelete'>;
+  /** When given, pending / rejected organizations get Approve (and Reject) items. */
+  approval?: OrgApprovalActions;
 }
 
-export function OrgRowMenu({ org, onView, lifecycle }: OrgRowMenuProps) {
+export function OrgRowMenu({ org, onView, lifecycle, approval }: OrgRowMenuProps) {
   const archived = isOrgArchived(org);
+  const approvalItems: ActionMenuItem[] = [];
+  if (approval && (isOrgPending(org) || isOrgRejected(org))) {
+    approvalItems.push({
+      key: 'approve',
+      label: 'Approve',
+      icon: <BadgeCheck size={14} />,
+      disabled: Boolean(approval.approvingId),
+      onSelect: () => void approval.approve(org),
+    });
+    if (isOrgPending(org)) {
+      approvalItems.push({ key: 'reject', label: 'Reject…', icon: <Ban size={14} />, onSelect: () => approval.requestReject(org) });
+    }
+  }
   const items: ActionMenuItem[] = [
     { key: 'view', label: 'View details', icon: <Building size={14} />, onSelect: onView },
+    ...approvalItems,
     archived
       ? { key: 'restore', label: 'Restore', icon: <ArchiveRestore size={14} />, onSelect: () => lifecycle.requestRestore(org) }
       : { key: 'archive', label: 'Delete (archive)', icon: <Archive size={14} />, onSelect: () => lifecycle.requestArchive(org) },

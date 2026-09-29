@@ -16,9 +16,19 @@ const BASE = '/api';
  * per-field validation the same way — without sharing any auth state.
  */
 export class PlatformApiError extends ApiError {
-  constructor(message: string, status: number, fieldErrors: Record<string, string> = {}) {
+  /** Validation messages keyed by the full dotted location, e.g. `pricing.plans.0.name`
+   *  (`fieldErrors` only keeps the last segment, which is ambiguous for nested bodies). */
+  readonly pathErrors: Record<string, string>;
+
+  constructor(
+    message: string,
+    status: number,
+    fieldErrors: Record<string, string> = {},
+    pathErrors: Record<string, string> = {},
+  ) {
     super(message, status, fieldErrors);
     this.name = 'PlatformApiError';
+    this.pathErrors = pathErrors;
   }
 }
 
@@ -47,6 +57,7 @@ function notifyUnauthorized(): void {
 /** Turn a FastAPI error body into a message plus per-field messages. */
 function parseError(status: number, body: unknown): PlatformApiError {
   const fieldErrors: Record<string, string> = {};
+  const pathErrors: Record<string, string> = {};
   let message = `Request failed (${status})`;
 
   if (body && typeof body === 'object' && 'detail' in body) {
@@ -61,12 +72,13 @@ function parseError(status: number, body: unknown): PlatformApiError {
         const loc = Array.isArray(entry.loc) ? entry.loc.filter((part) => part !== 'body') : [];
         const field = loc.length ? String(loc[loc.length - 1]) : '';
         if (field) fieldErrors[field] = msg;
+        if (loc.length) pathErrors[loc.map(String).join('.')] = msg;
         messages.push(field ? `${humanize(field)}: ${msg}` : msg);
       }
       message = messages.join('\n');
     }
   }
-  return new PlatformApiError(message, status, fieldErrors);
+  return new PlatformApiError(message, status, fieldErrors, pathErrors);
 }
 
 function humanize(field: string): string {

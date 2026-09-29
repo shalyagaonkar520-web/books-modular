@@ -83,10 +83,20 @@ class Organization(TimestampMixin, Base):
     # Soft delete ("archive") by a super-admin: the org is also suspended so its
     # users are locked out, but every row is kept and it can be restored.
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # Sign-up approval by a super-admin: approved | pending | rejected. Users of
+    # a non-approved org cannot sign in (enforced in auth login/refresh and
+    # get_current_user). Existing and platform-created orgs are approved.
+    approval_status: Mapped[str] = mapped_column(String(20), default="approved", server_default="approved", nullable=False)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
 
     @property
     def is_archived(self) -> bool:
         return self.deleted_at is not None
+
+    @property
+    def is_approved(self) -> bool:
+        return self.approval_status == "approved"
 
     users: Mapped[List[User]] = relationship(back_populates="organization")
 

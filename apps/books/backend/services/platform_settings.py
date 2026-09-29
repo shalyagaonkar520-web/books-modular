@@ -16,6 +16,7 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.config import get_settings
 from backend.models import PlatformSetting
 
 _TRUE = {"1", "true", "yes", "on"}
@@ -45,6 +46,21 @@ def set_value(db: Session, key: str, value: str) -> PlatformSetting:
 
 def set_bool(db: Session, key: str, value: bool) -> PlatformSetting:
     return set_value(db, key, "true" if value else "false")
+
+
+# --------------------------------------------------------------------------- #
+# Organization approval gate for public sign-ups
+# --------------------------------------------------------------------------- #
+REQUIRE_ORG_APPROVAL_KEY = "require_org_approval"
+
+
+def require_org_approval(db: Session) -> bool:
+    """Whether a newly registered org must be approved before it can sign in.
+
+    A stored runtime override wins; otherwise the REQUIRE_ORG_APPROVAL env
+    setting applies.
+    """
+    return get_bool(db, REQUIRE_ORG_APPROVAL_KEY, get_settings().require_org_approval)
 
 
 # --------------------------------------------------------------------------- #

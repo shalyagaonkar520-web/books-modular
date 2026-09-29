@@ -23,6 +23,8 @@ interface ImpersonateButtonProps {
   /** Tenant route to open once signed in (defaults to the dashboard). */
   to?: string;
   label?: string;
+  /** When set, the button is disabled and this explains why (e.g. org awaiting approval). */
+  disabledReason?: string | null;
 }
 
 /**
@@ -30,7 +32,7 @@ interface ImpersonateButtonProps {
  * user by swapping the *tenant* access token, then opens the tenant dashboard.
  * There is no refresh cookie for the impersonated session, so reloading ends it.
  */
-export function ImpersonateButton({ user, size = 'sm', to = '/dashboard', label = 'View as' }: ImpersonateButtonProps) {
+export function ImpersonateButton({ user, size = 'sm', to = '/dashboard', label = 'View as', disabledReason }: ImpersonateButtonProps) {
   const { start, submitting, error } = useImpersonate();
   const [confirming, setConfirming] = useState(false);
 
@@ -42,7 +44,15 @@ export function ImpersonateButton({ user, size = 'sm', to = '/dashboard', label 
 
   return (
     <>
-      <Button variant="ghost" size={size} icon={<LogIn size={14} />} onClick={() => setConfirming(true)}>
+      <Button
+        variant="ghost"
+        size={size}
+        icon={<LogIn size={14} />}
+        disabled={Boolean(disabledReason)}
+        title={disabledReason ?? undefined}
+        aria-label={disabledReason ? `${label} ${user.name} (unavailable: ${disabledReason})` : undefined}
+        onClick={() => setConfirming(true)}
+      >
         {label}
       </Button>
       <ConfirmDialog

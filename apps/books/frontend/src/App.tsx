@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { PlatformAuthProvider } from '@/auth/PlatformAuthContext';
 import { PlatformApp } from '@/pages/platform/PlatformApp';
@@ -54,6 +54,16 @@ export function App() {
             </PlatformAuthProvider>
           }
         />
+
+        {/* Aliases for admin panel */}
+        <Route path="/admin" element={<Navigate to="/platform" replace />} />
+        <Route path="/admin/*" element={<Navigate to="/platform" replace />} />
+        <Route path="/admin-panel" element={<Navigate to="/platform" replace />} />
+        <Route path="/admin-panel/*" element={<Navigate to="/platform" replace />} />
+        <Route path="/adminpanel" element={<Navigate to="/platform" replace />} />
+        <Route path="/adminpanel/*" element={<Navigate to="/platform" replace />} />
+        <Route path="/superadmin" element={<Navigate to="/platform" replace />} />
+        <Route path="/superadmin/*" element={<Navigate to="/platform" replace />} />
 
         {/* Always public — the landing page */}
         <Route path="/" element={<LandingPage />} />

@@ -202,7 +202,14 @@ export function UsersPage() {
           onCreated={users.reload}
         />
       ) : null}
-      {editing ? <EditPlatformUserModal user={editing} onClose={() => setEditing(null)} onSaved={users.reload} /> : null}
+      {editing ? (
+        <EditPlatformUserModal
+          user={editing}
+          organizations={orgs.data?.items ?? []}
+          onClose={() => setEditing(null)}
+          onSaved={users.reload}
+        />
+      ) : null}
       {resetting ? <ResetPlatformUserPasswordModal user={resetting} onClose={() => setResetting(null)} /> : null}
 
       <ConfirmDialog

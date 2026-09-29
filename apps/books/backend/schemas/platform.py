@@ -92,6 +92,10 @@ class PlatformDashboard(APIModel):
     total_bills: int
     total_paid_to_vendors: float
     new_organizations_this_month: int
+    # Sign-ups awaiting approval (not archived) and the newest few of them.
+    pending_organizations: int = 0
+    rejected_organizations: int = 0
+    pending_approvals: List[OrgSummary] = []
     organization_growth: List[TimePoint]
     revenue_by_month: List[TimePoint]
     top_organizations: List[OrgSummary]
@@ -107,6 +111,11 @@ class OrgSummary(APIModel):
     is_suspended: bool
     is_archived: bool = False
     deleted_at: Optional[datetime] = None
+    approval_status: str = "approved"
+    approved_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
+    # Email of the org's first admin user (who signed it up).
+    admin_email: Optional[str] = None
     last_login_at: Optional[datetime] = None
     user_count: int
     invoice_count: int
@@ -129,11 +138,19 @@ class OrgDetail(APIModel):
     default_payment_terms_days: int
     invoice_terms: Optional[str] = None
     invoice_notes: Optional[str] = None
+    pan: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    postal_code: Optional[str] = None
     is_suspended: bool
     suspended_at: Optional[datetime] = None
     suspended_reason: Optional[str] = None
     deleted_at: Optional[datetime] = None
     is_archived: bool
+    approval_status: str = "approved"
+    approved_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
     last_login_at: Optional[datetime] = None
     created_at: datetime
     user_count: int
@@ -175,6 +192,12 @@ class UpdateOrganizationRequest(APIModel):
     default_payment_terms_days: Optional[int] = Field(default=None, ge=0, le=365)
     invoice_terms: Optional[str] = None
     invoice_notes: Optional[str] = None
+    pan: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    postal_code: Optional[str] = None
+    country: Optional[str] = Field(default=None, max_length=100)
     is_suspended: Optional[bool] = None
     suspended_reason: Optional[str] = Field(default=None, max_length=500)
 
@@ -204,6 +227,15 @@ class UpdateOrganizationRequest(APIModel):
     @classmethod
     def _gstin(cls, value: Optional[str]) -> Optional[str]:
         return validators.gstin(value)
+
+    @field_validator("pan")
+    @classmethod
+    def _pan(cls, value: Optional[str]) -> Optional[str]:
+        return validators.pan(value)
+
+
+class RejectOrganizationRequest(APIModel):
+    reason: Optional[str] = Field(default=None, max_length=500)
 
 
 class CreateOrgResponse(APIModel):
@@ -249,8 +281,10 @@ class CreatePlatformUserRequest(APIModel):
 
 class UpdatePlatformUserRequest(APIModel):
     name: Optional[str] = Field(default=None, min_length=2, max_length=120)
+    email: Optional[EmailStr] = None
     role: Optional[str] = None
     is_active: Optional[bool] = None
+    organization_id: Optional[str] = Field(default=None, min_length=1, max_length=32)
 
     @field_validator("role")
     @classmethod
@@ -326,6 +360,8 @@ class PlatformSearchResults(APIModel):
 # --------------------------------------------------------------------------- #
 class PlatformSettingsOut(APIModel):
     allow_public_signup: bool
+    # New public sign-ups wait for a super-admin to approve the organization.
+    require_org_approval: bool
     environment: str
     razorpay_configured: bool
     smtp_configured: bool
@@ -337,6 +373,7 @@ class PlatformSettingsOut(APIModel):
 
 class UpdatePlatformSettingsRequest(APIModel):
     allow_public_signup: Optional[bool] = None
+    require_org_approval: Optional[bool] = None
     default_tax_rate: Optional[Decimal] = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
     default_payment_terms_days: Optional[int] = Field(default=None, ge=0, le=365)
     default_currency: Optional[str] = Field(default=None, pattern=_CURRENCY_PATTERN)
