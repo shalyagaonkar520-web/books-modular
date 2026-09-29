@@ -1,0 +1,207 @@
+/**
+ * HTTP client for the Rooman Books *platform admin* API.
+ *
+ * Modelled on the tenant `client.ts`, but deliberately independent: it keeps its
+ * own short-lived platform access token in memory (never localStorage) and
+ * refreshes against the platform refresh endpoint, so the operator console and
+ * the tenant app can never share or clobber each other's session.
+ */
+import { ApiError } from './client';
+
+const BASE = '/api';
+
+/**
+ * Extends the tenant `ApiError` so the shared `useAsync`/`useSubmit` hooks
+ * (which test `instanceof ApiError`) surface platform error messages and
+ * per-field validation the same way — without sharing any auth state.
+ */
+export class PlatformApiError extends ApiError {
+  constructor(message: string, status: number, fieldErrors: Record<string, string> = {}) {
+    super(message, status, fieldErrors);
+    this.name = 'PlatformApiError';
+  }
+}
+
+type Listener = () => void;
+
+let accessToken: string | null = null;
+const unauthorizedListeners = new Set<Listener>();
+
+export function setPlatformAccessToken(token: string | null): void {
+  accessToken = token;
+}
+
+export function getPlatformAccessToken(): string | null {
+  return accessToken;
+}
+
+export function onPlatformUnauthorized(listener: Listener): () => void {
+  unauthorizedListeners.add(listener);
+  return () => unauthorizedListeners.delete(listener);
+}
+
+function notifyUnauthorized(): void {
+  unauthorizedListeners.forEach((listener) => listener());
+}
+
+/** Turn a FastAPI error body into a message plus per-field messages. */
+function parseError(status: number, body: unknown): PlatformApiError {
+  const fieldErrors: Record<string, string> = {};
+  let message = `Request failed (${status})`;
+
+  if (body && typeof body === 'object' && 'detail' in body) {
+    const detail = (body as { detail: unknown }).detail;
+    if (typeof detail === 'string') {
+      message = detail;
+    } else if (Array.isArray(detail)) {
+      const messages: string[] = [];
+      for (const raw of detail) {
+        const entry = raw as { loc?: unknown[]; msg?: string };
+        const msg = entry.msg ?? 'Invalid value';
+        const loc = Array.isArray(entry.loc) ? entry.loc.filter((part) => part !== 'body') : [];
+        const field = loc.length ? String(loc[loc.length - 1]) : '';
+        if (field) fieldErrors[field] = msg;
+        messages.push(field ? `${humanize(field)}: ${msg}` : msg);
+      }
+      message = messages.join('\n');
+    }
+  }
+  return new PlatformApiError(message, status, fieldErrors);
+}
+
+function humanize(field: string): string {
+  return field
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/[_-]+/g, ' ')
+    .replace(/^\s*./, (c) => c.toUpperCase())
+    .trim();
+}
+
+interface RefreshResult {
+  accessToken: string;
+  admin?: unknown;
+}
+
+async function refreshSession(): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE}/platform/auth/refresh`, { method: 'POST', credentials: 'include' });
+    if (!res.ok) return false;
+    const body = (await res.json()) as { accessToken?: string };
+    if (!body.accessToken) return false;
+    accessToken = body.accessToken;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+function refreshOnce(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = refreshSession().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+/**
+ * Explicit refresh used by the auth provider to restore a session on load.
+ * Returns the payload (token + admin) on success, or null when there is no
+ * valid refresh cookie.
+ */
+export async function platformRefresh<T = RefreshResult>(): Promise<T | null> {
+  try {
+    const res = await fetch(`${BASE}/platform/auth/refresh`, { method: 'POST', credentials: 'include' });
+    if (!res.ok) return null;
+    const body = (await res.json()) as RefreshResult;
+    if (!body.accessToken) return null;
+    accessToken = body.accessToken;
+    return body as unknown as T;
+  } catch {
+    return null;
+  }
+}
+
+export interface PlatformRequestOptions {
+  method?: string;
+  body?: unknown;
+  query?: Record<string, string | number | boolean | undefined | null>;
+  signal?: AbortSignal;
+  /** Set false for the auth endpoints so a failed refresh does not loop. */
+  retryOnUnauthorized?: boolean;
+}
+
+function buildUrl(path: string, query?: PlatformRequestOptions['query']): string {
+  const url = `${BASE}${path}`;
+  if (!query) return url;
+  const params = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') params.set(key, String(value));
+  });
+  const qs = params.toString();
+  return qs ? `${url}?${qs}` : url;
+}
+
+export async function platformRequest<T>(path: string, options: PlatformRequestOptions = {}): Promise<T> {
+  const { method = 'GET', body, query, signal, retryOnUnauthorized = true } = options;
+
+  const send = async (): Promise<Response> => {
+    const headers: Record<string, string> = {};
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    return fetch(buildUrl(path, query), {
+      method,
+      headers,
+      credentials: 'include',
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal,
+    });
+  };
+
+  let response: Response;
+  try {
+    response = await send();
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') throw error;
+    throw new PlatformApiError('Cannot reach the server. Check your connection and try again.', 0);
+  }
+
+  if (response.status === 401 && retryOnUnauthorized) {
+    const refreshed = await refreshOnce();
+    if (refreshed) {
+      response = await send();
+    } else {
+      accessToken = null;
+      notifyUnauthorized();
+      throw parseError(
+        401,
+        await response.json().catch(() => ({ detail: 'Your session has expired. Please sign in again.' })),
+      );
+    }
+  }
+
+  if (response.status === 204) return undefined as T;
+
+  const isJson = (response.headers.get('content-type') ?? '').includes('application/json');
+  const payload = isJson ? await response.json().catch(() => null) : null;
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      accessToken = null;
+      notifyUnauthorized();
+    }
+    throw parseError(response.status, payload ?? { detail: response.statusText });
+  }
+  return payload as T;
+}
+
+export const platformClient = {
+  get: <T>(path: string, query?: PlatformRequestOptions['query'], signal?: AbortSignal) =>
+    platformRequest<T>(path, { query, signal }),
+  post: <T>(path: string, body?: unknown, query?: PlatformRequestOptions['query']) =>
+    platformRequest<T>(path, { method: 'POST', body, query }),
+  patch: <T>(path: string, body?: unknown) => platformRequest<T>(path, { method: 'PATCH', body }),
+  delete: <T>(path: string) => platformRequest<T>(path, { method: 'DELETE' }),
+};
