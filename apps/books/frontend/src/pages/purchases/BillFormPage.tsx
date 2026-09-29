@@ -14,7 +14,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { addDaysIso, formatCurrency, parseNumber, round2, round3, todayIso } from '@/utils/format';
-import { TAX_RATES } from '@/utils/status';
+import { taxRatesWith } from '@/utils/status';
 
 interface LineDraft {
   key: string;
@@ -28,11 +28,13 @@ interface LineDraft {
 
 let nextLineKey = 1;
 
-function emptyLine(): LineDraft {
-  return { key: `line-${nextLineKey++}`, itemId: '', accountId: '', description: '', quantity: '1', rate: '0', taxRate: '0' };
+/** Tax rate a new line starts with when the organization sets no default. */
+const FALLBACK_LINE_TAX_RATE = '0';
+
+function emptyLine(taxRate: string = FALLBACK_LINE_TAX_RATE): LineDraft {
+  return { key: `line-${nextLineKey++}`, itemId: '', accountId: '', description: '', quantity: '1', rate: '0', taxRate };
 }
 
-const TAX_OPTIONS = TAX_RATES.map((rate) => ({ value: String(rate), label: `${rate}%` }));
 
 function lineAmount(line: LineDraft): number {
   // Match the backend, which rounds quantity to 3dp and rate to 2dp before
@@ -50,8 +52,10 @@ export function BillFormPage() {
   // bill - so only fetch the accounts when the role can read them, otherwise the
   // whole form 403s on open. The per-line account picker then falls back to the
   // "Default expense account" option and the server applies its default.
-  const { can } = useAuth();
+  const { can, organization } = useAuth();
   const canReadAccounts = can('admin', 'viewer');
+  // New lines (never existing ones) start at the organization's default tax rate.
+  const defaultLineTaxRate = organization?.defaultTaxRate !== undefined ? String(organization.defaultTaxRate) : FALLBACK_LINE_TAX_RATE;
 
   const refs = useAsync(async () => {
     const [vendorPage, itemPage, accounts] = await Promise.all([
@@ -79,7 +83,7 @@ export function BillFormPage() {
   const [dueDateTouched, setDueDateTouched] = useState(false);
   const [discountAmount, setDiscountAmount] = useState('0');
   const [notes, setNotes] = useState('');
-  const [lines, setLines] = useState<LineDraft[]>(() => [emptyLine()]);
+  const [lines, setLines] = useState<LineDraft[]>(() => [emptyLine(defaultLineTaxRate)]);
   const [loadedId, setLoadedId] = useState<string | null>(null);
 
   const bill = existing.data;
@@ -380,9 +384,9 @@ export function BillFormPage() {
                         aria-label={`Line ${index + 1} tax rate`}
                         onChange={(event) => updateLine(line.key, { taxRate: event.target.value })}
                       >
-                        {TAX_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
+                        {taxRatesWith(organization?.defaultTaxRate, parseNumber(line.taxRate, 0)).map((rate) => (
+                          <option key={rate} value={String(rate)}>
+                            {rate}%
                           </option>
                         ))}
                       </select>
@@ -405,7 +409,7 @@ export function BillFormPage() {
             </tbody>
           </table>
           <div className="row">
-            <Button variant="secondary" size="sm" icon={<Plus size={14} />} onClick={() => setLines((current) => [...current, emptyLine()])}>
+            <Button variant="secondary" size="sm" icon={<Plus size={14} />} onClick={() => setLines((current) => [...current, emptyLine(defaultLineTaxRate)])}>
               Add line
             </Button>
           </div>

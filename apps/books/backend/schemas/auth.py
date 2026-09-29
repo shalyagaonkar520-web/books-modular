@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import List, Optional
 
 from pydantic import EmailStr, Field, field_validator
@@ -141,6 +142,8 @@ class OrganizationOut(APIModel):
     country: str
     currency: str
     fiscal_year_start_month: int
+    default_tax_rate: Decimal
+    default_payment_terms_days: int
     invoice_terms: Optional[str] = None
     invoice_notes: Optional[str] = None
 
@@ -158,10 +161,12 @@ class OrganizationUpdate(APIModel):
     postal_code: Optional[str] = None
     country: Optional[str] = None
     fiscal_year_start_month: Optional[int] = Field(default=None, ge=1, le=12)
+    default_tax_rate: Optional[Decimal] = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
+    default_payment_terms_days: Optional[int] = Field(default=None, ge=0, le=365)
     invoice_terms: Optional[str] = None
     invoice_notes: Optional[str] = None
 
-    _required = field_validator("name", "country", "fiscal_year_start_month")(_not_null)
+    _required = field_validator("name", "country", "fiscal_year_start_month", "default_tax_rate", "default_payment_terms_days")(_not_null)
 
     @field_validator("phone")
     @classmethod

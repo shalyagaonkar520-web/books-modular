@@ -356,7 +356,14 @@ def register(payload: RegisterRequest, request: Request, response: Response, db:
             detail="EMAIL_NOT_VERIFIED: Email verification has expired. Please verify your email again.",
         )
 
-    org = Organization(name=payload.organization_name, gstin=payload.gstin or None)
+    defaults = platform_settings.get_org_defaults(db)
+    org = Organization(
+        name=payload.organization_name,
+        gstin=payload.gstin or None,
+        currency=defaults.currency,
+        default_tax_rate=defaults.tax_rate,
+        default_payment_terms_days=defaults.payment_terms_days,
+    )
     db.add(org)
     db.flush()
 
@@ -439,6 +446,9 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
     if not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has been deactivated")
+    # Archived orgs are suspended too, so this covers both.
+    if user.organization is not None and user.organization.is_suspended:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This organization has been suspended. Contact support.")
     user.last_login_at = datetime.now(UTC)
     access = _issue_tokens(db, user, response, request)
     audit.record(db, user, "login", "user", user.id, f"{user.email} signed in")

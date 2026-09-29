@@ -44,6 +44,11 @@ export interface OrgSummary {
   id: string;
   name: string;
   isSuspended: boolean;
+  /** Soft-deleted: users are locked out but the data is kept (restorable). */
+  isArchived?: boolean;
+  deletedAt?: string | null;
+  /** Most recent sign-in by any user of the organization. */
+  lastLoginAt?: string | null;
   userCount: number;
   invoiceCount: number;
   invoicedAmount: number;
@@ -79,6 +84,7 @@ export interface PlatformDashboard {
   totalOrganizations: number;
   activeOrganizations: number;
   suspendedOrganizations: number;
+  archivedOrganizations?: number;
   totalUsers: number;
   activeUsers: number;
   totalInvoices: number;
@@ -106,9 +112,17 @@ export interface OrgDetail {
   phone?: string | null;
   country: string;
   currency: string;
+  fiscalYearStartMonth?: number;
+  defaultTaxRate?: number | null;
+  defaultPaymentTermsDays?: number | null;
+  invoiceTerms?: string | null;
+  invoiceNotes?: string | null;
   isSuspended: boolean;
   suspendedAt?: string | null;
   suspendedReason?: string | null;
+  isArchived?: boolean;
+  deletedAt?: string | null;
+  lastLoginAt?: string | null;
   createdAt: string;
   userCount: number;
   invoiceCount: number;
@@ -137,9 +151,25 @@ export interface CreateOrganizationResult {
 
 export interface UpdateOrganizationBody {
   name?: string;
+  legalName?: string | null;
+  gstin?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  currency?: string;
+  /** 1 (January) – 12 (December). */
+  fiscalYearStartMonth?: number;
+  /** Percent, 0–100. */
+  defaultTaxRate?: number;
+  /** Days, 0–365. */
+  defaultPaymentTermsDays?: number;
+  invoiceTerms?: string | null;
+  invoiceNotes?: string | null;
   isSuspended?: boolean;
   suspendedReason?: string;
 }
+
+/** `status` filter accepted by GET /platform/organizations (default excludes archived). */
+export type OrgStatusFilter = 'active' | 'suspended' | 'archived' | 'all';
 
 // ---------------------------------------------------------------------------
 // Users
@@ -218,6 +248,17 @@ export interface PlatformSettings {
   environment: string;
   razorpayConfigured: boolean;
   smtpConfigured: boolean;
+  /** Defaults applied to newly created organizations. */
+  defaultTaxRate?: number;
+  defaultPaymentTermsDays?: number;
+  defaultCurrency?: string;
+}
+
+export interface UpdatePlatformSettingsBody {
+  allowPublicSignup?: boolean;
+  defaultTaxRate?: number;
+  defaultPaymentTermsDays?: number;
+  defaultCurrency?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -292,7 +333,7 @@ export const platformApi = {
 
   settings: {
     get: (signal?: AbortSignal) => platformClient.get<PlatformSettings>('/platform/settings', undefined, signal),
-    update: (body: { allowPublicSignup: boolean }) => platformClient.put<PlatformSettings>('/platform/settings', body),
+    update: (body: UpdatePlatformSettingsBody) => platformClient.put<PlatformSettings>('/platform/settings', body),
   },
 
   search: (q: string, signal?: AbortSignal) =>
@@ -300,12 +341,16 @@ export const platformApi = {
 
   organizations: {
     list: (
-      query: { page?: number; page_size?: number; search?: string; status?: string },
+      query: { page?: number; page_size?: number; search?: string; status?: OrgStatusFilter | '' },
       signal?: AbortSignal,
     ) => platformClient.get<PlatformPage<OrgSummary>>('/platform/organizations', query, signal),
     get: (id: string, signal?: AbortSignal) => platformClient.get<OrgDetail>(`/platform/organizations/${id}`, undefined, signal),
     create: (body: CreateOrganizationBody) => platformClient.post<CreateOrganizationResult>('/platform/organizations', body),
     update: (id: string, body: UpdateOrganizationBody) => platformClient.patch<OrgDetail>(`/platform/organizations/${id}`, body),
+    /** Soft delete: locks every user out but keeps the data. Reversible via restore. */
+    archive: (id: string) => platformClient.post<OrgDetail>(`/platform/organizations/${id}/archive`),
+    restore: (id: string) => platformClient.post<OrgDetail>(`/platform/organizations/${id}/restore`),
+    /** PERMANENT delete — destroys the organization and all of its data. */
     remove: (id: string) => platformClient.delete<Message>(`/platform/organizations/${id}`),
     users: (
       id: string,

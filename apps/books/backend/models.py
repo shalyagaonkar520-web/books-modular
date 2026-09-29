@@ -71,11 +71,22 @@ class Organization(TimestampMixin, Base):
     fiscal_year_start_month: Mapped[int] = mapped_column(Integer, default=4, nullable=False)
     invoice_terms: Mapped[Optional[str]] = mapped_column(Text)
     invoice_notes: Mapped[Optional[str]] = mapped_column(Text)
+    # Org-wide defaults applied to new documents (seeded from the platform's
+    # global defaults when the org is created).
+    default_tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("18"), nullable=False)
+    default_payment_terms_days: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
     # Platform-level suspension: set by a super-admin. A suspended org's users
     # are locked out (enforced in get_current_user) but its data is retained.
     is_suspended: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     suspended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     suspended_reason: Mapped[Optional[str]] = mapped_column(Text)
+    # Soft delete ("archive") by a super-admin: the org is also suspended so its
+    # users are locked out, but every row is kept and it can be restored.
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    @property
+    def is_archived(self) -> bool:
+        return self.deleted_at is not None
 
     users: Mapped[List[User]] = relationship(back_populates="organization")
 

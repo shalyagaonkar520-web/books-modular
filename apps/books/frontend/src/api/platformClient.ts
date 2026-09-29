@@ -82,28 +82,10 @@ interface RefreshResult {
   admin?: unknown;
 }
 
-async function refreshSession(): Promise<boolean> {
-  try {
-    const res = await fetch(`${BASE}/platform/auth/refresh`, { method: 'POST', credentials: 'include' });
-    if (!res.ok) return false;
-    const body = (await res.json()) as { accessToken?: string };
-    if (!body.accessToken) return false;
-    accessToken = body.accessToken;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-let refreshInFlight: Promise<boolean> | null = null;
-
-function refreshOnce(): Promise<boolean> {
-  if (!refreshInFlight) {
-    refreshInFlight = refreshSession().finally(() => {
-      refreshInFlight = null;
-    });
-  }
-  return refreshInFlight;
+/** 401-retry refresh. Shares the single in-flight request with the load-time
+ *  restore (platformRefresh), since the rotating token can only be spent once. */
+async function refreshOnce(): Promise<boolean> {
+  return (await platformRefresh()) !== null;
 }
 
 /**
@@ -111,17 +93,30 @@ function refreshOnce(): Promise<boolean> {
  * Returns the payload (token + admin) on success, or null when there is no
  * valid refresh cookie.
  */
-export async function platformRefresh<T = RefreshResult>(): Promise<T | null> {
-  try {
-    const res = await fetch(`${BASE}/platform/auth/refresh`, { method: 'POST', credentials: 'include' });
-    if (!res.ok) return null;
-    const body = (await res.json()) as RefreshResult;
-    if (!body.accessToken) return null;
-    accessToken = body.accessToken;
-    return body as unknown as T;
-  } catch {
-    return null;
+let restoreInFlight: Promise<RefreshResult | null> | null = null;
+
+export function platformRefresh<T = RefreshResult>(): Promise<T | null> {
+  // The refresh token rotates on every use, so two concurrent calls with the
+  // same cookie make the second one fail (its token was just revoked) and log
+  // the admin out. React StrictMode mounts the provider twice in development,
+  // which triggers exactly that; share one in-flight request instead.
+  if (!restoreInFlight) {
+    restoreInFlight = (async () => {
+      try {
+        const res = await fetch(`${BASE}/platform/auth/refresh`, { method: 'POST', credentials: 'include' });
+        if (!res.ok) return null;
+        const body = (await res.json()) as RefreshResult;
+        if (!body.accessToken) return null;
+        accessToken = body.accessToken;
+        return body;
+      } catch {
+        return null;
+      }
+    })().finally(() => {
+      restoreInFlight = null;
+    });
   }
+  return restoreInFlight as Promise<T | null>;
 }
 
 export interface PlatformRequestOptions {

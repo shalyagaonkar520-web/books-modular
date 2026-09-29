@@ -57,3 +57,15 @@ export const GST_TREATMENTS = [
 export const UNITS = ['pcs', 'kg', 'gm', 'ltr', 'box', 'set', 'hrs', 'day', 'month', 'project'] as const;
 
 export const TAX_RATES = [0, 5, 12, 18, 28] as const;
+
+/**
+ * The standard GST slabs plus any extra rates in play (e.g. an organization's
+ * configured default) so a select never holds a value it has no option for.
+ */
+export function taxRatesWith(...extra: Array<number | null | undefined>): number[] {
+  const rates = new Set<number>(TAX_RATES);
+  extra.forEach((rate) => {
+    if (typeof rate === 'number' && Number.isFinite(rate)) rates.add(rate);
+  });
+  return [...rates].sort((a, b) => a - b);
+}

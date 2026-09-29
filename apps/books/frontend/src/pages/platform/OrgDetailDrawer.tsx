@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Ban, CheckCircle2, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Ban, CheckCircle2, KeyRound, Trash2, UserCheck, UserX } from 'lucide-react';
 
 import {
   platformApi,
@@ -7,23 +7,48 @@ import {
   type PlatformAudit,
   type PlatformInvoice,
   type PlatformUser,
+  type UpdateOrganizationBody,
 } from '@/api/platform';
+import { ActionMenu } from '@/components/ui/ActionMenu';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { StatTile } from '@/components/ui/Card';
 import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, LoadingBlock, SkeletonRows } from '@/components/ui/Feedback';
+import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { Tabs } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
-import { formatCurrency, formatDate, formatDateTime, titleCase } from '@/utils/format';
+import { formatCurrency, formatDate, formatDateTime, formatPercent, titleCase } from '@/utils/format';
 import { statusLabel, statusTone } from '@/utils/status';
 
 import { ImpersonateButton } from './ImpersonateButton';
+import { OpenInAppMenu, OrgStatusBadge, isOrgArchived, useOrgLifecycle } from './orgActions';
+import { ResetPlatformUserPasswordModal } from './PlatformUserModals';
 
 const TAB_PAGE_SIZE = 10;
+
+const MONTH_OPTIONS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((label, index) => ({
+  value: String(index + 1),
+  label,
+}));
+
+const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
 
 interface OrgDetailDrawerProps {
   orgId: string;
@@ -32,10 +57,11 @@ interface OrgDetailDrawerProps {
   onChanged: () => void;
 }
 
-type TabId = 'overview' | 'users' | 'invoices' | 'activity';
+type TabId = 'overview' | 'settings' | 'users' | 'invoices' | 'activity';
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'overview', label: 'Overview' },
+  { id: 'settings', label: 'Settings' },
   { id: 'users', label: 'Users' },
   { id: 'invoices', label: 'Invoices' },
   { id: 'activity', label: 'Activity' },
@@ -45,9 +71,23 @@ export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerPr
   const toast = useToast();
   const { data, loading, error, reload, setData } = useAsync((signal) => platformApi.organizations.get(orgId, signal), [orgId]);
   const suspendSubmit = useSubmit();
-  const deleteSubmit = useSubmit();
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingSuspend, setConfirmingSuspend] = useState(false);
   const [tab, setTab] = useState<TabId>('overview');
+
+  const lifecycle = useOrgLifecycle({
+    onArchived: (updated) => {
+      setData(updated);
+      onChanged();
+    },
+    onRestored: (updated) => {
+      setData(updated);
+      onChanged();
+    },
+    onDeleted: () => {
+      onChanged();
+      onClose();
+    },
+  });
 
   const toggleSuspend = async (org: OrgDetail) => {
     const next = !org.isSuspended;
@@ -59,6 +99,7 @@ export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerPr
     );
     if (updated) {
       setData(updated);
+      setConfirmingSuspend(false);
       toast.success(next ? `${org.name} is now suspended.` : `${org.name} is active again.`);
       onChanged();
     } else if (suspendSubmit.errorRef.current) {
@@ -66,17 +107,7 @@ export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerPr
     }
   };
 
-  const confirmDelete = async (org: OrgDetail) => {
-    const result = await deleteSubmit.run(() => platformApi.organizations.remove(org.id));
-    if (result) {
-      toast.success(result.message || `${org.name} deleted.`);
-      setConfirmingDelete(false);
-      onChanged();
-      onClose();
-    } else if (deleteSubmit.errorRef.current) {
-      toast.error(deleteSubmit.errorRef.current);
-    }
-  };
+  const archived = data ? isOrgArchived(data) : false;
 
   return (
     <Modal
@@ -86,67 +117,89 @@ export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerPr
       size="lg"
       onClose={onClose}
       footer={
-        data ? (
-          <>
-            <Button
-              variant="danger"
-              icon={<Trash2 size={15} />}
-              onClick={() => setConfirmingDelete(true)}
-              disabled={suspendSubmit.submitting || deleteSubmit.submitting}
-            >
-              Delete
-            </Button>
-            <Button
-              variant={data.isSuspended ? 'primary' : 'secondary'}
-              icon={data.isSuspended ? <CheckCircle2 size={15} /> : <Ban size={15} />}
-              loading={suspendSubmit.submitting}
-              onClick={() => toggleSuspend(data)}
-            >
-              {data.isSuspended ? 'Unsuspend' : 'Suspend'}
-            </Button>
-          </>
-        ) : null
+        <Button variant="secondary" onClick={onClose}>
+          Close
+        </Button>
       }
     >
-      {loading ? <LoadingBlock label="Loading organization…" /> : null}
-      {!loading && error ? <ErrorBlock message={error} onRetry={reload} /> : null}
-      {!loading && data ? (
+      {loading && !data ? <LoadingBlock label="Loading organization…" /> : null}
+      {!loading && error && !data ? <ErrorBlock message={error} onRetry={reload} /> : null}
+      {data ? (
         <div className="stack">
-          <FormError message={suspendSubmit.error ?? deleteSubmit.error} />
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            {data.isSuspended ? <Badge tone="danger">Suspended</Badge> : <Badge tone="success">Active</Badge>}
-            {data.isSuspended && data.suspendedReason ? (
-              <span className="text-muted small">
-                {data.suspendedReason}
-                {data.suspendedAt ? ` · ${formatDateTime(data.suspendedAt)}` : ''}
-              </span>
-            ) : null}
+          <div className="row-between">
+            <div className="row">
+              <OrgStatusBadge org={data} />
+              {archived ? (
+                <span className="text-muted small">
+                  Archived{data.deletedAt ? ` ${formatDateTime(data.deletedAt)}` : ''} · users cannot sign in
+                </span>
+              ) : data.isSuspended && data.suspendedReason ? (
+                <span className="text-muted small">
+                  {data.suspendedReason}
+                  {data.suspendedAt ? ` · ${formatDateTime(data.suspendedAt)}` : ''}
+                </span>
+              ) : null}
+            </div>
+            <OpenInAppMenu org={data} detail={data} size="sm" />
           </div>
 
           <Tabs tabs={TABS} active={tab} onChange={(id) => setTab(id as TabId)} />
 
-          {tab === 'overview' ? <OverviewTab data={data} /> : null}
-          {tab === 'users' ? <OrgUsersTab orgId={orgId} /> : null}
+          {tab === 'overview' ? (
+            <>
+              <OverviewTab data={data} />
+              <DangerZone
+                data={data}
+                suspending={suspendSubmit.submitting}
+                onToggleSuspend={() => (data.isSuspended ? void toggleSuspend(data) : setConfirmingSuspend(true))}
+                onArchive={() => lifecycle.requestArchive(data)}
+                onRestore={() => lifecycle.requestRestore(data)}
+                onDelete={() => lifecycle.requestDelete(data)}
+              />
+            </>
+          ) : null}
+          {tab === 'settings' ? (
+            <OrgSettingsTab
+              key={data.id}
+              data={data}
+              onSaved={(updated) => {
+                setData(updated);
+                onChanged();
+              }}
+            />
+          ) : null}
+          {tab === 'users' ? (
+            <OrgUsersTab
+              orgId={orgId}
+              orgName={data.name}
+              onChanged={() => {
+                // Refresh counts / the admins list without blanking the drawer.
+                void platformApi.organizations.get(orgId).then(setData, () => undefined);
+                onChanged();
+              }}
+            />
+          ) : null}
           {tab === 'invoices' ? <OrgInvoicesTab orgId={orgId} currency={data.currency} /> : null}
           {tab === 'activity' ? <OrgActivityTab orgId={orgId} /> : null}
 
           <ConfirmDialog
-            open={confirmingDelete}
-            title="Delete organization"
+            open={confirmingSuspend}
+            title="Suspend organization"
             message={
               <>
-                <FormError message={deleteSubmit.error} />
+                <FormError message={suspendSubmit.error} />
                 <p>
-                  This permanently deletes <strong>{data.name}</strong> and all of its data. This cannot be undone.
+                  Suspend <strong>{data.name}</strong>? Its users are blocked from signing in until you unsuspend it. No data is
+                  changed.
                 </p>
               </>
             }
-            confirmLabel="Delete permanently"
-            busy={deleteSubmit.submitting}
-            onConfirm={() => confirmDelete(data)}
-            onCancel={() => setConfirmingDelete(false)}
+            confirmLabel="Suspend"
+            busy={suspendSubmit.submitting}
+            onConfirm={() => void toggleSuspend(data)}
+            onCancel={() => setConfirmingSuspend(false)}
           />
+          {lifecycle.dialogs}
         </div>
       ) : null}
     </Modal>
@@ -192,6 +245,8 @@ function OverviewTab({ data }: { data: OrgDetail }) {
     },
   ];
 
+  const fiscalMonth = data.fiscalYearStartMonth ? MONTH_NAMES[data.fiscalYearStartMonth - 1] : undefined;
+
   return (
     <div className="stack">
       <div className="stat-grid">
@@ -231,7 +286,23 @@ function OverviewTab({ data }: { data: OrgDetail }) {
         </div>
         <div className="detail-item">
           <dt>Currency</dt>
-          <dd>{data.currency}</dd>
+          <dd>{data.currency || '—'}</dd>
+        </div>
+        <div className="detail-item">
+          <dt>Fiscal year starts</dt>
+          <dd>{fiscalMonth ?? '—'}</dd>
+        </div>
+        <div className="detail-item">
+          <dt>Default tax rate</dt>
+          <dd>{typeof data.defaultTaxRate === 'number' ? formatPercent(data.defaultTaxRate) : '—'}</dd>
+        </div>
+        <div className="detail-item">
+          <dt>Default payment terms</dt>
+          <dd>{typeof data.defaultPaymentTermsDays === 'number' ? `${data.defaultPaymentTermsDays} days` : '—'}</dd>
+        </div>
+        <div className="detail-item">
+          <dt>Last login</dt>
+          <dd>{data.lastLoginAt ? formatDateTime(data.lastLoginAt) : 'Never'}</dd>
         </div>
       </dl>
 
@@ -248,11 +319,271 @@ function OverviewTab({ data }: { data: OrgDetail }) {
 }
 
 // ---------------------------------------------------------------------------
+// Danger zone
+// ---------------------------------------------------------------------------
+
+interface DangerZoneProps {
+  data: OrgDetail;
+  suspending: boolean;
+  onToggleSuspend: () => void;
+  onArchive: () => void;
+  onRestore: () => void;
+  onDelete: () => void;
+}
+
+function DangerZone({ data, suspending, onToggleSuspend, onArchive, onRestore, onDelete }: DangerZoneProps) {
+  const archived = isOrgArchived(data);
+  return (
+    <section className="danger-zone" aria-labelledby="org-danger-zone-title">
+      <h3 className="danger-zone-title" id="org-danger-zone-title">
+        Danger zone
+      </h3>
+
+      {!archived ? (
+        <div className="danger-zone-row">
+          <div>
+            <strong>{data.isSuspended ? 'Unsuspend organization' : 'Suspend organization'}</strong>
+            <p>
+              {data.isSuspended
+                ? 'Let this organization’s users sign in again.'
+                : 'Temporarily block every user from signing in. No data changes.'}
+            </p>
+          </div>
+          <Button
+            variant={data.isSuspended ? 'primary' : 'secondary'}
+            size="sm"
+            icon={data.isSuspended ? <CheckCircle2 size={14} /> : <Ban size={14} />}
+            loading={suspending}
+            onClick={onToggleSuspend}
+          >
+            {data.isSuspended ? 'Unsuspend' : 'Suspend'}
+          </Button>
+        </div>
+      ) : null}
+
+      <div className="danger-zone-row">
+        {archived ? (
+          <>
+            <div>
+              <strong>Restore organization</strong>
+              <p>Bring this organization back. Its users can sign in again and all data is exactly as it was.</p>
+            </div>
+            <Button variant="primary" size="sm" icon={<ArchiveRestore size={14} />} onClick={onRestore}>
+              Restore
+            </Button>
+          </>
+        ) : (
+          <>
+            <div>
+              <strong>Delete (archive)</strong>
+              <p>Lock every user out and hide it from the list. All data is kept and this can be undone.</p>
+            </div>
+            <Button variant="secondary" size="sm" icon={<Archive size={14} />} onClick={onArchive}>
+              Delete (archive)
+            </Button>
+          </>
+        )}
+      </div>
+
+      <div className="danger-zone-row">
+        <div>
+          <strong>Permanently delete</strong>
+          <p>Destroy this organization and all of its data forever. This cannot be undone.</p>
+        </div>
+        <Button variant="danger" size="sm" icon={<Trash2 size={14} />} onClick={onDelete}>
+          Permanent delete
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Settings tab
+// ---------------------------------------------------------------------------
+
+interface SettingsForm {
+  name: string;
+  legalName: string;
+  gstin: string;
+  email: string;
+  phone: string;
+  currency: string;
+  fiscalYearStartMonth: string;
+  defaultTaxRate: string;
+  defaultPaymentTermsDays: string;
+  invoiceTerms: string;
+  invoiceNotes: string;
+}
+
+function toSettingsForm(org: OrgDetail): SettingsForm {
+  return {
+    name: org.name,
+    legalName: org.legalName ?? '',
+    gstin: org.gstin ?? '',
+    email: org.email ?? '',
+    phone: org.phone ?? '',
+    currency: org.currency ?? '',
+    fiscalYearStartMonth: String(org.fiscalYearStartMonth ?? 4),
+    defaultTaxRate: typeof org.defaultTaxRate === 'number' ? String(org.defaultTaxRate) : '',
+    defaultPaymentTermsDays: typeof org.defaultPaymentTermsDays === 'number' ? String(org.defaultPaymentTermsDays) : '',
+    invoiceTerms: org.invoiceTerms ?? '',
+    invoiceNotes: org.invoiceNotes ?? '',
+  };
+}
+
+/** Client-side checks mirroring the API contract; the server stays authoritative. */
+function validateSettings(form: SettingsForm): Record<string, string> {
+  const errors: Record<string, string> = {};
+  if (form.name.trim().length < 2) errors.name = 'Enter at least 2 characters.';
+  if (form.currency.trim() && !/^[A-Z]{3}$/.test(form.currency.trim())) errors.currency = 'Use a 3-letter code, e.g. INR.';
+  if (form.defaultTaxRate.trim()) {
+    const rate = Number(form.defaultTaxRate);
+    if (!Number.isFinite(rate) || rate < 0 || rate > 100) errors.defaultTaxRate = 'Enter a percentage between 0 and 100.';
+  }
+  if (form.defaultPaymentTermsDays.trim()) {
+    const days = Number(form.defaultPaymentTermsDays);
+    if (!Number.isInteger(days) || days < 0 || days > 365) errors.defaultPaymentTermsDays = 'Enter whole days between 0 and 365.';
+  }
+  return errors;
+}
+
+function OrgSettingsTab({ data, onSaved }: { data: OrgDetail; onSaved: (updated: OrgDetail) => void }) {
+  const toast = useToast();
+  const { submitting, error, fieldErrors, run } = useSubmit();
+  const [form, setForm] = useState<SettingsForm>(() => toSettingsForm(data));
+  const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
+
+  const set = (key: keyof SettingsForm) => (event: { target: { value: string } }) => {
+    const value = key === 'currency' || key === 'gstin' ? event.target.value.toUpperCase() : event.target.value;
+    setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const errorFor = (key: keyof SettingsForm) => localErrors[key] ?? fieldErrors[key];
+
+  const save = async () => {
+    const errors = validateSettings(form);
+    setLocalErrors(errors);
+    if (Object.keys(errors).length) return;
+
+    const body: UpdateOrganizationBody = {
+      name: form.name.trim(),
+      legalName: form.legalName.trim() || null,
+      gstin: form.gstin.trim() || null,
+      email: form.email.trim() || null,
+      phone: form.phone.trim() || null,
+      fiscalYearStartMonth: Number(form.fiscalYearStartMonth),
+      invoiceTerms: form.invoiceTerms.trim() || null,
+      invoiceNotes: form.invoiceNotes.trim() || null,
+    };
+    if (form.currency.trim()) body.currency = form.currency.trim();
+    if (form.defaultTaxRate.trim()) body.defaultTaxRate = Number(form.defaultTaxRate);
+    if (form.defaultPaymentTermsDays.trim()) body.defaultPaymentTermsDays = Number(form.defaultPaymentTermsDays);
+
+    const updated = await run(() => platformApi.organizations.update(data.id, body));
+    if (updated) {
+      setForm(toSettingsForm(updated));
+      toast.success(`${updated.name} settings saved.`);
+      onSaved(updated);
+    }
+  };
+
+  return (
+    <form
+      className="stack"
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault();
+        void save();
+      }}
+    >
+      <FormError message={error} />
+
+      <div className="form-grid">
+        <TextField label="Display name" value={form.name} required maxLength={200} error={errorFor('name')} onChange={set('name')} />
+        <TextField label="Legal name" value={form.legalName} error={errorFor('legalName')} onChange={set('legalName')} />
+        <TextField label="GSTIN" value={form.gstin} maxLength={15} error={errorFor('gstin')} hint="15 characters" onChange={set('gstin')} />
+        <TextField label="Email" type="email" value={form.email} error={errorFor('email')} onChange={set('email')} />
+        <TextField label="Phone" type="tel" value={form.phone} error={errorFor('phone')} onChange={set('phone')} />
+        <TextField
+          label="Currency"
+          value={form.currency}
+          maxLength={3}
+          autoCapitalize="characters"
+          error={errorFor('currency')}
+          hint="3-letter ISO code, e.g. INR"
+          onChange={set('currency')}
+        />
+        <SelectField
+          label="Fiscal year starts in"
+          value={form.fiscalYearStartMonth}
+          options={MONTH_OPTIONS}
+          error={errorFor('fiscalYearStartMonth')}
+          onChange={set('fiscalYearStartMonth')}
+        />
+        <TextField
+          label="Default tax rate (%)"
+          type="number"
+          inputMode="decimal"
+          min={0}
+          max={100}
+          step="0.01"
+          value={form.defaultTaxRate}
+          error={errorFor('defaultTaxRate')}
+          hint="Pre-filled on new items and document lines"
+          onChange={set('defaultTaxRate')}
+        />
+        <TextField
+          label="Default payment terms (days)"
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={365}
+          step={1}
+          value={form.defaultPaymentTermsDays}
+          error={errorFor('defaultPaymentTermsDays')}
+          hint="Pre-filled on new customers and vendors"
+          onChange={set('defaultPaymentTermsDays')}
+        />
+      </div>
+
+      <TextAreaField label="Default invoice terms" value={form.invoiceTerms} rows={3} error={errorFor('invoiceTerms')} onChange={set('invoiceTerms')} />
+      <TextAreaField label="Default invoice notes" value={form.invoiceNotes} rows={3} error={errorFor('invoiceNotes')} onChange={set('invoiceNotes')} />
+
+      <div className="row-between">
+        <span className="text-muted small">Changes apply to this organization immediately.</span>
+        <div className="row">
+          <Button
+            variant="secondary"
+            disabled={submitting}
+            onClick={() => {
+              setForm(toSettingsForm(data));
+              setLocalErrors({});
+            }}
+          >
+            Reset
+          </Button>
+          <Button variant="primary" type="submit" loading={submitting}>
+            Save settings
+          </Button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Users tab
 // ---------------------------------------------------------------------------
 
-function OrgUsersTab({ orgId }: { orgId: string }) {
+function OrgUsersTab({ orgId, orgName, onChanged }: { orgId: string; orgName: string; onChanged: () => void }) {
+  const toast = useToast();
   const [page, setPage] = useState(1);
+  const [resetting, setResetting] = useState<PlatformUser | null>(null);
+  const [deleting, setDeleting] = useState<PlatformUser | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const toggleSubmit = useSubmit();
+  const deleteSubmit = useSubmit();
   const users = useAsync(
     (signal) => platformApi.organizations.users(orgId, { page, page_size: TAB_PAGE_SIZE }, signal),
     [orgId, page],
@@ -260,40 +591,123 @@ function OrgUsersTab({ orgId }: { orgId: string }) {
 
   const rows = users.data?.items ?? [];
 
+  const refresh = () => {
+    users.reload();
+    onChanged();
+  };
+
+  const toggleActive = async (user: PlatformUser) => {
+    setTogglingId(user.id);
+    const updated = await toggleSubmit.run(() => platformApi.users.update(user.id, { isActive: !user.isActive }));
+    setTogglingId(null);
+    if (updated) {
+      toast.success(updated.isActive ? `${updated.name} can sign in again.` : `${updated.name} was deactivated.`);
+      refresh();
+    } else if (toggleSubmit.errorRef.current) {
+      toast.error(toggleSubmit.errorRef.current);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    const result = await deleteSubmit.run(() => platformApi.users.remove(deleting.id));
+    if (result) {
+      toast.success(result.message || `${deleting.name} deleted.`);
+      setDeleting(null);
+      // Step back a page if this removed the last row on it.
+      if (rows.length === 1 && page > 1) setPage(page - 1);
+      refresh();
+    }
+  };
+
   const columns: Array<Column<PlatformUser>> = [
-    {
-      key: 'name',
-      header: 'Name',
-      render: (row) => (
-        <div className="cell-stack">
-          <span className="strong">{row.name}</span>
-          <small>{row.email}</small>
-        </div>
-      ),
-    },
+    { key: 'name', header: 'Name', render: (row) => <span className="strong">{row.name}</span> },
+    { key: 'email', header: 'Email', render: (row) => <span style={{ wordBreak: 'break-all' }}>{row.email}</span> },
     { key: 'role', header: 'Role', render: (row) => <Badge tone="info">{row.role}</Badge> },
     {
       key: 'status',
-      header: 'Status',
+      header: 'Active',
       render: (row) => (row.isActive ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Inactive</Badge>),
     },
     {
       key: 'lastLogin',
       header: 'Last login',
-      align: 'right',
       render: (row) => (row.lastLoginAt ? formatDateTime(row.lastLoginAt) : <span className="text-muted">Never</span>),
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      render: (row) => (
+        <div className="row-actions">
+          {row.isActive ? <ImpersonateButton user={{ ...row, organizationName: row.organizationName || orgName }} /> : null}
+          <ActionMenu
+            label={`More actions for ${row.name}`}
+            iconOnly
+            disabled={togglingId === row.id}
+            items={[
+              { key: 'reset', label: 'Reset password', icon: <KeyRound size={14} />, onSelect: () => setResetting(row) },
+              row.isActive
+                ? { key: 'deactivate', label: 'Deactivate', icon: <UserX size={14} />, onSelect: () => void toggleActive(row) }
+                : { key: 'activate', label: 'Activate', icon: <UserCheck size={14} />, onSelect: () => void toggleActive(row) },
+              {
+                key: 'delete',
+                label: 'Delete user',
+                icon: <Trash2 size={14} />,
+                danger: true,
+                onSelect: () => {
+                  deleteSubmit.reset();
+                  setDeleting(row);
+                },
+              },
+            ]}
+          />
+        </div>
+      ),
     },
   ];
 
-  if (users.loading) return <SkeletonRows rows={5} columns={4} />;
-  if (users.error) return <ErrorBlock message={users.error} onRetry={users.reload} />;
-  if (!rows.length) return <EmptyState title="No users" description="This organization has no users yet." />;
+  let body;
+  if (users.loading && !users.data) body = <SkeletonRows rows={5} columns={6} />;
+  else if (users.error && !users.data) body = <ErrorBlock message={users.error} onRetry={users.reload} />;
+  else if (!rows.length) body = <EmptyState title="No users" description="This organization has no users yet." />;
+  else
+    body = (
+      <>
+        <DataTable columns={columns} rows={rows} rowKey={(row) => row.id} caption={`Users of ${orgName}`} />
+        <Pagination page={page} pageSize={users.data?.pageSize ?? TAB_PAGE_SIZE} total={users.data?.total ?? 0} onPageChange={setPage} />
+      </>
+    );
 
   return (
-    <>
-      <DataTable columns={columns} rows={rows} rowKey={(row) => row.id} caption="Organization users" />
-      <Pagination page={page} pageSize={users.data?.pageSize ?? TAB_PAGE_SIZE} total={users.data?.total ?? 0} onPageChange={setPage} />
-    </>
+    <div aria-busy={users.loading}>
+      {body}
+
+      {resetting ? (
+        <ResetPlatformUserPasswordModal user={{ ...resetting, organizationName: resetting.organizationName || orgName }} onClose={() => setResetting(null)} />
+      ) : null}
+
+      <ConfirmDialog
+        open={!!deleting}
+        title="Delete user"
+        message={
+          deleting ? (
+            <>
+              <FormError message={deleteSubmit.error} />
+              <p>
+                Delete <strong>{deleting.name}</strong> ({deleting.email}) from {orgName}? This cannot be undone.
+              </p>
+            </>
+          ) : (
+            ''
+          )
+        }
+        confirmLabel="Delete user"
+        busy={deleteSubmit.submitting}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setDeleting(null)}
+      />
+    </div>
   );
 }
 

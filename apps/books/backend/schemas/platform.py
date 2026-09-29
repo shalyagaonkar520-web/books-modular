@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import List, Optional
 
 from pydantic import EmailStr, Field, field_validator
 
-from backend.schemas.auth import _validate_password
+from backend.schemas import validators
+from backend.schemas.auth import _not_null, _validate_password
 from backend.schemas.common import APIModel
+
+# ISO 4217 style: exactly three upper-case letters.
+_CURRENCY_PATTERN = r"^[A-Z]{3}$"
 
 
 # --------------------------------------------------------------------------- #
@@ -78,6 +83,7 @@ class PlatformDashboard(APIModel):
     total_organizations: int
     active_organizations: int
     suspended_organizations: int
+    archived_organizations: int
     total_users: int
     active_users: int
     total_invoices: int
@@ -99,6 +105,9 @@ class OrgSummary(APIModel):
     id: str
     name: str
     is_suspended: bool
+    is_archived: bool = False
+    deleted_at: Optional[datetime] = None
+    last_login_at: Optional[datetime] = None
     user_count: int
     invoice_count: int
     invoiced_amount: float
@@ -115,9 +124,17 @@ class OrgDetail(APIModel):
     phone: Optional[str] = None
     country: str
     currency: str
+    fiscal_year_start_month: int
+    default_tax_rate: float
+    default_payment_terms_days: int
+    invoice_terms: Optional[str] = None
+    invoice_notes: Optional[str] = None
     is_suspended: bool
     suspended_at: Optional[datetime] = None
     suspended_reason: Optional[str] = None
+    deleted_at: Optional[datetime] = None
+    is_archived: bool
+    last_login_at: Optional[datetime] = None
     created_at: datetime
     user_count: int
     invoice_count: int
@@ -132,7 +149,8 @@ class OrgDetail(APIModel):
 class CreateOrganizationRequest(APIModel):
     name: str = Field(min_length=2, max_length=200)
     gstin: Optional[str] = Field(default=None, max_length=20)
-    currency: str = Field(default="INR", min_length=3, max_length=3)
+    # Omitted -> the platform's global default currency.
+    currency: Optional[str] = Field(default=None, pattern=_CURRENCY_PATTERN)
     country: str = Field(default="India", min_length=2, max_length=100)
     # The first administrator to create for the new org.
     admin_name: str = Field(min_length=2, max_length=120)
@@ -147,8 +165,45 @@ class CreateOrganizationRequest(APIModel):
 
 class UpdateOrganizationRequest(APIModel):
     name: Optional[str] = Field(default=None, min_length=2, max_length=200)
+    legal_name: Optional[str] = Field(default=None, max_length=200)
+    gstin: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    currency: Optional[str] = Field(default=None, pattern=_CURRENCY_PATTERN)
+    fiscal_year_start_month: Optional[int] = Field(default=None, ge=1, le=12)
+    default_tax_rate: Optional[Decimal] = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
+    default_payment_terms_days: Optional[int] = Field(default=None, ge=0, le=365)
+    invoice_terms: Optional[str] = None
+    invoice_notes: Optional[str] = None
     is_suspended: Optional[bool] = None
     suspended_reason: Optional[str] = Field(default=None, max_length=500)
+
+    _required = field_validator(
+        "name",
+        "currency",
+        "fiscal_year_start_month",
+        "default_tax_rate",
+        "default_payment_terms_days",
+        "is_suspended",
+    )(_not_null)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _blank_email(cls, value):
+        # A cleared email box arrives as "" - store that as "no email".
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("phone")
+    @classmethod
+    def _phone(cls, value: Optional[str]) -> Optional[str]:
+        return validators.phone(value)
+
+    @field_validator("gstin")
+    @classmethod
+    def _gstin(cls, value: Optional[str]) -> Optional[str]:
+        return validators.gstin(value)
 
 
 class CreateOrgResponse(APIModel):
@@ -294,10 +349,19 @@ class PlatformSettingsOut(APIModel):
     environment: str
     razorpay_configured: bool
     smtp_configured: bool
+    # Global defaults seeded into every newly created organization.
+    default_tax_rate: float
+    default_payment_terms_days: int
+    default_currency: str
 
 
 class UpdatePlatformSettingsRequest(APIModel):
     allow_public_signup: Optional[bool] = None
+    default_tax_rate: Optional[Decimal] = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
+    default_payment_terms_days: Optional[int] = Field(default=None, ge=0, le=365)
+    default_currency: Optional[str] = Field(default=None, pattern=_CURRENCY_PATTERN)
+
+    _required = field_validator("default_tax_rate", "default_payment_terms_days", "default_currency")(_not_null)
 
 
 PlatformDashboard.model_rebuild()

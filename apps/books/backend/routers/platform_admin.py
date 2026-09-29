@@ -80,6 +80,24 @@ from backend.services.tenancy import Pagination
 # Runtime setting key for the public tenant-signup gate (see auth.register).
 ALLOW_PUBLIC_SIGNUP_KEY = "allow_public_signup"
 
+# Suspension reason stamped on an org when it is archived (soft deleted).
+ARCHIVED_REASON = "Archived by platform admin"
+
+# Org profile/settings columns a platform admin may edit via PATCH.
+_ORG_PROFILE_FIELDS = (
+    "name",
+    "legal_name",
+    "gstin",
+    "email",
+    "phone",
+    "currency",
+    "fiscal_year_start_month",
+    "default_tax_rate",
+    "default_payment_terms_days",
+    "invoice_terms",
+    "invoice_notes",
+)
+
 
 def _csv_cell(value) -> str:
     """Neutralise CSV/formula injection: a cell a spreadsheet would treat as a
@@ -171,6 +189,79 @@ def _user_out(u: User, org_name: Optional[str]) -> PlatformUserOut:
     )
 
 
+def _apply_org_status(stmt, status_filter: Optional[str]):
+    """Filter an Organization select by lifecycle status.
+
+    ``active`` = not suspended and not archived; ``suspended`` = suspended but
+    not archived; ``archived`` = soft-deleted; ``all`` = everything. Anything
+    else (including omitted) hides archived orgs.
+    """
+    if status_filter == "all":
+        return stmt
+    if status_filter == "archived":
+        return stmt.where(Organization.deleted_at.is_not(None))
+    stmt = stmt.where(Organization.deleted_at.is_(None))
+    if status_filter == "suspended":
+        stmt = stmt.where(Organization.is_suspended.is_(True))
+    elif status_filter == "active":
+        stmt = stmt.where(Organization.is_suspended.is_(False))
+    return stmt
+
+
+def _last_login_map(db: Session, org_ids: List[str]) -> dict:
+    if not org_ids:
+        return {}
+    rows = db.execute(
+        select(User.organization_id, func.max(User.last_login_at)).where(User.organization_id.in_(org_ids)).group_by(User.organization_id)
+    ).all()
+    return {r[0]: r[1] for r in rows}
+
+
+def _org_summaries(db: Session, orgs: List[Organization]) -> List[OrgSummary]:
+    ids = [o.id for o in orgs]
+    users_by_org = dict(
+        db.execute(select(User.organization_id, func.count()).where(User.organization_id.in_(ids)).group_by(User.organization_id)).all()
+    ) if ids else {}
+    inv_by_org = dict(
+        db.execute(
+            select(Invoice.organization_id, func.count())
+            .where(Invoice.organization_id.in_(ids), Invoice.status.in_(_LIVE_INVOICE_STATUSES))
+            .group_by(Invoice.organization_id)
+        ).all()
+    ) if ids else {}
+    invoiced_by_org = dict(
+        db.execute(
+            select(Invoice.organization_id, func.coalesce(func.sum(Invoice.total), 0))
+            .where(Invoice.organization_id.in_(ids), Invoice.status.in_(_LIVE_INVOICE_STATUSES))
+            .group_by(Invoice.organization_id)
+        ).all()
+    ) if ids else {}
+    collected_by_org = dict(
+        db.execute(
+            select(CustomerPayment.organization_id, func.coalesce(func.sum(CustomerPayment.amount), 0))
+            .where(CustomerPayment.organization_id.in_(ids))
+            .group_by(CustomerPayment.organization_id)
+        ).all()
+    ) if ids else {}
+    last_login = _last_login_map(db, ids)
+    return [
+        OrgSummary(
+            id=o.id,
+            name=o.name,
+            is_suspended=o.is_suspended,
+            is_archived=o.is_archived,
+            deleted_at=o.deleted_at,
+            last_login_at=last_login.get(o.id),
+            user_count=int(users_by_org.get(o.id, 0)),
+            invoice_count=int(inv_by_org.get(o.id, 0)),
+            invoiced_amount=_float(invoiced_by_org.get(o.id, 0)),
+            collected_amount=_float(collected_by_org.get(o.id, 0)),
+            created_at=o.created_at,
+        )
+        for o in orgs
+    ]
+
+
 def _org_detail(db: Session, org: Organization) -> OrgDetail:
     user_count = db.scalar(select(func.count()).select_from(User).where(User.organization_id == org.id)) or 0
     invoice_count = db.scalar(
@@ -201,9 +292,17 @@ def _org_detail(db: Session, org: Organization) -> OrgDetail:
         phone=org.phone,
         country=org.country,
         currency=org.currency,
+        fiscal_year_start_month=org.fiscal_year_start_month,
+        default_tax_rate=_float(org.default_tax_rate),
+        default_payment_terms_days=org.default_payment_terms_days,
+        invoice_terms=org.invoice_terms,
+        invoice_notes=org.invoice_notes,
         is_suspended=org.is_suspended,
         suspended_at=org.suspended_at,
         suspended_reason=org.suspended_reason,
+        deleted_at=org.deleted_at,
+        is_archived=org.is_archived,
+        last_login_at=_last_login_map(db, [org.id]).get(org.id),
         created_at=org.created_at,
         user_count=user_count,
         invoice_count=invoice_count,
@@ -382,7 +481,13 @@ def delete_admin(admin_id: str, db: Session = Depends(get_db), admin: PlatformAd
 @router.get("/dashboard", response_model=PlatformDashboard)
 def platform_dashboard(db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
     total_orgs = db.scalar(select(func.count()).select_from(Organization)) or 0
-    suspended = db.scalar(select(func.count()).select_from(Organization).where(Organization.is_suspended.is_(True))) or 0
+    archived = db.scalar(select(func.count()).select_from(Organization).where(Organization.deleted_at.is_not(None))) or 0
+    suspended = db.scalar(
+        select(func.count()).select_from(Organization).where(Organization.is_suspended.is_(True), Organization.deleted_at.is_(None))
+    ) or 0
+    active_orgs = db.scalar(
+        select(func.count()).select_from(Organization).where(Organization.is_suspended.is_(False), Organization.deleted_at.is_(None))
+    ) or 0
     total_users = db.scalar(select(func.count()).select_from(User)) or 0
     active_users = db.scalar(select(func.count()).select_from(User).where(User.is_active.is_(True))) or 0
     total_invoices = db.scalar(
@@ -433,6 +538,7 @@ def platform_dashboard(db: Session = Depends(get_db), admin: PlatformAdmin = Dep
     top_orgs: List[OrgSummary] = []
     if top_ids:
         orgs = {o.id: o for o in db.execute(select(Organization).where(Organization.id.in_(top_ids))).scalars()}
+        last_login = _last_login_map(db, top_ids)
         for org_id, amt in top_rows:
             org = orgs.get(org_id)
             if not org:
@@ -449,6 +555,9 @@ def platform_dashboard(db: Session = Depends(get_db), admin: PlatformAdmin = Dep
                     id=org.id,
                     name=org.name,
                     is_suspended=org.is_suspended,
+                    is_archived=org.is_archived,
+                    deleted_at=org.deleted_at,
+                    last_login_at=last_login.get(org_id),
                     user_count=uc,
                     invoice_count=ic,
                     invoiced_amount=_float(inv),
@@ -476,8 +585,9 @@ def platform_dashboard(db: Session = Depends(get_db), admin: PlatformAdmin = Dep
 
     return PlatformDashboard(
         total_organizations=total_orgs,
-        active_organizations=total_orgs - suspended,
+        active_organizations=active_orgs,
         suspended_organizations=suspended,
+        archived_organizations=archived,
         total_users=total_users,
         active_users=active_users,
         total_invoices=total_invoices,
@@ -507,55 +617,12 @@ def list_organizations(
     stmt = select(Organization)
     if search:
         stmt = stmt.where(Organization.name.ilike(f"%{search.strip()}%"))
-    if status_filter == "suspended":
-        stmt = stmt.where(Organization.is_suspended.is_(True))
-    elif status_filter == "active":
-        stmt = stmt.where(Organization.is_suspended.is_(False))
+    stmt = _apply_org_status(stmt, status_filter)
     total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
     orgs = db.execute(
         stmt.order_by(Organization.created_at.desc()).offset(pagination.offset).limit(pagination.page_size)
     ).scalars().all()
-
-    ids = [o.id for o in orgs]
-    users_by_org = dict(
-        db.execute(select(User.organization_id, func.count()).where(User.organization_id.in_(ids)).group_by(User.organization_id)).all()
-    ) if ids else {}
-    inv_by_org = dict(
-        db.execute(
-            select(Invoice.organization_id, func.count())
-            .where(Invoice.organization_id.in_(ids), Invoice.status.in_(_LIVE_INVOICE_STATUSES))
-            .group_by(Invoice.organization_id)
-        ).all()
-    ) if ids else {}
-    invoiced_by_org = dict(
-        db.execute(
-            select(Invoice.organization_id, func.coalesce(func.sum(Invoice.total), 0))
-            .where(Invoice.organization_id.in_(ids), Invoice.status.in_(_LIVE_INVOICE_STATUSES))
-            .group_by(Invoice.organization_id)
-        ).all()
-    ) if ids else {}
-    collected_by_org = dict(
-        db.execute(
-            select(CustomerPayment.organization_id, func.coalesce(func.sum(CustomerPayment.amount), 0))
-            .where(CustomerPayment.organization_id.in_(ids))
-            .group_by(CustomerPayment.organization_id)
-        ).all()
-    ) if ids else {}
-
-    items = [
-        OrgSummary(
-            id=o.id,
-            name=o.name,
-            is_suspended=o.is_suspended,
-            user_count=int(users_by_org.get(o.id, 0)),
-            invoice_count=int(inv_by_org.get(o.id, 0)),
-            invoiced_amount=_float(invoiced_by_org.get(o.id, 0)),
-            collected_amount=_float(collected_by_org.get(o.id, 0)),
-            created_at=o.created_at,
-        )
-        for o in orgs
-    ]
-    return Page(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+    return Page(items=_org_summaries(db, orgs), total=total, page=pagination.page, page_size=pagination.page_size)
 
 
 @router.get("/organizations/export")
@@ -565,51 +632,23 @@ def export_organizations(
     search: Optional[str] = Query(None, max_length=200),
     status_filter: Optional[str] = Query(None, alias="status"),
 ):
-    # Same query/joins as list_organizations, without pagination.
+    # Same query/filters as list_organizations, without pagination.
     stmt = select(Organization)
     if search:
         stmt = stmt.where(Organization.name.ilike(f"%{search.strip()}%"))
-    if status_filter == "suspended":
-        stmt = stmt.where(Organization.is_suspended.is_(True))
-    elif status_filter == "active":
-        stmt = stmt.where(Organization.is_suspended.is_(False))
+    stmt = _apply_org_status(stmt, status_filter)
     orgs = db.execute(stmt.order_by(Organization.created_at.desc())).scalars().all()
-    ids = [o.id for o in orgs]
-    users_by_org = dict(
-        db.execute(select(User.organization_id, func.count()).where(User.organization_id.in_(ids)).group_by(User.organization_id)).all()
-    ) if ids else {}
-    inv_by_org = dict(
-        db.execute(
-            select(Invoice.organization_id, func.count())
-            .where(Invoice.organization_id.in_(ids), Invoice.status.in_(_LIVE_INVOICE_STATUSES))
-            .group_by(Invoice.organization_id)
-        ).all()
-    ) if ids else {}
-    invoiced_by_org = dict(
-        db.execute(
-            select(Invoice.organization_id, func.coalesce(func.sum(Invoice.total), 0))
-            .where(Invoice.organization_id.in_(ids), Invoice.status.in_(_LIVE_INVOICE_STATUSES))
-            .group_by(Invoice.organization_id)
-        ).all()
-    ) if ids else {}
-    collected_by_org = dict(
-        db.execute(
-            select(CustomerPayment.organization_id, func.coalesce(func.sum(CustomerPayment.amount), 0))
-            .where(CustomerPayment.organization_id.in_(ids))
-            .group_by(CustomerPayment.organization_id)
-        ).all()
-    ) if ids else {}
     rows = [
         [
             o.name,
             "Yes" if o.is_suspended else "No",
-            int(users_by_org.get(o.id, 0)),
-            int(inv_by_org.get(o.id, 0)),
-            _float(invoiced_by_org.get(o.id, 0)),
-            _float(collected_by_org.get(o.id, 0)),
+            o.user_count,
+            o.invoice_count,
+            o.invoiced_amount,
+            o.collected_amount,
             o.created_at.isoformat() if o.created_at else "",
         ]
-        for o in orgs
+        for o in _org_summaries(db, orgs)
     ]
     return _csv_response(["Name", "Suspended", "Users", "Invoices", "Invoiced", "Collected", "Created"], rows, "organizations.csv")
 
@@ -675,7 +714,15 @@ def create_organization(payload: CreateOrganizationRequest, db: Session = Depend
     if db.execute(select(User.id).where(User.email == admin_email)).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "A user with this admin email already exists")
 
-    org = Organization(name=payload.name, gstin=payload.gstin or None, currency=payload.currency, country=payload.country)
+    defaults = platform_settings.get_org_defaults(db)
+    org = Organization(
+        name=payload.name,
+        gstin=payload.gstin or None,
+        currency=payload.currency or defaults.currency,
+        country=payload.country,
+        default_tax_rate=defaults.tax_rate,
+        default_payment_terms_days=defaults.payment_terms_days,
+    )
     db.add(org)
     db.flush()
 
@@ -712,10 +759,18 @@ def update_organization(org_id: str, payload: UpdateOrganizationRequest, db: Ses
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
     data = payload.model_dump(exclude_unset=True)
-    if "name" in data and data["name"]:
-        org.name = data["name"]
-    if "is_suspended" in data and data["is_suspended"] is not None:
-        if data["is_suspended"] and not org.is_suspended:
+    for field in _ORG_PROFILE_FIELDS:
+        if field in data:
+            value = data[field]
+            # Required fields reject blanks in the schema, so a blank here is an
+            # optional text field being cleared.
+            setattr(org, field, value if value != "" else None)
+    if "is_suspended" in data:
+        if not data["is_suspended"] and org.is_archived:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "This organization is archived. Restore it instead of unsuspending it.")
+        if data["is_suspended"] and org.is_suspended and data.get("suspended_reason"):
+            org.suspended_reason = data["suspended_reason"]
+        elif data["is_suspended"] and not org.is_suspended:
             org.is_suspended = True
             org.suspended_at = datetime.now(UTC)
             org.suspended_reason = data.get("suspended_reason") or payload.suspended_reason
@@ -725,6 +780,40 @@ def update_organization(org_id: str, payload: UpdateOrganizationRequest, db: Ses
             org.suspended_reason = None
     verb = "suspended" if org.is_suspended else "updated"
     audit.record(db, None, "update", "organization", org.id, f"Organization {verb} by platform admin {admin.email}", organization_id=org.id)
+    db.commit()
+    db.refresh(org)
+    return _org_detail(db, org)
+
+
+@router.post("/organizations/{org_id}/archive", response_model=OrgDetail)
+def archive_organization(org_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    """Soft delete: hide the org and lock its users out, keeping every row."""
+    org = db.get(Organization, org_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    now = datetime.now(UTC)
+    if org.deleted_at is None:
+        org.deleted_at = now
+    org.is_suspended = True
+    org.suspended_at = org.suspended_at or now
+    org.suspended_reason = ARCHIVED_REASON
+    audit.record(db, None, "archive", "organization", org.id, f"Organization '{org.name}' archived by platform admin {admin.email}", organization_id=org.id)
+    db.commit()
+    db.refresh(org)
+    return _org_detail(db, org)
+
+
+@router.post("/organizations/{org_id}/restore", response_model=OrgDetail)
+def restore_organization(org_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    """Undo an archive: the org reappears and its users can sign in again."""
+    org = db.get(Organization, org_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    org.deleted_at = None
+    org.is_suspended = False
+    org.suspended_at = None
+    org.suspended_reason = None
+    audit.record(db, None, "restore", "organization", org.id, f"Organization '{org.name}' restored by platform admin {admin.email}", organization_id=org.id)
     db.commit()
     db.refresh(org)
     return _org_detail(db, org)
@@ -1039,44 +1128,8 @@ def platform_search(
     orgs = db.execute(
         select(Organization).where(Organization.name.ilike(like)).order_by(Organization.created_at.desc()).limit(10)
     ).scalars().all()
-    org_ids = [o.id for o in orgs]
-    users_by_org = dict(
-        db.execute(select(User.organization_id, func.count()).where(User.organization_id.in_(org_ids)).group_by(User.organization_id)).all()
-    ) if org_ids else {}
-    inv_by_org = dict(
-        db.execute(
-            select(Invoice.organization_id, func.count())
-            .where(Invoice.organization_id.in_(org_ids), Invoice.status.in_(_LIVE_INVOICE_STATUSES))
-            .group_by(Invoice.organization_id)
-        ).all()
-    ) if org_ids else {}
-    invoiced_by_org = dict(
-        db.execute(
-            select(Invoice.organization_id, func.coalesce(func.sum(Invoice.total), 0))
-            .where(Invoice.organization_id.in_(org_ids), Invoice.status.in_(_LIVE_INVOICE_STATUSES))
-            .group_by(Invoice.organization_id)
-        ).all()
-    ) if org_ids else {}
-    collected_by_org = dict(
-        db.execute(
-            select(CustomerPayment.organization_id, func.coalesce(func.sum(CustomerPayment.amount), 0))
-            .where(CustomerPayment.organization_id.in_(org_ids))
-            .group_by(CustomerPayment.organization_id)
-        ).all()
-    ) if org_ids else {}
-    org_out = [
-        OrgSummary(
-            id=o.id,
-            name=o.name,
-            is_suspended=o.is_suspended,
-            user_count=int(users_by_org.get(o.id, 0)),
-            invoice_count=int(inv_by_org.get(o.id, 0)),
-            invoiced_amount=_float(invoiced_by_org.get(o.id, 0)),
-            collected_amount=_float(collected_by_org.get(o.id, 0)),
-            created_at=o.created_at,
-        )
-        for o in orgs
-    ]
+    # Archived orgs are included here (flagged isArchived) so they stay findable.
+    org_out = _org_summaries(db, orgs)
 
     users = db.execute(
         select(User).where(User.name.ilike(like) | User.email.ilike(like)).order_by(User.created_at.desc()).limit(10)
@@ -1091,11 +1144,15 @@ def platform_search(
 # Platform settings (runtime toggles)
 # --------------------------------------------------------------------------- #
 def _settings_out(db: Session) -> PlatformSettingsOut:
+    defaults = platform_settings.get_org_defaults(db)
     return PlatformSettingsOut(
         allow_public_signup=platform_settings.get_bool(db, ALLOW_PUBLIC_SIGNUP_KEY, settings.allow_public_signup),
         environment=settings.environment,
         razorpay_configured=settings.razorpay_configured,
         smtp_configured=settings.smtp_configured,
+        default_tax_rate=_float(defaults.tax_rate),
+        default_payment_terms_days=defaults.payment_terms_days,
+        default_currency=defaults.currency,
     )
 
 
@@ -1121,7 +1178,16 @@ def update_platform_settings(
             ALLOW_PUBLIC_SIGNUP_KEY,
             f"Public signup set to {data['allow_public_signup']} by platform admin {admin.email}",
         )
-        db.commit()
+    defaults = {
+        "default_tax_rate": (platform_settings.DEFAULT_TAX_RATE_KEY, "Default tax rate"),
+        "default_payment_terms_days": (platform_settings.DEFAULT_PAYMENT_TERMS_DAYS_KEY, "Default payment terms (days)"),
+        "default_currency": (platform_settings.DEFAULT_CURRENCY_KEY, "Default currency"),
+    }
+    for field, (key, label) in defaults.items():
+        if field in data:
+            platform_settings.set_value(db, key, str(data[field]))
+            audit.record(db, None, "update", "platform_setting", key, f"{label} set to {data[field]} by platform admin {admin.email}")
+    db.commit()
     return _settings_out(db)
 
 

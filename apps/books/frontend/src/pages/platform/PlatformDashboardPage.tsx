@@ -1,14 +1,16 @@
 import { useNavigate } from 'react-router-dom';
-import { Building2, FileText, IndianRupee, ShieldAlert, Users, Wallet } from 'lucide-react';
+import { Archive, Building2, ExternalLink, FileText, Globe, IndianRupee, LogIn, ShieldAlert, Users, Wallet } from 'lucide-react';
 
 import { platformApi, type OrgSummary, type PlatformAudit } from '@/api/platform';
-import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 import { Card, StatTile } from '@/components/ui/Card';
 import { DonutChart, HorizontalBarChart, InteractiveSeriesChart } from '@/components/ui/Charts';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useAsync } from '@/hooks/useAsync';
+
+import { OpenInAppButton, OrgStatusBadge } from './orgActions';
 import { formatCurrency, formatCurrencyCompact, formatDateTime, formatNumber, titleCase } from '@/utils/format';
 
 export function PlatformDashboardPage() {
@@ -33,11 +35,13 @@ export function PlatformDashboardPage() {
     {
       key: 'status',
       header: 'Status',
-      render: (row) => (row.isSuspended ? <Badge tone="danger">Suspended</Badge> : <Badge tone="success">Active</Badge>),
+      render: (row) => <OrgStatusBadge org={row} />,
     },
     { key: 'invoiced', header: 'Invoiced', align: 'right', render: (row) => <span className="num">{formatCurrency(row.invoicedAmount)}</span> },
     { key: 'collected', header: 'Collected', align: 'right', render: (row) => <span className="num">{formatCurrency(row.collectedAmount)}</span> },
   ];
+
+  const archivedOrganizations = data.archivedOrganizations ?? 0;
 
   const activityColumns: Array<Column<PlatformAudit>> = [
     {
@@ -65,8 +69,14 @@ export function PlatformDashboardPage() {
         <StatTile
           label="Organizations"
           value={formatNumber(data.totalOrganizations, 0)}
-          sublabel={`${data.activeOrganizations} active · ${data.suspendedOrganizations} suspended`}
+          sublabel={`${data.activeOrganizations} active · ${data.suspendedOrganizations} suspended · ${archivedOrganizations} archived`}
           icon={<Building2 size={16} />}
+        />
+        <StatTile
+          label="Archived"
+          value={formatNumber(archivedOrganizations, 0)}
+          sublabel="Soft-deleted, restorable"
+          icon={<Archive size={16} />}
         />
         <StatTile
           label="Users"
@@ -166,16 +176,53 @@ export function PlatformDashboardPage() {
           )}
         </Card>
 
-        <Card title="Active vs suspended" subtitle="Organization health">
+        <Card title="Organization health" subtitle="Active, suspended and archived">
           <DonutChart
             slices={[
               { label: 'Active', value: data.activeOrganizations },
               { label: 'Suspended', value: data.suspendedOrganizations },
+              ...(archivedOrganizations > 0 ? [{ label: 'Archived', value: archivedOrganizations }] : []),
             ]}
             currency=""
           />
         </Card>
       </div>
+
+      <Card title="Quick links" subtitle="Jump to the tenant app or straight into an organization">
+        <div className="stack">
+          <div className="quick-links">
+            <Button variant="secondary" icon={<Globe size={15} />} onClick={() => navigate('/')}>
+              Open public site
+            </Button>
+            <Button variant="secondary" icon={<LogIn size={15} />} onClick={() => navigate('/login')}>
+              Tenant sign-in page
+            </Button>
+            <Button variant="secondary" icon={<ExternalLink size={15} />} onClick={() => navigate('/platform/organizations')}>
+              All organizations
+            </Button>
+          </div>
+          <div>
+            <h3 className="card-subtitle" style={{ margin: '4px 0 6px' }}>
+              Open in app
+            </h3>
+            {data.topOrganizations.length === 0 ? (
+              <p className="text-muted small">No organizations yet — shortcuts appear here once tenants sign up.</p>
+            ) : (
+              <ul className="quick-links-list" aria-label="Open an organization's dashboard">
+                {data.topOrganizations.map((org) => (
+                  <li key={org.id}>
+                    <span className="row">
+                      <span className="strong">{org.name}</span>
+                      <OrgStatusBadge org={org} />
+                    </span>
+                    <OpenInAppButton org={org} label="Open dashboard" />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </Card>
 
       <div className="card">
         <div className="card-header">

@@ -12,6 +12,9 @@ interface AuthContextValue {
   register: (payload: { name: string; email: string; password: string; organizationName: string; gstin?: string }) => Promise<void>;
   logout: () => Promise<void>;
   refreshOrganization: () => Promise<void>;
+  /** Take over a session from an externally issued access token (e.g. platform
+   *  impersonation): sets the token, then loads who it belongs to. */
+  adoptSession: (accessToken: string) => Promise<void>;
   updateUser: (user: User) => void;
   can: (...roles: Role[]) => boolean;
   canWrite: boolean;
@@ -96,6 +99,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setOrganization(await orgApi.get());
   }, []);
 
+  const adoptSession = useCallback(
+    async (accessToken: string) => {
+      setAccessToken(accessToken);
+      applyAuth(await authApi.me());
+    },
+    [applyAuth],
+  );
+
   const value = useMemo<AuthContextValue>(() => {
     const role = user?.role;
     return {
@@ -106,6 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register,
       logout,
       refreshOrganization,
+      adoptSession,
       updateUser: setUser,
       can: (...roles: Role[]) => !!role && roles.includes(role),
       canWrite: role === 'admin' || role === 'staff',
@@ -113,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isStaff: role === 'staff',
       isEmployee: role === 'employee',
     };
-  }, [user, organization, initializing, login, register, logout, refreshOrganization]);
+  }, [user, organization, initializing, login, register, logout, refreshOrganization, adoptSession]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -1,14 +1,11 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { LogIn } from 'lucide-react';
 
-import { setAccessToken } from '@/api/client';
-import { platformApi } from '@/api/platform';
 import { Button } from '@/components/ui/Button';
 import { FormError } from '@/components/ui/Feedback';
 import { ConfirmDialog } from '@/components/ui/Modal';
-import { useToast } from '@/components/ui/Toast';
-import { useSubmit } from '@/hooks/useSubmit';
+
+import { useImpersonate } from './useImpersonate';
 
 const IMPERSONATABLE_ROLES = new Set(['admin', 'staff', 'viewer']);
 
@@ -23,6 +20,9 @@ interface ImpersonateTarget {
 interface ImpersonateButtonProps {
   user: ImpersonateTarget;
   size?: 'sm' | 'md';
+  /** Tenant route to open once signed in (defaults to the dashboard). */
+  to?: string;
+  label?: string;
 }
 
 /**
@@ -30,28 +30,20 @@ interface ImpersonateButtonProps {
  * user by swapping the *tenant* access token, then opens the tenant dashboard.
  * There is no refresh cookie for the impersonated session, so reloading ends it.
  */
-export function ImpersonateButton({ user, size = 'sm' }: ImpersonateButtonProps) {
-  const navigate = useNavigate();
-  const toast = useToast();
-  const { submitting, error, run } = useSubmit();
+export function ImpersonateButton({ user, size = 'sm', to = '/dashboard', label = 'View as' }: ImpersonateButtonProps) {
+  const { start, submitting, error } = useImpersonate();
   const [confirming, setConfirming] = useState(false);
 
   if (!IMPERSONATABLE_ROLES.has(user.role)) return null;
 
   const impersonate = async () => {
-    const result = await run(() => platformApi.users.impersonate(user.id));
-    if (result) {
-      setAccessToken(result.accessToken);
-      toast.success(`Signed in as ${result.user.email} at ${result.organization.name}.`);
-      setConfirming(false);
-      navigate('/dashboard');
-    }
+    if (await start(user.id, to)) setConfirming(false);
   };
 
   return (
     <>
       <Button variant="ghost" size={size} icon={<LogIn size={14} />} onClick={() => setConfirming(true)}>
-        View as
+        {label}
       </Button>
       <ConfirmDialog
         open={confirming}

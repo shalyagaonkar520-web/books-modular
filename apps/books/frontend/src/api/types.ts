@@ -44,6 +44,10 @@ export interface Organization {
   fiscalYearStartMonth: number;
   invoiceTerms?: string | null;
   invoiceNotes?: string | null;
+  /** Default GST % for new items and new document lines. */
+  defaultTaxRate?: number;
+  /** Default payment terms (days) for new customers and vendors. */
+  defaultPaymentTermsDays?: number;
 }
 
 export interface AuthResponse {

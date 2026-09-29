@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Download, Plus } from 'lucide-react';
 
-import { platformApi, type OrgSummary } from '@/api/platform';
-import { Badge } from '@/components/ui/Badge';
+import { platformApi, type OrgStatusFilter, type OrgSummary } from '@/api/platform';
 import { Button } from '@/components/ui/Button';
 import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, SkeletonRows } from '@/components/ui/Feedback';
@@ -12,23 +11,26 @@ import { FilterSelect, SearchInput, Toolbar } from '@/components/ui/Toolbar';
 import { useAsync } from '@/hooks/useAsync';
 import { useDebounced } from '@/hooks/useDebounced';
 import { useDownload } from '@/hooks/useDownload';
-import { formatCurrency, formatDate } from '@/utils/format';
+import { formatCurrency, formatDate, formatDateTime } from '@/utils/format';
 
 import { CreateOrganizationModal } from './CreateOrganizationModal';
 import { OrgDetailDrawer } from './OrgDetailDrawer';
+import { OpenInAppMenu, OrgRowMenu, OrgStatusBadge, useOrgLifecycle } from './orgActions';
 
 const PAGE_SIZE = 25;
 
-const STATUS_OPTIONS = [
-  { value: '', label: 'All statuses' },
+const STATUS_OPTIONS: Array<{ value: OrgStatusFilter | ''; label: string }> = [
+  { value: '', label: 'Active & suspended' },
   { value: 'active', label: 'Active' },
   { value: 'suspended', label: 'Suspended' },
+  { value: 'archived', label: 'Archived' },
+  { value: 'all', label: 'All (incl. archived)' },
 ];
 
 export function OrganizationsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState<OrgStatusFilter | ''>('');
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   const { download, downloading } = useDownload();
@@ -60,6 +62,15 @@ export function OrganizationsPage() {
     [debouncedSearch, status, page],
   );
 
+  const lifecycle = useOrgLifecycle({
+    onArchived: () => orgs.reload(),
+    onRestored: () => orgs.reload(),
+    onDeleted: (id) => {
+      if (openOrgId === id) setOpenOrgId(null);
+      orgs.reload();
+    },
+  });
+
   const rows = orgs.data?.items ?? [];
   const hasFilters = Boolean(debouncedSearch || status);
 
@@ -74,15 +85,27 @@ export function OrganizationsPage() {
         </div>
       ),
     },
-    {
-      key: 'status',
-      header: 'Status',
-      render: (row) => (row.isSuspended ? <Badge tone="danger">Suspended</Badge> : <Badge tone="success">Active</Badge>),
-    },
+    { key: 'status', header: 'Status', render: (row) => <OrgStatusBadge org={row} /> },
     { key: 'users', header: 'Users', align: 'right', render: (row) => <span className="num">{row.userCount}</span> },
     { key: 'invoices', header: 'Invoices', align: 'right', render: (row) => <span className="num">{row.invoiceCount}</span> },
     { key: 'invoiced', header: 'Invoiced', align: 'right', render: (row) => <span className="num">{formatCurrency(row.invoicedAmount)}</span> },
     { key: 'collected', header: 'Collected', align: 'right', render: (row) => <span className="num">{formatCurrency(row.collectedAmount)}</span> },
+    {
+      key: 'lastLogin',
+      header: 'Last login',
+      render: (row) => (row.lastLoginAt ? formatDateTime(row.lastLoginAt) : <span className="text-muted">Never</span>),
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      render: (row) => (
+        <div className="row-actions">
+          <OpenInAppMenu org={row} variant="ghost" />
+          <OrgRowMenu org={row} onView={() => setOpenOrgId(row.id)} lifecycle={lifecycle} />
+        </div>
+      ),
+    },
   ];
 
   return (
@@ -128,7 +151,7 @@ export function OrganizationsPage() {
           value={status}
           options={STATUS_OPTIONS}
           onChange={(value) => {
-            setStatus(value);
+            setStatus(value as OrgStatusFilter | '');
             setPage(1);
           }}
         />
@@ -136,7 +159,7 @@ export function OrganizationsPage() {
 
       <div className="card">
         {orgs.loading ? (
-          <SkeletonRows rows={6} columns={6} />
+          <SkeletonRows rows={6} columns={8} />
         ) : orgs.error ? (
           <ErrorBlock message={orgs.error} onRetry={orgs.reload} />
         ) : !rows.length ? (
@@ -169,6 +192,7 @@ export function OrganizationsPage() {
       {openOrgId ? (
         <OrgDetailDrawer orgId={openOrgId} onClose={() => setOpenOrgId(null)} onChanged={orgs.reload} />
       ) : null}
+      {lifecycle.dialogs}
     </>
   );
 }
