@@ -144,6 +144,22 @@ class PlatformRefreshToken(Base):
     ip_address: Mapped[Optional[str]] = mapped_column(String(64))
 
 
+class PlatformSetting(Base):
+    """A single runtime configuration value owned by the platform operator.
+
+    Stored as a string keyed by ``key`` so a super-admin can toggle behaviour
+    (e.g. public tenant signup) without an env change or redeploy. Values are
+    coerced by the ``platform_settings`` service, not the column type.
+    """
+
+    __tablename__ = "platform_settings"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    key: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
 class EmailVerification(Base):
     __tablename__ = "email_verifications"
 

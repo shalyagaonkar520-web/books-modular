@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { Download, Plus } from 'lucide-react';
 
 import { platformApi, type OrgSummary } from '@/api/platform';
 import { Badge } from '@/components/ui/Badge';
@@ -11,6 +11,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, SearchInput, Toolbar } from '@/components/ui/Toolbar';
 import { useAsync } from '@/hooks/useAsync';
 import { useDebounced } from '@/hooks/useDebounced';
+import { useDownload } from '@/hooks/useDownload';
 import { formatCurrency, formatDate } from '@/utils/format';
 
 import { CreateOrganizationModal } from './CreateOrganizationModal';
@@ -30,6 +31,7 @@ export function OrganizationsPage() {
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
+  const { download, downloading } = useDownload();
   const debouncedSearch = useDebounced(search);
 
   const openOrgId = searchParams.get('org');
@@ -89,9 +91,26 @@ export function OrganizationsPage() {
         title="Organizations"
         subtitle="Every tenant on the platform."
         actions={
-          <Button variant="primary" icon={<Plus size={15} />} onClick={() => setCreating(true)}>
-            Create organization
-          </Button>
+          <>
+            <Button
+              variant="secondary"
+              icon={<Download size={15} />}
+              loading={downloading}
+              onClick={() =>
+                download(() =>
+                  platformApi.organizations.exportCsv({
+                    search: debouncedSearch.trim() || undefined,
+                    status: status || undefined,
+                  }),
+                )
+              }
+            >
+              Export CSV
+            </Button>
+            <Button variant="primary" icon={<Plus size={15} />} onClick={() => setCreating(true)}>
+              Create organization
+            </Button>
+          </>
         }
       />
 

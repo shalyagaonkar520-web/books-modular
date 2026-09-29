@@ -38,6 +38,35 @@ class PlatformAccessToken(APIModel):
 
 
 # --------------------------------------------------------------------------- #
+# Platform admin management
+# --------------------------------------------------------------------------- #
+class CreatePlatformAdminRequest(APIModel):
+    name: str = Field(min_length=2, max_length=120)
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=255)
+
+    @field_validator("password")
+    @classmethod
+    def _pw(cls, v: str) -> str:
+        return _validate_password(v)
+
+
+class UpdatePlatformAdminRequest(APIModel):
+    name: Optional[str] = Field(default=None, min_length=2, max_length=120)
+    is_active: Optional[bool] = None
+
+
+class ChangePlatformPasswordRequest(APIModel):
+    current_password: str = Field(min_length=1, max_length=255)
+    new_password: str = Field(min_length=8, max_length=255)
+
+    @field_validator("new_password")
+    @classmethod
+    def _pw(cls, v: str) -> str:
+        return _validate_password(v)
+
+
+# --------------------------------------------------------------------------- #
 # Dashboard
 # --------------------------------------------------------------------------- #
 class TimePoint(APIModel):
@@ -218,6 +247,57 @@ class PlatformAuditOut(APIModel):
     entity_id: Optional[str] = None
     summary: Optional[str] = None
     created_at: datetime
+
+
+# --------------------------------------------------------------------------- #
+# Impersonation ("view as" a tenant user)
+# --------------------------------------------------------------------------- #
+class ImpersonateOrg(APIModel):
+    id: str
+    name: str
+
+
+class ImpersonateResponse(APIModel):
+    access_token: str
+    user: PlatformUserOut
+    organization: ImpersonateOrg
+
+
+# --------------------------------------------------------------------------- #
+# Org drill-down: invoices
+# --------------------------------------------------------------------------- #
+class PlatformInvoiceOut(APIModel):
+    id: str
+    number: str
+    customer_name: Optional[str] = None
+    date: Optional[str] = None
+    due_date: Optional[str] = None
+    status: str
+    total: float
+    amount_paid: float
+    balance_due: float
+
+
+# --------------------------------------------------------------------------- #
+# Global search
+# --------------------------------------------------------------------------- #
+class PlatformSearchResults(APIModel):
+    organizations: List[OrgSummary]
+    users: List[PlatformUserOut]
+
+
+# --------------------------------------------------------------------------- #
+# Platform settings
+# --------------------------------------------------------------------------- #
+class PlatformSettingsOut(APIModel):
+    allow_public_signup: bool
+    environment: str
+    razorpay_configured: bool
+    smtp_configured: bool
+
+
+class UpdatePlatformSettingsRequest(APIModel):
+    allow_public_signup: Optional[bool] = None
 
 
 PlatformDashboard.model_rebuild()

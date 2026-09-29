@@ -4,11 +4,13 @@ import { usePlatformAuth } from '@/auth/PlatformAuthContext';
 import { PlatformLayout } from '@/components/layout/PlatformLayout';
 import { LoadingBlock } from '@/components/ui/Feedback';
 
+import { AdminsPage } from './AdminsPage';
 import { AuditLogsPage } from './AuditLogsPage';
 import { OrganizationsPage } from './OrganizationsPage';
 import { PaymentsPage } from './PaymentsPage';
 import { PlatformDashboardPage } from './PlatformDashboardPage';
 import { PlatformLoginPage } from './PlatformLoginPage';
+import { PlatformSettingsPage } from './PlatformSettingsPage';
 import { UsersPage } from './UsersPage';
 
 function RequirePlatformAuth() {
@@ -39,6 +41,8 @@ export function PlatformApp() {
           <Route path="users" element={<UsersPage />} />
           <Route path="payments" element={<PaymentsPage />} />
           <Route path="audit-logs" element={<AuditLogsPage />} />
+          <Route path="admins" element={<AdminsPage />} />
+          <Route path="settings" element={<PlatformSettingsPage />} />
         </Route>
       </Route>
 

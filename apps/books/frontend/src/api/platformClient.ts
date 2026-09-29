@@ -202,6 +202,49 @@ export const platformClient = {
     platformRequest<T>(path, { query, signal }),
   post: <T>(path: string, body?: unknown, query?: PlatformRequestOptions['query']) =>
     platformRequest<T>(path, { method: 'POST', body, query }),
+  put: <T>(path: string, body?: unknown) => platformRequest<T>(path, { method: 'PUT', body }),
   patch: <T>(path: string, body?: unknown) => platformRequest<T>(path, { method: 'PATCH', body }),
   delete: <T>(path: string) => platformRequest<T>(path, { method: 'DELETE' }),
 };
+
+/**
+ * Download a file through the authenticated platform API and hand it to the
+ * browser. Mirrors `downloadFile` in the tenant client but carries the platform
+ * access token and refreshes against the platform refresh endpoint on a 401.
+ */
+export async function platformDownload(
+  path: string,
+  filename: string,
+  query?: PlatformRequestOptions['query'],
+): Promise<void> {
+  const url = buildUrl(path, query);
+  const fetchOnce = () =>
+    fetch(url, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      credentials: 'include',
+    });
+
+  let response = await fetchOnce();
+  if (response.status === 401 && (await refreshOnce())) {
+    response = await fetchOnce();
+  }
+  if (!response.ok) {
+    if (response.status === 401) {
+      accessToken = null;
+      notifyUnauthorized();
+    }
+    throw parseError(response.status, await response.json().catch(() => ({ detail: 'Download failed' })));
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Give the download a moment to latch on before revoking, otherwise the
+  // browser can tear the blob down before it has started reading it.
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+}

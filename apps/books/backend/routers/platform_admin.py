@@ -9,6 +9,8 @@ never be reachable by a tenant token.
 
 from __future__ import annotations
 
+import csv
+import io
 from datetime import UTC, date, datetime, timedelta
 from typing import List, Optional
 
@@ -35,35 +37,70 @@ from backend.models import (
 )
 from backend.schemas.common import Page
 from backend.schemas.platform import (
+    ChangePlatformPasswordRequest,
     CreateOrganizationRequest,
     CreateOrgResponse,
+    CreatePlatformAdminRequest,
     CreatePlatformUserRequest,
+    ImpersonateOrg,
+    ImpersonateResponse,
     OrgDetail,
     OrgSummary,
     PlatformAdminOut,
     PlatformAuditOut,
     PlatformDashboard,
+    PlatformInvoiceOut,
     PlatformLoginRequest,
     PlatformPaymentOut,
     PlatformPaymentStats,
+    PlatformSearchResults,
+    PlatformSettingsOut,
     PlatformTokenResponse,
     PlatformUserOut,
     ResetUserPasswordRequest,
     TimePoint,
     UpdateOrganizationRequest,
+    UpdatePlatformAdminRequest,
+    UpdatePlatformSettingsRequest,
     UpdatePlatformUserRequest,
 )
 from backend.security import (
+    create_access_token,
     create_platform_access_token,
     generate_refresh_token,
     hash_password,
     hash_token,
     verify_password,
 )
-from backend.services import audit
+from backend.services import audit, platform_settings
 from backend.services.chart_of_accounts import bootstrap_accounts
 from backend.services.ratelimit import RateLimiter, client_ip
 from backend.services.tenancy import Pagination
+
+# Runtime setting key for the public tenant-signup gate (see auth.register).
+ALLOW_PUBLIC_SIGNUP_KEY = "allow_public_signup"
+
+
+def _csv_cell(value) -> str:
+    """Neutralise CSV/formula injection: a cell a spreadsheet would treat as a
+    formula (leading = + - @ tab or CR) is prefixed with a single quote."""
+    text = "" if value is None else str(value)
+    if text and text[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + text
+    return text
+
+
+def _csv_response(header: List[str], rows: List[List], filename: str) -> Response:
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(header)
+    for row in rows:
+        writer.writerow([_csv_cell(c) for c in row])
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 settings = get_settings()
 
@@ -233,9 +270,110 @@ def platform_logout(request: Request, response: Response, db: Session = Depends(
     return {"message": "Signed out"}
 
 
+@auth_router.post("/change-password")
+def platform_change_password(
+    payload: ChangePlatformPasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(get_current_superuser),
+):
+    if not verify_password(payload.current_password, admin.password_hash):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Current password is incorrect")
+    admin.password_hash = hash_password(payload.new_password)
+    # Sign out every other session by revoking their refresh tokens, but keep
+    # the one tied to the current cookie so this admin stays logged in here.
+    keep_hash = None
+    raw = request.cookies.get(PLATFORM_REFRESH_COOKIE)
+    if raw:
+        keep_hash = hash_token(raw)
+    stmt = select(PlatformRefreshToken).where(
+        PlatformRefreshToken.admin_id == admin.id, PlatformRefreshToken.revoked_at.is_(None)
+    )
+    now = datetime.now(UTC)
+    for tok in db.execute(stmt).scalars().all():
+        if keep_hash and tok.token_hash == keep_hash:
+            continue
+        tok.revoked_at = now
+    db.commit()
+    return {"message": "Password changed"}
+
+
 @router.get("/me", response_model=PlatformAdminOut)
 def platform_me(admin: PlatformAdmin = Depends(get_current_superuser)):
     return _admin_out(admin)
+
+
+# --------------------------------------------------------------------------- #
+# Platform admin management (manage other super-admins)
+# --------------------------------------------------------------------------- #
+@router.get("/admins", response_model=Page[PlatformAdminOut])
+def list_admins(
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(get_current_superuser),
+    pagination: Pagination = Depends(),
+    search: Optional[str] = Query(None, max_length=200),
+):
+    stmt = select(PlatformAdmin)
+    if search:
+        s = f"%{search.strip()}%"
+        stmt = stmt.where(PlatformAdmin.name.ilike(s) | PlatformAdmin.email.ilike(s))
+    total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
+    rows = db.execute(stmt.order_by(PlatformAdmin.created_at.desc()).offset(pagination.offset).limit(pagination.page_size)).scalars().all()
+    return Page(items=[_admin_out(a) for a in rows], total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.post("/admins", response_model=PlatformAdminOut, status_code=status.HTTP_201_CREATED)
+def create_admin(payload: CreatePlatformAdminRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    email = payload.email.lower().strip()
+    if db.execute(select(PlatformAdmin.id).where(PlatformAdmin.email == email)).first():
+        raise HTTPException(status.HTTP_409_CONFLICT, "A platform admin with this email already exists")
+    new_admin = PlatformAdmin(name=payload.name, email=email, password_hash=hash_password(payload.password), is_active=True)
+    db.add(new_admin)
+    db.flush()
+    audit.record(db, None, "create", "platform_admin", new_admin.id, f"Platform admin {email} created by {admin.email}")
+    db.commit()
+    db.refresh(new_admin)
+    return _admin_out(new_admin)
+
+
+@router.patch("/admins/{admin_id}", response_model=PlatformAdminOut)
+def update_admin(admin_id: str, payload: UpdatePlatformAdminRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    target = db.get(PlatformAdmin, admin_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Platform admin not found")
+    data = payload.model_dump(exclude_unset=True)
+    if data.get("name"):
+        target.name = data["name"]
+    if "is_active" in data and data["is_active"] is not None:
+        if data["is_active"] is False and target.is_active:
+            if target.id == admin.id:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot deactivate your own account")
+            active_count = db.scalar(select(func.count()).select_from(PlatformAdmin).where(PlatformAdmin.is_active.is_(True))) or 0
+            if active_count <= 1:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot deactivate the last active platform admin")
+        target.is_active = data["is_active"]
+    audit.record(db, None, "update", "platform_admin", target.id, f"Platform admin {target.email} updated by {admin.email}")
+    db.commit()
+    db.refresh(target)
+    return _admin_out(target)
+
+
+@router.delete("/admins/{admin_id}")
+def delete_admin(admin_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    target = db.get(PlatformAdmin, admin_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Platform admin not found")
+    if target.id == admin.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot delete your own account")
+    total = db.scalar(select(func.count()).select_from(PlatformAdmin)) or 0
+    if total <= 1:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot delete the last platform admin")
+    email = target.email
+    db.execute(sa_delete(PlatformRefreshToken).where(PlatformRefreshToken.admin_id == target.id))
+    db.delete(target)
+    audit.record(db, None, "delete", "platform_admin", admin_id, f"Platform admin {email} deleted by {admin.email}")
+    db.commit()
+    return {"message": f"Platform admin {email} deleted"}
 
 
 # --------------------------------------------------------------------------- #
@@ -420,12 +558,115 @@ def list_organizations(
     return Page(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
+@router.get("/organizations/export")
+def export_organizations(
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(get_current_superuser),
+    search: Optional[str] = Query(None, max_length=200),
+    status_filter: Optional[str] = Query(None, alias="status"),
+):
+    # Same query/joins as list_organizations, without pagination.
+    stmt = select(Organization)
+    if search:
+        stmt = stmt.where(Organization.name.ilike(f"%{search.strip()}%"))
+    if status_filter == "suspended":
+        stmt = stmt.where(Organization.is_suspended.is_(True))
+    elif status_filter == "active":
+        stmt = stmt.where(Organization.is_suspended.is_(False))
+    orgs = db.execute(stmt.order_by(Organization.created_at.desc())).scalars().all()
+    ids = [o.id for o in orgs]
+    users_by_org = dict(
+        db.execute(select(User.organization_id, func.count()).where(User.organization_id.in_(ids)).group_by(User.organization_id)).all()
+    ) if ids else {}
+    inv_by_org = dict(
+        db.execute(
+            select(Invoice.organization_id, func.count())
+            .where(Invoice.organization_id.in_(ids), Invoice.status.in_(_LIVE_INVOICE_STATUSES))
+            .group_by(Invoice.organization_id)
+        ).all()
+    ) if ids else {}
+    invoiced_by_org = dict(
+        db.execute(
+            select(Invoice.organization_id, func.coalesce(func.sum(Invoice.total), 0))
+            .where(Invoice.organization_id.in_(ids), Invoice.status.in_(_LIVE_INVOICE_STATUSES))
+            .group_by(Invoice.organization_id)
+        ).all()
+    ) if ids else {}
+    collected_by_org = dict(
+        db.execute(
+            select(CustomerPayment.organization_id, func.coalesce(func.sum(CustomerPayment.amount), 0))
+            .where(CustomerPayment.organization_id.in_(ids))
+            .group_by(CustomerPayment.organization_id)
+        ).all()
+    ) if ids else {}
+    rows = [
+        [
+            o.name,
+            "Yes" if o.is_suspended else "No",
+            int(users_by_org.get(o.id, 0)),
+            int(inv_by_org.get(o.id, 0)),
+            _float(invoiced_by_org.get(o.id, 0)),
+            _float(collected_by_org.get(o.id, 0)),
+            o.created_at.isoformat() if o.created_at else "",
+        ]
+        for o in orgs
+    ]
+    return _csv_response(["Name", "Suspended", "Users", "Invoices", "Invoiced", "Collected", "Created"], rows, "organizations.csv")
+
+
 @router.get("/organizations/{org_id}", response_model=OrgDetail)
 def get_organization(org_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
     org = db.get(Organization, org_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
     return _org_detail(db, org)
+
+
+@router.get("/organizations/{org_id}/users", response_model=Page[PlatformUserOut])
+def organization_users(
+    org_id: str,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(get_current_superuser),
+    pagination: Pagination = Depends(),
+):
+    org = db.get(Organization, org_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    stmt = select(User).where(User.organization_id == org_id)
+    total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
+    users = db.execute(stmt.order_by(User.created_at.desc()).offset(pagination.offset).limit(pagination.page_size)).scalars().all()
+    items = [_user_out(u, org.name) for u in users]
+    return Page(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.get("/organizations/{org_id}/invoices", response_model=Page[PlatformInvoiceOut])
+def organization_invoices(
+    org_id: str,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(get_current_superuser),
+    pagination: Pagination = Depends(),
+):
+    org = db.get(Organization, org_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    stmt = select(Invoice).where(Invoice.organization_id == org_id)
+    total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
+    invoices = db.execute(stmt.order_by(Invoice.date.desc(), Invoice.created_at.desc()).offset(pagination.offset).limit(pagination.page_size)).scalars().all()
+    items = [
+        PlatformInvoiceOut(
+            id=inv.id,
+            number=inv.invoice_number,
+            customer_name=inv.customer.display_name if inv.customer else None,
+            date=inv.date.isoformat() if inv.date else None,
+            due_date=inv.due_date.isoformat() if inv.due_date else None,
+            status=inv.status,
+            total=_float(inv.total),
+            amount_paid=_float(inv.amount_paid),
+            balance_due=_float(inv.total) - _float(inv.amount_paid),
+        )
+        for inv in invoices
+    ]
+    return Page(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
 @router.post("/organizations", response_model=CreateOrgResponse, status_code=status.HTTP_201_CREATED)
@@ -593,6 +834,71 @@ def delete_user(user_id: str, db: Session = Depends(get_db), admin: PlatformAdmi
     return {"message": f"User {email} deleted"}
 
 
+@router.get("/users/export")
+def export_users(
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(get_current_superuser),
+    search: Optional[str] = Query(None, max_length=200),
+    organization_id: Optional[str] = Query(None),
+):
+    # Same query/joins as list_users, without pagination.
+    stmt = select(User)
+    if organization_id:
+        stmt = stmt.where(User.organization_id == organization_id)
+    if search:
+        s = f"%{search.strip()}%"
+        stmt = stmt.where(User.name.ilike(s) | User.email.ilike(s))
+    users = db.execute(stmt.order_by(User.created_at.desc())).scalars().all()
+    names = _org_name_map(db, [u.organization_id for u in users])
+    rows = [
+        [
+            u.name,
+            u.email,
+            u.role,
+            "Yes" if u.is_active else "No",
+            names.get(u.organization_id) or "",
+            u.created_at.isoformat() if u.created_at else "",
+        ]
+        for u in users
+    ]
+    return _csv_response(["Name", "Email", "Role", "Active", "Organization", "Created"], rows, "users.csv")
+
+
+@router.post("/users/{user_id}/impersonate", response_model=ImpersonateResponse)
+def impersonate_user(user_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    """Mint a short-lived tenant access token for a support "view as" session.
+
+    Deliberately non-renewable: no refresh cookie is set, so the session ends
+    when the access token expires and cannot be silently extended.
+    """
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    if user.role not in ("admin", "staff", "viewer"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This user's role cannot be impersonated")
+    org = db.get(Organization, user.organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    if org.is_suspended:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot impersonate a user in a suspended organization")
+    token = create_access_token(user.id, user.organization_id, user.role)
+    audit.record(
+        db,
+        None,
+        "impersonate",
+        "user",
+        user.id,
+        f"Platform admin {admin.email} impersonated {user.email}",
+        organization_id=user.organization_id,
+    )
+    db.commit()
+    return ImpersonateResponse(
+        access_token=token,
+        user=_user_out(user, org.name),
+        organization=ImpersonateOrg(id=org.id, name=org.name),
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Payments (global) & audit
 # --------------------------------------------------------------------------- #
@@ -666,6 +972,157 @@ def payment_stats(db: Session = Depends(get_db), admin: PlatformAdmin = Depends(
     return PlatformPaymentStats(
         total_received=_float(total_received), total_made=_float(total_made), received_count=rc, made_count=mc
     )
+
+
+@router.get("/payments/export")
+def export_payments(
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(get_current_superuser),
+    organization_id: Optional[str] = Query(None),
+    kind: Optional[str] = Query(None, description="received | made"),
+):
+    # Same query/joins as list_payments, without pagination.
+    rows: List[List] = []
+    if kind in (None, "received"):
+        cstmt = select(CustomerPayment).order_by(CustomerPayment.created_at.desc())
+        if organization_id:
+            cstmt = cstmt.where(CustomerPayment.organization_id == organization_id)
+        received = db.execute(cstmt).scalars().all()
+        names = _org_name_map(db, [r.organization_id for r in received])
+        for r in received:
+            rows.append(
+                [
+                    "received",
+                    r.payment_number,
+                    names.get(r.organization_id) or "",
+                    r.customer.display_name if r.customer else "",
+                    _float(r.amount),
+                    r.mode or "",
+                    r.date.isoformat() if r.date else "",
+                ]
+            )
+    if kind in (None, "made"):
+        vstmt = select(VendorPayment).order_by(VendorPayment.created_at.desc())
+        if organization_id:
+            vstmt = vstmt.where(VendorPayment.organization_id == organization_id)
+        made = db.execute(vstmt).scalars().all()
+        names = _org_name_map(db, [r.organization_id for r in made])
+        for r in made:
+            rows.append(
+                [
+                    "made",
+                    r.payment_number,
+                    names.get(r.organization_id) or "",
+                    r.vendor.display_name if r.vendor else "",
+                    _float(r.amount),
+                    r.mode or "",
+                    r.date.isoformat() if r.date else "",
+                ]
+            )
+    return _csv_response(["Kind", "Number", "Organization", "Contact", "Amount", "Mode", "Date"], rows, "payments.csv")
+
+
+# --------------------------------------------------------------------------- #
+# Global search
+# --------------------------------------------------------------------------- #
+@router.get("/search", response_model=PlatformSearchResults)
+def platform_search(
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(get_current_superuser),
+    q: str = Query("", max_length=200),
+):
+    term = q.strip()
+    if not term:
+        return PlatformSearchResults(organizations=[], users=[])
+    like = f"%{term}%"
+
+    orgs = db.execute(
+        select(Organization).where(Organization.name.ilike(like)).order_by(Organization.created_at.desc()).limit(10)
+    ).scalars().all()
+    org_ids = [o.id for o in orgs]
+    users_by_org = dict(
+        db.execute(select(User.organization_id, func.count()).where(User.organization_id.in_(org_ids)).group_by(User.organization_id)).all()
+    ) if org_ids else {}
+    inv_by_org = dict(
+        db.execute(
+            select(Invoice.organization_id, func.count())
+            .where(Invoice.organization_id.in_(org_ids), Invoice.status.in_(_LIVE_INVOICE_STATUSES))
+            .group_by(Invoice.organization_id)
+        ).all()
+    ) if org_ids else {}
+    invoiced_by_org = dict(
+        db.execute(
+            select(Invoice.organization_id, func.coalesce(func.sum(Invoice.total), 0))
+            .where(Invoice.organization_id.in_(org_ids), Invoice.status.in_(_LIVE_INVOICE_STATUSES))
+            .group_by(Invoice.organization_id)
+        ).all()
+    ) if org_ids else {}
+    collected_by_org = dict(
+        db.execute(
+            select(CustomerPayment.organization_id, func.coalesce(func.sum(CustomerPayment.amount), 0))
+            .where(CustomerPayment.organization_id.in_(org_ids))
+            .group_by(CustomerPayment.organization_id)
+        ).all()
+    ) if org_ids else {}
+    org_out = [
+        OrgSummary(
+            id=o.id,
+            name=o.name,
+            is_suspended=o.is_suspended,
+            user_count=int(users_by_org.get(o.id, 0)),
+            invoice_count=int(inv_by_org.get(o.id, 0)),
+            invoiced_amount=_float(invoiced_by_org.get(o.id, 0)),
+            collected_amount=_float(collected_by_org.get(o.id, 0)),
+            created_at=o.created_at,
+        )
+        for o in orgs
+    ]
+
+    users = db.execute(
+        select(User).where(User.name.ilike(like) | User.email.ilike(like)).order_by(User.created_at.desc()).limit(10)
+    ).scalars().all()
+    names = _org_name_map(db, [u.organization_id for u in users])
+    user_out = [_user_out(u, names.get(u.organization_id)) for u in users]
+
+    return PlatformSearchResults(organizations=org_out, users=user_out)
+
+
+# --------------------------------------------------------------------------- #
+# Platform settings (runtime toggles)
+# --------------------------------------------------------------------------- #
+def _settings_out(db: Session) -> PlatformSettingsOut:
+    return PlatformSettingsOut(
+        allow_public_signup=platform_settings.get_bool(db, ALLOW_PUBLIC_SIGNUP_KEY, settings.allow_public_signup),
+        environment=settings.environment,
+        razorpay_configured=settings.razorpay_configured,
+        smtp_configured=settings.smtp_configured,
+    )
+
+
+@router.get("/settings", response_model=PlatformSettingsOut)
+def get_platform_settings(db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    return _settings_out(db)
+
+
+@router.put("/settings", response_model=PlatformSettingsOut)
+def update_platform_settings(
+    payload: UpdatePlatformSettingsRequest,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(get_current_superuser),
+):
+    data = payload.model_dump(exclude_unset=True)
+    if "allow_public_signup" in data and data["allow_public_signup"] is not None:
+        platform_settings.set_bool(db, ALLOW_PUBLIC_SIGNUP_KEY, data["allow_public_signup"])
+        audit.record(
+            db,
+            None,
+            "update",
+            "platform_setting",
+            ALLOW_PUBLIC_SIGNUP_KEY,
+            f"Public signup set to {data['allow_public_signup']} by platform admin {admin.email}",
+        )
+        db.commit()
+    return _settings_out(db)
 
 
 @router.get("/audit-logs", response_model=Page[PlatformAuditOut])

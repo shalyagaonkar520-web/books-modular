@@ -2,7 +2,7 @@
  * Typed wrappers and response shapes for the platform (super-admin) API.
  * All JSON is camelCase; query params are snake_case. See platformClient.ts.
  */
-import { platformClient, platformRefresh, platformRequest } from './platformClient';
+import { platformClient, platformDownload, platformRefresh, platformRequest } from './platformClient';
 
 // ---------------------------------------------------------------------------
 // Shared shapes
@@ -190,6 +190,80 @@ export interface Message {
 }
 
 // ---------------------------------------------------------------------------
+// Admins (other super-admins)
+// ---------------------------------------------------------------------------
+
+export interface CreateAdminBody {
+  name: string;
+  email: string;
+  password: string;
+}
+
+export interface UpdateAdminBody {
+  name?: string;
+  isActive?: boolean;
+}
+
+export interface ChangePasswordBody {
+  currentPassword: string;
+  newPassword: string;
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+
+export interface PlatformSettings {
+  allowPublicSignup: boolean;
+  environment: string;
+  razorpayConfigured: boolean;
+  smtpConfigured: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Global search
+// ---------------------------------------------------------------------------
+
+export interface SearchResults {
+  organizations: OrgSummary[];
+  users: PlatformUser[];
+}
+
+// ---------------------------------------------------------------------------
+// Org drill-down: invoices
+// ---------------------------------------------------------------------------
+
+export interface PlatformInvoice {
+  id: string;
+  number: string;
+  customerName: string;
+  date: string;
+  dueDate: string;
+  status: string;
+  total: number;
+  amountPaid: number;
+  balanceDue: number;
+}
+
+// ---------------------------------------------------------------------------
+// Impersonation ("View as")
+// ---------------------------------------------------------------------------
+
+export interface ImpersonateResponse {
+  accessToken: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+  };
+  organization: {
+    id: string;
+    name: string;
+  };
+}
+
+// ---------------------------------------------------------------------------
 // API
 // ---------------------------------------------------------------------------
 
@@ -200,9 +274,29 @@ export const platformApi = {
     refresh: () => platformRefresh<PlatformAuthResponse>(),
     logout: () => platformClient.post<Message>('/platform/auth/logout'),
     me: (signal?: AbortSignal) => platformClient.get<PlatformAdmin>('/platform/me', undefined, signal),
+    changePassword: (body: ChangePasswordBody) =>
+      platformClient.post<Message>('/platform/auth/change-password', body),
   },
 
   dashboard: (signal?: AbortSignal) => platformClient.get<PlatformDashboard>('/platform/dashboard', undefined, signal),
+
+  admins: {
+    list: (
+      query: { page?: number; page_size?: number; search?: string },
+      signal?: AbortSignal,
+    ) => platformClient.get<PlatformPage<PlatformAdmin>>('/platform/admins', query, signal),
+    create: (body: CreateAdminBody) => platformClient.post<PlatformAdmin>('/platform/admins', body),
+    update: (id: string, body: UpdateAdminBody) => platformClient.patch<PlatformAdmin>(`/platform/admins/${id}`, body),
+    remove: (id: string) => platformClient.delete<Message>(`/platform/admins/${id}`),
+  },
+
+  settings: {
+    get: (signal?: AbortSignal) => platformClient.get<PlatformSettings>('/platform/settings', undefined, signal),
+    update: (body: { allowPublicSignup: boolean }) => platformClient.put<PlatformSettings>('/platform/settings', body),
+  },
+
+  search: (q: string, signal?: AbortSignal) =>
+    platformClient.get<SearchResults>('/platform/search', { q }, signal),
 
   organizations: {
     list: (
@@ -213,6 +307,18 @@ export const platformApi = {
     create: (body: CreateOrganizationBody) => platformClient.post<CreateOrganizationResult>('/platform/organizations', body),
     update: (id: string, body: UpdateOrganizationBody) => platformClient.patch<OrgDetail>(`/platform/organizations/${id}`, body),
     remove: (id: string) => platformClient.delete<Message>(`/platform/organizations/${id}`),
+    users: (
+      id: string,
+      query: { page?: number; page_size?: number },
+      signal?: AbortSignal,
+    ) => platformClient.get<PlatformPage<PlatformUser>>(`/platform/organizations/${id}/users`, query, signal),
+    invoices: (
+      id: string,
+      query: { page?: number; page_size?: number },
+      signal?: AbortSignal,
+    ) => platformClient.get<PlatformPage<PlatformInvoice>>(`/platform/organizations/${id}/invoices`, query, signal),
+    exportCsv: (query: { search?: string; status?: string }) =>
+      platformDownload('/platform/organizations/export', 'organizations.csv', query),
   },
 
   users: {
@@ -225,6 +331,9 @@ export const platformApi = {
     resetPassword: (id: string, newPassword: string) =>
       platformClient.post<Message>(`/platform/users/${id}/reset-password`, { newPassword }),
     remove: (id: string) => platformClient.delete<Message>(`/platform/users/${id}`),
+    impersonate: (id: string) => platformClient.post<ImpersonateResponse>(`/platform/users/${id}/impersonate`),
+    exportCsv: (query: { search?: string; organization_id?: string }) =>
+      platformDownload('/platform/users/export', 'users.csv', query),
   },
 
   payments: {
@@ -233,6 +342,8 @@ export const platformApi = {
       signal?: AbortSignal,
     ) => platformClient.get<PlatformPage<PlatformPayment>>('/platform/payments', query, signal),
     stats: (signal?: AbortSignal) => platformClient.get<PlatformPaymentStats>('/platform/payments/stats', undefined, signal),
+    exportCsv: (query: { organization_id?: string; kind?: string }) =>
+      platformDownload('/platform/payments/export', 'payments.csv', query),
   },
 
   auditLogs: (

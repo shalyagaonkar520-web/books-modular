@@ -1,14 +1,16 @@
 import { useMemo, useState } from 'react';
-import { ArrowDownRight, ArrowUpRight } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, Download } from 'lucide-react';
 
 import { platformApi, type PlatformPayment } from '@/api/platform';
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 import { StatTile } from '@/components/ui/Card';
 import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, SkeletonRows } from '@/components/ui/Feedback';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, Toolbar } from '@/components/ui/Toolbar';
 import { useAsync } from '@/hooks/useAsync';
+import { useDownload } from '@/hooks/useDownload';
 import { formatCurrency, formatDate, formatNumber, titleCase } from '@/utils/format';
 
 const PAGE_SIZE = 25;
@@ -23,6 +25,7 @@ export function PaymentsPage() {
   const [kind, setKind] = useState('');
   const [organizationId, setOrganizationId] = useState('');
   const [page, setPage] = useState(1);
+  const { download, downloading } = useDownload();
 
   const orgs = useAsync((signal) => platformApi.organizations.list({ page: 1, page_size: 200 }, signal), []);
   const stats = useAsync((signal) => platformApi.payments.stats(signal), []);
@@ -86,7 +89,27 @@ export function PaymentsPage() {
 
   return (
     <>
-      <PageHeader title="Payments" subtitle="Global feed of money received and paid across all organizations." />
+      <PageHeader
+        title="Payments"
+        subtitle="Global feed of money received and paid across all organizations."
+        actions={
+          <Button
+            variant="secondary"
+            icon={<Download size={15} />}
+            loading={downloading}
+            onClick={() =>
+              download(() =>
+                platformApi.payments.exportCsv({
+                  organization_id: organizationId || undefined,
+                  kind: kind || undefined,
+                }),
+              )
+            }
+          >
+            Export CSV
+          </Button>
+        }
+      />
 
       {stats.error ? (
         <ErrorBlock message={stats.error} onRetry={stats.reload} />

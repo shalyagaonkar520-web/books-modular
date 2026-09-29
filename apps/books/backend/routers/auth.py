@@ -44,7 +44,7 @@ from backend.security import (
     hash_token,
     verify_password,
 )
-from backend.services import audit
+from backend.services import audit, platform_settings
 from backend.services.chart_of_accounts import bootstrap_accounts
 from backend.services.email_service import send_password_reset_email, send_verification_email, smtp_configured
 from backend.services.ratelimit import FailureCounter, RateLimiter, client_ip
@@ -313,7 +313,10 @@ def check_email_verification_status(email: str, db: Session = Depends(get_db)):
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)):
-    if not settings.allow_public_signup:
+    # A super-admin can toggle public signup at runtime; that DB override takes
+    # precedence over the compile-time default.
+    allow = platform_settings.get_bool(db, "allow_public_signup", settings.allow_public_signup)
+    if not allow:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Public sign-up is disabled. Ask an administrator for an invite.")
     login_limiter.check(f"register:{client_ip(request)}")
 

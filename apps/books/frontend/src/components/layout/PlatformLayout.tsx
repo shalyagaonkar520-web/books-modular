@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   Building2,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Menu,
   ScrollText,
+  Settings,
   ShieldCheck,
+  UserCog,
   Users,
   Wallet,
 } from 'lucide-react';
@@ -14,17 +17,23 @@ import {
 import { usePlatformAuth } from '@/auth/PlatformAuthContext';
 import { initials } from '@/utils/format';
 
+import { ChangePasswordModal } from '@/pages/platform/ChangePasswordModal';
+import { PlatformGlobalSearch } from './PlatformGlobalSearch';
+
 const NAV_LINKS = [
   { to: '/platform', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/platform/organizations', label: 'Organizations', icon: Building2, end: false },
   { to: '/platform/users', label: 'Users', icon: Users, end: false },
   { to: '/platform/payments', label: 'Payments', icon: Wallet, end: false },
   { to: '/platform/audit-logs', label: 'Audit log', icon: ScrollText, end: false },
+  { to: '/platform/admins', label: 'Admins', icon: UserCog, end: false },
+  { to: '/platform/settings', label: 'Settings', icon: Settings, end: false },
 ];
 
 export function PlatformLayout() {
   const { admin, logout } = usePlatformAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -71,12 +80,7 @@ export function PlatformLayout() {
         </div>
 
         <div className="header-right" style={{ gap: 12 }}>
-          <span
-            className="badge"
-            style={{ background: 'rgba(99,102,241,0.18)', color: '#c7d2fe', border: '1px solid rgba(99,102,241,0.35)' }}
-          >
-            Operator console
-          </span>
+          <PlatformGlobalSearch />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span
               className="avatar"
@@ -95,6 +99,16 @@ export function PlatformLayout() {
           <button
             type="button"
             className="btn btn-secondary btn-sm"
+            onClick={() => setChangingPassword(true)}
+            title="Change password"
+            style={{ background: '#1e293b', borderColor: '#334155', color: '#e2e8f0' }}
+          >
+            <KeyRound size={14} />
+            <span>Change password</span>
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
             onClick={() => void logout()}
             style={{ background: '#1e293b', borderColor: '#334155', color: '#e2e8f0' }}
           >
@@ -103,6 +117,8 @@ export function PlatformLayout() {
           </button>
         </div>
       </header>
+
+      {changingPassword ? <ChangePasswordModal onClose={() => setChangingPassword(false)} /> : null}
 
       <div className="app-body">
         {sidebarOpen ? <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} aria-hidden="true" /> : null}

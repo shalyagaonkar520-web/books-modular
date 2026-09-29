@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { KeyRound, Pencil, Plus, Trash2 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Download, KeyRound, Pencil, Plus, Trash2 } from 'lucide-react';
 
 import { platformApi, type PlatformUser } from '@/api/platform';
 import { Badge } from '@/components/ui/Badge';
@@ -12,16 +13,19 @@ import { FilterSelect, SearchInput, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useDebounced } from '@/hooks/useDebounced';
+import { useDownload } from '@/hooks/useDownload';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatDateTime } from '@/utils/format';
 
 import { CreatePlatformUserModal, EditPlatformUserModal, ResetPlatformUserPasswordModal } from './PlatformUserModals';
+import { ImpersonateButton } from './ImpersonateButton';
 
 const PAGE_SIZE = 25;
 
 export function UsersPage() {
   const toast = useToast();
-  const [search, setSearch] = useState('');
+  const [searchParams] = useSearchParams();
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '');
   const [organizationId, setOrganizationId] = useState('');
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
@@ -29,6 +33,7 @@ export function UsersPage() {
   const [resetting, setResetting] = useState<PlatformUser | null>(null);
   const [deleting, setDeleting] = useState<PlatformUser | null>(null);
   const deleteSubmit = useSubmit();
+  const { download, downloading } = useDownload();
   const debouncedSearch = useDebounced(search);
 
   const orgs = useAsync((signal) => platformApi.organizations.list({ page: 1, page_size: 200 }, signal), []);
@@ -97,9 +102,10 @@ export function UsersPage() {
       key: 'actions',
       header: '',
       align: 'right',
-      width: '320px',
+      width: '420px',
       render: (row) => (
         <div className="row-actions">
+          <ImpersonateButton user={row} />
           <Button variant="ghost" size="sm" icon={<Pencil size={14} />} onClick={() => setEditing(row)}>
             Edit
           </Button>
@@ -120,9 +126,26 @@ export function UsersPage() {
         title="Users"
         subtitle="Every user across all organizations."
         actions={
-          <Button variant="primary" icon={<Plus size={15} />} onClick={() => setCreating(true)}>
-            Create user
-          </Button>
+          <>
+            <Button
+              variant="secondary"
+              icon={<Download size={15} />}
+              loading={downloading}
+              onClick={() =>
+                download(() =>
+                  platformApi.users.exportCsv({
+                    search: debouncedSearch.trim() || undefined,
+                    organization_id: organizationId || undefined,
+                  }),
+                )
+              }
+            >
+              Export CSV
+            </Button>
+            <Button variant="primary" icon={<Plus size={15} />} onClick={() => setCreating(true)}>
+              Create user
+            </Button>
+          </>
         }
       />
 
