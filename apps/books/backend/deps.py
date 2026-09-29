@@ -9,8 +9,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from backend.db import get_db
-from backend.models import User
-from backend.security import decode_access_token
+from backend.models import Organization, PlatformAdmin, User
+from backend.security import decode_access_token, decode_platform_token
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -45,8 +45,37 @@ def get_current_user(
     user = db.get(User, payload.get("sub"))
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User is inactive or does not exist")
+    org = db.get(Organization, user.organization_id)
+    if org is not None and org.is_suspended:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This organization has been suspended. Contact support.")
     request.state.user = user
     return user
+
+
+def get_current_superuser(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    db: Session = Depends(get_db),
+) -> PlatformAdmin:
+    """Authenticate a platform super-admin from a platform-scoped bearer token.
+
+    Kept entirely separate from tenant auth: only a token minted by the platform
+    login (type ``platform_access``) is accepted, and it resolves to a
+    ``PlatformAdmin`` row, never a tenant ``User``.
+    """
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    payload = decode_platform_token(credentials.credentials)
+    if not payload:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    admin = db.get(PlatformAdmin, payload.get("sub"))
+    if not admin or not admin.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Administrator is inactive or does not exist")
+    request.state.platform_admin = admin
+    return admin
+
+
+require_superuser = get_current_superuser
 
 
 def require_roles(*roles: str):

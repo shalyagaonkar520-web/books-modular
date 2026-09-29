@@ -53,6 +53,30 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
     return payload
 
 
+def create_platform_access_token(admin_id: str, expires_minutes: Optional[int] = None) -> str:
+    """Access token for a super-admin. A distinct ``type`` means a tenant token
+    can never be replayed against the platform API and vice versa."""
+    now = datetime.now(UTC)
+    payload: Dict[str, Any] = {
+        "sub": admin_id,
+        "type": "platform_access",
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=expires_minutes or settings.access_token_expire_minutes)).timestamp()),
+        "jti": secrets.token_hex(8),
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
+
+
+def decode_platform_token(token: str) -> Optional[Dict[str, Any]]:
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+    except jwt.PyJWTError:
+        return None
+    if payload.get("type") != "platform_access":
+        return None
+    return payload
+
+
 def generate_refresh_token() -> str:
     return secrets.token_urlsafe(48)
 

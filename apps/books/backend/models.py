@@ -71,6 +71,11 @@ class Organization(TimestampMixin, Base):
     fiscal_year_start_month: Mapped[int] = mapped_column(Integer, default=4, nullable=False)
     invoice_terms: Mapped[Optional[str]] = mapped_column(Text)
     invoice_notes: Mapped[Optional[str]] = mapped_column(Text)
+    # Platform-level suspension: set by a super-admin. A suspended org's users
+    # are locked out (enforced in get_current_user) but its data is retained.
+    is_suspended: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    suspended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    suspended_reason: Mapped[Optional[str]] = mapped_column(Text)
 
     users: Mapped[List[User]] = relationship(back_populates="organization")
 
@@ -103,6 +108,34 @@ class RefreshToken(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(255))
+    ip_address: Mapped[Optional[str]] = mapped_column(String(64))
+
+
+class PlatformAdmin(TimestampMixin, Base):
+    """A super-admin / platform operator. Deliberately NOT a tenant ``User``:
+    it has no ``organization_id`` and its own auth, so a compromised tenant
+    admin can never escalate into cross-tenant control."""
+
+    __tablename__ = "platform_admins"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class PlatformRefreshToken(Base):
+    __tablename__ = "platform_refresh_tokens"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    admin_id: Mapped[str] = mapped_column(String(32), ForeignKey("platform_admins.id", ondelete="CASCADE"), index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
