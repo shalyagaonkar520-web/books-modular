@@ -11,8 +11,7 @@ import {
   ShieldCheck,
   UserCog,
   Users,
-  Wallet,
-} from 'lucide-react';
+  } from 'lucide-react';
 
 import { usePlatformAuth } from '@/auth/PlatformAuthContext';
 import { initials } from '@/utils/format';
@@ -24,7 +23,6 @@ const NAV_LINKS = [
   { to: '/platform', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/platform/organizations', label: 'Organizations', icon: Building2, end: false },
   { to: '/platform/users', label: 'Users', icon: Users, end: false },
-  { to: '/platform/payments', label: 'Payments', icon: Wallet, end: false },
   { to: '/platform/audit-logs', label: 'Audit log', icon: ScrollText, end: false },
   { to: '/platform/admins', label: 'Admins', icon: UserCog, end: false },
   { to: '/platform/settings', label: 'Settings', icon: Settings, end: false },

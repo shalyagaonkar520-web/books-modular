@@ -195,26 +195,6 @@ export interface UpdateUserBody {
 
 export type PaymentKind = 'received' | 'made';
 
-export interface PlatformPayment {
-  id: string;
-  kind: PaymentKind;
-  number: string;
-  organizationId: string;
-  organizationName: string;
-  contactName: string;
-  amount: number;
-  mode?: string | null;
-  date?: string | null;
-  createdAt: string;
-}
-
-export interface PlatformPaymentStats {
-  totalReceived: number;
-  totalMade: number;
-  receivedCount: number;
-  madeCount: number;
-}
-
 export interface Message {
   message: string;
 }
@@ -381,15 +361,6 @@ export const platformApi = {
       platformDownload('/platform/users/export', 'users.csv', query),
   },
 
-  payments: {
-    list: (
-      query: { page?: number; page_size?: number; organization_id?: string; kind?: string },
-      signal?: AbortSignal,
-    ) => platformClient.get<PlatformPage<PlatformPayment>>('/platform/payments', query, signal),
-    stats: (signal?: AbortSignal) => platformClient.get<PlatformPaymentStats>('/platform/payments/stats', undefined, signal),
-    exportCsv: (query: { organization_id?: string; kind?: string }) =>
-      platformDownload('/platform/payments/export', 'payments.csv', query),
-  },
 
   auditLogs: (
     query: { page?: number; page_size?: number; organization_id?: string },

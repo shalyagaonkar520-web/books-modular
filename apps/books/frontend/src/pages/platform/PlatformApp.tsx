@@ -7,7 +7,6 @@ import { LoadingBlock } from '@/components/ui/Feedback';
 import { AdminsPage } from './AdminsPage';
 import { AuditLogsPage } from './AuditLogsPage';
 import { OrganizationsPage } from './OrganizationsPage';
-import { PaymentsPage } from './PaymentsPage';
 import { PlatformDashboardPage } from './PlatformDashboardPage';
 import { PlatformLoginPage } from './PlatformLoginPage';
 import { PlatformSettingsPage } from './PlatformSettingsPage';
@@ -39,7 +38,6 @@ export function PlatformApp() {
           <Route index element={<PlatformDashboardPage />} />
           <Route path="organizations" element={<OrganizationsPage />} />
           <Route path="users" element={<UsersPage />} />
-          <Route path="payments" element={<PaymentsPage />} />
           <Route path="audit-logs" element={<AuditLogsPage />} />
           <Route path="admins" element={<AdminsPage />} />
           <Route path="settings" element={<PlatformSettingsPage />} />

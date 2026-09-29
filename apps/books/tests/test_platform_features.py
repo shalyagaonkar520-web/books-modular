@@ -180,34 +180,22 @@ def _assert_csv(res, expected_header: str):
 
 
 def test_csv_exports_and_injection_escape(client, super_admin):
-    ctx = register_org(client, "Exporter")
-    h = auth(ctx["token"])
-    org_id = ctx["org"]["id"]
-
-    # A customer whose name is a spreadsheet formula.
-    customer = client.post("/api/contacts", headers=h, json={"type": "customer", "displayName": "=HACK()"}).json()
-    bank = client.post(
-        "/api/banking/accounts",
-        headers=h,
-        json={"name": "Ops", "type": "bank", "openingBalance": 100000, "openingBalanceDate": "2026-04-01", "isPrimary": True},
-    ).json()
-    client.post(
-        "/api/customer-payments",
-        headers=h,
-        json={"customerId": customer["id"], "bankAccountId": bank["id"], "date": "2026-09-05", "amount": 500},
+    # An organization whose name is a spreadsheet formula.
+    res = client.post(
+        "/api/platform/organizations",
+        headers=super_admin["h"],
+        json={"name": "=HACK()", "adminName": "Hack Admin", "adminEmail": "hack-admin@hack.example.com", "adminPassword": "HackAdmin1!"},
     )
+    assert res.status_code == 201, res.text
 
     orgs = client.get("/api/platform/organizations/export", headers=super_admin["h"])
     _assert_csv(orgs, "Name,Suspended,Users,Invoices,Invoiced,Collected,Created")
+    # The formula-like name is neutralised with a leading single quote.
+    assert "'=HACK()" in orgs.text
+    assert "\n=HACK()" not in orgs.text and not orgs.text.startswith("=HACK()")
 
     users = client.get("/api/platform/users/export", headers=super_admin["h"])
     _assert_csv(users, "Name,Email,Role,Active,Organization,Created")
-
-    pays = client.get("/api/platform/payments/export", headers=super_admin["h"], params={"organizationId": org_id})
-    _assert_csv(pays, "Kind,Number,Organization,Contact,Amount,Mode,Date")
-    # The formula-like customer name is neutralised with a leading single quote.
-    assert "'=HACK()" in pays.text
-    assert "\n=HACK()" not in pays.text and not pays.text.endswith("=HACK()")
 
 
 # --------------------------------------------------------------------------- #

@@ -205,37 +205,13 @@ def test_create_user_validations(client, super_admin, org):
 
 
 # --------------------------------------------------------------------------- #
-# Payments & audit
+# Audit (the platform Payments section was removed)
 # --------------------------------------------------------------------------- #
-def test_payments_and_stats_and_audit(client, super_admin, org):
-    # org fixture has a customer/bank/item; raise+pay an invoice so a payment exists.
-    h = org["h"]
-    inv = client.post(
-        "/api/invoices",
-        headers=h,
-        json={
-            "customerId": org["customer"]["id"],
-            "date": "2026-09-01",
-            "dueDate": "2026-12-31",
-            "status": "sent",
-            "lines": [{"itemId": org["service"]["id"], "description": "Work", "quantity": 1, "rate": 5000, "taxRate": 18}],
-        },
-    ).json()
-    client.post(
-        "/api/customer-payments",
-        headers=h,
-        json={"customerId": org["customer"]["id"], "invoiceId": inv["id"], "bankAccountId": org["bank"]["id"], "date": "2026-09-05", "amount": 1000},
-    )
-
-    pays = client.get("/api/platform/payments", headers=super_admin["h"])
-    assert pays.status_code == 200 and pays.json()["total"] >= 1
-    assert any(p["kind"] == "received" for p in pays.json()["items"])
-
-    stats = client.get("/api/platform/payments/stats", headers=super_admin["h"])
-    assert stats.status_code == 200 and stats.json()["totalReceived"] >= 1000
-
+def test_audit_logs_and_payments_section_removed(client, super_admin):
     logs = client.get("/api/platform/audit-logs", headers=super_admin["h"])
     assert logs.status_code == 200 and logs.json()["total"] >= 1
+    for path in ("/api/platform/payments", "/api/platform/payments/stats", "/api/platform/payments/export"):
+        assert client.get(path, headers=super_admin["h"]).status_code == 404
 
 
 def test_inactive_admin_cannot_use_token(client):

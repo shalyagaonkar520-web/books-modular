@@ -270,28 +270,8 @@ class ResetUserPasswordRequest(APIModel):
 
 
 # --------------------------------------------------------------------------- #
-# Payments (global) & audit
+# Audit
 # --------------------------------------------------------------------------- #
-class PlatformPaymentOut(APIModel):
-    id: str
-    kind: str  # "received" | "made"
-    number: str
-    organization_id: str
-    organization_name: Optional[str] = None
-    contact_name: Optional[str] = None
-    amount: float
-    mode: Optional[str] = None
-    date: Optional[str] = None
-    created_at: datetime
-
-
-class PlatformPaymentStats(APIModel):
-    total_received: float
-    total_made: float
-    received_count: int
-    made_count: int
-
-
 class PlatformAuditOut(APIModel):
     id: str
     organization_id: str

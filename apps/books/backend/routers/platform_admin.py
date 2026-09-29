@@ -51,8 +51,6 @@ from backend.schemas.platform import (
     PlatformDashboard,
     PlatformInvoiceOut,
     PlatformLoginRequest,
-    PlatformPaymentOut,
-    PlatformPaymentStats,
     PlatformSearchResults,
     PlatformSettingsOut,
     PlatformTokenResponse,
@@ -989,130 +987,7 @@ def impersonate_user(user_id: str, db: Session = Depends(get_db), admin: Platfor
 
 
 # --------------------------------------------------------------------------- #
-# Payments (global) & audit
-# --------------------------------------------------------------------------- #
-@router.get("/payments", response_model=Page[PlatformPaymentOut])
-def list_payments(
-    db: Session = Depends(get_db),
-    admin: PlatformAdmin = Depends(get_current_superuser),
-    pagination: Pagination = Depends(),
-    organization_id: Optional[str] = Query(None),
-    kind: Optional[str] = Query(None, description="received | made"),
-):
-    limit = pagination.offset + pagination.page_size
-    received: List[PlatformPaymentOut] = []
-    made: List[PlatformPaymentOut] = []
-
-    if kind in (None, "received"):
-        cstmt = select(CustomerPayment).order_by(CustomerPayment.created_at.desc()).limit(limit)
-        if organization_id:
-            cstmt = cstmt.where(CustomerPayment.organization_id == organization_id)
-        rows = db.execute(cstmt).scalars().all()
-        names = _org_name_map(db, [r.organization_id for r in rows])
-        for r in rows:
-            received.append(
-                PlatformPaymentOut(
-                    id=r.id,
-                    kind="received",
-                    number=r.payment_number,
-                    organization_id=r.organization_id,
-                    organization_name=names.get(r.organization_id),
-                    contact_name=r.customer.display_name if r.customer else None,
-                    amount=_float(r.amount),
-                    mode=r.mode,
-                    date=r.date.isoformat() if r.date else None,
-                    created_at=r.created_at,
-                )
-            )
-    if kind in (None, "made"):
-        vstmt = select(VendorPayment).order_by(VendorPayment.created_at.desc()).limit(limit)
-        if organization_id:
-            vstmt = vstmt.where(VendorPayment.organization_id == organization_id)
-        rows = db.execute(vstmt).scalars().all()
-        names = _org_name_map(db, [r.organization_id for r in rows])
-        for r in rows:
-            made.append(
-                PlatformPaymentOut(
-                    id=r.id,
-                    kind="made",
-                    number=r.payment_number,
-                    organization_id=r.organization_id,
-                    organization_name=names.get(r.organization_id),
-                    contact_name=r.vendor.display_name if r.vendor else None,
-                    amount=_float(r.amount),
-                    mode=r.mode,
-                    date=r.date.isoformat() if r.date else None,
-                    created_at=r.created_at,
-                )
-            )
-
-    merged = sorted(received + made, key=lambda p: p.created_at, reverse=True)
-    total = len(merged)
-    page_items = merged[pagination.offset : pagination.offset + pagination.page_size]
-    return Page(items=page_items, total=total, page=pagination.page, page_size=pagination.page_size)
-
-
-@router.get("/payments/stats", response_model=PlatformPaymentStats)
-def payment_stats(db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
-    total_received = db.scalar(select(func.coalesce(func.sum(CustomerPayment.amount), 0)))
-    total_made = db.scalar(select(func.coalesce(func.sum(VendorPayment.amount), 0)))
-    rc = db.scalar(select(func.count()).select_from(CustomerPayment)) or 0
-    mc = db.scalar(select(func.count()).select_from(VendorPayment)) or 0
-    return PlatformPaymentStats(
-        total_received=_float(total_received), total_made=_float(total_made), received_count=rc, made_count=mc
-    )
-
-
-@router.get("/payments/export")
-def export_payments(
-    db: Session = Depends(get_db),
-    admin: PlatformAdmin = Depends(get_current_superuser),
-    organization_id: Optional[str] = Query(None),
-    kind: Optional[str] = Query(None, description="received | made"),
-):
-    # Same query/joins as list_payments, without pagination.
-    rows: List[List] = []
-    if kind in (None, "received"):
-        cstmt = select(CustomerPayment).order_by(CustomerPayment.created_at.desc())
-        if organization_id:
-            cstmt = cstmt.where(CustomerPayment.organization_id == organization_id)
-        received = db.execute(cstmt).scalars().all()
-        names = _org_name_map(db, [r.organization_id for r in received])
-        for r in received:
-            rows.append(
-                [
-                    "received",
-                    r.payment_number,
-                    names.get(r.organization_id) or "",
-                    r.customer.display_name if r.customer else "",
-                    _float(r.amount),
-                    r.mode or "",
-                    r.date.isoformat() if r.date else "",
-                ]
-            )
-    if kind in (None, "made"):
-        vstmt = select(VendorPayment).order_by(VendorPayment.created_at.desc())
-        if organization_id:
-            vstmt = vstmt.where(VendorPayment.organization_id == organization_id)
-        made = db.execute(vstmt).scalars().all()
-        names = _org_name_map(db, [r.organization_id for r in made])
-        for r in made:
-            rows.append(
-                [
-                    "made",
-                    r.payment_number,
-                    names.get(r.organization_id) or "",
-                    r.vendor.display_name if r.vendor else "",
-                    _float(r.amount),
-                    r.mode or "",
-                    r.date.isoformat() if r.date else "",
-                ]
-            )
-    return _csv_response(["Kind", "Number", "Organization", "Contact", "Amount", "Mode", "Date"], rows, "payments.csv")
-
-
-# --------------------------------------------------------------------------- #
-# Global search
+# Audit
 # --------------------------------------------------------------------------- #
 @router.get("/search", response_model=PlatformSearchResults)
 def platform_search(
