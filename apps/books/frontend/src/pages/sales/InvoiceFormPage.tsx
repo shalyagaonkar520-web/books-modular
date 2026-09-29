@@ -15,7 +15,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { addDaysIso, formatCurrency, formatQuantity, parseNumber, round2, round3, todayIso } from '@/utils/format';
-import { TAX_RATES } from '@/utils/status';
+import { taxRatesWith } from '@/utils/status';
 
 interface LineDraft {
   key: string;
@@ -29,7 +29,17 @@ interface LineDraft {
 }
 
 let lineCounter = 0;
-const newLine = (): LineDraft => ({ key: `line-${++lineCounter}`, itemId: '', accountId: '', description: '', quantity: '1', rate: '0', taxRate: '0' });
+/** Tax rate a new line starts with when the organization sets no default. */
+const FALLBACK_LINE_TAX_RATE = '0';
+const newLine = (taxRate: string = FALLBACK_LINE_TAX_RATE): LineDraft => ({
+  key: `line-${++lineCounter}`,
+  itemId: '',
+  accountId: '',
+  description: '',
+  quantity: '1',
+  rate: '0',
+  taxRate,
+});
 
 // Match the backend, which rounds quantity to 3dp and rate to 2dp before
 // multiplying, so the previewed total equals the saved total.
@@ -42,6 +52,8 @@ export function InvoiceFormPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const { organization, canWrite } = useAuth();
+  // New lines (never existing ones) start at the organization's default tax rate.
+  const defaultLineTaxRate = organization?.defaultTaxRate !== undefined ? String(organization.defaultTaxRate) : FALLBACK_LINE_TAX_RATE;
   const { submitting, error, fieldErrors, run, setError } = useSubmit();
 
   const [customerId, setCustomerId] = useState('');
@@ -54,7 +66,7 @@ export function InvoiceFormPage() {
   const [notes, setNotes] = useState(() => organization?.invoiceNotes ?? '');
   const [terms, setTerms] = useState(() => organization?.invoiceTerms ?? '');
   const [discountAmount, setDiscountAmount] = useState('0');
-  const [lines, setLines] = useState<LineDraft[]>(() => [newLine()]);
+  const [lines, setLines] = useState<LineDraft[]>(() => [newLine(defaultLineTaxRate)]);
   const [keepSent, setKeepSent] = useState(false);
   // The form has no project/line-account pickers, but an existing invoice may
   // carry both - preserve them so editing does not silently strip them.
@@ -299,7 +311,7 @@ export function InvoiceFormPage() {
           title="Line items"
           subtitle="Amounts are calculated as quantity × rate, with tax applied per line."
           footer={
-            <Button icon={<Plus size={15} />} onClick={() => setLines((current) => [...current, newLine()])}>
+            <Button icon={<Plus size={15} />} onClick={() => setLines((current) => [...current, newLine(defaultLineTaxRate)])}>
               Add line
             </Button>
           }
@@ -383,7 +395,7 @@ export function InvoiceFormPage() {
                           value={line.taxRate}
                           onChange={(event) => updateLine(line.key, { taxRate: event.target.value })}
                         >
-                          {TAX_RATES.map((rate) => (
+                          {taxRatesWith(organization?.defaultTaxRate, parseNumber(line.taxRate)).map((rate) => (
                             <option key={rate} value={String(rate)}>
                               {rate}%
                             </option>

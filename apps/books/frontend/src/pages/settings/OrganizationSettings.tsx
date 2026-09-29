@@ -41,6 +41,8 @@ interface FormState {
   fiscalYearStartMonth: string;
   invoiceTerms: string;
   invoiceNotes: string;
+  defaultTaxRate: string;
+  defaultPaymentTermsDays: string;
 }
 
 function toForm(org: Organization): FormState {
@@ -59,6 +61,9 @@ function toForm(org: Organization): FormState {
     fiscalYearStartMonth: String(org.fiscalYearStartMonth),
     invoiceTerms: org.invoiceTerms ?? '',
     invoiceNotes: org.invoiceNotes ?? '',
+    defaultTaxRate: org.defaultTaxRate !== undefined && org.defaultTaxRate !== null ? String(org.defaultTaxRate) : '',
+    defaultPaymentTermsDays:
+      org.defaultPaymentTermsDays !== undefined && org.defaultPaymentTermsDays !== null ? String(org.defaultPaymentTermsDays) : '',
   };
 }
 
@@ -97,6 +102,9 @@ export function OrganizationSettings() {
       invoiceTerms: form.invoiceTerms.trim() || null,
       invoiceNotes: form.invoiceNotes.trim() || null,
     };
+    // Only send the defaults when filled in, so a blank field leaves the stored value alone.
+    if (form.defaultTaxRate.trim() !== '') body.defaultTaxRate = Number(form.defaultTaxRate);
+    if (form.defaultPaymentTermsDays.trim() !== '') body.defaultPaymentTermsDays = Number.parseInt(form.defaultPaymentTermsDays, 10);
     const saved = await run(() => orgApi.update(body));
     if (saved) {
       setData(saved);
@@ -176,6 +184,30 @@ export function OrganizationSettings() {
               onChange={set('fiscalYearStartMonth')}
               error={fieldErrors.fiscalYearStartMonth}
               hint="Used for fiscal-year reports and the dashboard"
+            />
+            <TextField
+              label="Default tax rate (%)"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              max={100}
+              step="0.01"
+              value={form.defaultTaxRate}
+              onChange={set('defaultTaxRate')}
+              error={fieldErrors.defaultTaxRate}
+              hint="Pre-filled on new items and new invoice / bill lines"
+            />
+            <TextField
+              label="Default payment terms (days)"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={365}
+              step={1}
+              value={form.defaultPaymentTermsDays}
+              onChange={set('defaultPaymentTermsDays')}
+              error={fieldErrors.defaultPaymentTermsDays}
+              hint="Pre-filled on new customers and vendors"
             />
           </div>
           <TextAreaField

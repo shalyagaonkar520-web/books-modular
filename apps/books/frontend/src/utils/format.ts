@@ -2,6 +2,12 @@
 
 export function formatCurrency(amount: number | null | undefined, currency = 'INR'): string {
   const value = typeof amount === 'number' && Number.isFinite(amount) ? amount : 0;
+  // An empty/missing currency code (e.g. a count series with no currency
+  // context) would make Intl.NumberFormat throw "Invalid currency code" and
+  // crash the render, so fall back to a plain number instead.
+  if (!currency) {
+    return new Intl.NumberFormat('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value);
+  }
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency,

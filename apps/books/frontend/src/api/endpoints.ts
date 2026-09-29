@@ -6,6 +6,7 @@ import type {
   AgingReport,
   AuditLog,
   AuthResponse,
+  RegisterResponse,
   BalanceSheet,
   BankAccount,
   BankingSummary,
@@ -59,7 +60,7 @@ type Query = Record<string, string | number | boolean | undefined | null>;
 
 export const authApi = {
   register: (body: { name: string; email: string; password: string; organizationName: string; gstin?: string }) =>
-    api.post<AuthResponse>('/auth/register', body),
+    api.post<RegisterResponse>('/auth/register', body),
   login: (body: { email: string; password: string }) =>
     request<AuthResponse>('/auth/login', { method: 'POST', body, retryOnUnauthorized: false }),
   me: () => api.get<AuthResponse>('/auth/me'),

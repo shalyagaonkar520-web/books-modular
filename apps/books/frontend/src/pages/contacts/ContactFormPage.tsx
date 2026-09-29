@@ -57,7 +57,10 @@ interface FormState {
   notes: string;
 }
 
-function initialForm(contact: Contact | null, type: ContactType): FormState {
+/** Payment terms a brand-new contact starts with when the organization sets no default. */
+const FALLBACK_PAYMENT_TERMS_DAYS = 30;
+
+function initialForm(contact: Contact | null, type: ContactType, defaultPaymentTermsDays?: number): FormState {
   const displayName = contact?.displayName ?? '';
   const contactPerson = contact?.contactPerson ?? '';
   return {
@@ -81,7 +84,7 @@ function initialForm(contact: Contact | null, type: ContactType): FormState {
     language: contact?.language ?? '',
     ledgerAccountId: contact?.ledgerAccountId ?? '',
     gstTreatment: contact?.gstTreatment ?? 'unregistered',
-    paymentTermsDays: String(contact?.paymentTermsDays ?? 30),
+    paymentTermsDays: String(contact ? contact.paymentTermsDays : (defaultPaymentTermsDays ?? FALLBACK_PAYMENT_TERMS_DAYS)),
     billingAddress: contact?.billingAddress ?? '',
     shippingAddress: contact?.shippingAddress ?? '',
     notes: contact?.notes ?? '',
@@ -123,9 +126,9 @@ function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
   // Reading the chart of accounts is Admin/Viewer only, but Staff may create
   // contacts - so only ask for the accounts when the signed-in role is allowed
   // them, otherwise the form 403s on open for a role that is entitled to use it.
-  const { can } = useAuth();
+  const { can, organization } = useAuth();
   const canChooseAccount = can('admin', 'viewer');
-  const [form, setForm] = useState<FormState>(() => initialForm(contact, type));
+  const [form, setForm] = useState<FormState>(() => initialForm(contact, type, organization?.defaultPaymentTermsDays));
   const { submitting, error, fieldErrors, run } = useSubmit();
   // Receivables for a customer, payables for a vendor - the only accounts it
   // makes sense to point a contact at.

@@ -13,14 +13,13 @@ import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { parseNumber } from '@/utils/format';
-import { TAX_RATES, UNITS } from '@/utils/status';
+import { taxRatesWith, UNITS } from '@/utils/status';
 
 const TYPE_OPTIONS = [
   { value: 'goods', label: 'Goods' },
   { value: 'service', label: 'Service' },
 ];
 const UNIT_OPTIONS = UNITS.map((unit) => ({ value: unit, label: unit }));
-const TAX_OPTIONS = TAX_RATES.map((rate) => ({ value: String(rate), label: `${rate}%` }));
 
 interface SelectOptions {
   salesAccounts: Array<{ value: string; label: string }>;
@@ -50,14 +49,17 @@ interface FormState {
   warehouseLocation: string;
 }
 
-function initialForm(item: Item | null): FormState {
+/** Tax rate a brand-new item starts with when the organization sets no default. */
+const FALLBACK_TAX_RATE = 18;
+
+function initialForm(item: Item | null, defaultTaxRate?: number): FormState {
   return {
     name: item?.name ?? '',
     sku: item?.sku ?? '',
     type: item?.type ?? 'goods',
     unit: item?.unit ?? 'pcs',
     hsnSac: item?.hsnSac ?? '',
-    taxRate: String(item?.taxRate ?? 18),
+    taxRate: String(item ? item.taxRate : (defaultTaxRate ?? FALLBACK_TAX_RATE)),
     description: item?.description ?? '',
     sellingPrice: item ? String(item.sellingPrice) : '',
     salesAccountId: item?.salesAccountId ?? '',
@@ -124,7 +126,9 @@ interface ItemFormProps {
 
 function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
   const toast = useToast();
-  const [form, setForm] = useState<FormState>(() => initialForm(item));
+  const { organization } = useAuth();
+  const [form, setForm] = useState<FormState>(() => initialForm(item, organization?.defaultTaxRate));
+  const taxOptions = taxRatesWith(organization?.defaultTaxRate, item?.taxRate).map((rate) => ({ value: String(rate), label: `${rate}%` }));
   const { submitting, error, fieldErrors, run } = useSubmit();
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((current) => ({ ...current, [key]: value }));
@@ -182,7 +186,7 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
           <SelectField label="Type" value={form.type} options={TYPE_OPTIONS} error={fieldErrors.type} onChange={(event) => set('type', event.target.value as ItemType)} />
           <SelectField label="Unit" value={form.unit} options={UNIT_OPTIONS} error={fieldErrors.unit} onChange={(event) => set('unit', event.target.value)} />
           <TextField label="HSN / SAC" value={form.hsnSac} error={fieldErrors.hsnSac} onChange={(event) => set('hsnSac', event.target.value)} />
-          <SelectField label="Tax rate" value={form.taxRate} options={TAX_OPTIONS} error={fieldErrors.taxRate} onChange={(event) => set('taxRate', event.target.value)} />
+          <SelectField label="Tax rate" value={form.taxRate} options={taxOptions} error={fieldErrors.taxRate} onChange={(event) => set('taxRate', event.target.value)} />
         </div>
         <TextAreaField label="Description" value={form.description} error={fieldErrors.description} onChange={(event) => set('description', event.target.value)} />
       </section>

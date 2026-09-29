@@ -22,6 +22,9 @@ os.environ["DATA_DIR"] = _TMP
 os.environ["SECRET_KEY"] = "test-secret-key-not-for-production"
 os.environ["AUTO_CREATE_TABLES"] = "true"
 os.environ["LOGIN_RATE_LIMIT_PER_MINUTE"] = "1000"
+# Most tests register an org and expect a session straight away; the approval
+# workflow is exercised explicitly (and switched on) in test_org_approval.py.
+os.environ["REQUIRE_ORG_APPROVAL"] = "false"
 # Tests must not depend on whatever a developer's local .env happens to
 # contain (real Gmail credentials, a leftover webhook secret, ...). Fix these
 # so the suite behaves identically here and in CI, where no .env exists.

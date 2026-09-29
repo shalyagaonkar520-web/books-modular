@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, CheckCircle2, Eye, EyeOff, Mail, UserPlus } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, Eye, EyeOff, LogIn, Mail, UserPlus } from 'lucide-react';
 
-import { useAuth } from '@/auth/AuthContext';
+import { useAuth, type RegisterResult } from '@/auth/AuthContext';
 import { authApi } from '@/api/endpoints';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/Field';
@@ -33,6 +33,7 @@ export function RegisterPage() {
   const [confirm, setConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [touched, setTouched] = useState(false);
+  const [submitted, setSubmitted] = useState<Extract<RegisterResult, { pending: true }> | null>(null);
 
   // Email verification state
   const [isVerified, setIsVerified] = useState(false);
@@ -185,7 +186,7 @@ export function RegisterPage() {
       return;
     }
     const result = await run(async () => {
-      await register({
+      const outcome = await register({
         name: name.trim(),
         email: email.trim().toLowerCase(),
         password,
@@ -198,10 +199,54 @@ export function RegisterPage() {
       } catch {
         // ignore
       }
-      return true;
+      return outcome;
     });
-    if (result) navigate('/dashboard', { replace: true });
+    if (!result) return;
+    if (result.pending) setSubmitted(result);
+    else navigate('/dashboard', { replace: true });
   };
+
+  if (submitted) {
+    return (
+      <div className="auth-shell">
+        <div className="auth-card">
+          <div className="auth-brand">
+            <img src="/rooman-logo.png" alt="" />
+            <h1 className="auth-title">Organization submitted for approval</h1>
+          </div>
+          <div
+            role="status"
+            style={{
+              display: 'flex',
+              gap: '10px',
+              alignItems: 'flex-start',
+              padding: '12px 14px',
+              borderRadius: '8px',
+              background: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              color: '#166534',
+              fontSize: '13px',
+              lineHeight: 1.5,
+              marginBottom: '14px',
+            }}
+          >
+            <Clock size={18} style={{ flexShrink: 0, marginTop: '1px' }} aria-hidden="true" />
+            <div>
+              <strong style={{ display: 'block', marginBottom: '2px' }}>{submitted.organizationName}</strong>
+              <span>{submitted.message || 'Your organization is waiting for approval by the platform team.'}</span>
+            </div>
+          </div>
+          <p className="auth-subtitle">
+            You can sign in as <strong>{submitted.email}</strong> once an administrator approves the organization.
+          </p>
+          <Link to="/login" state={{ email: submitted.email }} className="btn btn-primary btn-md btn-block">
+            <LogIn size={15} aria-hidden="true" />
+            <span>Back to sign in</span>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="auth-shell">

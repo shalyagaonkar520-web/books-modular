@@ -71,6 +71,32 @@ class Organization(TimestampMixin, Base):
     fiscal_year_start_month: Mapped[int] = mapped_column(Integer, default=4, nullable=False)
     invoice_terms: Mapped[Optional[str]] = mapped_column(Text)
     invoice_notes: Mapped[Optional[str]] = mapped_column(Text)
+    # Org-wide defaults applied to new documents (seeded from the platform's
+    # global defaults when the org is created).
+    default_tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("18"), nullable=False)
+    default_payment_terms_days: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+    # Platform-level suspension: set by a super-admin. A suspended org's users
+    # are locked out (enforced in get_current_user) but its data is retained.
+    is_suspended: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    suspended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    suspended_reason: Mapped[Optional[str]] = mapped_column(Text)
+    # Soft delete ("archive") by a super-admin: the org is also suspended so its
+    # users are locked out, but every row is kept and it can be restored.
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # Sign-up approval by a super-admin: approved | pending | rejected. Users of
+    # a non-approved org cannot sign in (enforced in auth login/refresh and
+    # get_current_user). Existing and platform-created orgs are approved.
+    approval_status: Mapped[str] = mapped_column(String(20), default="approved", server_default="approved", nullable=False)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
+
+    @property
+    def is_archived(self) -> bool:
+        return self.deleted_at is not None
+
+    @property
+    def is_approved(self) -> bool:
+        return self.approval_status == "approved"
 
     users: Mapped[List[User]] = relationship(back_populates="organization")
 
@@ -109,6 +135,50 @@ class RefreshToken(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     user_agent: Mapped[Optional[str]] = mapped_column(String(255))
     ip_address: Mapped[Optional[str]] = mapped_column(String(64))
+
+
+class PlatformAdmin(TimestampMixin, Base):
+    """A super-admin / platform operator. Deliberately NOT a tenant ``User``:
+    it has no ``organization_id`` and its own auth, so a compromised tenant
+    admin can never escalate into cross-tenant control."""
+
+    __tablename__ = "platform_admins"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class PlatformRefreshToken(Base):
+    __tablename__ = "platform_refresh_tokens"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    admin_id: Mapped[str] = mapped_column(String(32), ForeignKey("platform_admins.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(255))
+    ip_address: Mapped[Optional[str]] = mapped_column(String(64))
+
+
+class PlatformSetting(Base):
+    """A single runtime configuration value owned by the platform operator.
+
+    Stored as a string keyed by ``key`` so a super-admin can toggle behaviour
+    (e.g. public tenant signup) without an env change or redeploy. Values are
+    coerced by the ``platform_settings`` service, not the column type.
+    """
+
+    __tablename__ = "platform_settings"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    key: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
 
 class EmailVerification(Base):

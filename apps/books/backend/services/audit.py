@@ -18,6 +18,9 @@ def record(
     summary: Optional[str] = None,
     organization_id: Optional[str] = None,
 ) -> None:
+    impersonator = getattr(user, "impersonated_by", None) if user else None
+    if impersonator:
+        summary = f"{summary or ''} [via platform admin {impersonator}]".strip()
     db.add(
         AuditLog(
             organization_id=organization_id or (user.organization_id if user else ""),

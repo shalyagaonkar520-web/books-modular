@@ -2,16 +2,37 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { onUnauthorized, setAccessToken } from '@/api/client';
 import { authApi, orgApi } from '@/api/endpoints';
-import type { Organization, Role, User } from '@/api/types';
+import { isRegisterPending, type Organization, type Role, type User } from '@/api/types';
+
+import { clearWorkspace } from './workspace';
+
+export interface RegisterPayload {
+  name: string;
+  email: string;
+  password: string;
+  organizationName: string;
+  gstin?: string;
+}
+
+/** What `register` resolved to: signed in, or submitted and waiting for platform approval. */
+export type RegisterResult =
+  | { pending: false }
+  | { pending: true; message: string; organizationName: string; email: string };
 
 interface AuthContextValue {
   user: User | null;
   organization: Organization | null;
   initializing: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (payload: { name: string; email: string; password: string; organizationName: string; gstin?: string }) => Promise<void>;
+  /** Signs in on success; when the platform requires approval nothing is signed in and `pending` is true. */
+  register: (payload: RegisterPayload) => Promise<RegisterResult>;
   logout: () => Promise<void>;
   refreshOrganization: () => Promise<void>;
+  /** Take over a session from an externally issued access token (e.g. platform
+   *  impersonation): sets the token, then loads who it belongs to. */
+  adoptSession: (accessToken: string) => Promise<void>;
+  /** Leave workspace mode: drop the impersonated tenant session locally. */
+  endWorkspace: () => void;
   updateUser: (user: User) => void;
   can: (...roles: Role[]) => boolean;
   canWrite: boolean;
@@ -70,14 +91,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (email: string, password: string) => {
-      applyAuth(await authApi.login({ email, password }));
+      const response = await authApi.login({ email, password });
+      // A real sign-in replaces any admin workspace in this tab.
+      clearWorkspace();
+      applyAuth(response);
     },
     [applyAuth],
   );
 
   const register = useCallback(
-    async (payload: { name: string; email: string; password: string; organizationName: string; gstin?: string }) => {
-      applyAuth(await authApi.register(payload));
+    async (payload: RegisterPayload): Promise<RegisterResult> => {
+      const response = await authApi.register(payload);
+      if (isRegisterPending(response)) {
+        return {
+          pending: true,
+          message: response.message,
+          organizationName: response.organizationName ?? payload.organizationName,
+          email: response.email ?? payload.email,
+        };
+      }
+      clearWorkspace();
+      applyAuth(response);
+      return { pending: false };
     },
     [applyAuth],
   );
@@ -86,15 +121,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await authApi.logout();
     } finally {
+      clearWorkspace();
       setAccessToken(null);
       setUser(null);
       setOrganization(null);
     }
   }, []);
 
+  const endWorkspace = useCallback(() => {
+    // An impersonated session has no refresh cookie, so there is nothing to
+    // revoke server-side; just forget it here.
+    clearWorkspace();
+    setAccessToken(null);
+    setUser(null);
+    setOrganization(null);
+  }, []);
+
   const refreshOrganization = useCallback(async () => {
     setOrganization(await orgApi.get());
   }, []);
+
+  const adoptSession = useCallback(
+    async (accessToken: string) => {
+      setAccessToken(accessToken);
+      applyAuth(await authApi.me());
+    },
+    [applyAuth],
+  );
 
   const value = useMemo<AuthContextValue>(() => {
     const role = user?.role;
@@ -106,6 +159,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register,
       logout,
       refreshOrganization,
+      adoptSession,
+      endWorkspace,
       updateUser: setUser,
       can: (...roles: Role[]) => !!role && roles.includes(role),
       canWrite: role === 'admin' || role === 'staff',
@@ -113,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isStaff: role === 'staff',
       isEmployee: role === 'employee',
     };
-  }, [user, organization, initializing, login, register, logout, refreshOrganization]);
+  }, [user, organization, initializing, login, register, logout, refreshOrganization, adoptSession, endWorkspace]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

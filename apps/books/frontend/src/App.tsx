@@ -1,5 +1,7 @@
-import { Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 
+import { PlatformAuthProvider } from '@/auth/PlatformAuthContext';
+import { PlatformApp } from '@/pages/platform/PlatformApp';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { RequireAuth, RequireEmployeePortal, RequireGuest, RequireMainApp, RequireRole } from '@/auth/RouteGuards';
 import { AcceptInvitePage } from '@/pages/auth/AcceptInvitePage';
@@ -42,6 +44,27 @@ export function App() {
         Skip to main content
       </a>
       <Routes>
+        {/* Separate, self-contained platform operator console with its own auth.
+            Only this subtree is wrapped in PlatformAuthProvider. */}
+        <Route
+          path="/platform/*"
+          element={
+            <PlatformAuthProvider>
+              <PlatformApp />
+            </PlatformAuthProvider>
+          }
+        />
+
+        {/* Aliases for admin panel */}
+        <Route path="/admin" element={<Navigate to="/platform" replace />} />
+        <Route path="/admin/*" element={<Navigate to="/platform" replace />} />
+        <Route path="/admin-panel" element={<Navigate to="/platform" replace />} />
+        <Route path="/admin-panel/*" element={<Navigate to="/platform" replace />} />
+        <Route path="/adminpanel" element={<Navigate to="/platform" replace />} />
+        <Route path="/adminpanel/*" element={<Navigate to="/platform" replace />} />
+        <Route path="/superadmin" element={<Navigate to="/platform" replace />} />
+        <Route path="/superadmin/*" element={<Navigate to="/platform" replace />} />
+
         {/* Always public — the landing page */}
         <Route path="/" element={<LandingPage />} />
 

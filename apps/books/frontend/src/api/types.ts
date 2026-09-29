@@ -44,6 +44,10 @@ export interface Organization {
   fiscalYearStartMonth: number;
   invoiceTerms?: string | null;
   invoiceNotes?: string | null;
+  /** Default GST % for new items and new document lines. */
+  defaultTaxRate?: number;
+  /** Default payment terms (days) for new customers and vendors. */
+  defaultPaymentTermsDays?: number;
 }
 
 export interface AuthResponse {
@@ -52,6 +56,20 @@ export interface AuthResponse {
   expiresIn: number;
   user: User;
   organization: Organization;
+}
+
+/** 202 from POST /auth/register when the platform requires approval: no token is issued. */
+export interface RegisterPendingResponse {
+  status: 'pending_approval';
+  message: string;
+  organizationName: string;
+  email: string;
+}
+
+export type RegisterResponse = AuthResponse | RegisterPendingResponse;
+
+export function isRegisterPending(response: RegisterResponse): response is RegisterPendingResponse {
+  return (response as RegisterPendingResponse).status === 'pending_approval';
 }
 
 export interface EmailVerificationStatus {

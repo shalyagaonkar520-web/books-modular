@@ -29,7 +29,9 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def create_access_token(user_id: str, organization_id: str, role: str, expires_minutes: Optional[int] = None) -> str:
+def create_access_token(
+    user_id: str, organization_id: str, role: str, expires_minutes: Optional[int] = None, impersonator: Optional[str] = None
+) -> str:
     now = datetime.now(UTC)
     payload: Dict[str, Any] = {
         "sub": user_id,
@@ -40,6 +42,10 @@ def create_access_token(user_id: str, organization_id: str, role: str, expires_m
         "exp": int((now + timedelta(minutes=expires_minutes or settings.access_token_expire_minutes)).timestamp()),
         "jti": secrets.token_hex(8),
     }
+    if impersonator:
+        # A platform admin working inside this org ("workspace mode"); carried
+        # so every change made with this token is attributed to them.
+        payload["imp"] = impersonator
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
@@ -49,6 +55,30 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
     except jwt.PyJWTError:
         return None
     if payload.get("type") != "access":
+        return None
+    return payload
+
+
+def create_platform_access_token(admin_id: str, expires_minutes: Optional[int] = None) -> str:
+    """Access token for a super-admin. A distinct ``type`` means a tenant token
+    can never be replayed against the platform API and vice versa."""
+    now = datetime.now(UTC)
+    payload: Dict[str, Any] = {
+        "sub": admin_id,
+        "type": "platform_access",
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=expires_minutes or settings.access_token_expire_minutes)).timestamp()),
+        "jti": secrets.token_hex(8),
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
+
+
+def decode_platform_token(token: str) -> Optional[Dict[str, Any]]:
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+    except jwt.PyJWTError:
+        return None
+    if payload.get("type") != "platform_access":
         return None
     return payload
 

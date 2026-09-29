@@ -9,8 +9,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from backend.db import get_db
-from backend.models import User
-from backend.security import decode_access_token
+from backend.models import Organization, PlatformAdmin, User
+from backend.security import decode_access_token, decode_platform_token
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -32,6 +32,22 @@ WRITE_ROLES = (ROLE_ADMIN, ROLE_STAFF)
 FINANCIAL_ROLES = (ROLE_ADMIN, ROLE_VIEWER)
 
 
+PENDING_APPROVAL_DETAIL = (
+    "PENDING_APPROVAL: Your organization is awaiting approval by an administrator. You'll be able to sign in once it's approved."
+)
+REJECTED_DETAIL = "REGISTRATION_REJECTED: Your organization's registration was declined."
+
+
+def org_approval_error(org: Organization | None) -> str | None:
+    """The 403 detail for an org whose sign-up is not (yet) approved, else None."""
+    if org is None or org.approval_status in (None, "approved"):
+        return None
+    if org.approval_status == "rejected":
+        reason = (org.rejection_reason or "").strip()
+        return f"{REJECTED_DETAIL} Reason: {reason}" if reason else REJECTED_DETAIL
+    return PENDING_APPROVAL_DETAIL
+
+
 def get_current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
@@ -45,8 +61,43 @@ def get_current_user(
     user = db.get(User, payload.get("sub"))
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User is inactive or does not exist")
+    org = db.get(Organization, user.organization_id)
+    if org is not None and org.is_suspended:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This organization has been suspended. Contact support.")
+    approval_error = org_approval_error(org)
+    if approval_error:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=approval_error)
+    # Set when a platform admin is working inside this org via impersonation;
+    # audit.record() uses it to attribute changes to the admin.
+    user.impersonated_by = payload.get("imp")
     request.state.user = user
     return user
+
+
+def get_current_superuser(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    db: Session = Depends(get_db),
+) -> PlatformAdmin:
+    """Authenticate a platform super-admin from a platform-scoped bearer token.
+
+    Kept entirely separate from tenant auth: only a token minted by the platform
+    login (type ``platform_access``) is accepted, and it resolves to a
+    ``PlatformAdmin`` row, never a tenant ``User``.
+    """
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    payload = decode_platform_token(credentials.credentials)
+    if not payload:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    admin = db.get(PlatformAdmin, payload.get("sub"))
+    if not admin or not admin.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Administrator is inactive or does not exist")
+    request.state.platform_admin = admin
+    return admin
+
+
+require_superuser = get_current_superuser
 
 
 def require_roles(*roles: str):
