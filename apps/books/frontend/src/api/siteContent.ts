@@ -42,8 +42,15 @@ export interface SiteFooterColumn {
 }
 
 export interface SiteContent {
-  brand: { badge: string };
-  nav: { loginLabel: string; ctaLabel: string };
+  brand: { badge: string; name: string; logoUrl: string };
+  nav: {
+    loginLabel: string;
+    ctaLabel: string;
+    featuresLabel: string;
+    pricingLabel: string;
+    testimonialsLabel: string;
+    faqLabel: string;
+  };
   hero: {
     pill: string;
     pillTag: string;
@@ -58,6 +65,7 @@ export interface SiteContent {
   pricing: {
     badge: string;
     title: string;
+    description: string;
     monthlyLabel: string;
     annualLabel: string;
     annualDiscountLabel: string;
@@ -66,8 +74,8 @@ export interface SiteContent {
     popularLabel: string;
     plans: SitePricingPlan[];
   };
-  testimonials: { badge: string; title: string; items: SiteTestimonial[] };
-  faq: { badge: string; title: string; items: SiteFaqItem[] };
+  testimonials: { badge: string; title: string; description: string; items: SiteTestimonial[] };
+  faq: { badge: string; title: string; description: string; items: SiteFaqItem[] };
   ctaBanner: { title: string; subtitle: string; primaryCta: string; secondaryCta: string };
   footer: { tagline: string; columns: SiteFooterColumn[]; copyright: string; bottomNote: string };
   sections: {
@@ -77,6 +85,7 @@ export interface SiteContent {
     showFaq: boolean;
     showCtaBanner: boolean;
   };
+  seo: { title: string; description: string };
 }
 
 /** The bundled defaults (identical to the backend's default document). */
@@ -94,7 +103,20 @@ export const SITE_CONTENT_LIMITS = {
   faq: 20,
   footerColumns: 4,
   footerLinks: 8,
+  brandName: 40,
+  logoUrl: 500,
+  navLabel: 30,
+  sectionDescription: 500,
+  seoTitle: 120,
+  seoDescription: 300,
 } as const;
+
+/** Same rule as the backend: a site path ("/logo.png") or an https:// URL, no whitespace or backslashes. */
+export function isSafeLogoUrl(url: string): boolean {
+  if (!url || /[\s\\]/.test(url)) return false;
+  if (url.startsWith('/')) return !url.startsWith('//');
+  return /^https:\/\/./i.test(url);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -117,7 +139,12 @@ export function normalizeSiteContent(raw: unknown): SiteContent {
     }
     result[key] = merged;
   }
-  return result as unknown as SiteContent;
+  const content = result as unknown as SiteContent;
+  // Never hand an unsafe URL to <img src>, whatever the server sent.
+  if (!isSafeLogoUrl(content.brand.logoUrl)) {
+    content.brand = { ...content.brand, logoUrl: DEFAULT_SITE_CONTENT.brand.logoUrl };
+  }
+  return content;
 }
 
 /**
@@ -138,6 +165,11 @@ function checkCount(errors: Record<string, string>, path: string, count: number,
   if (count > max) errors[path] = `Up to ${max} ${noun} allowed (currently ${count}).`;
 }
 
+function checkLength(errors: Record<string, string>, path: string, value: string, max: number, required = false) {
+  if (required && !value.trim()) errors[path] = 'This field is required.';
+  else if (value.length > max) errors[path] = `Up to ${max} characters allowed (currently ${value.length}).`;
+}
+
 /**
  * Client-side checks mirroring the backend limits. Keys are dotted paths
  * (`pricing.plans.0.monthlyPrice`), the same form the API's 422 errors map to.
@@ -145,6 +177,20 @@ function checkCount(errors: Record<string, string>, path: string, count: number,
 export function validateSiteContent(content: SiteContent): Record<string, string> {
   const errors: Record<string, string> = {};
   const L = SITE_CONTENT_LIMITS;
+
+  checkLength(errors, 'brand.name', content.brand.name, L.brandName);
+  checkLength(errors, 'brand.logoUrl', content.brand.logoUrl, L.logoUrl, true);
+  if (!errors['brand.logoUrl'] && !isSafeLogoUrl(content.brand.logoUrl)) {
+    errors['brand.logoUrl'] = 'Use a site path starting with “/” or an https:// URL, without spaces.';
+  }
+  for (const key of ['featuresLabel', 'pricingLabel', 'testimonialsLabel', 'faqLabel'] as const) {
+    checkLength(errors, `nav.${key}`, content.nav[key], L.navLabel, true);
+  }
+  checkLength(errors, 'pricing.description', content.pricing.description, L.sectionDescription);
+  checkLength(errors, 'testimonials.description', content.testimonials.description, L.sectionDescription);
+  checkLength(errors, 'faq.description', content.faq.description, L.sectionDescription);
+  checkLength(errors, 'seo.title', content.seo.title, L.seoTitle);
+  checkLength(errors, 'seo.description', content.seo.description, L.seoDescription);
 
   checkCount(errors, 'hero.trustItems', content.hero.trustItems.length, L.trustItems, 'trust items');
   checkCount(errors, 'features.items', content.features.items.length, L.featureItems, 'features');

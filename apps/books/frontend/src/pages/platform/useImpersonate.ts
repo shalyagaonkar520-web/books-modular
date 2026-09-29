@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { platformApi } from '@/api/platform';
 import { useAuth } from '@/auth/AuthContext';
+import { clearWorkspace, setWorkspace } from '@/auth/workspace';
 import { useToast } from '@/components/ui/Toast';
 import { useSubmit } from '@/hooks/useSubmit';
 
@@ -21,9 +22,12 @@ export function useImpersonate() {
   const start = async (userId: string, to = '/dashboard'): Promise<boolean> => {
     const result = await run(() => platformApi.users.impersonate(userId));
     if (!result) return false;
+    // Remember which org we're working in so a reload re-enters it.
+    setWorkspace({ userId, userEmail: result.user.email, orgId: result.organization.id, orgName: result.organization.name });
     try {
       await adoptSession(result.accessToken);
     } catch {
+      clearWorkspace();
       toast.error('Could not open the organization. The user may have been deactivated.');
       return false;
     }

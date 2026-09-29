@@ -1,6 +1,13 @@
 {
-  "brand": { "badge": "Enterprise Edition" },
-  "nav": { "loginLabel": "Log In", "ctaLabel": "Access Rooman Books" },
+  "brand": { "badge": "Enterprise Edition", "name": "Books", "logoUrl": "/rooman-logo.png" },
+  "nav": {
+    "loginLabel": "Log In",
+    "ctaLabel": "Access Rooman Books",
+    "featuresLabel": "Features",
+    "pricingLabel": "Pricing",
+    "testimonialsLabel": "Customers",
+    "faqLabel": "FAQ"
+  },
   "hero": {
     "pill": "Intelligent Automation • 100% GST Ready & Fully Unlocked",
     "pillTag": "New",
@@ -30,6 +37,7 @@
   "pricing": {
     "badge": "SIMPLE PRICING",
     "title": "Plans for Every Business Size",
+    "description": "",
     "monthlyLabel": "Monthly",
     "annualLabel": "Annual",
     "annualDiscountLabel": "Save 20%",
@@ -72,6 +80,7 @@
   "testimonials": {
     "badge": "SOCIAL PROOF",
     "title": "Trusted by Business Leaders",
+    "description": "",
     "items": [
       { "name": "Rajesh Kumar", "role": "CFO, Zylker Electronics", "quote": "Rooman Books is blisteringly fast compared to traditional ERPs. Our inventory updates in milliseconds and GST returns take minutes instead of days." },
       { "name": "Ananya Mehta", "role": "Senior Chartered Accountant", "quote": "Having all modules completely unlocked with authentic double-entry journals and bank reconciliation gave our accounting team a seamless experience." }
@@ -80,6 +89,7 @@
   "faq": {
     "badge": "QUESTIONS & ANSWERS",
     "title": "Frequently Asked Questions",
+    "description": "",
     "items": [
       { "question": "How does Rooman Books ensure real-time speed and accuracy?", "answer": "Rooman Books uses an asynchronous financial engine with in-memory caching and real-time ledger synchronization." },
       { "question": "Are all modules in the sidebar fully unlocked?", "answer": "Yes! All locks have been removed. Every module is 100% active and functional." },
@@ -103,5 +113,6 @@
     "copyright": "© 2026 Rooman Books Pvt Ltd. All rights reserved.",
     "bottomNote": "ISO 27001 Certified • Bank-Grade 256-bit Security"
   },
-  "sections": { "showFeatures": true, "showPricing": true, "showTestimonials": true, "showFaq": true, "showCtaBanner": true }
+  "sections": { "showFeatures": true, "showPricing": true, "showTestimonials": true, "showFaq": true, "showCtaBanner": true },
+  "seo": { "title": "Rooman Books", "description": "" }
 }

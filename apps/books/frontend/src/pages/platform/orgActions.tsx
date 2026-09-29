@@ -7,24 +7,34 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   AppWindow,
-  BadgeCheck,
-  Ban,
   Archive,
   ArchiveRestore,
+  ArrowLeftRight,
+  BadgeCheck,
+  Ban,
   Banknote,
   BarChart3,
+  BookOpen,
   Building,
+  Clock,
+  CreditCard,
   FileText,
+  FolderOpen,
+  IndianRupee,
   Landmark,
   LayoutDashboard,
+  LineChart,
   LogIn,
   Package,
+  PieChart,
   Receipt,
   RefreshCw,
   Settings,
   Trash2,
   Truck,
   Users,
+  UsersRound,
+  Wallet,
 } from 'lucide-react';
 
 import { ApiError } from '@/api/client';
@@ -423,15 +433,26 @@ export interface AppRoute {
 }
 
 export const APP_ROUTES: AppRoute[] = [
+  // Every module in the organization's own sidebar, in the same order.
   { path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={14} /> },
-  { path: '/invoices', label: 'Invoices', icon: <FileText size={14} /> },
-  { path: '/customers', label: 'Customers', icon: <Users size={14} /> },
-  { path: '/vendors', label: 'Vendors', icon: <Truck size={14} /> },
   { path: '/items', label: 'Items', icon: <Package size={14} /> },
-  { path: '/bills', label: 'Bills', icon: <Receipt size={14} /> },
+  { path: '/customers', label: 'Customers', icon: <Users size={14} /> },
+  { path: '/invoices', label: 'Invoices', icon: <FileText size={14} /> },
   { path: '/payments-received', label: 'Payments received', icon: <Banknote size={14} /> },
-  { path: '/reports', label: 'Reports', icon: <BarChart3 size={14} /> },
+  { path: '/expense-dashboard', label: 'Expense dashboard', icon: <PieChart size={14} /> },
+  { path: '/vendors', label: 'Vendors', icon: <Truck size={14} /> },
+  { path: '/bills', label: 'Bills', icon: <Receipt size={14} /> },
+  { path: '/expenses', label: 'Expenses', icon: <CreditCard size={14} /> },
+  { path: '/payments-made', label: 'Payments made', icon: <Wallet size={14} /> },
+  { path: '/financial-dashboard', label: 'Financial Hub', icon: <LineChart size={14} /> },
+  { path: '/receivables-payables', label: 'Receivables & Payables', icon: <ArrowLeftRight size={14} /> },
   { path: '/banking', label: 'Banking', icon: <Landmark size={14} /> },
+  { path: '/razorpay-payments', label: 'Razorpay payments', icon: <IndianRupee size={14} /> },
+  { path: '/time-tracking', label: 'Time tracking', icon: <Clock size={14} /> },
+  { path: '/accounting', label: 'Accountant', icon: <BookOpen size={14} /> },
+  { path: '/reports', label: 'Reports', icon: <BarChart3 size={14} /> },
+  { path: '/documents', label: 'Documents', icon: <FolderOpen size={14} /> },
+  { path: '/payroll', label: 'Payroll', icon: <UsersRound size={14} /> },
   { path: '/settings', label: 'Organization settings', icon: <Settings size={14} /> },
 ];
 

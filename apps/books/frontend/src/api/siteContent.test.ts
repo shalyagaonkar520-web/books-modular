@@ -37,6 +37,22 @@ describe('siteContent', () => {
     expect(content.pricing).toEqual(DEFAULT_SITE_CONTENT.pricing);
   });
 
+  it('fills fields added later (brand name, nav labels, SEO) into an older document', () => {
+    const content = normalizeSiteContent({ brand: { badge: 'Old' }, nav: { loginLabel: 'In', ctaLabel: 'Go' }, faq: { title: 'Q' } });
+    expect(content.brand).toEqual({ badge: 'Old', name: 'Books', logoUrl: '/rooman-logo.png' });
+    expect(content.nav.testimonialsLabel).toBe('Customers');
+    expect(content.faq.description).toBe('');
+    expect(content.seo).toEqual({ title: 'Rooman Books', description: '' });
+  });
+
+  it('never keeps an unsafe logo URL', () => {
+    for (const logoUrl of ['javascript:alert(1)', 'http://x', 'has space', '//evil.example.com/l.png']) {
+      expect(normalizeSiteContent({ brand: { logoUrl } }).brand.logoUrl).toBe('/rooman-logo.png');
+      expect(validateSiteContent({ ...DEFAULT_SITE_CONTENT, brand: { ...DEFAULT_SITE_CONTENT.brand, logoUrl } })['brand.logoUrl']).toBeDefined();
+    }
+    expect(normalizeSiteContent({ brand: { logoUrl: 'https://cdn.example.com/l.png' } }).brand.logoUrl).toBe('https://cdn.example.com/l.png');
+  });
+
   it('accepts the defaults and flags limits the backend enforces', () => {
     expect(validateSiteContent(DEFAULT_SITE_CONTENT)).toEqual({});
 

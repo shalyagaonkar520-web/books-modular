@@ -2661,10 +2661,14 @@ th.sortable {
 }
 
 .form-actions-bar {
+  /* Pinned to the bottom of the visible area while scrolling. The negative
+     `bottom` equals .app-main's bottom padding so the bar hugs the screen edge;
+     using a negative bottom *margin* for that instead made the browser pin it
+     one padding-height too high, covering the end of the last section. */
   position: sticky;
-  bottom: 0;
+  bottom: -48px;
   z-index: 20;
-  margin: 0 -24px -48px;
+  margin: 0 -24px;
   padding: 12px 24px;
   background: var(--surface);
   border-top: 1px solid var(--border);
@@ -2673,7 +2677,8 @@ th.sortable {
 
 @media (max-width: 720px) {
   .form-actions-bar {
-    margin: 0 -14px -40px;
+    bottom: -40px;
+    margin: 0 -14px;
     padding: 10px 14px;
   }
 }

@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
+import { WorkspaceBanner } from './WorkspaceBanner';
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -14,6 +15,7 @@ export function AppLayout() {
 
   return (
     <div className="app-shell">
+      <WorkspaceBanner />
       <Header onToggleSidebar={() => setSidebarOpen((open) => !open)} />
       <div className="app-body">
         <Sidebar open={sidebarOpen} onNavigate={() => setSidebarOpen(false)} />

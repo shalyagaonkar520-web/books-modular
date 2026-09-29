@@ -67,6 +67,9 @@ def get_current_user(
     approval_error = org_approval_error(org)
     if approval_error:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=approval_error)
+    # Set when a platform admin is working inside this org via impersonation;
+    # audit.record() uses it to attribute changes to the admin.
+    user.impersonated_by = payload.get("imp")
     request.state.user = user
     return user
 

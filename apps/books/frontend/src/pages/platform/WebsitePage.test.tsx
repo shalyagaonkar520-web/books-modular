@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_SITE_CONTENT } from '@/api/siteContent';
@@ -31,6 +31,61 @@ describe('WebsitePage', () => {
     await waitFor(() => expect(screen.getByText('All changes saved')).toBeInTheDocument());
     const put = calls.find((call) => call.method === 'PUT' && call.path === '/api/platform/site-content');
     expect((put?.body as typeof DEFAULT_SITE_CONTENT).hero.titleHighlight).toBe('Growing Businesses');
+  });
+
+  it('edits the brand, nav labels, section descriptions and SEO fields and saves them', async () => {
+    const { calls } = installMockApi({
+      'GET /api/platform/site-content': DEFAULT_SITE_CONTENT,
+      'PUT /api/platform/site-content': (_url: URL, init: RequestInit) => json(JSON.parse(String(init.body))),
+    });
+    renderWithProviders(<WebsitePage />);
+    await screen.findByLabelText('Title (highlighted line)');
+
+    // Edit one card at a time and collapse it again (the draft lives in the page), keeping the DOM small.
+    const editCard = (id: string, edits: Array<[string, string]>) => {
+      const toggle = document.querySelector(`#site-editor-${id}-title button`) as HTMLButtonElement;
+      fireEvent.click(toggle);
+      const panel = within(document.getElementById(`site-editor-${id}`) as HTMLElement);
+      for (const [label, value] of edits) fireEvent.change(panel.getByLabelText(label), { target: { value } });
+      fireEvent.click(toggle);
+    };
+    editCard('brand', [
+      ['Brand name', 'Ledgerly'],
+      ['Logo URL', 'https://cdn.example.com/l.png'],
+      ['Features link label', 'Tools'],
+      ['Pricing link label', 'Plans'],
+      ['Testimonials link label', 'Reviews'],
+      ['FAQ link label', 'Help'],
+    ]);
+    editCard('pricing', [['Section description', 'Pricing blurb']]);
+    editCard('testimonials', [['Section description', 'Testimonials blurb']]);
+    editCard('faq', [['Section description', 'FAQ blurb']]);
+    editCard('seo', [
+      ['Page title', 'Ledgerly - Cloud Accounting'],
+      ['Meta description', 'GST-ready cloud accounting.'],
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByText('All changes saved')).toBeInTheDocument());
+    const body = calls.find((call) => call.method === 'PUT' && call.path === '/api/platform/site-content')?.body as typeof DEFAULT_SITE_CONTENT;
+    expect(body.brand).toMatchObject({ name: 'Ledgerly', logoUrl: 'https://cdn.example.com/l.png' });
+    expect(body.nav).toMatchObject({ featuresLabel: 'Tools', pricingLabel: 'Plans', testimonialsLabel: 'Reviews', faqLabel: 'Help' });
+    expect(body.pricing.description).toBe('Pricing blurb');
+    expect(body.testimonials.description).toBe('Testimonials blurb');
+    expect(body.faq.description).toBe('FAQ blurb');
+    expect(body.seo).toEqual({ title: 'Ledgerly - Cloud Accounting', description: 'GST-ready cloud accounting.' });
+  });
+
+  it('blocks saving an unsafe logo URL', async () => {
+    const { calls } = installMockApi({ 'GET /api/platform/site-content': DEFAULT_SITE_CONTENT });
+    renderWithProviders(<WebsitePage />);
+    await screen.findByLabelText('Title (highlighted line)');
+    fireEvent.click(document.querySelector('#site-editor-brand-title button') as HTMLButtonElement);
+    const logo = screen.getByLabelText('Logo URL');
+    fireEvent.change(logo, { target: { value: 'javascript:alert(1)' } });
+    expect(logo).toHaveAttribute('aria-invalid', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(calls.some((call) => call.method === 'PUT')).toBe(false);
   });
 
   it('maps 422 errors onto the nested field and opens its section', async () => {

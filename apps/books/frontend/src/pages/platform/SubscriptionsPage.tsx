@@ -24,7 +24,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
-import { CheckboxField, SelectField, TextField } from '@/components/ui/Field';
+import { CheckboxField, SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
@@ -230,6 +230,33 @@ export function SubscriptionsPage() {
           ) : null}
 
           <FormError message={saveSubmit.error} />
+
+          {/* Pricing section heading on the landing page */}
+          <Card title="Pricing Section Heading" subtitle="The badge, title and description shown above the plans on the landing page.">
+            <div className="form-grid">
+              <TextField
+                label="Section badge"
+                value={pricing.badge}
+                hint="e.g. SIMPLE PRICING"
+                error={errors['pricing.badge']}
+                onChange={(e) => patchPricing({ badge: e.target.value })}
+              />
+              <TextField
+                label="Section title"
+                value={pricing.title}
+                error={errors['pricing.title']}
+                onChange={(e) => patchPricing({ title: e.target.value })}
+              />
+            </div>
+            <TextAreaField
+              label="Section description"
+              rows={2}
+              value={pricing.description}
+              hint="Leave empty to hide."
+              error={errors['pricing.description']}
+              onChange={(e) => patchPricing({ description: e.target.value })}
+            />
+          </Card>
 
           {/* Global Pricing Display Settings */}
           <Card title="Pricing Configuration" subtitle="Configure currency, billing toggle labels, and period tags.">
@@ -475,6 +502,32 @@ export function SubscriptionsPage() {
             title="Customer Pricing Preview"
             subtitle="This is how your plans and subscription pricing appear on the public landing page."
           >
+            {pricing.badge || pricing.title || pricing.description ? (
+              <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                {pricing.badge ? (
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      letterSpacing: '0.08em',
+                      color: '#2563eb',
+                      background: '#eff6ff',
+                      padding: '4px 12px',
+                      borderRadius: 999,
+                      marginBottom: 10,
+                    }}
+                  >
+                    {pricing.badge}
+                  </span>
+                ) : null}
+                {pricing.title ? <h3 style={{ fontSize: 24, fontWeight: 800, color: '#0f172a', margin: '0 0 8px' }}>{pricing.title}</h3> : null}
+                {pricing.description ? (
+                  <p style={{ fontSize: 14, color: '#64748b', margin: '0 auto', maxWidth: 560 }}>{pricing.description}</p>
+                ) : null}
+              </div>
+            ) : null}
+
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
               <div
                 style={{

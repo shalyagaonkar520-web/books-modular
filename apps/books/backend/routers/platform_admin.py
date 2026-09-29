@@ -1149,7 +1149,7 @@ def impersonate_user(user_id: str, db: Session = Depends(get_db), admin: Platfor
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot impersonate a user in a suspended organization")
     if not org.is_approved:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot impersonate a user in an organization that is not approved")
-    token = create_access_token(user.id, user.organization_id, user.role)
+    token = create_access_token(user.id, user.organization_id, user.role, impersonator=admin.email)
     audit.record(
         db,
         None,

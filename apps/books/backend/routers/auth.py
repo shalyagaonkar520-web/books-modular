@@ -658,7 +658,8 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
 @router.get("/me", response_model=AuthResponse)
 def me(user: User = Depends(get_current_user)):
     # Re-issue a fresh access token alongside profile data so the client can extend its session.
-    access = create_access_token(user.id, user.organization_id, user.role)
+    # Keep the platform-admin attribution when re-issuing an impersonated session.
+    access = create_access_token(user.id, user.organization_id, user.role, impersonator=getattr(user, "impersonated_by", None))
     return _auth_response(access, user)
 
 

@@ -50,4 +50,48 @@ describe('LandingPage', () => {
     expect(screen.queryByRole('link', { name: 'FAQ' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Pricing' })).toBeInTheDocument();
   });
+
+  it('renders the editable brand, nav labels, section descriptions and SEO title', async () => {
+    const live: SiteContent = {
+      ...DEFAULT_SITE_CONTENT,
+      brand: { ...DEFAULT_SITE_CONTENT.brand, name: 'Ledgerly', logoUrl: 'https://cdn.example.com/l.png' },
+      nav: { ...DEFAULT_SITE_CONTENT.nav, featuresLabel: 'Tools', pricingLabel: 'Plans', testimonialsLabel: 'Reviews', faqLabel: 'Help' },
+      pricing: { ...DEFAULT_SITE_CONTENT.pricing, description: 'Simple plans, no surprises.' },
+      testimonials: { ...DEFAULT_SITE_CONTENT.testimonials, description: 'Loved by finance teams.' },
+      faq: { ...DEFAULT_SITE_CONTENT.faq, description: 'Everything you wanted to know.' },
+      seo: { title: 'Ledgerly - Cloud Accounting', description: 'GST-ready cloud accounting.' },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(live), { status: 200, headers: { 'content-type': 'application/json' } })),
+    );
+    document.title = 'Before';
+    const { unmount } = renderLanding();
+
+    expect(await screen.findByText('Ledgerly')).toBeInTheDocument();
+    for (const name of ['Tools', 'Plans', 'Reviews', 'Help']) {
+      expect(screen.getByRole('link', { name })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole('link', { name: 'Customers' })).not.toBeInTheDocument();
+    expect(screen.getByText('Simple plans, no surprises.')).toHaveClass('zb-section-desc');
+    expect(screen.getByText('Loved by finance teams.')).toBeInTheDocument();
+    expect(screen.getByText('Everything you wanted to know.')).toBeInTheDocument();
+    expect(screen.getByAltText('Rooman')).toHaveAttribute('src', 'https://cdn.example.com/l.png');
+    expect(screen.getByAltText('Rooman Books')).toHaveAttribute('src', 'https://cdn.example.com/l.png');
+    expect(document.title).toBe('Ledgerly - Cloud Accounting');
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute('content', 'GST-ready cloud accounting.');
+
+    unmount();
+    expect(document.title).toBe('Before');
+  });
+
+  it('hides empty section descriptions and uses the default brand', () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => undefined)));
+    const { container } = renderLanding();
+    // Only the features section has a description in the defaults.
+    expect(container.querySelectorAll('.zb-section-desc')).toHaveLength(1);
+    expect(screen.getByText('Books')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Customers' })).toBeInTheDocument();
+    expect(document.title).toBe('Rooman Books');
+  });
 });

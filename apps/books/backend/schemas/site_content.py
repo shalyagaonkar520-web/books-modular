@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Annotated, List, Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from backend.schemas.common import APIModel
 
@@ -18,13 +18,38 @@ Line = Annotated[str, Field(max_length=120)]
 MAX_PRICE = 10_000_000
 
 
+DEFAULT_LOGO_URL = "/rooman-logo.png"
+
+
+def _check_logo_url(value: str) -> str:
+    """A site-relative path ("/logo.png") or an https:// URL; nothing that could run script."""
+    if any(ch.isspace() for ch in value) or "\\" in value:
+        raise ValueError("The logo URL must not contain spaces or backslashes.")
+    if value.startswith("/") and not value.startswith("//"):
+        return value
+    if value.lower().startswith("https://") and len(value) > len("https://"):
+        return value
+    raise ValueError('The logo URL must be a site path starting with "/" or an https:// URL.')
+
+
 class BrandContent(APIModel):
     badge: str = Field(default="", max_length=40)
+    name: str = Field(default="Books", max_length=40)
+    logo_url: str = Field(default=DEFAULT_LOGO_URL, min_length=1, max_length=500)
+
+    @field_validator("logo_url")
+    @classmethod
+    def _logo_url(cls, value: str) -> str:
+        return _check_logo_url(value)
 
 
 class NavContent(APIModel):
     login_label: str = Field(min_length=1, max_length=40)
     cta_label: str = Field(min_length=1, max_length=60)
+    features_label: str = Field(default="Features", min_length=1, max_length=30)
+    pricing_label: str = Field(default="Pricing", min_length=1, max_length=30)
+    testimonials_label: str = Field(default="Customers", min_length=1, max_length=30)
+    faq_label: str = Field(default="FAQ", min_length=1, max_length=30)
 
 
 class HeroContent(APIModel):
@@ -64,6 +89,7 @@ class PricingPlan(APIModel):
 class PricingContent(APIModel):
     badge: str = Field(default="", max_length=60)
     title: str = Field(default="", max_length=200)
+    description: str = Field(default="", max_length=500)
     monthly_label: str = Field(default="Monthly", max_length=30)
     annual_label: str = Field(default="Annual", max_length=30)
     annual_discount_label: str = Field(default="", max_length=40)
@@ -82,6 +108,7 @@ class Testimonial(APIModel):
 class TestimonialsContent(APIModel):
     badge: str = Field(default="", max_length=60)
     title: str = Field(default="", max_length=200)
+    description: str = Field(default="", max_length=500)
     items: List[Testimonial] = Field(default_factory=list, max_length=9)
 
 
@@ -93,6 +120,7 @@ class FaqItem(APIModel):
 class FaqContent(APIModel):
     badge: str = Field(default="", max_length=60)
     title: str = Field(default="", max_length=200)
+    description: str = Field(default="", max_length=500)
     items: List[FaqItem] = Field(default_factory=list, max_length=20)
 
 
@@ -123,6 +151,11 @@ class SectionVisibility(APIModel):
     show_cta_banner: bool = True
 
 
+class SeoContent(APIModel):
+    title: str = Field(default="Rooman Books", max_length=120)
+    description: str = Field(default="", max_length=300)
+
+
 class SiteContent(APIModel):
     brand: BrandContent
     nav: NavContent
@@ -134,3 +167,4 @@ class SiteContent(APIModel):
     cta_banner: CtaBannerContent
     footer: FooterContent
     sections: SectionVisibility = Field(default_factory=SectionVisibility)
+    seo: SeoContent = Field(default_factory=SeoContent)

@@ -25,7 +25,7 @@ import { useSubmit } from '@/hooks/useSubmit';
 // Sections
 // ---------------------------------------------------------------------------
 
-type SectionId = 'brand' | 'hero' | 'features' | 'pricing' | 'testimonials' | 'faq' | 'ctaBanner' | 'footer' | 'sections';
+type SectionId = 'brand' | 'hero' | 'features' | 'pricing' | 'testimonials' | 'faq' | 'ctaBanner' | 'footer' | 'sections' | 'seo';
 
 /** Which editor card owns each top-level key of the document (for error badges / auto-expanding). */
 const SECTION_OF_KEY: Record<keyof SiteContent, SectionId> = {
@@ -39,6 +39,7 @@ const SECTION_OF_KEY: Record<keyof SiteContent, SectionId> = {
   ctaBanner: 'ctaBanner',
   footer: 'footer',
   sections: 'sections',
+  seo: 'seo',
 };
 
 function sectionOfPath(path: string): SectionId | null {
@@ -213,7 +214,7 @@ export function WebsitePage() {
     );
   }
 
-  const { brand, nav, hero, features, pricing, testimonials, faq, ctaBanner, footer, sections } = draft;
+  const { brand, nav, hero, features, pricing, testimonials, faq, ctaBanner, footer, sections, seo } = draft;
   const sectionProps = (id: SectionId) => ({
     id,
     open: openSections.has(id),
@@ -228,11 +229,26 @@ export function WebsitePage() {
       <div className="site-editor">
         <FormError message={saveSubmit.error} />
 
-        <EditorSection {...sectionProps('brand')} title="Brand & navigation" description="Badge next to the logo and the header buttons.">
+        <EditorSection {...sectionProps('brand')} title="Brand & navigation" description="Logo, brand name and badge, the header links and buttons.">
           <div className="form-grid-3">
+            <TextField label="Brand name" hint="Text next to the logo. Leave empty to hide." value={brand.name} error={err('brand.name')} onChange={(e) => patch('brand', { name: e.target.value })} />
+            <TextField
+              label="Logo URL"
+              hint="A site path such as /rooman-logo.png or an https:// URL. Used in the header and footer."
+              maxLength={LIMITS.logoUrl}
+              value={brand.logoUrl}
+              error={err('brand.logoUrl')}
+              onChange={(e) => patch('brand', { logoUrl: e.target.value })}
+            />
             <TextField label="Brand badge" value={brand.badge} error={err('brand.badge')} onChange={(e) => patch('brand', { badge: e.target.value })} />
             <TextField label="Log-in link label" value={nav.loginLabel} error={err('nav.loginLabel')} onChange={(e) => patch('nav', { loginLabel: e.target.value })} />
             <TextField label="Header button label" value={nav.ctaLabel} error={err('nav.ctaLabel')} onChange={(e) => patch('nav', { ctaLabel: e.target.value })} />
+          </div>
+          <div className="form-grid">
+            <TextField label="Features link label" value={nav.featuresLabel} error={err('nav.featuresLabel')} onChange={(e) => patch('nav', { featuresLabel: e.target.value })} />
+            <TextField label="Pricing link label" value={nav.pricingLabel} error={err('nav.pricingLabel')} onChange={(e) => patch('nav', { pricingLabel: e.target.value })} />
+            <TextField label="Testimonials link label" value={nav.testimonialsLabel} error={err('nav.testimonialsLabel')} onChange={(e) => patch('nav', { testimonialsLabel: e.target.value })} />
+            <TextField label="FAQ link label" value={nav.faqLabel} error={err('nav.faqLabel')} onChange={(e) => patch('nav', { faqLabel: e.target.value })} />
           </div>
         </EditorSection>
 
@@ -296,6 +312,7 @@ export function WebsitePage() {
             <TextField label="Price period label" hint="Shown after the price, e.g. /month" value={pricing.periodLabel} error={err('pricing.periodLabel')} onChange={(e) => patch('pricing', { periodLabel: e.target.value })} />
             <TextField label="“Most popular” badge text" value={pricing.popularLabel} error={err('pricing.popularLabel')} onChange={(e) => patch('pricing', { popularLabel: e.target.value })} />
           </div>
+          <TextAreaField label="Section description" hint="Leave empty to hide." rows={2} value={pricing.description} error={err('pricing.description')} onChange={(e) => patch('pricing', { description: e.target.value })} />
           <ItemListEditor
             legend="Plans"
             noun="plan"
@@ -316,6 +333,7 @@ export function WebsitePage() {
             <TextField label="Section badge" value={testimonials.badge} error={err('testimonials.badge')} onChange={(e) => patch('testimonials', { badge: e.target.value })} />
             <TextField label="Section title" value={testimonials.title} error={err('testimonials.title')} onChange={(e) => patch('testimonials', { title: e.target.value })} />
           </div>
+          <TextAreaField label="Section description" hint="Leave empty to hide." rows={2} value={testimonials.description} error={err('testimonials.description')} onChange={(e) => patch('testimonials', { description: e.target.value })} />
           <ItemListEditor
             legend="Quotes"
             noun="testimonial"
@@ -343,6 +361,7 @@ export function WebsitePage() {
             <TextField label="Section badge" value={faq.badge} error={err('faq.badge')} onChange={(e) => patch('faq', { badge: e.target.value })} />
             <TextField label="Section title" value={faq.title} error={err('faq.title')} onChange={(e) => patch('faq', { title: e.target.value })} />
           </div>
+          <TextAreaField label="Section description" hint="Leave empty to hide." rows={2} value={faq.description} error={err('faq.description')} onChange={(e) => patch('faq', { description: e.target.value })} />
           <ItemListEditor
             legend="Questions"
             noun="question"
@@ -413,6 +432,19 @@ export function WebsitePage() {
             <CheckboxField label="Show FAQ" checked={sections.showFaq} onChange={(e) => patch('sections', { showFaq: e.target.checked })} />
             <CheckboxField label="Show call-to-action banner" checked={sections.showCtaBanner} onChange={(e) => patch('sections', { showCtaBanner: e.target.checked })} />
           </div>
+        </EditorSection>
+
+        <EditorSection {...sectionProps('seo')} title="Search engine (SEO)" description="The browser tab title and the description search engines show.">
+          <TextField label="Page title" maxLength={LIMITS.seoTitle} value={seo.title} error={err('seo.title')} onChange={(e) => patch('seo', { title: e.target.value })} />
+          <TextAreaField
+            label="Meta description"
+            hint="Leave empty to keep the built-in description."
+            rows={2}
+            maxLength={LIMITS.seoDescription}
+            value={seo.description}
+            error={err('seo.description')}
+            onChange={(e) => patch('seo', { description: e.target.value })}
+          />
         </EditorSection>
       </div>
 

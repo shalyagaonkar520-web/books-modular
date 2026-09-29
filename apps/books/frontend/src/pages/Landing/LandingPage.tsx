@@ -50,7 +50,35 @@ export function LandingPage() {
     return () => controller.abort();
   }, []);
 
-  const { brand, nav, hero, features, pricing, testimonials, faq, ctaBanner, footer, sections } = content;
+  const { brand, nav, hero, features, pricing, testimonials, faq, ctaBanner, footer, sections, seo } = content;
+
+  // The tab title follows the editable SEO title while the landing page is mounted.
+  useEffect(() => {
+    if (!seo.title) return;
+    const previous = document.title;
+    document.title = seo.title;
+    return () => {
+      document.title = previous;
+    };
+  }, [seo.title]);
+
+  // An empty SEO description keeps whatever index.html ships with.
+  useEffect(() => {
+    if (!seo.description) return;
+    const existing =document.head.querySelector<HTMLMetaElement>('meta[name="description"]');
+    const created = !existing;
+    const meta = existing ?? document.createElement('meta');
+    if (created) {
+      meta.name = 'description';
+      document.head.appendChild(meta);
+    }
+    const previous = meta.content;
+    meta.content = seo.description;
+    return () => {
+      if (created) meta.remove();
+      else meta.content = previous;
+    };
+  }, [seo.description]);
 
   const goToLogin = () => navigate('/login');
   const goToRegister = () => navigate('/register');
@@ -65,15 +93,15 @@ export function LandingPage() {
       <header className="zb-landing-nav">
         <div className="zb-landing-nav-inner">
           <div className="zb-landing-brand" onClick={goToLogin}>
-            <img src="/rooman-logo.png" alt="Rooman" className="zb-landing-logo-img" />
-            <span className="zb-landing-brand-text"><strong>Books</strong></span>
+            <img src={brand.logoUrl} alt="Rooman" className="zb-landing-logo-img" />
+            {brand.name && <span className="zb-landing-brand-text"><strong>{brand.name}</strong></span>}
             {brand.badge && <span className="zb-landing-badge">{brand.badge}</span>}
           </div>
           <nav className="zb-landing-links">
-            {sections.showFeatures && <a href="#features" className="zb-landing-link">Features</a>}
-            {sections.showPricing && <a href="#pricing" className="zb-landing-link">Pricing</a>}
-            {sections.showTestimonials && <a href="#testimonials" className="zb-landing-link">Customers</a>}
-            {sections.showFaq && <a href="#faq" className="zb-landing-link">FAQ</a>}
+            {sections.showFeatures && <a href="#features" className="zb-landing-link">{nav.featuresLabel}</a>}
+            {sections.showPricing && <a href="#pricing" className="zb-landing-link">{nav.pricingLabel}</a>}
+            {sections.showTestimonials && <a href="#testimonials" className="zb-landing-link">{nav.testimonialsLabel}</a>}
+            {sections.showFaq && <a href="#faq" className="zb-landing-link">{nav.faqLabel}</a>}
           </nav>
           <div className="zb-landing-nav-actions">
             <button className="zb-landing-btn-text" onClick={goToLogin}>{nav.loginLabel}</button>
@@ -144,6 +172,7 @@ export function LandingPage() {
           <div className="zb-section-heading text-center">
             <span className="zb-section-badge">{pricing.badge}</span>
             <h2 className="zb-section-title">{pricing.title}</h2>
+            {pricing.description && <p className="zb-section-desc">{pricing.description}</p>}
           </div>
           <div className="zb-pricing-toggle-wrap">
             <span className={!annualBilling ? 'active' : ''}>{pricing.monthlyLabel}</span>
@@ -188,6 +217,7 @@ export function LandingPage() {
           <div className="zb-section-heading text-center">
             <span className="zb-section-badge">{testimonials.badge}</span>
             <h2 className="zb-section-title">{testimonials.title}</h2>
+            {testimonials.description && <p className="zb-section-desc">{testimonials.description}</p>}
           </div>
           <div className="zb-testimonials-grid">
             {testimonials.items.map((t, i) => (
@@ -209,6 +239,7 @@ export function LandingPage() {
           <div className="zb-section-heading text-center">
             <span className="zb-section-badge">{faq.badge}</span>
             <h2 className="zb-section-title">{faq.title}</h2>
+            {faq.description && <p className="zb-section-desc">{faq.description}</p>}
           </div>
           <div className="zb-faq-accordion">
             {faq.items.map((item, idx) => (
@@ -237,7 +268,7 @@ export function LandingPage() {
       <footer className="zb-landing-footer">
         <div className="zb-landing-footer-inner">
           <div className="zb-footer-brand">
-            <img src="/rooman-logo.png" alt="Rooman Books" className="zb-footer-logo-img" />
+            <img src={brand.logoUrl} alt="Rooman Books" className="zb-footer-logo-img" />
             <p className="zb-footer-text">{footer.tagline}</p>
           </div>
           {footer.columns.map((column, i) => (

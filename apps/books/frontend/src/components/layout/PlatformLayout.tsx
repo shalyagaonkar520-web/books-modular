@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
+  Briefcase,
   Building2,
   CreditCard,
   Globe,
@@ -13,7 +14,7 @@ import {
   ShieldCheck,
   UserCog,
   Users,
-  } from 'lucide-react';
+} from 'lucide-react';
 
 import { platformApi } from '@/api/platform';
 import { usePlatformAuth } from '@/auth/PlatformAuthContext';
@@ -26,6 +27,7 @@ import { PlatformGlobalSearch } from './PlatformGlobalSearch';
 const NAV_LINKS = [
   { to: '/platform', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/platform/organizations', label: 'Organizations', icon: Building2, end: false },
+  { to: '/platform/workspace', label: 'Workspace', icon: Briefcase, end: false },
   { to: '/platform/users', label: 'Users', icon: Users, end: false },
   { to: '/platform/subscriptions', label: 'Subscriptions & Pricing', icon: CreditCard, end: false },
   { to: '/platform/audit-logs', label: 'Audit log', icon: ScrollText, end: false },

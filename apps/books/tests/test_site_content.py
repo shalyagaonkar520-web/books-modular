@@ -96,6 +96,78 @@ def test_invalid_content_is_rejected(client, admin_h, mutate):
     assert client.get("/api/public/site-content").json() == BACKEND_DEFAULT
 
 
+def test_new_branding_nav_and_seo_fields_round_trip(client, admin_h):
+    body = copy.deepcopy(BACKEND_DEFAULT)
+    body["brand"].update({"name": "Ledger", "logoUrl": "https://cdn.example.com/l.png"})
+    body["nav"].update({"featuresLabel": "Tools", "pricingLabel": "Plans", "testimonialsLabel": "Reviews", "faqLabel": "Help"})
+    body["pricing"]["description"] = "Pick the plan that fits."
+    body["testimonials"]["description"] = "What customers say."
+    body["faq"]["description"] = "Answers to common questions."
+    body["seo"] = {"title": "Ledger - Cloud Accounting", "description": "GST-ready cloud accounting."}
+    res = client.put("/api/platform/site-content", json=body, headers=admin_h)
+    assert res.status_code == 200, res.text
+
+    pub = client.get("/api/public/site-content").json()
+    assert pub == body
+
+
+def test_legacy_document_without_new_fields_gets_defaults(client, admin_h):
+    legacy = copy.deepcopy(BACKEND_DEFAULT)
+    legacy["brand"] = {"badge": "Legacy badge"}
+    legacy["nav"] = {"loginLabel": "Log In", "ctaLabel": "Access Rooman Books"}
+    for section in ("pricing", "testimonials", "faq"):
+        legacy[section].pop("description")
+    legacy.pop("seo")
+    with SessionLocal() as db:
+        platform_settings.set_value(db, SITE_CONTENT_KEY, json.dumps(legacy))
+        db.commit()
+
+    pub = client.get("/api/public/site-content").json()
+    expected = copy.deepcopy(BACKEND_DEFAULT)
+    expected["brand"]["badge"] = "Legacy badge"
+    assert pub == expected  # validated (not the fallback) and every new field filled from its default
+
+
+@pytest.mark.parametrize(
+    ("logo_url", "status"),
+    [
+        ("javascript:alert(1)", 422),
+        ("http://x", 422),
+        ("has space", 422),
+        ("/has space.png", 422),
+        ("//evil.example.com/l.png", 422),
+        ("https://", 422),
+        ("", 422),
+        ("/" + "a" * 500, 422),
+        ("/rooman-logo.png", 200),
+        ("https://cdn.example.com/l.png", 200),
+    ],
+)
+def test_logo_url_must_be_site_path_or_https(client, admin_h, logo_url, status):
+    body = copy.deepcopy(BACKEND_DEFAULT)
+    body["brand"]["logoUrl"] = logo_url
+    res = client.put("/api/platform/site-content", json=body, headers=admin_h)
+    assert res.status_code == status, res.text
+    if status == 200:
+        assert client.get("/api/public/site-content").json()["brand"]["logoUrl"] == logo_url
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda b: b["nav"].__setitem__("faqLabel", "x" * 31),
+        lambda b: b["nav"].__setitem__("pricingLabel", ""),
+        lambda b: b["seo"].__setitem__("title", "x" * 121),
+        lambda b: b["seo"].__setitem__("description", "x" * 301),
+        lambda b: b["pricing"].__setitem__("description", "x" * 501),
+    ],
+)
+def test_new_field_limits_are_enforced(client, admin_h, mutate):
+    body = copy.deepcopy(BACKEND_DEFAULT)
+    mutate(body)
+    assert client.put("/api/platform/site-content", json=body, headers=admin_h).status_code == 422
+
+
 def test_reset_restores_defaults(client, admin_h):
     body = copy.deepcopy(BACKEND_DEFAULT)
     body["brand"]["badge"] = "Changed"

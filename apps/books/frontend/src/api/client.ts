@@ -76,17 +76,40 @@ function humanize(field: string): string {
     .trim();
 }
 
+type RefreshFallback = () => Promise<string | null>;
+let refreshFallback: RefreshFallback | null = null;
+
+/** A second way to obtain a session when the refresh cookie can't - used by the
+ *  platform "workspace mode", which has no tenant refresh cookie at all. */
+export function setRefreshFallback(fn: RefreshFallback | null): void {
+  refreshFallback = fn;
+}
+
 async function refreshSession(): Promise<boolean> {
   try {
     const res = await fetch(`${BASE}/auth/refresh`, { method: 'POST', credentials: 'include' });
-    if (!res.ok) return false;
-    const body = (await res.json()) as { accessToken?: string };
-    if (!body.accessToken) return false;
-    accessToken = body.accessToken;
-    return true;
+    if (res.ok) {
+      const body = (await res.json()) as { accessToken?: string };
+      if (body.accessToken) {
+        accessToken = body.accessToken;
+        return true;
+      }
+    }
   } catch {
-    return false;
+    // fall through to the fallback
   }
+  if (refreshFallback) {
+    try {
+      const token = await refreshFallback();
+      if (token) {
+        accessToken = token;
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return false;
 }
 
 let refreshInFlight: Promise<boolean> | null = null;
