@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
@@ -47,6 +48,7 @@ const lineAmount = (line: LineDraft): number => round2(round3(parseNumber(line.q
 const lineTax = (line: LineDraft): number => round2((lineAmount(line) * parseNumber(line.taxRate)) / 100);
 
 export function InvoiceFormPage() {
+  const { t } = useAppContent();
   const { invoiceId } = useParams<{ invoiceId: string }>();
   const isEdit = Boolean(invoiceId);
   const navigate = useNavigate();
@@ -193,7 +195,7 @@ export function InvoiceFormPage() {
   if (!canWrite) {
     return (
       <>
-        <PageHeader title="New invoice" />
+        <PageHeader title={t('invoices.form.newTitle')} />
         <ErrorBlock message="Your account has read-only access, so you cannot create or edit invoices." />
       </>
     );
@@ -228,8 +230,8 @@ export function InvoiceFormPage() {
   return (
     <>
       <PageHeader
-        title={isEdit && loaded ? `Edit invoice ${loaded.invoiceNumber}` : 'New invoice'}
-        subtitle={isEdit ? 'Changes re-post this invoice to your books.' : 'Bill a customer for goods or services.'}
+        title={isEdit && loaded ? `Edit invoice ${loaded.invoiceNumber}` : t('invoices.form.newTitle')}
+        subtitle={isEdit ? t('invoices.form.subtitleEdit') : t('invoices.form.subtitleNew')}
         breadcrumb={['Sales', 'Invoices']}
         actions={<Button onClick={() => navigate(isEdit && loaded ? `/invoices/${loaded.id}` : '/invoices')}>Cancel</Button>}
       />

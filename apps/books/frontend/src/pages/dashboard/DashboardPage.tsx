@@ -13,6 +13,7 @@ import {
 
 import { dashboardApi } from '@/api/endpoints';
 import type { DashboardPeriod } from '@/api/types';
+import { useAppContent } from '@/app/AppContentContext';
 import { useAuth } from '@/auth/AuthContext';
 import { Card, StatTile } from '@/components/ui/Card';
 import {
@@ -67,6 +68,7 @@ type Activity = { id: string; type: string; number: string; contactName?: string
 
 export function DashboardPage() {
   const { organization, user } = useAuth();
+  const { t, isModuleEnabled } = useAppContent();
   const [period, setPeriod] = useState<DashboardPeriod>('this_fiscal_year');
   const [cashFlowChartType, setCashFlowChartType] = useState<ChartType>('line');
   const [incomeChartType, setIncomeChartType] = useState<ChartType>('line');
@@ -79,7 +81,7 @@ export function DashboardPage() {
 
   const { data, loading, error, reload } = useAsync(() => dashboardApi.summary(period), [period]);
 
-  if (loading && !data) return <LoadingBlock label="Building your dashboard…" />;
+  if (loading && !data) return <LoadingBlock label={t('dashboard.loading')} />;
   if (error) return <ErrorBlock message={error} onRetry={reload} />;
   if (!data) return null;
 
@@ -140,8 +142,8 @@ export function DashboardPage() {
   return (
     <>
       <PageHeader
-        title={`Welcome back, ${user?.name?.split(' ')[0] ?? 'there'}`}
-        subtitle={`Live position for ${organization?.name ?? 'your organization'}. Every figure below comes from your posted transactions.`}
+        title={t('dashboard.welcome', { name: user?.name?.split(' ')[0] ?? t('dashboard.welcomeFallbackName') })}
+        subtitle={t('dashboard.subtitle', { org: organization?.name ?? t('dashboard.orgFallback') })}
         actions={
           <div className="row" style={{ gap: 12 }}>
             <FilterSelect label="Period" value={period} onChange={(value) => setPeriod(value as DashboardPeriod)} options={PERIOD_OPTIONS} />
@@ -152,16 +154,20 @@ export function DashboardPage() {
       {!hasAnyActivity ? (
         <Card>
           <EmptyState
-            title="Your books are empty"
-            description="Add a customer and raise your first invoice, or record a bill or expense. The dashboard fills in from real transactions as you go."
+            title={t('dashboard.empty.title')}
+            description={t('dashboard.empty.body')}
             action={
               <div className="row">
-                <Link to="/customers?new=1" className="btn btn-primary btn-md">
-                  <span>Add a customer</span>
-                </Link>
-                <Link to="/items?new=1" className="btn btn-secondary btn-md">
-                  <span>Add an item</span>
-                </Link>
+                {isModuleEnabled('customers') ? (
+                  <Link to="/customers?new=1" className="btn btn-primary btn-md">
+                    <span>{t('dashboard.empty.addCustomer')}</span>
+                  </Link>
+                ) : null}
+                {isModuleEnabled('items') ? (
+                  <Link to="/items?new=1" className="btn btn-secondary btn-md">
+                    <span>{t('dashboard.empty.addItem')}</span>
+                  </Link>
+                ) : null}
               </div>
             }
           />
@@ -171,7 +177,7 @@ export function DashboardPage() {
       <div className="stat-grid">
         {showCash ? (
           <StatTile
-            label="Cash on hand"
+            label={t('dashboard.kpi.cash')}
             value={formatCurrency(data.totalCash ?? 0, currency)}
             sublabel={`${bankBalances?.length ?? 0} account(s)`}
             icon={<Landmark size={16} />}
@@ -179,7 +185,7 @@ export function DashboardPage() {
           />
         ) : null}
         <StatTile
-          label="Receivables"
+          label={t('dashboard.kpi.receivables')}
           value={formatCurrency(receivables.totalReceivables, currency)}
           sublabel={`${receivables.totalUnpaidInvoices} unpaid invoice(s)`}
           tone={receivables.overdueAmount > 0 ? 'warning' : 'neutral'}
@@ -187,14 +193,14 @@ export function DashboardPage() {
           chart={<Sparkline values={receivablesSparkline} tone={receivables.overdueAmount > 0 ? 'warning' : 'positive'} />}
         />
         <StatTile
-          label="Payables"
+          label={t('dashboard.kpi.payables')}
           value={formatCurrency(payables.totalPayables, currency)}
           sublabel={`${payables.totalUnpaidBills} unpaid bill(s)`}
           icon={<ArrowDownRight size={16} />}
           chart={<Sparkline values={payablesSparkline} tone={payables.overdueAmount > 0 ? 'warning' : 'neutral'} />}
         />
         <StatTile
-          label={`Net ${incomeExpense.totalIncome >= incomeExpense.totalExpense ? 'profit' : 'loss'}`}
+          label={incomeExpense.totalIncome >= incomeExpense.totalExpense ? t('dashboard.kpi.netProfit') : t('dashboard.kpi.netLoss')}
           value={formatCurrency(Math.abs(incomeExpense.net), currency)}
           sublabel={`${formatDate(incomeExpense.startDate)} – ${formatDate(incomeExpense.endDate)}`}
           tone={incomeExpense.net >= 0 ? 'positive' : 'negative'}
@@ -205,8 +211,8 @@ export function DashboardPage() {
 
       <div className="grid-2">
         <Card
-          title="Receivables"
-          subtitle="What your customers owe you"
+          title={t('dashboard.receivables.title')}
+          subtitle={t('dashboard.receivables.subtitle')}
           actions={
             <div className="row" style={{ gap: 8 }}>
               <div className="chart-type-picker" role="group">
@@ -227,10 +233,12 @@ export function DashboardPage() {
                   <span>Donut</span>
                 </button>
               </div>
-              <Link to="/invoices?status=unpaid" className="btn btn-link btn-sm">
-                <span>Invoices</span>
-                <ArrowRight size={13} />
-              </Link>
+              {isModuleEnabled('invoices') ? (
+                <Link to="/invoices?status=unpaid" className="btn btn-link btn-sm">
+                  <span>{t('dashboard.receivables.link')}</span>
+                  <ArrowRight size={13} />
+                </Link>
+              ) : null}
             </div>
           }
         >
@@ -271,8 +279,8 @@ export function DashboardPage() {
         </Card>
 
         <Card
-          title="Payables"
-          subtitle="What you owe your vendors"
+          title={t('dashboard.payables.title')}
+          subtitle={t('dashboard.payables.subtitle')}
           actions={
             <div className="row" style={{ gap: 8 }}>
               <div className="chart-type-picker" role="group">
@@ -293,10 +301,12 @@ export function DashboardPage() {
                   <span>Donut</span>
                 </button>
               </div>
-              <Link to="/bills?status=unpaid" className="btn btn-link btn-sm">
-                <span>Bills</span>
-                <ArrowRight size={13} />
-              </Link>
+              {isModuleEnabled('bills') ? (
+                <Link to="/bills?status=unpaid" className="btn btn-link btn-sm">
+                  <span>{t('dashboard.payables.link')}</span>
+                  <ArrowRight size={13} />
+                </Link>
+              ) : null}
             </div>
           }
         >
@@ -344,7 +354,7 @@ export function DashboardPage() {
       />
 
       {cashFlow ? (
-        <Card title="Cash flow" subtitle={`Bank movement from ${formatDate(cashFlow.startDate)} to ${formatDate(cashFlow.endDate)}`}>
+        <Card title={t('dashboard.cashFlow.title')} subtitle={t('dashboard.cashFlow.subtitle', { start: formatDate(cashFlow.startDate), end: formatDate(cashFlow.endDate) })}>
           <div className="stat-grid">
             <StatTile label="Opening balance" value={formatCurrency(cashFlow.openingBalance, currency)} />
             <StatTile label="Money in" value={formatCurrency(cashFlow.incomingAmount, currency)} tone="positive" />
@@ -364,7 +374,7 @@ export function DashboardPage() {
         </Card>
       ) : null}
 
-      <Card title="Income and expense" subtitle="Accrual view from your ledger, by period">
+      <Card title={t('dashboard.incomeExpense.title')} subtitle={t('dashboard.incomeExpense.subtitle')}>
         <InteractiveSeriesChart
           data={incomeExpense.breakdown.map((point) => ({ label: point.label, incoming: point.incoming, outgoing: point.outgoing }))}
           incomingLabel="Income"
@@ -379,17 +389,19 @@ export function DashboardPage() {
           <span className="text-muted small">
             Income {formatCurrency(incomeExpense.totalIncome, currency)} · Expense {formatCurrency(incomeExpense.totalExpense, currency)}
           </span>
-          <Link to="/reports" className="btn btn-link btn-sm">
-            <span>Open profit and loss</span>
-            <ArrowRight size={13} />
-          </Link>
+          {isModuleEnabled('reports') ? (
+            <Link to="/reports" className="btn btn-link btn-sm">
+              <span>{t('dashboard.incomeExpense.link')}</span>
+              <ArrowRight size={13} />
+            </Link>
+          ) : null}
         </div>
       </Card>
 
       <div className="grid-2">
         <Card
-          title="Top customers"
-          subtitle="By invoiced value in this period"
+          title={t('dashboard.topCustomers.title')}
+          subtitle={t('dashboard.topCustomers.subtitle')}
           actions={
             topCustomers.length > 0 ? (
               <div className="chart-type-picker" role="group">
@@ -414,7 +426,7 @@ export function DashboardPage() {
           }
         >
           {topCustomers.length === 0 ? (
-            <p className="chart-empty">No invoices in this period yet.</p>
+            <p className="chart-empty">{t('dashboard.topCustomers.empty')}</p>
           ) : topCustomersChartType === 'donut' ? (
             <DonutChart slices={topCustomers.map((customer) => ({ label: customer.contactName, value: customer.amount }))} currency={currency} />
           ) : (
@@ -428,8 +440,8 @@ export function DashboardPage() {
 
       <div className="grid-2">
         <Card
-          title="Inventory"
-          subtitle="Stock position across tracked items"
+          title={t('dashboard.inventory.title')}
+          subtitle={t('dashboard.inventory.subtitle')}
           actions={
             <div className="row" style={{ gap: 8 }}>
               {inventory.totalItemsCount > 0 && (
@@ -452,7 +464,9 @@ export function DashboardPage() {
                   </button>
                 </div>
               )}
-              <Link to="/items" className="btn btn-link btn-sm"><span>Items</span><ArrowRight size={13} /></Link>
+              {isModuleEnabled('items') ? (
+                <Link to="/items" className="btn btn-link btn-sm"><span>{t('dashboard.inventory.link')}</span><ArrowRight size={13} /></Link>
+              ) : null}
             </div>
           }
         >
@@ -495,9 +509,13 @@ export function DashboardPage() {
         </Card>
 
         <Card
-          title="Unbilled time"
-          subtitle="Billable hours logged but not yet invoiced"
-          actions={<Link to="/time-tracking" className="btn btn-link btn-sm"><span>Time tracking</span><ArrowRight size={13} /></Link>}
+          title={t('dashboard.unbilled.title')}
+          subtitle={t('dashboard.unbilled.subtitle')}
+          actions={
+            isModuleEnabled('timeTracking') ? (
+              <Link to="/time-tracking" className="btn btn-link btn-sm"><span>{t('dashboard.unbilled.link')}</span><ArrowRight size={13} /></Link>
+            ) : undefined
+          }
         >
           <div className="stat-grid">
             <StatTile label="Unbilled hours" value={formatNumber(data.unbilledHours, 2)} icon={<Clock size={16} />} />
@@ -540,8 +558,8 @@ export function DashboardPage() {
       <div className="card">
         <div className="card-header">
           <div>
-            <h2 className="card-title">Recent activity</h2>
-            <p className="card-subtitle">Latest invoices, bills, payments and expenses</p>
+            <h2 className="card-title">{t('dashboard.activity.title')}</h2>
+            <p className="card-subtitle">{t('dashboard.activity.subtitle')}</p>
           </div>
           {recentActivity.length > 0 && (
             <div className="chart-type-picker" role="group">
@@ -566,7 +584,7 @@ export function DashboardPage() {
         </div>
         {recentActivity.length === 0 ? (
           <div className="card-body">
-            <p className="text-muted small">Nothing recorded yet.</p>
+            <p className="text-muted small">{t('dashboard.activity.empty')}</p>
           </div>
         ) : activityView === 'chart' ? (
           <div className="card-body">

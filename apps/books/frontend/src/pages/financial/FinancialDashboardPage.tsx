@@ -24,6 +24,7 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState, ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
@@ -40,6 +41,7 @@ const PERIOD_OPTIONS = [
 ];
 
 export function FinancialDashboardPage() {
+  const { t } = useAppContent();
   const toast = useToast();
 
   // Period State
@@ -206,8 +208,8 @@ export function FinancialDashboardPage() {
   return (
     <>
       <PageHeader
-        title="Financial Hub & Razorpay Gateway"
-        subtitle="End-to-end payment operations, automated reconciliation, fee accounting, and cash flow analysis"
+        title={t('financialHub.title')}
+        subtitle={t('financialHub.subtitle')}
         breadcrumb={['Finance', 'Financial Hub']}
         actions={
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -226,16 +228,16 @@ export function FinancialDashboardPage() {
               }}
             >
               <ShieldCheck size={14} />
-              <span>TEST MODE (Ready for Live)</span>
+              <span>{t('financialHub.testMode')}</span>
             </div>
 
             <Button icon={<RefreshCw size={14} />} onClick={reloadAll} variant="secondary">
-              Refresh
+              {t('financialHub.refresh')}
             </Button>
 
             <div style={{ position: 'relative', display: 'inline-block' }}>
               <Button icon={<Download size={14} />} variant="secondary" onClick={() => handleExport('payments')}>
-                Export CSV
+                {t('financialHub.export')}
               </Button>
             </div>
           </div>

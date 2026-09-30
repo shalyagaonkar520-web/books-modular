@@ -12,6 +12,7 @@ import { Card, StatTile } from '@/components/ui/Card';
 import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { EmptyState, ErrorBlock, FormError, SkeletonRows } from '@/components/ui/Feedback';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, SearchInput, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
@@ -35,6 +36,7 @@ const RECONCILED_OPTIONS = [
 const DELETABLE_SOURCES = new Set(['manual', 'transfer']);
 
 export function BankingPage() {
+  const { t } = useAppContent();
   const { canWrite } = useAuth();
   const toast = useToast();
 
@@ -240,16 +242,16 @@ export function BankingPage() {
   return (
     <>
       <PageHeader
-        title="Banking"
-        subtitle="Cash and bank balances, transaction register and reconciliation."
+        title={t('banking.title')}
+        subtitle={t('banking.subtitle')}
         actions={
           <IfCanWrite>
-            <Button onClick={() => setAccountModal({ open: true, account: null })}>Add account</Button>
+            <Button onClick={() => setAccountModal({ open: true, account: null })}>{t('banking.addAccount')}</Button>
             <Button onClick={() => setTransferModalOpen(true)} disabled={accounts.length < 2}>
-              Transfer
+              {t('banking.transfer')}
             </Button>
             <Button variant="primary" onClick={() => setTransactionModalOpen(true)} disabled={!selectedAccount}>
-              Add transaction
+              {t('banking.addTransaction')}
             </Button>
           </IfCanWrite>
         }
@@ -261,13 +263,13 @@ export function BankingPage() {
         <ErrorBlock message={summary.error} onRetry={summary.reload} />
       ) : !accounts.length ? (
         <EmptyState
-          title="No bank accounts yet"
-          description="Add a bank, cash or credit card account to start tracking money in and out."
+          title={t('banking.empty.title')}
+          description={t('banking.empty.body')}
           icon={<Landmark size={28} aria-hidden="true" />}
           action={
             <IfCanWrite>
               <Button variant="primary" onClick={() => setAccountModal({ open: true, account: null })}>
-                Add account
+                {t('banking.addAccount')}
               </Button>
             </IfCanWrite>
           }

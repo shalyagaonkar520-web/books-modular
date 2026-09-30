@@ -3,6 +3,7 @@ import { ArrowDownRight, ArrowUpRight, CalendarDays, CreditCard, Percent, Rotate
 import { razorpaySyncApi, type PaymentsOverview } from '@/api/razorpay';
 import { Card, StatTile } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { useAppContent } from '@/app/AppContentContext';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
 import { useAsync } from '@/hooks/useAsync';
 import { formatCurrency, formatNumber } from '@/utils/format';
@@ -23,6 +24,7 @@ const METHOD_LABELS: Record<string, string> = {
 };
 
 export function RazorpayOverview() {
+  const { t } = useAppContent();
   const { data, loading, error, reload } = useAsync<PaymentsOverview>(() => razorpaySyncApi.getOverview(), []);
 
   if (loading) return <LoadingBlock label="Loading Razorpay figures…" />;
@@ -112,8 +114,8 @@ export function RazorpayOverview() {
           />
         ) : (
           <EmptyState
-            title="No payments yet"
-            description="Run a synchronisation from Settings → Integrations → Razorpay to import your transactions."
+            title={t('razorpay.empty.title')}
+            description={t('razorpay.empty.body')}
           />
         )}
       </Card>

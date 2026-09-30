@@ -10,6 +10,11 @@ import { WebsitePage } from './WebsitePage';
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
+/** Sections start collapsed; open the one under test. */
+async function openHero() {
+  fireEvent.click(await screen.findByRole('button', { name: /^hero/i, expanded: false }));
+}
+
 describe('WebsitePage', () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -19,6 +24,7 @@ describe('WebsitePage', () => {
       'PUT /api/platform/site-content': (_url: URL, init: RequestInit) => json(JSON.parse(String(init.body))),
     });
     renderWithProviders(<WebsitePage />);
+    await openHero();
 
     const titleField = await screen.findByLabelText('Title (highlighted line)');
     expect(screen.getByText('All changes saved')).toBeInTheDocument();
@@ -39,6 +45,7 @@ describe('WebsitePage', () => {
       'PUT /api/platform/site-content': (_url: URL, init: RequestInit) => json(JSON.parse(String(init.body))),
     });
     renderWithProviders(<WebsitePage />);
+    await openHero();
     await screen.findByLabelText('Title (highlighted line)');
 
     // Edit one card at a time and collapse it again (the draft lives in the page), keeping the DOM small.
@@ -79,6 +86,7 @@ describe('WebsitePage', () => {
   it('blocks saving an unsafe logo URL', async () => {
     const { calls } = installMockApi({ 'GET /api/platform/site-content': DEFAULT_SITE_CONTENT });
     renderWithProviders(<WebsitePage />);
+    await openHero();
     await screen.findByLabelText('Title (highlighted line)');
     fireEvent.click(document.querySelector('#site-editor-brand-title button') as HTMLButtonElement);
     const logo = screen.getByLabelText('Logo URL');
@@ -97,6 +105,7 @@ describe('WebsitePage', () => {
       ),
     });
     renderWithProviders(<WebsitePage />);
+    await openHero();
 
     fireEvent.change(await screen.findByLabelText('Pill text'), { target: { value: 'Changed pill' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));

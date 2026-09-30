@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, Clock, Eye, EyeOff, LogIn, Mail, UserPlus } from 'lucide-react';
 
+import { useAppContent } from '@/app/AppContentContext';
 import { useAuth, type RegisterResult } from '@/auth/AuthContext';
 import { authApi } from '@/api/endpoints';
 import { Button } from '@/components/ui/Button';
@@ -20,6 +21,7 @@ function passwordProblem(password: string): string | null {
 }
 
 export function RegisterPage() {
+  const { t, branding } = useAppContent();
   const { register } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -211,8 +213,8 @@ export function RegisterPage() {
       <div className="auth-shell">
         <div className="auth-card">
           <div className="auth-brand">
-            <img src="/rooman-logo.png" alt="" />
-            <h1 className="auth-title">Organization submitted for approval</h1>
+            <img src={branding.logoUrl} alt="" />
+            <h1 className="auth-title">{t('auth.register.pending.title')}</h1>
           </div>
           <div
             role="status"
@@ -233,7 +235,7 @@ export function RegisterPage() {
             <Clock size={18} style={{ flexShrink: 0, marginTop: '1px' }} aria-hidden="true" />
             <div>
               <strong style={{ display: 'block', marginBottom: '2px' }}>{submitted.organizationName}</strong>
-              <span>{submitted.message || 'Your organization is waiting for approval by the platform team.'}</span>
+              <span>{submitted.message || t('auth.register.pending.body')}</span>
             </div>
           </div>
           <p className="auth-subtitle">
@@ -241,7 +243,7 @@ export function RegisterPage() {
           </p>
           <Link to="/login" state={{ email: submitted.email }} className="btn btn-primary btn-md btn-block">
             <LogIn size={15} aria-hidden="true" />
-            <span>Back to sign in</span>
+            <span>{t('auth.register.pending.back')}</span>
           </Link>
         </div>
       </div>
@@ -252,19 +254,16 @@ export function RegisterPage() {
     <div className="auth-shell">
       <div className="auth-card">
         <div className="auth-brand">
-          <img src="/rooman-logo.png" alt="" />
-          <h1 className="auth-title">Create your organization</h1>
+          <img src={branding.logoUrl} alt="" />
+          <h1 className="auth-title">{t('auth.register.title')}</h1>
         </div>
-        <p className="auth-subtitle">
-          You will be the administrator. Your chart of accounts and a petty cash account are set up automatically, with no sample
-          data.
-        </p>
+        <p className="auth-subtitle">{t('auth.register.subtitle')}</p>
 
         <form onSubmit={onSubmit} noValidate>
           <FormError message={error} />
 
           <TextField
-            label="Organization name"
+            label={t('auth.register.organizationName')}
             required
             value={organizationName}
             error={fieldErrors.organizationName}
@@ -277,12 +276,12 @@ export function RegisterPage() {
             error={fieldErrors.gstin}
             onChange={(event) => setGstin(event.target.value.toUpperCase())}
           />
-          <TextField label="Your name" required value={name} error={fieldErrors.name} onChange={(event) => setName(event.target.value)} />
+          <TextField label={t('auth.register.yourName')} required value={name} error={fieldErrors.name} onChange={(event) => setName(event.target.value)} />
 
           {/* Work Email with inline OTP verification */}
           <div style={{ marginBottom: '14px' }}>
             <TextField
-              label="Work email"
+              label={t('auth.register.email')}
               type="email"
               autoComplete="email"
               required
@@ -450,7 +449,7 @@ export function RegisterPage() {
 
           <div className="password-row">
             <TextField
-              label="Password"
+              label={t('auth.register.password')}
               type={showPassword ? 'text' : 'password'}
               autoComplete="new-password"
               required
@@ -471,7 +470,7 @@ export function RegisterPage() {
           </div>
 
           <TextField
-            label="Confirm password"
+            label={t('auth.register.confirmPassword')}
             type={showPassword ? 'text' : 'password'}
             autoComplete="new-password"
             required
@@ -490,12 +489,12 @@ export function RegisterPage() {
             className="btn-block"
             title={!isVerified ? 'Please verify your email address before creating your organization' : undefined}
           >
-            Create organization
+            {t('auth.register.submit')}
           </Button>
         </form>
 
         <p className="auth-footer">
-          Already have an account? <Link to="/login">Sign in</Link>
+          {t('auth.register.haveAccount')} <Link to="/login">{t('auth.register.signIn')}</Link>
         </p>
       </div>
     </div>

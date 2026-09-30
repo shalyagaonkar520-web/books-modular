@@ -36,6 +36,7 @@ import {
 } from '@/components/ui/Charts';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useAsync } from '@/hooks/useAsync';
 import { formatCurrency, formatDate, todayIso } from '@/utils/format';
@@ -45,6 +46,7 @@ type ActiveView = 'all' | 'receivables' | 'payables';
 type AgeingRow = AgingReport['rows'][number];
 
 export function ReceivablesPayablesDashboard() {
+  const { t } = useAppContent();
   const { organization } = useAuth();
   const currency = organization?.currency ?? 'INR';
   const [asOf, setAsOf] = useState<string>(todayIso);
@@ -242,8 +244,8 @@ export function ReceivablesPayablesDashboard() {
   return (
     <>
       <PageHeader
-        title="Receivables & Payables Dashboard"
-        subtitle={`Live position as of ${formatDate(asOf)}. Overview of customer amounts receivable versus supplier payables.`}
+        title={t('receivablesPayables.title')}
+        subtitle={t('receivablesPayables.subtitle', { date: formatDate(asOf) })}
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
@@ -264,7 +266,7 @@ export function ReceivablesPayablesDashboard() {
                 style={{ border: 'none', padding: '5px 12px' }}
                 onClick={() => setActiveView('all')}
               >
-                Combined
+                {t('receivablesPayables.view.combined')}
               </button>
               <button
                 type="button"
@@ -272,7 +274,7 @@ export function ReceivablesPayablesDashboard() {
                 style={{ border: 'none', padding: '5px 12px' }}
                 onClick={() => setActiveView('receivables')}
               >
-                Receivables
+                {t('receivablesPayables.view.receivables')}
               </button>
               <button
                 type="button"
@@ -280,7 +282,7 @@ export function ReceivablesPayablesDashboard() {
                 style={{ border: 'none', padding: '5px 12px' }}
                 onClick={() => setActiveView('payables')}
               >
-                Payables
+                {t('receivablesPayables.view.payables')}
               </button>
             </div>
           </div>
@@ -621,7 +623,7 @@ export function ReceivablesPayablesDashboard() {
         >
           {filteredCustomers.length === 0 ? (
             <EmptyState
-              title="No customer receivables"
+              title={t('receivablesPayables.empty.receivablesTitle')}
               description={customerSearch ? 'No customer matched your search query.' : 'No customer has an outstanding balance as of this date.'}
             />
           ) : customerView === 'chart' ? (
@@ -701,7 +703,7 @@ export function ReceivablesPayablesDashboard() {
         >
           {filteredVendors.length === 0 ? (
             <EmptyState
-              title="No vendor payables"
+              title={t('receivablesPayables.empty.payablesTitle')}
               description={vendorSearch ? 'No vendor matched your search query.' : 'No vendor bills are open or payable as of this date.'}
             />
           ) : vendorView === 'chart' ? (

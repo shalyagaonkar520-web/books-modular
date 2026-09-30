@@ -13,6 +13,7 @@ import type { Contact, ContactKind, ContactType, GstTreatment } from '@/api/type
 import { Button } from '@/components/ui/Button';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useAuth } from '@/auth/AuthContext';
 import { useToast } from '@/components/ui/Toast';
@@ -122,6 +123,7 @@ interface ContactFormProps {
 }
 
 function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
+  const { t } = useAppContent();
   const toast = useToast();
   // Reading the chart of accounts is Admin/Viewer only, but Staff may create
   // contacts - so only ask for the accounts when the signed-in role is allowed
@@ -227,7 +229,7 @@ function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
   return (
     <>
       <PageHeader
-        title={contact ? `Edit ${contact.displayName}` : `New ${singular}`}
+        title={contact ? `Edit ${contact.displayName}` : t(type === 'customer' ? 'customers.form.newTitle' : 'vendors.form.newTitle')}
         subtitle={`Details used on ${type === 'customer' ? 'invoices' : 'bills'} and statements`}
         actions={
           <Button variant="secondary" onClick={onDone} disabled={submitting}>

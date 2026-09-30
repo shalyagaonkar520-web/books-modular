@@ -7,6 +7,7 @@ import type { Item, ItemType } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { CheckboxField, SelectField, TextAreaField, TextField } from '@/components/ui/Field';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useAuth } from '@/auth/AuthContext';
 import { useToast } from '@/components/ui/Toast';
@@ -125,6 +126,7 @@ interface ItemFormProps {
 }
 
 function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
+  const { t } = useAppContent();
   const toast = useToast();
   const { organization } = useAuth();
   const [form, setForm] = useState<FormState>(() => initialForm(item, organization?.defaultTaxRate));
@@ -166,8 +168,8 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
   return (
     <>
       <PageHeader
-        title={item ? `Edit ${item.name}` : 'New item'}
-        subtitle={item ? item.sku : 'Goods and services you sell or purchase'}
+        title={item ? `Edit ${item.name}` : t('items.form.newTitle')}
+        subtitle={item ? item.sku : t('items.form.subtitle')}
         actions={
           <Button variant="secondary" onClick={onDone} disabled={submitting}>
             Cancel

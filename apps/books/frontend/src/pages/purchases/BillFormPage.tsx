@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth/AuthContext';
@@ -43,6 +44,7 @@ function lineAmount(line: LineDraft): number {
 }
 
 export function BillFormPage() {
+  const { t } = useAppContent();
   const { billId } = useParams<{ billId: string }>();
   const isEdit = Boolean(billId);
   const navigate = useNavigate();
@@ -223,8 +225,8 @@ export function BillFormPage() {
   return (
     <>
       <PageHeader
-        title={isEdit ? `Edit bill ${bill?.billNumber ?? ''}`.trim() : 'New bill'}
-        subtitle="Record what you owe a vendor. Opening a bill posts it to the ledger."
+        title={isEdit ? `Edit bill ${bill?.billNumber ?? ''}`.trim() : t('bills.form.newTitle')}
+        subtitle={t('bills.form.subtitle')}
         breadcrumb={['Purchases', 'Bills']}
         actions={
           <Button variant="secondary" onClick={() => navigate('/bills')} disabled={submitting}>

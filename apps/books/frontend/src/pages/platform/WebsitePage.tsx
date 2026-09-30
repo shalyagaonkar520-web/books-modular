@@ -84,7 +84,7 @@ export function WebsitePage() {
   const remote = useAsync(async (signal) => normalizeSiteContent(await platformApi.siteContent.get(signal)), []);
   const [saved, setSaved] = useState<SiteContent | null>(null);
   const [draft, setDraft] = useState<SiteContent | null>(null);
-  const [openSections, setOpenSections] = useState<Set<SectionId>>(() => new Set<SectionId>(['hero']));
+  const [openSections, setOpenSections] = useState<Set<SectionId>>(() => new Set<SectionId>());
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
   const [confirmingReset, setConfirmingReset] = useState(false);
   const saveSubmit = useSubmit();

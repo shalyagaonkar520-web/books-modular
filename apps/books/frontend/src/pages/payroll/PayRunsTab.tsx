@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { useAppContent } from '@/app/AppContentContext';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
 import { payrollApi } from '@/api/endpoints';
 import type { PayRun } from '@/api/types';
@@ -21,6 +22,7 @@ import { PayRunDetailModal } from './PayRunDetailModal';
 import { PayRunPayModal } from './PayRunPayModal';
 
 export function PayRunsTab() {
+  const { t } = useAppContent();
   const toast = useToast();
   const { isAdmin, organization } = useAuth();
   const currency = organization?.currency ?? 'INR';
@@ -113,7 +115,7 @@ export function PayRunsTab() {
         {!loading && error ? <ErrorBlock message={error} onRetry={reload} /> : null}
         {!loading && !error && payRuns.length === 0 ? (
           <EmptyState
-            title="No pay runs yet"
+            title={t('payroll.payRuns.empty.title')}
             description={isAdmin ? 'Create a pay run for a month to generate payslips for every active employee.' : 'An administrator has not created a pay run yet.'}
           />
         ) : null}

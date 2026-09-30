@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/Button';
 import { StatTile } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, Toolbar } from '@/components/ui/Toolbar';
 import { useAsync } from '@/hooks/useAsync';
@@ -87,6 +88,7 @@ function getPeriodDates(period: PeriodKey, fiscalStartMonth: number): { startDat
 const MAX_SUMMARY_PAGES = 50;
 
 export function ExpenseDashboardPage() {
+  const { t } = useAppContent();
   const navigate = useNavigate();
   const { organization, can } = useAuth();
   const fiscalStartMonth = organization?.fiscalYearStartMonth ?? 4;
@@ -261,8 +263,8 @@ export function ExpenseDashboardPage() {
   return (
     <div className="page-container" style={{ paddingBottom: '40px' }}>
       <PageHeader
-        title="Expense Tracker Dashboard"
-        subtitle="Comprehensive visibility into operating costs, vendor allocations, and spending distribution"
+        title={t('expenseDashboard.title')}
+        subtitle={t('expenseDashboard.subtitle')}
         breadcrumb={['Purchases', 'Expense Tracker']}
         actions={
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -271,7 +273,7 @@ export function ExpenseDashboardPage() {
               icon={<ArrowRight size={15} />}
               onClick={() => navigate('/expenses')}
             >
-              All Expenses
+              {t('expenseDashboard.allExpenses')}
             </Button>
             <IfCanWrite>
               <Button
@@ -279,7 +281,7 @@ export function ExpenseDashboardPage() {
                 icon={<Plus size={15} />}
                 onClick={() => setCreating(true)}
               >
-                Record Expense
+                {t('expenseDashboard.record')}
               </Button>
             </IfCanWrite>
           </div>
@@ -479,12 +481,12 @@ export function ExpenseDashboardPage() {
             {items.length === 0 ? (
               <EmptyState
                 icon={<Receipt size={32} />}
-                title="No expenses found"
-                description="No operational expenses match your current horizon filter."
+                title={t('expenseDashboard.empty.title')}
+                description={t('expenseDashboard.empty.body')}
                 action={
                   <IfCanWrite>
                     <Button variant="primary" icon={<Plus size={15} />} onClick={() => setCreating(true)}>
-                      Record Expense
+                      {t('expenseDashboard.record')}
                     </Button>
                   </IfCanWrite>
                 }

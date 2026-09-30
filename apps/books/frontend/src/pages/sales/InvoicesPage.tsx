@@ -13,6 +13,7 @@ import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, SkeletonRows } from '@/components/ui/Feedback';
 import { TextAreaField, TextField } from '@/components/ui/Field';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, SearchInput, Tabs, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
@@ -49,6 +50,7 @@ function canTakePayment(invoice: InvoiceListItem): boolean {
 }
 
 export function InvoicesPage() {
+  const { t } = useAppContent();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const toast = useToast();
@@ -340,8 +342,8 @@ export function InvoicesPage() {
   return (
     <>
       <PageHeader
-        title="Invoices"
-        subtitle="Everything you have billed your customers."
+        title={t('invoices.title')}
+        subtitle={t('invoices.subtitle')}
         actions={
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <Button
@@ -357,7 +359,7 @@ export function InvoicesPage() {
                 }))
               }
             >
-              Extract PDF
+              {t('common.extractPdf')}
             </Button>
             <Button
               variant="secondary"
@@ -372,11 +374,11 @@ export function InvoicesPage() {
                 }))
               }
             >
-              Extract Excel
+              {t('common.extractExcel')}
             </Button>
             <IfCanWrite>
               <Button variant="primary" icon={<Plus size={15} />} onClick={() => navigate('/invoices/new')}>
-                New invoice
+                {t('invoices.new')}
               </Button>
             </IfCanWrite>
           </div>
@@ -489,13 +491,13 @@ export function InvoicesPage() {
           <ErrorBlock message={invoices.error} onRetry={invoices.reload} />
         ) : !rows.length ? (
           <EmptyState
-            title={hasFilters ? 'No invoices match these filters' : 'No invoices yet'}
-            description={hasFilters ? 'Try a different status, customer or date range.' : 'Create your first invoice to start billing customers.'}
+            title={hasFilters ? t('invoices.empty.filteredTitle') : t('invoices.empty.title')}
+            description={hasFilters ? t('invoices.empty.filteredBody') : t('invoices.empty.body')}
             action={
               hasFilters ? null : (
                 <IfCanWrite>
                   <Button variant="primary" icon={<Plus size={15} />} onClick={() => navigate('/invoices/new')}>
-                    New invoice
+                    {t('invoices.new')}
                   </Button>
                 </IfCanWrite>
               )

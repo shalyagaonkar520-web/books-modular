@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Tabs } from '@/components/ui/Toolbar';
 
@@ -11,17 +12,18 @@ import { UsersSettings } from './UsersSettings';
 type SettingsTab = 'organization' | 'users' | 'integrations' | 'activity';
 
 export function SettingsPage() {
+  const { t } = useAppContent();
   const [tab, setTab] = useState<SettingsTab>('organization');
 
   return (
     <div className="stack">
-      <PageHeader title="Settings" subtitle="Organization profile, team access, integrations and the audit trail" />
+      <PageHeader title={t('settings.title')} subtitle={t('settings.subtitle')} />
       <Tabs
         tabs={[
-          { id: 'organization', label: 'Organization' },
-          { id: 'users', label: 'Users' },
-          { id: 'integrations', label: 'Integrations' },
-          { id: 'activity', label: 'Activity log' },
+          { id: 'organization', label: t('settings.tab.organization') },
+          { id: 'users', label: t('settings.tab.users') },
+          { id: 'integrations', label: t('settings.tab.integrations') },
+          { id: 'activity', label: t('settings.tab.activity') },
         ]}
         active={tab}
         onChange={(id) => setTab(id as SettingsTab)}

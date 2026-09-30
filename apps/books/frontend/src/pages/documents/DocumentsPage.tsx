@@ -8,6 +8,7 @@ import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
 import { FilterSelect, SearchInput, Toolbar } from '@/components/ui/Toolbar';
 import { IfCanWrite } from '@/auth/RouteGuards';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { downloadFile, ApiError } from '@/api/client';
 import { documentsApi } from '@/api/endpoints';
@@ -27,6 +28,7 @@ const PAGE_SIZE = 25;
 const STATS_SAMPLE = 200;
 
 export function DocumentsPage() {
+  const { t } = useAppContent();
   const toast = useToast();
   const { canWrite } = useAuth();
   const [category, setCategory] = useState('');
@@ -137,7 +139,7 @@ export function DocumentsPage() {
 
   return (
     <div className="stack">
-      <PageHeader title="Documents" subtitle="A searchable vault for every file that supports your books" />
+      <PageHeader title={t('documents.title')} subtitle={t('documents.subtitle')} />
 
       <div className="stat-grid">
         <StatTile label="Documents" value={formatNumber(total, 0)} sublabel="Stored in this organization" icon={<FileText size={16} />} />
@@ -166,12 +168,8 @@ export function DocumentsPage() {
         {!list.loading && list.error ? <ErrorBlock message={list.error} onRetry={list.reload} /> : null}
         {!list.loading && !list.error && list.data && list.data.items.length === 0 ? (
           <EmptyState
-            title={category || debouncedSearch ? 'No documents match these filters' : 'No documents yet'}
-            description={
-              category || debouncedSearch
-                ? 'Clear the search or pick a different category.'
-                : 'Upload a contract, receipt or bank statement to get started.'
-            }
+            title={category || debouncedSearch ? t('documents.empty.filteredTitle') : t('documents.empty.title')}
+            description={category || debouncedSearch ? t('documents.empty.filteredBody') : t('documents.empty.body')}
           />
         ) : null}
         {!list.loading && !list.error && list.data && list.data.items.length > 0 ? (

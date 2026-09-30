@@ -18,6 +18,7 @@ import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, SkeletonRows } from '@/components/ui/Feedback';
 import { CheckboxField, TextAreaField, TextField } from '@/components/ui/Field';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchInput, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
@@ -58,9 +59,11 @@ function formatVendorMaskedName(name: string | null | undefined, isVendor: boole
 }
 
 export function ContactsPage({ type }: { type: ContactType }) {
+  const { t } = useAppContent();
   const toast = useToast();
   const { download } = useDownload();
   const copy = copyFor(type);
+  const textGroup = type === 'customer' ? 'customers' : 'vendors';
   const { canWrite } = useAuth();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -258,12 +261,8 @@ export function ContactsPage({ type }: { type: ContactType }) {
   return (
     <>
       <PageHeader
-        title={copy.plural}
-        subtitle={
-          type === 'customer'
-            ? 'Everyone you invoice, with their balances and payment terms.'
-            : 'Everyone you buy from, with their balances and payment terms.'
-        }
+        title={t(`${textGroup}.title`)}
+        subtitle={t(`${textGroup}.subtitle`)}
         actions={
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <Button
@@ -277,7 +276,7 @@ export function ContactsPage({ type }: { type: ContactType }) {
                 }))
               }
             >
-              Extract PDF
+              {t('common.extractPdf')}
             </Button>
             <Button
               variant="secondary"
@@ -290,11 +289,11 @@ export function ContactsPage({ type }: { type: ContactType }) {
                 }))
               }
             >
-              Extract Excel
+              {t('common.extractExcel')}
             </Button>
             <IfCanWrite>
               <Button variant="primary" icon={<Plus size={15} />} onClick={openCreate}>
-                New {copy.singular}
+                {t(`${textGroup}.new`)}
               </Button>
             </IfCanWrite>
           </div>
@@ -346,17 +345,13 @@ export function ContactsPage({ type }: { type: ContactType }) {
         ) : !rows.length ? (
           <div className="card-body">
             <EmptyState
-              title={`No ${copy.plural.toLowerCase()} yet`}
-              description={
-                type === 'customer'
-                  ? 'Add a customer to start raising invoices and tracking what you are owed.'
-                  : 'Add a vendor to start recording bills and tracking what you owe.'
-              }
+              title={t(`${textGroup}.empty.title`)}
+              description={t(`${textGroup}.empty.body`)}
               icon={<Users size={28} aria-hidden="true" />}
               action={
                 <IfCanWrite>
                   <Button variant="primary" icon={<Plus size={15} />} onClick={openCreate}>
-                    New {copy.singular}
+                    {t(`${textGroup}.new`)}
                   </Button>
                 </IfCanWrite>
               }

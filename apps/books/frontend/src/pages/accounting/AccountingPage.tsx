@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { accountingApi } from '@/api/endpoints';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Tabs } from '@/components/ui/Toolbar';
 import { useAsync } from '@/hooks/useAsync';
@@ -11,13 +12,14 @@ import { ManualJournalsTab } from './ManualJournalsTab';
 import { TrialBalanceTab } from './TrialBalanceTab';
 
 const TABS = [
-  { id: 'accounts', label: 'Chart of accounts' },
-  { id: 'journals', label: 'Manual journals' },
-  { id: 'ledger', label: 'General ledger' },
-  { id: 'trial-balance', label: 'Trial balance' },
+  { id: 'accounts', label: 'accounting.tab.accounts' },
+  { id: 'journals', label: 'accounting.tab.journals' },
+  { id: 'ledger', label: 'accounting.tab.ledger' },
+  { id: 'trial-balance', label: 'accounting.tab.trialBalance' },
 ];
 
 export function AccountingPage() {
+  const { t } = useAppContent();
   const [tab, setTab] = useState('accounts');
 
   // Shared across the journal editor and the ledger picker.
@@ -25,8 +27,8 @@ export function AccountingPage() {
 
   return (
     <>
-      <PageHeader title="Accountant" subtitle="Chart of accounts, manual journals, general ledger and trial balance." />
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
+      <PageHeader title={t('accounting.title')} subtitle={t('accounting.subtitle')} />
+      <Tabs tabs={TABS.map((entry) => ({ ...entry, label: t(entry.label) }))} active={tab} onChange={setTab} />
 
       {tab === 'accounts' ? <ChartOfAccountsTab /> : null}
       {tab === 'journals' ? <ManualJournalsTab accounts={accounts.data ?? []} /> : null}

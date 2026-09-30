@@ -12,6 +12,7 @@ import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, SkeletonRows } from '@/components/ui/Feedback';
 import { CheckboxField, TextAreaField, TextField } from '@/components/ui/Field';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, SearchInput, Tabs, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
@@ -46,6 +47,7 @@ function isPayable(bill: BillListItem): boolean {
 }
 
 export function BillsPage() {
+  const { t } = useAppContent();
   const navigate = useNavigate();
   const toast = useToast();
   const { download } = useDownload();
@@ -279,8 +281,8 @@ export function BillsPage() {
   return (
     <>
       <PageHeader
-        title="Bills"
-        subtitle="Purchase bills owed to your vendors."
+        title={t('bills.title')}
+        subtitle={t('bills.subtitle')}
         actions={
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <Button
@@ -296,7 +298,7 @@ export function BillsPage() {
                 }))
               }
             >
-              Extract PDF
+              {t('common.extractPdf')}
             </Button>
             <Button
               variant="secondary"
@@ -311,11 +313,11 @@ export function BillsPage() {
                 }))
               }
             >
-              Extract Excel
+              {t('common.extractExcel')}
             </Button>
             <IfCanWrite>
               <Button variant="primary" icon={<Plus size={15} />} onClick={() => navigate('/bills/new')}>
-                New bill
+                {t('bills.new')}
               </Button>
             </IfCanWrite>
           </div>
@@ -397,13 +399,13 @@ export function BillsPage() {
           <ErrorBlock message={list.error} onRetry={list.reload} />
         ) : !list.data || list.data.items.length === 0 ? (
           <EmptyState
-            title="No bills found"
-            description="Bills you record for your vendors will appear here."
+            title={t('bills.empty.title')}
+            description={t('bills.empty.body')}
             icon={<FileText size={28} aria-hidden="true" />}
             action={
               <IfCanWrite>
                 <Button variant="primary" icon={<Plus size={15} />} onClick={() => navigate('/bills/new')}>
-                  New bill
+                  {t('bills.new')}
                 </Button>
               </IfCanWrite>
             }

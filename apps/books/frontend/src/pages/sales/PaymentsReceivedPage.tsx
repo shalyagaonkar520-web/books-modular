@@ -12,6 +12,7 @@ import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, SkeletonRows } from '@/components/ui/Feedback';
 import { CheckboxField, TextAreaField, TextField } from '@/components/ui/Field';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
@@ -60,6 +61,7 @@ async function loadRangeTotals(query: { customer_id?: string; start_date?: strin
 }
 
 export function PaymentsReceivedPage() {
+  const { t } = useAppContent();
   const toast = useToast();
   const { download } = useDownload();
   const { submitting, error: actionError, run, reset } = useSubmit();
@@ -181,8 +183,8 @@ export function PaymentsReceivedPage() {
   return (
     <>
       <PageHeader
-        title="Payments received"
-        subtitle="Money collected from your customers."
+        title={t('paymentsReceived.title')}
+        subtitle={t('paymentsReceived.subtitle')}
         breadcrumb={['Sales', 'Payments received']}
         actions={
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -197,7 +199,7 @@ export function PaymentsReceivedPage() {
                 }))
               }
             >
-              Extract PDF
+              {t('common.extractPdf')}
             </Button>
             <Button
               variant="secondary"
@@ -210,11 +212,11 @@ export function PaymentsReceivedPage() {
                 }))
               }
             >
-              Extract Excel
+              {t('common.extractExcel')}
             </Button>
             <IfCanWrite>
               <Button variant="primary" icon={<Plus size={15} />} onClick={() => setRecording(true)}>
-                Record payment
+                {t('paymentsReceived.record')}
               </Button>
             </IfCanWrite>
           </div>
@@ -285,13 +287,13 @@ export function PaymentsReceivedPage() {
           <ErrorBlock message={payments.error} onRetry={payments.reload} />
         ) : !rows.length ? (
           <EmptyState
-            title={hasFilters ? 'No payments match these filters' : 'No payments recorded yet'}
-            description={hasFilters ? 'Try a different customer or date range.' : 'Record a payment when a customer settles an invoice or pays in advance.'}
+            title={hasFilters ? t('paymentsReceived.empty.filteredTitle') : t('paymentsReceived.empty.title')}
+            description={hasFilters ? t('paymentsReceived.empty.filteredBody') : t('paymentsReceived.empty.body')}
             action={
               hasFilters ? null : (
                 <IfCanWrite>
                   <Button variant="primary" icon={<Plus size={15} />} onClick={() => setRecording(true)}>
-                    Record payment
+                    {t('paymentsReceived.record')}
                   </Button>
                 </IfCanWrite>
               )

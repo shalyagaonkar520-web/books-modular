@@ -3,6 +3,7 @@
  * All JSON is camelCase; query params are snake_case. See platformClient.ts.
  */
 import { platformClient, platformDownload, platformRefresh, platformRequest } from './platformClient';
+import type { AppContent } from './appContent';
 import type { SiteContent } from './siteContent';
 
 // ---------------------------------------------------------------------------
@@ -406,6 +407,12 @@ export const platformApi = {
     get: (signal?: AbortSignal) => platformClient.get<SiteContent>('/platform/site-content', undefined, signal),
     update: (body: SiteContent) => platformClient.put<SiteContent>('/platform/site-content', body),
     reset: () => platformClient.post<SiteContent>('/platform/site-content/reset'),
+  },
+
+  appContent: {
+    get: (signal?: AbortSignal) => platformClient.get<AppContent>('/platform/app-content', undefined, signal),
+    update: (body: AppContent) => platformClient.put<AppContent>('/platform/app-content', body),
+    reset: () => platformClient.post<AppContent>('/platform/app-content/reset'),
   },
 
   auditLogs: (

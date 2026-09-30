@@ -11,6 +11,7 @@ import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, LoadingBlock, SkeletonRows } from '@/components/ui/Feedback';
 import { CheckboxField, TextAreaField, TextField } from '@/components/ui/Field';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
@@ -31,6 +32,7 @@ function monthStart(): string {
 }
 
 export function ExpensesPage() {
+  const { t } = useAppContent();
   const toast = useToast();
   const { download } = useDownload();
   const { canWrite, can } = useAuth();
@@ -238,8 +240,8 @@ export function ExpensesPage() {
   return (
     <>
       <PageHeader
-        title="Expenses"
-        subtitle="Costs paid straight out of a bank, cash or credit card account."
+        title={t('expenses.title')}
+        subtitle={t('expenses.subtitle')}
         actions={
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <Button
@@ -254,7 +256,7 @@ export function ExpensesPage() {
                 }))
               }
             >
-              Extract PDF
+              {t('common.extractPdf')}
             </Button>
             <Button
               variant="secondary"
@@ -268,11 +270,11 @@ export function ExpensesPage() {
                 }))
               }
             >
-              Extract Excel
+              {t('common.extractExcel')}
             </Button>
             <IfCanWrite>
               <Button variant="primary" icon={<Plus size={15} />} onClick={() => setCreating(true)}>
-                Record expense
+                {t('expenses.record')}
               </Button>
             </IfCanWrite>
           </div>
@@ -329,13 +331,13 @@ export function ExpensesPage() {
           <ErrorBlock message={list.error} onRetry={list.reload} />
         ) : !list.data || list.data.items.length === 0 ? (
           <EmptyState
-            title="No expenses in this period"
-            description="Adjust the date range, or record an expense to get started."
+            title={t('expenses.empty.title')}
+            description={t('expenses.empty.body')}
             icon={<Receipt size={28} aria-hidden="true" />}
             action={
               <IfCanWrite>
                 <Button variant="primary" icon={<Plus size={15} />} onClick={() => setCreating(true)}>
-                  Record expense
+                  {t('expenses.record')}
                 </Button>
               </IfCanWrite>
             }

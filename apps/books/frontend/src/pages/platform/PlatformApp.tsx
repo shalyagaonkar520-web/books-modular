@@ -5,6 +5,7 @@ import { PlatformLayout } from '@/components/layout/PlatformLayout';
 import { LoadingBlock } from '@/components/ui/Feedback';
 
 import { AdminsPage } from './AdminsPage';
+import { AppContentPage } from './AppContentPage';
 import { WorkspacePage } from './WorkspacePage';
 import { AuditLogsPage } from './AuditLogsPage';
 import { OrganizationsPage } from './OrganizationsPage';
@@ -46,6 +47,7 @@ export function PlatformApp() {
           <Route path="admins" element={<AdminsPage />} />
           <Route path="workspace" element={<WorkspacePage />} />
           <Route path="website" element={<WebsitePage />} />
+          <Route path="app-content" element={<AppContentPage />} />
           <Route path="settings" element={<PlatformSettingsPage />} />
         </Route>
       </Route>

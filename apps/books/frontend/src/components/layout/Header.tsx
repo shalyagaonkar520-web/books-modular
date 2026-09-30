@@ -12,6 +12,8 @@ import {
 
 import { dashboardApi } from '@/api/endpoints';
 import type { NotificationItem } from '@/api/types';
+import type { AppModuleKey } from '@/api/appContent';
+import { useAppContent } from '@/app/AppContentContext';
 import { useAuth } from '@/auth/AuthContext';
 import { initials } from '@/utils/format';
 import { ExcelImportModal } from './ExcelImportModal';
@@ -34,6 +36,15 @@ function notificationRoute(item: NotificationItem): string {
   }
 }
 
+/** The Create menu: text key, destination and the module that must be switched on. */
+const CREATE_ENTRIES: Array<{ label: string; to: string; module: AppModuleKey }> = [
+  { label: 'header.create.invoice', to: '/invoices/new', module: 'invoices' },
+  { label: 'header.create.bill', to: '/bills/new', module: 'bills' },
+  { label: 'header.create.expense', to: '/expenses?new=1', module: 'expenses' },
+  { label: 'header.create.item', to: '/items?new=1', module: 'items' },
+  { label: 'header.create.customer', to: '/customers?new=1', module: 'customers' },
+];
+
 const DISMISSED_NOTIFICATIONS_KEY = 'rooman_dismissed_notifications';
 
 function getStoredDismissedIds(): Set<string> {
@@ -47,6 +58,8 @@ function getStoredDismissedIds(): Set<string> {
 
 export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const { user, organization, logout, canWrite } = useAuth();
+  const { t, branding, isModuleEnabled } = useAppContent();
+  const createEntries = CREATE_ENTRIES.filter((entry) => isModuleEnabled(entry.module));
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [, setDismissedIds] = useState<Set<string>>(getStoredDismissedIds);
@@ -140,10 +153,10 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
           <Menu size={19} />
         </button>
         <Link to="/" className="brand">
-          <img src="/rooman-logo.png" alt="" className="brand-logo" width={28} height={28} />
+          <img src={branding.logoUrl} alt="" className="brand-logo" width={28} height={28} />
           <span className="brand-text">
-            <strong>Rooman Books</strong>
-            <small>{organization?.name ?? 'Accounting'}</small>
+            <strong>{branding.appName}</strong>
+            <small>{organization?.name ?? t('header.orgFallback')}</small>
           </span>
         </Link>
       </div>
@@ -155,12 +168,13 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
               type="button"
               className="btn btn-secondary btn-sm"
               onClick={() => setExcelModalOpen(true)}
-              title="Upload and auto-categorize Excel or CSV files"
+              title={t('header.dataInputHint')}
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
               <FileSpreadsheet size={15} />
-              <span>Excel / Data Input</span>
+              <span>{t('header.dataInput')}</span>
             </button>
+            {createEntries.length ? (
             <div className="menu-anchor">
               <button
                 type="button"
@@ -169,28 +183,19 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
                 aria-expanded={openMenu === 'create'}
               >
                 <Plus size={15} />
-                <span>Create</span>
+                <span>{t('header.create')}</span>
               </button>
             {openMenu === 'create' ? (
               <div className="dropdown" role="menu">
-                <button type="button" role="menuitem" onClick={() => { setOpenMenu('none'); navigate('/invoices/new'); }}>
-                  Invoice
-                </button>
-                <button type="button" role="menuitem" onClick={() => { setOpenMenu('none'); navigate('/bills/new'); }}>
-                  Bill
-                </button>
-                <button type="button" role="menuitem" onClick={() => { setOpenMenu('none'); navigate('/expenses?new=1'); }}>
-                  Expense
-                </button>
-                <button type="button" role="menuitem" onClick={() => { setOpenMenu('none'); navigate('/items?new=1'); }}>
-                  Item
-                </button>
-                <button type="button" role="menuitem" onClick={() => { setOpenMenu('none'); navigate('/customers?new=1'); }}>
-                  Customer
-                </button>
+                {createEntries.map((entry) => (
+                  <button key={entry.to} type="button" role="menuitem" onClick={() => { setOpenMenu('none'); navigate(entry.to); }}>
+                    {t(entry.label)}
+                  </button>
+                ))}
               </div>
             ) : null}
           </div>
+            ) : null}
           </>
         ) : null}
 
@@ -208,7 +213,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
           {openMenu === 'bell' ? (
             <div className="dropdown dropdown-wide" role="menu">
               <div className="dropdown-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>Needs attention</span>
+                <span>{t('header.notifications.title')}</span>
                 {notifications.length > 0 ? (
                   <button
                     type="button"
@@ -222,12 +227,12 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
                     }}
                     onClick={clearAllNotifications}
                   >
-                    Clear all
+                    {t('header.notifications.clearAll')}
                   </button>
                 ) : null}
               </div>
               {notifications.length === 0 ? (
-                <p className="dropdown-empty">Nothing needs your attention right now.</p>
+                <p className="dropdown-empty">{t('header.notifications.empty')}</p>
               ) : (
                 notifications.slice(0, 8).map((item) => (
                   <div key={item.id} className={`notification notification-${item.severity}`}>
@@ -323,7 +328,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
                     navigate('/profile');
                   }}
                 >
-                  My Account
+                  {t('header.profile.myAccount')}
                 </button>
                 <button
                   type="button"
@@ -331,7 +336,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
                   onClick={() => void logout()}
                 >
                   <LogOut size={13} />
-                  <span>Sign Out</span>
+                  <span>{t('header.profile.signOut')}</span>
                 </button>
               </div>
 
@@ -356,7 +361,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
                     background: '#059669',
                   }}
                 />
-                <span>Active Books • {organization?.name ?? 'Rooman Books'}</span>
+                <span>Active Books • {organization?.name ?? branding.appName}</span>
               </div>
 
               <div style={{ padding: '10px 16px', background: '#f8fafc' }}>

@@ -18,6 +18,7 @@ import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, SkeletonRows } from '@/components/ui/Feedback';
 import { TextAreaField, TextField } from '@/components/ui/Field';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, SearchInput, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
@@ -57,6 +58,7 @@ function StockCell({ item }: { item: Item }) {
 }
 
 export function ItemsPage() {
+  const { t } = useAppContent();
   const toast = useToast();
   const { canWrite } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -249,8 +251,8 @@ export function ItemsPage() {
   return (
     <>
       <PageHeader
-        title="Items"
-        subtitle="Goods and services you sell or buy, with inventory tracking."
+        title={t('items.title')}
+        subtitle={t('items.subtitle')}
         actions={
           <IfCanWrite>
             <Button
@@ -258,7 +260,7 @@ export function ItemsPage() {
               icon={<Plus size={15} />}
               onClick={() => navigate('/items/new')}
             >
-              New item
+              {t('items.new')}
             </Button>
           </IfCanWrite>
         }
@@ -321,8 +323,8 @@ export function ItemsPage() {
         ) : !rows.length ? (
           <div className="card-body">
             <EmptyState
-              title="No items yet"
-              description="Add the goods and services you sell so you can put them on invoices and bills."
+              title={t('items.empty.title')}
+              description={t('items.empty.body')}
               icon={<Package size={28} aria-hidden="true" />}
               action={
                 <IfCanWrite>
@@ -331,7 +333,7 @@ export function ItemsPage() {
                     icon={<Plus size={15} />}
                     onClick={() => navigate('/items/new')}
                   >
-                    New item
+                    {t('items.new')}
                   </Button>
                 </IfCanWrite>
               }

@@ -5,6 +5,7 @@ import { razorpaySyncApi } from '@/api/razorpay';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Tabs } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
@@ -19,6 +20,7 @@ import { RazorpayTransactions } from './RazorpayTransactions';
 type PaymentsTab = 'overview' | 'transactions' | 'reconciliation' | 'categories' | 'sync';
 
 export function RazorpayPaymentsPage() {
+  const { t } = useAppContent();
   const toast = useToast();
   const [tab, setTab] = useState<PaymentsTab>('overview');
   const [syncing, setSyncing] = useState(false);
@@ -63,8 +65,8 @@ export function RazorpayPaymentsPage() {
   return (
     <div className="stack">
       <PageHeader
-        title="Razorpay payments"
-        subtitle="Imported Razorpay transactions, their categories and their accounting position."
+        title={t('razorpay.title')}
+        subtitle={t('razorpay.subtitle')}
         breadcrumb={['Banking', 'Payments']}
         actions={
           <div className="row">
@@ -81,7 +83,7 @@ export function RazorpayPaymentsPage() {
               disabled={!status.connected}
               onClick={syncNow}
             >
-              Sync now
+              {t('razorpay.syncNow')}
             </Button>
           </div>
         }
@@ -98,11 +100,11 @@ export function RazorpayPaymentsPage() {
 
       <Tabs
         tabs={[
-          { id: 'overview', label: 'Overview' },
-          { id: 'transactions', label: 'Transactions' },
-          { id: 'reconciliation', label: 'Reconciliation' },
-          { id: 'categories', label: 'Categories' },
-          { id: 'sync', label: 'Sync history' },
+          { id: 'overview', label: t('razorpay.tab.overview') },
+          { id: 'transactions', label: t('razorpay.tab.transactions') },
+          { id: 'reconciliation', label: t('razorpay.tab.reconciliation') },
+          { id: 'categories', label: t('razorpay.tab.categories') },
+          { id: 'sync', label: t('razorpay.tab.sync') },
         ]}
         active={tab}
         onChange={(id) => setTab(id as PaymentsTab)}

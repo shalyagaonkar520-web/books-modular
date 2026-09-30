@@ -9,6 +9,7 @@ import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, SkeletonRows } from '@/components/ui/Feedback';
 import { CheckboxField, TextAreaField, TextField } from '@/components/ui/Field';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
@@ -34,6 +35,7 @@ function monthStart(): string {
 }
 
 export function PaymentsMadePage() {
+  const { t } = useAppContent();
   const toast = useToast();
   const { download } = useDownload();
   const { canWrite } = useAuth();
@@ -161,8 +163,8 @@ export function PaymentsMadePage() {
   return (
     <>
       <PageHeader
-        title="Payments made"
-        subtitle="Every payment sent to a vendor, whether against a bill or as an advance."
+        title={t('paymentsMade.title')}
+        subtitle={t('paymentsMade.subtitle')}
         actions={
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <Button
@@ -176,7 +178,7 @@ export function PaymentsMadePage() {
                 }))
               }
             >
-              Extract PDF
+              {t('common.extractPdf')}
             </Button>
             <Button
               variant="secondary"
@@ -189,11 +191,11 @@ export function PaymentsMadePage() {
                 }))
               }
             >
-              Extract Excel
+              {t('common.extractExcel')}
             </Button>
             <IfCanWrite>
               <Button variant="primary" icon={<Plus size={15} />} onClick={() => setRecording(true)}>
-                Record payment
+                {t('paymentsMade.record')}
               </Button>
             </IfCanWrite>
           </div>
@@ -257,13 +259,13 @@ export function PaymentsMadePage() {
           <ErrorBlock message={list.error} onRetry={list.reload} />
         ) : !list.data || list.data.items.length === 0 ? (
           <EmptyState
-            title="No payments in this period"
-            description="Widen the date range, or record a payment to a vendor."
+            title={t('paymentsMade.empty.title')}
+            description={t('paymentsMade.empty.body')}
             icon={<Wallet size={28} aria-hidden="true" />}
             action={
               <IfCanWrite>
                 <Button variant="primary" icon={<Plus size={15} />} onClick={() => setRecording(true)}>
-                  Record payment
+                  {t('paymentsMade.record')}
                 </Button>
               </IfCanWrite>
             }

@@ -7,6 +7,7 @@ import {
   Globe,
   KeyRound,
   LayoutDashboard,
+  LayoutTemplate,
   LogOut,
   Menu,
   ScrollText,
@@ -33,6 +34,7 @@ const NAV_LINKS = [
   { to: '/platform/audit-logs', label: 'Audit log', icon: ScrollText, end: false },
   { to: '/platform/admins', label: 'Admins', icon: UserCog, end: false },
   { to: '/platform/website', label: 'Website', icon: Globe, end: false },
+  { to: '/platform/app-content', label: 'App content', icon: LayoutTemplate, end: false },
   { to: '/platform/settings', label: 'Settings', icon: Settings, end: false },
 ];
 

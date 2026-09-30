@@ -37,8 +37,10 @@ import {
   Wallet,
 } from 'lucide-react';
 
+import { moduleForPath } from '@/api/appContent';
 import { ApiError } from '@/api/client';
 import { platformApi, type OrgApprovalStatus, type OrgDetail, type PlatformUser } from '@/api/platform';
+import { useAppContent } from '@/app/AppContentContext';
 import { ActionMenu, type ActionMenuItem } from '@/components/ui/ActionMenu';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -580,6 +582,7 @@ interface OpenInAppMenuProps {
 /** "Open in app ▾" — pick a tenant page, confirm, and land there as the org's admin. */
 export function OpenInAppMenu({ org, detail, size = 'sm', variant = 'secondary', iconOnly = false }: OpenInAppMenuProps) {
   const { state, admin, blocker, staticBlocker, load, setRoute, confirmDialog } = useOpenInApp(org, detail);
+  const { isModuleEnabled } = useAppContent();
 
   let notice: ReactNode = null;
   if (blocker) notice = <span>{blocker}</span>;
@@ -588,7 +591,12 @@ export function OpenInAppMenu({ org, detail, size = 'sm', variant = 'secondary',
   else if (admin) notice = <span>Signs in as {admin.email}</span>;
 
   const unavailable = Boolean(blocker) || state.loading || !admin;
-  const items: ActionMenuItem[] = APP_ROUTES.map((route) => ({
+  // Modules switched off in App content would only bounce back to the dashboard.
+  const routes = APP_ROUTES.filter((route) => {
+    const module = moduleForPath(route.path);
+    return !module || isModuleEnabled(module);
+  });
+  const items: ActionMenuItem[] = routes.map((route) => ({
     key: route.path,
     label: route.label,
     icon: route.icon,

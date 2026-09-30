@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { PlatformAuthProvider } from '@/auth/PlatformAuthContext';
 import { PlatformApp } from '@/pages/platform/PlatformApp';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { ModuleGuard } from '@/app/ModuleGuard';
 import { RequireAuth, RequireEmployeePortal, RequireGuest, RequireMainApp, RequireRole } from '@/auth/RouteGuards';
 import { AcceptInvitePage } from '@/pages/auth/AcceptInvitePage';
 import { EmployeePortalPage } from '@/pages/portal/EmployeePortalPage';
@@ -85,6 +86,7 @@ export function App() {
 
           <Route element={<RequireMainApp />}>
             <Route element={<AppLayout />}>
+            <Route element={<ModuleGuard />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/items" element={<ItemsPage />} />
             <Route path="/items/new" element={<ItemFormPage />} />
@@ -165,6 +167,7 @@ export function App() {
                 </RequireRole>
               }
             />
+            </Route>
           </Route>
           </Route>
         </Route>

@@ -9,6 +9,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { useAppContent } from '@/app/AppContentContext';
 import { EmptyState, ErrorBlock, FormError, SkeletonRows } from '@/components/ui/Feedback';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { FilterSelect, Toolbar } from '@/components/ui/Toolbar';
@@ -29,6 +30,7 @@ const STATUS_OPTIONS = [
 ];
 
 export function ProjectsTab({ onProjectsChanged }: { onProjectsChanged: () => void }) {
+  const { t } = useAppContent();
   const { canWrite } = useAuth();
   const toast = useToast();
   const [statusFilter, setStatusFilter] = useState('');
@@ -64,7 +66,7 @@ export function ProjectsTab({ onProjectsChanged }: { onProjectsChanged: () => vo
         <FilterSelect label="Status" value={statusFilter} options={STATUS_OPTIONS} onChange={setStatusFilter} />
         <IfCanWrite>
           <Button variant="primary" size="sm" onClick={() => setModal({ open: true, project: null })}>
-            New project
+            {t('timeTracking.newProject')}
           </Button>
         </IfCanWrite>
       </Toolbar>
@@ -91,13 +93,13 @@ export function ProjectsTab({ onProjectsChanged }: { onProjectsChanged: () => vo
         <ErrorBlock message={projects.error} onRetry={projects.reload} />
       ) : !rows.length ? (
         <EmptyState
-          title="No projects yet"
-          description="Create a project to log billable time against a customer."
+          title={t('timeTracking.empty.title')}
+          description={t('timeTracking.empty.body')}
           icon={<FolderKanban size={28} aria-hidden="true" />}
           action={
             <IfCanWrite>
               <Button variant="primary" onClick={() => setModal({ open: true, project: null })}>
-                New project
+                {t('timeTracking.newProject')}
               </Button>
             </IfCanWrite>
           }

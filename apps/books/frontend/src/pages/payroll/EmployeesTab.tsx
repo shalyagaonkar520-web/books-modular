@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, StatTile } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { useAppContent } from '@/app/AppContentContext';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
 import { IfCanWrite } from '@/auth/RouteGuards';
 import { payrollApi } from '@/api/endpoints';
@@ -20,6 +21,7 @@ import { EmployeeFormModal } from './EmployeeFormModal';
 import { EmployeeLeaveModal } from './EmployeeLeaveModal';
 
 export function EmployeesTab() {
+  const { t } = useAppContent();
   const toast = useToast();
   const { isAdmin, organization } = useAuth();
   const currency = organization?.currency ?? 'INR';
@@ -146,7 +148,7 @@ export function EmployeesTab() {
         {loading ? <LoadingBlock label="Loading employees…" /> : null}
         {!loading && error ? <ErrorBlock message={error} onRetry={reload} /> : null}
         {!loading && !error && employees.length === 0 ? (
-          <EmptyState title="No employees yet" description="Add your first employee to start running payroll." />
+          <EmptyState title={t('payroll.employees.empty.title')} description={t('payroll.employees.empty.body')} />
         ) : null}
         {!loading && !error && employees.length > 0 ? (
           <DataTable columns={columns} rows={employees} rowKey={(row) => row.id} caption="Employees" />

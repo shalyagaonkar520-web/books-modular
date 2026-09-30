@@ -14,6 +14,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 
+import { useAppContent } from '@/app/AppContentContext';
 import { useAuth } from '@/auth/AuthContext';
 import { authApi } from '@/api/endpoints';
 import { Button } from '@/components/ui/Button';
@@ -81,6 +82,7 @@ function AccountStateNotice({ kind, text }: { kind: AccountState; text: string }
 }
 
 export function LoginPage() {
+  const { t, branding } = useAppContent();
   const { login, isEmployee } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -208,15 +210,12 @@ export function LoginPage() {
         <div className="auth-3d-hero">
           <div className="auth-badge-pill">
             <Sparkles size={14} color="var(--primary)" />
-            <span>Rooman Books</span>
+            <span>{branding.appName}</span>
           </div>
 
-          <h2 className="auth-hero-title">Your books, simplified</h2>
+          <h2 className="auth-hero-title">{t('auth.login.heroTitle')}</h2>
 
-          <p className="auth-hero-desc">
-            Invoicing, GST-compliant billing, banking reconciliation, and real-time
-            financial reports — all in one place.
-          </p>
+          <p className="auth-hero-desc">{t('auth.login.heroBody')}</p>
 
           {/* Simple floating book animation */}
           <div className="auth-books-stack" aria-hidden="true">
@@ -230,22 +229,22 @@ export function LoginPage() {
             <div className="hero-metric-item">
               <ShieldCheck size={18} color="var(--primary)" />
               <div>
-                <strong>256-bit Encrypted</strong>
-                <span className="small text-muted">Bank-grade security</span>
+                <strong>{t('auth.login.metric1.title')}</strong>
+                <span className="small text-muted">{t('auth.login.metric1.body')}</span>
               </div>
             </div>
             <div className="hero-metric-item">
               <Landmark size={18} color="#0284c7" />
               <div>
-                <strong>Bank Reconciliation</strong>
-                <span className="small text-muted">Match every transaction</span>
+                <strong>{t('auth.login.metric2.title')}</strong>
+                <span className="small text-muted">{t('auth.login.metric2.body')}</span>
               </div>
             </div>
             <div className="hero-metric-item">
               <FileSpreadsheet size={18} color="#d97706" />
               <div>
-                <strong>GST & E-Way Ready</strong>
-                <span className="small text-muted">Full compliance</span>
+                <strong>{t('auth.login.metric3.title')}</strong>
+                <span className="small text-muted">{t('auth.login.metric3.body')}</span>
               </div>
             </div>
           </div>
@@ -255,21 +254,21 @@ export function LoginPage() {
         <div className="auth-card auth-card-3d">
           <div className="auth-brand">
             <div className="auth-brand-glow">
-              <img src="/rooman-logo.png" alt="" />
+              <img src={branding.logoUrl} alt="" />
             </div>
             <div>
-              <h1 className="auth-title">Rooman Books</h1>
-              <span className="auth-edition-badge">Enterprise Edition</span>
+              <h1 className="auth-title">{branding.appName}</h1>
+              <span className="auth-edition-badge">{t('auth.login.edition')}</span>
             </div>
           </div>
 
-          <p className="auth-subtitle">Sign in to your organization&apos;s books.</p>
+          <p className="auth-subtitle">{t('auth.login.subtitle')}</p>
 
           <form onSubmit={onSubmit} noValidate>
             {accountState ? <AccountStateNotice kind={accountState.kind} text={accountState.text} /> : <FormError message={error} />}
 
             <TextField
-              label="Work email"
+              label={t('auth.login.email')}
               type="email"
               name="email"
               autoComplete="email"
@@ -281,7 +280,7 @@ export function LoginPage() {
 
             <div className="password-row">
               <TextField
-                label="Password"
+                label={t('auth.login.password')}
                 type={showPassword ? 'text' : 'password'}
                 name="password"
                 autoComplete="current-password"
@@ -314,7 +313,7 @@ export function LoginPage() {
                   padding: 0,
                 }}
               >
-                Forgot password?
+                {t('auth.login.forgot')}
               </button>
             </div>
 
@@ -326,12 +325,12 @@ export function LoginPage() {
               icon={<LogIn size={15} />}
               className="btn-block auth-submit-btn"
             >
-              Sign in
+              {t('auth.login.submit')}
             </Button>
           </form>
 
           <p className="auth-footer">
-            New to Rooman Books? <Link to="/register">Create an organization</Link>
+            {t('auth.login.newPrompt')} <Link to="/register">{t('auth.login.registerLink')}</Link>
           </p>
 
           <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #f1f5f9', textAlign: 'center' }}>
@@ -347,7 +346,7 @@ export function LoginPage() {
               }}
             >
               <ShieldCheck size={14} />
-              <span>Platform Admin Console &rarr;</span>
+              <span>{t('auth.login.platformLink')}</span>
             </Link>
           </div>
         </div>
