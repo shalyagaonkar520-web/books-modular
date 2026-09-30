@@ -37,6 +37,7 @@ import { VerifyEmailPage } from '@/pages/auth/VerifyEmailPage';
 import { ReportsPage } from '@/pages/reports/ReportsPage';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
 import { TimeTrackingPage } from '@/pages/timetracking/TimeTrackingPage';
+import { OrgAdminApp } from '@/pages/orgadmin/OrgAdminApp';
 
 export function App() {
   return (
@@ -85,6 +86,10 @@ export function App() {
           </Route>
 
           <Route element={<RequireMainApp />}>
+            {/* The organization's own admin panel: its own layout, outside AppLayout and
+                ModuleGuard, on the normal tenant session. Admin-only (guarded inside). */}
+            <Route path="/org-admin/*" element={<OrgAdminApp />} />
+
             <Route element={<AppLayout />}>
             <Route element={<ModuleGuard />}>
             <Route path="/dashboard" element={<DashboardPage />} />

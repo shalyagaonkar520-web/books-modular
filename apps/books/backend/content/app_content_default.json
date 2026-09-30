@@ -172,6 +172,7 @@
     "header.excel.previewFor": "Preview for {category} ({sheet})",
     "header.excel.deleteSelected": "Delete Selected ({count})",
     "header.excel.fileSize": "{size} KB selected",
+    "header.adminPanel": "Admin panel",
 
     "dashboard.loading": "Building your dashboard…",
     "dashboard.welcome": "Welcome back, {name}",

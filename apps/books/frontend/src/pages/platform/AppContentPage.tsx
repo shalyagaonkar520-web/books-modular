@@ -15,6 +15,7 @@ import {
   type AppContent,
   type AppModuleKey,
 } from '@/api/appContent';
+import { orgAdminApi } from '@/api/orgAdmin';
 import { platformApi } from '@/api/platform';
 import { PlatformApiError } from '@/api/platformClient';
 import { useAppContent } from '@/app/AppContentContext';
@@ -76,22 +77,41 @@ function sectionOfPath(path: string): string | null {
 // Page
 // ---------------------------------------------------------------------------
 
-export function AppContentPage() {
+interface AppContentPageProps {
+  /**
+   * 'platform' (the super-admin console) edits the shared content or, via ?org=,
+   * any organization's copy. 'organization' (the org admin panel) edits only the
+   * signed-in user's own organization, through the tenant API.
+   */
+  mode?: 'platform' | 'organization';
+}
+
+export function AppContentPage({ mode = 'platform' }: AppContentPageProps = {}) {
   const toast = useToast();
   const { reload: reloadAppContent } = useAppContent();
   const [searchParams, setSearchParams] = useSearchParams();
+  const ownOrg = mode === 'organization';
   // '' edits the shared content every organization sees; an org id edits only that organization's copy.
-  const scope = searchParams.get('org') ?? '';
-  const orgs = useAsync((signal) => platformApi.organizations.list({ page: 1, page_size: 200 }, signal), []);
+  const scope = ownOrg ? '' : (searchParams.get('org') ?? '');
+  // Editing one organization's copy (compared against the shared content) rather than the shared content itself.
+  const perOrg = ownOrg || Boolean(scope);
+  const orgs = useAsync(
+    (signal) => (ownOrg ? Promise.resolve(null) : platformApi.organizations.list({ page: 1, page_size: 200 }, signal)),
+    [ownOrg],
+  );
   const remote = useAsync(
     async (signal) => {
+      if (ownOrg) {
+        const org = await orgAdminApi.appContent.get(signal);
+        return { content: normalizeAppContent(org.content), shared: normalizeAppContent(org.shared), orgName: org.organizationName };
+      }
       if (!scope) {
         return { content: normalizeAppContent(await platformApi.appContent.get(signal)), shared: DEFAULT_APP_CONTENT, orgName: null };
       }
       const org = await platformApi.appContent.org.get(scope, signal);
       return { content: normalizeAppContent(org.content), shared: normalizeAppContent(org.shared), orgName: org.organizationName };
     },
-    [scope],
+    [scope, ownOrg],
   );
   const baseline = remote.data?.shared ?? DEFAULT_APP_CONTENT;
   const orgName = remote.data?.orgName ?? null;
@@ -136,12 +156,12 @@ export function AppContentPage() {
   }, [errors]);
 
   const customizedCount = useMemo(() => {
-    if (!draft || !scope) return 0;
+    if (!draft || !perOrg) return 0;
     const branding = (['appName', 'logoUrl', 'primaryColor'] as const).filter((k) => draft.branding[k] !== baseline.branding[k]).length;
     const modules = APP_MODULES.filter((m) => draft.modules[m.key] !== baseline.modules[m.key]).length;
     const texts = Object.keys(draft.texts).filter((k) => isChanged(k, draft.texts[k] ?? '', baseline.texts)).length;
     return branding + modules + texts;
-  }, [draft, scope, baseline]);
+  }, [draft, perOrg, baseline]);
 
   const query = search.trim().toLowerCase();
   const visibleGroups = useMemo(() => {
@@ -200,6 +220,8 @@ export function AppContentPage() {
     setServerErrors({});
     const updated = await saveSubmit.run(async () => {
       try {
+        // The tenant client only reports the last segment of a 422 path, so there it stays a form-level message.
+        if (ownOrg) return normalizeAppContent((await orgAdminApi.appContent.update(draft)).content);
         if (scope) return normalizeAppContent((await platformApi.appContent.org.update(scope, draft)).content);
         return await platformApi.appContent.update(draft);
       } catch (error) {
@@ -214,24 +236,25 @@ export function AppContentPage() {
       applyServerContent(updated);
       void reloadAppContent();
       toast.success(
-        scope
+        perOrg
           ? `Saved for ${orgName ?? 'this organization'}. Only its users see these changes.`
           : 'App content saved. Every organization without its own customization now sees these changes.',
       );
     } else if (saveSubmit.errorRef.current) {
-      toast.error('The app content could not be saved. See the highlighted fields.');
+      toast.error(ownOrg ? 'The app content could not be saved.' : 'The app content could not be saved. See the highlighted fields.');
     }
   };
 
   const reset = async () => {
-    const defaults = await resetSubmit.run(async () =>
-      scope ? normalizeAppContent((await platformApi.appContent.org.reset(scope)).content) : platformApi.appContent.reset(),
-    );
+    const defaults = await resetSubmit.run(async () => {
+      if (ownOrg) return normalizeAppContent((await orgAdminApi.appContent.reset()).content);
+      return scope ? normalizeAppContent((await platformApi.appContent.org.reset(scope)).content) : platformApi.appContent.reset();
+    });
     if (defaults) {
       applyServerContent(defaults);
       void reloadAppContent();
       setConfirmingReset(false);
-      toast.success(scope ? `${orgName ?? 'The organization'} now uses the shared content again.` : 'App content was reset to the defaults.');
+      toast.success(perOrg ? `${orgName ?? 'The organization'} now uses the shared content again.` : 'App content was reset to the defaults.');
     }
   };
 
@@ -253,28 +276,34 @@ export function AppContentPage() {
     <>
       <PageHeader
         title="App content"
-        subtitle="Edit what organizations see after signing in: branding, which modules are on, and every label and message."
+        subtitle={
+          ownOrg
+            ? `Edit what ${orgName ?? 'your organization'}'s users see after signing in: branding, which modules are on, and every label and message.`
+            : 'Edit what organizations see after signing in: branding, which modules are on, and every label and message.'
+        }
       />
       <div className="card" style={{ marginBottom: 12 }}>
         <div className="card-body">
-          <div className="form-grid-2">
-            <SelectField
-              label="Apply changes to"
-              value={scope}
-              options={orgOptions}
-              disabled={dirty}
-              hint={
-                dirty
-                  ? 'Save or discard your changes before switching.'
-                  : scope
-                    ? 'Only this organization sees what you change here. Anything you leave as it is keeps following the shared content.'
-                    : 'The shared content every organization sees, unless an organization has its own customization.'
-              }
-              onChange={(e) => changeScope(e.target.value)}
-            />
-          </div>
-          {scope ? (
-            <div className="row" style={{ gap: 8, alignItems: 'center', marginTop: 4 }}>
+          {ownOrg ? null : (
+            <div className="form-grid-2">
+              <SelectField
+                label="Apply changes to"
+                value={scope}
+                options={orgOptions}
+                disabled={dirty}
+                hint={
+                  dirty
+                    ? 'Save or discard your changes before switching.'
+                    : scope
+                      ? 'Only this organization sees what you change here. Anything you leave as it is keeps following the shared content.'
+                      : 'The shared content every organization sees, unless an organization has its own customization.'
+                }
+                onChange={(e) => changeScope(e.target.value)}
+              />
+            </div>
+          )}
+          {perOrg ? (
+            <div className="row" style={{ gap: 8, alignItems: 'center', marginTop: ownOrg ? 0 : 4 }}>
               <Building2 size={15} aria-hidden="true" />
               <span className="small">
                 Editing <strong>{orgName ?? 'this organization'}</strong> only · {customizedCount} customized{' '}
@@ -313,13 +342,15 @@ export function AppContentPage() {
     <>
       {header}
 
-      <div className="notification notification-info" role="note" style={{ marginBottom: 12 }}>
-        <Briefcase size={16} aria-hidden="true" />
-        <span>
-          Preview in an organization: after saving, open any organization from <Link to="/platform/workspace">Workspace</Link> to see the
-          app exactly as its users do.
-        </span>
-      </div>
+      {ownOrg ? null : (
+        <div className="notification notification-info" role="note" style={{ marginBottom: 12 }}>
+          <Briefcase size={16} aria-hidden="true" />
+          <span>
+            Preview in an organization: after saving, open any organization from <Link to="/platform/workspace">Workspace</Link> to see the
+            app exactly as its users do.
+          </span>
+        </div>
+      )}
 
       <div className="site-editor">
         <FormError message={saveSubmit.error} />
@@ -427,7 +458,7 @@ export function AppContentPage() {
                   <div className="site-editor-string-row" key={key}>
                     <TextField
                       label={textLabel(key)}
-                      hint={changed ? `${key} · ${scope ? 'customized' : 'changed'}` : key}
+                      hint={changed ? `${key} · ${perOrg ? 'customized' : 'changed'}` : key}
                       placeholder={baseline.texts[key] ?? DEFAULT_TEXTS[key]}
                       maxLength={LIMITS.text + 50}
                       value={value}
@@ -435,14 +466,14 @@ export function AppContentPage() {
                       onChange={(e) => setText(key, e.target.value)}
                     />
                     <span className="site-editor-row-controls">
-                      {changed ? <Badge tone="info">{scope ? 'Customized' : 'Changed'}</Badge> : null}
+                      {changed ? <Badge tone="info">{perOrg ? 'Customized' : 'Changed'}</Badge> : null}
                       <Button
                         variant="ghost"
                         size="sm"
                         icon={<Undo2 size={14} />}
                         disabled={!changed}
-                        aria-label={`Reset ${key} to ${scope ? 'shared text' : 'default'}`}
-                        title={scope ? 'Use the shared text' : 'Reset to default'}
+                        aria-label={`Reset ${key} to ${perOrg ? 'shared text' : 'default'}`}
+                        title={perOrg ? 'Use the shared text' : 'Reset to default'}
                         onClick={() => setText(key, baseline.texts[key] ?? DEFAULT_TEXTS[key])}
                       />
                     </span>
@@ -469,7 +500,7 @@ export function AppContentPage() {
                 setConfirmingReset(true);
               }}
             >
-              {scope ? 'Remove customizations' : 'Reset all to defaults'}
+              {perOrg ? 'Remove customizations' : 'Reset all to defaults'}
             </Button>
             <Button variant="secondary" icon={<Undo2 size={15} />} disabled={!dirty || saveSubmit.submitting} onClick={discard}>
               Discard changes
@@ -483,11 +514,11 @@ export function AppContentPage() {
 
       <ConfirmDialog
         open={confirmingReset}
-        title={scope ? `Remove customizations for ${orgName ?? 'this organization'}` : 'Reset app content to defaults'}
+        title={perOrg ? `Remove customizations for ${orgName ?? 'this organization'}` : 'Reset app content to defaults'}
         message={
           <>
             <FormError message={resetSubmit.error} />
-            {scope ? (
+            {perOrg ? (
               <p>
                 Drop every customization for {orgName ?? 'this organization'} so it shows the shared content again? This cannot be undone
                 {dirty ? ' — your unsaved changes will also be lost' : ''}.
@@ -500,7 +531,7 @@ export function AppContentPage() {
             )}
           </>
         }
-        confirmLabel={scope ? 'Remove customizations' : 'Reset all to defaults'}
+        confirmLabel={perOrg ? 'Remove customizations' : 'Reset all to defaults'}
         busy={resetSubmit.submitting}
         onConfirm={() => void reset()}
         onCancel={() => {

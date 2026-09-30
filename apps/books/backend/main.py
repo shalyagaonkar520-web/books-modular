@@ -87,6 +87,7 @@ def create_app() -> FastAPI:
         expenses,
         invoices,
         items,
+        org_admin,
         organization,
         payments,
         payroll,
@@ -114,6 +115,7 @@ def create_app() -> FastAPI:
     app.include_router(employee_portal.router)
     for module in (
         organization,
+        org_admin,
         items,
         contacts,
         invoices,
