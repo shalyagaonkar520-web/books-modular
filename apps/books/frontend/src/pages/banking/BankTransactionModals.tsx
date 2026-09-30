@@ -1,6 +1,7 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
 
 import { bankingApi } from '@/api/endpoints';
+import { useAppContent } from '@/app/AppContentContext';
 import type { Account, BankAccount } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
@@ -10,8 +11,8 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { parseNumber, todayIso } from '@/utils/format';
 
 const TRANSACTION_TYPES = [
-  { value: 'deposit', label: 'Deposit (money in)' },
-  { value: 'withdrawal', label: 'Withdrawal (money out)' },
+  { value: 'deposit', labelKey: 'banking.txModal.type.deposit' },
+  { value: 'withdrawal', labelKey: 'banking.txModal.type.withdrawal' },
 ];
 
 interface TransactionFormState {
@@ -33,6 +34,7 @@ interface BankTransactionModalProps {
 }
 
 export function BankTransactionModal({ open, account, ledgerAccounts, onClose, onSaved }: BankTransactionModalProps) {
+  const { t } = useAppContent();
   const formId = useId();
   const { submitting, error, fieldErrors, run, reset } = useSubmit();
   const [form, setForm] = useState<TransactionFormState>({
@@ -70,22 +72,22 @@ export function BankTransactionModal({ open, account, ledgerAccounts, onClose, o
         counterAccountId: form.counterAccountId,
       }),
     );
-    if (saved) onSaved('Transaction recorded.');
+    if (saved) onSaved(t('banking.txModal.toast.recorded'));
   };
 
   return (
     <Modal
       open={open}
-      title="Add transaction"
+      title={t('banking.txModal.title')}
       subtitle={account ? account.name : undefined}
       onClose={onClose}
       footer={
         <>
           <Button onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('banking.modal.cancel')}
           </Button>
           <Button variant="primary" type="submit" form={formId} loading={submitting}>
-            Record transaction
+            {t('banking.txModal.submit')}
           </Button>
         </>
       }
@@ -93,17 +95,17 @@ export function BankTransactionModal({ open, account, ledgerAccounts, onClose, o
       <form id={formId} className="stack" onSubmit={onSubmit}>
         <FormError message={error} />
         <div className="form-grid">
-          <TextField label="Date" type="date" required value={form.date} error={fieldErrors.date} onChange={(event) => set('date', event.target.value)} />
+          <TextField label={t('banking.modal.date')} type="date" required value={form.date} error={fieldErrors.date} onChange={(event) => set('date', event.target.value)} />
           <SelectField
-            label="Type"
+            label={t('banking.txModal.typeLabel')}
             required
-            options={TRANSACTION_TYPES}
+            options={TRANSACTION_TYPES.map((option) => ({ value: option.value, label: t(option.labelKey) }))}
             value={form.type}
             error={fieldErrors.type}
             onChange={(event) => set('type', event.target.value as 'deposit' | 'withdrawal')}
           />
           <TextField
-            label="Amount"
+            label={t('banking.modal.amount')}
             type="number"
             step="0.01"
             min="0"
@@ -112,20 +114,20 @@ export function BankTransactionModal({ open, account, ledgerAccounts, onClose, o
             error={fieldErrors.amount}
             onChange={(event) => set('amount', event.target.value)}
           />
-          <TextField label="Reference" value={form.reference} error={fieldErrors.reference} onChange={(event) => set('reference', event.target.value)} />
+          <TextField label={t('banking.modal.reference')} value={form.reference} error={fieldErrors.reference} onChange={(event) => set('reference', event.target.value)} />
           <SelectField
-            label="Counter account"
+            label={t('banking.txModal.counter')}
             required
-            placeholder="Select the other side of the entry"
+            placeholder={t('banking.txModal.counterPlaceholder')}
             options={counterOptions}
             value={form.counterAccountId}
             error={fieldErrors.counterAccountId}
-            hint="Income, expense or balance sheet account this money came from or went to."
+            hint={t('banking.txModal.counterHint')}
             onChange={(event) => set('counterAccountId', event.target.value)}
           />
         </div>
         <TextAreaField
-          label="Description"
+          label={t('banking.modal.description')}
           required
           rows={2}
           value={form.description}
@@ -155,6 +157,7 @@ interface BankTransferModalProps {
 }
 
 export function BankTransferModal({ open, accounts, defaultFromAccountId, onClose, onSaved }: BankTransferModalProps) {
+  const { t } = useAppContent();
   const formId = useId();
   const { submitting, error, fieldErrors, run, reset } = useSubmit();
   const [form, setForm] = useState<TransferFormState>({
@@ -201,15 +204,15 @@ export function BankTransferModal({ open, accounts, defaultFromAccountId, onClos
   return (
     <Modal
       open={open}
-      title="Transfer between accounts"
+      title={t('banking.transferModal.title')}
       onClose={onClose}
       footer={
         <>
           <Button onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('banking.modal.cancel')}
           </Button>
           <Button variant="primary" type="submit" form={formId} loading={submitting}>
-            Record transfer
+            {t('banking.transferModal.submit')}
           </Button>
         </>
       }
@@ -218,26 +221,26 @@ export function BankTransferModal({ open, accounts, defaultFromAccountId, onClos
         <FormError message={error} />
         <div className="form-grid">
           <SelectField
-            label="From account"
+            label={t('banking.transferModal.from')}
             required
-            placeholder="Select an account"
+            placeholder={t('banking.transferModal.accountPlaceholder')}
             options={options}
             value={form.fromAccountId}
             error={fieldErrors.fromAccountId}
             onChange={(event) => set('fromAccountId', event.target.value)}
           />
           <SelectField
-            label="To account"
+            label={t('banking.transferModal.to')}
             required
-            placeholder="Select an account"
+            placeholder={t('banking.transferModal.accountPlaceholder')}
             options={options.filter((option) => option.value !== form.fromAccountId)}
             value={form.toAccountId}
             error={fieldErrors.toAccountId}
             onChange={(event) => set('toAccountId', event.target.value)}
           />
-          <TextField label="Date" type="date" required value={form.date} error={fieldErrors.date} onChange={(event) => set('date', event.target.value)} />
+          <TextField label={t('banking.modal.date')} type="date" required value={form.date} error={fieldErrors.date} onChange={(event) => set('date', event.target.value)} />
           <TextField
-            label="Amount"
+            label={t('banking.modal.amount')}
             type="number"
             step="0.01"
             min="0"
@@ -246,9 +249,9 @@ export function BankTransferModal({ open, accounts, defaultFromAccountId, onClos
             error={fieldErrors.amount}
             onChange={(event) => set('amount', event.target.value)}
           />
-          <TextField label="Reference" value={form.reference} error={fieldErrors.reference} onChange={(event) => set('reference', event.target.value)} />
+          <TextField label={t('banking.modal.reference')} value={form.reference} error={fieldErrors.reference} onChange={(event) => set('reference', event.target.value)} />
           <TextField
-            label="Description"
+            label={t('banking.modal.description')}
             value={form.description}
             error={fieldErrors.description}
             onChange={(event) => set('description', event.target.value)}

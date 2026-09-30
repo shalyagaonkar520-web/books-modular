@@ -98,7 +98,7 @@ export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () =>
   return (
     <>
       {open ? <div className="sidebar-backdrop" onClick={onNavigate} aria-hidden="true" /> : null}
-      <aside className={`sidebar ${open ? 'is-open' : ''}`} aria-label="Main navigation">
+      <aside className={`sidebar ${open ? 'is-open' : ''}`} aria-label={t('sidebar.ariaLabel')}>
         <nav className="sidebar-nav">
           {singleLinks.map((entry) => (
             <NavLink key={entry.to} to={entry.to} end={entry.to === '/'} className="nav-link" onClick={onNavigate}>

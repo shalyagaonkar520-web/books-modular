@@ -40,7 +40,7 @@ export function PayRunsTab() {
     if (!approving) return;
     const result = await action.run(() => payrollApi.approvePayRun(approving.id));
     if (result) {
-      toast.success(`${result.periodLabel} pay run approved.`);
+      toast.success(t('payroll.payRuns.toast.approved', { period: result.periodLabel }));
       setApproving(null);
       reload();
     } else if (action.errorRef.current) {
@@ -61,13 +61,13 @@ export function PayRunsTab() {
   };
 
   const columns: Array<Column<PayRun>> = [
-    { key: 'period', header: 'Period', render: (row) => <span className="strong">{row.periodLabel}</span> },
-    { key: 'status', header: 'Status', render: (row) => <Badge tone={statusTone(row.status)}>{statusLabel(row.status)}</Badge> },
-    { key: 'employees', header: 'Employees', align: 'right', render: (row) => <span className="num">{formatNumber(row.employeeCount, 0)}</span> },
-    { key: 'gross', header: 'Gross', align: 'right', render: (row) => <span className="num">{formatCurrency(row.totalGross, currency)}</span> },
-    { key: 'deductions', header: 'Deductions', align: 'right', render: (row) => <span className="num">{formatCurrency(row.totalDeductions, currency)}</span> },
-    { key: 'net', header: 'Net', align: 'right', render: (row) => <span className="num strong">{formatCurrency(row.totalNet, currency)}</span> },
-    { key: 'payDate', header: 'Pay date', render: (row) => (row.payDate ? formatDate(row.payDate) : <span className="text-muted">—</span>) },
+    { key: 'period', header: t('payroll.payRuns.col.period'), render: (row) => <span className="strong">{row.periodLabel}</span> },
+    { key: 'status', header: t('payroll.payRuns.col.status'), render: (row) => <Badge tone={statusTone(row.status)}>{statusLabel(row.status, t)}</Badge> },
+    { key: 'employees', header: t('payroll.payRuns.col.employees'), align: 'right', render: (row) => <span className="num">{formatNumber(row.employeeCount, 0)}</span> },
+    { key: 'gross', header: t('payroll.payRuns.col.gross'), align: 'right', render: (row) => <span className="num">{formatCurrency(row.totalGross, currency)}</span> },
+    { key: 'deductions', header: t('payroll.payRuns.col.deductions'), align: 'right', render: (row) => <span className="num">{formatCurrency(row.totalDeductions, currency)}</span> },
+    { key: 'net', header: t('payroll.payRuns.col.net'), align: 'right', render: (row) => <span className="num strong">{formatCurrency(row.totalNet, currency)}</span> },
+    { key: 'payDate', header: t('payroll.payRuns.col.payDate'), render: (row) => (row.payDate ? formatDate(row.payDate) : <span className="text-muted">—</span>) },
     {
       key: 'actions',
       header: '',
@@ -76,21 +76,21 @@ export function PayRunsTab() {
       render: (row) => (
         <div className="row-actions">
           <Button variant="ghost" size="sm" icon={<Eye size={14} />} onClick={() => setDetailId(row.id)}>
-            View
+            {t('payroll.payRuns.view')}
           </Button>
           {isAdmin && row.status === 'draft' ? (
             <>
               <Button variant="secondary" size="sm" icon={<BadgeCheck size={14} />} onClick={() => setApproving(row)}>
-                Approve
+                {t('payroll.payRuns.approve')}
               </Button>
-              <button type="button" className="action-btn is-danger" onClick={() => setDeleting(row)} aria-label={`Delete ${row.periodLabel} pay run`} title="Delete">
+              <button type="button" className="action-btn is-danger" onClick={() => setDeleting(row)} aria-label={t('payroll.payRuns.deleteAria', { period: row.periodLabel })} title={t('payroll.payRuns.delete')}>
                 <Trash2 size={15} />
               </button>
             </>
           ) : null}
           {isAdmin && row.status === 'approved' ? (
             <Button variant="primary" size="sm" icon={<Banknote size={14} />} onClick={() => setPaying(row)}>
-              Record payment
+              {t('payroll.payRuns.recordPayment')}
             </Button>
           ) : null}
         </div>
@@ -101,26 +101,26 @@ export function PayRunsTab() {
   return (
     <div className="stack">
       <Card
-        title="Pay runs"
-        subtitle="Draft a pay run, approve it, then record the payment to post it to the ledger"
+        title={t('payroll.payRuns.card.title')}
+        subtitle={t('payroll.payRuns.card.subtitle')}
         actions={
           isAdmin ? (
             <Button variant="primary" size="sm" icon={<Plus size={15} />} onClick={() => setCreating(true)}>
-              New pay run
+              {t('payroll.payRuns.new')}
             </Button>
           ) : null
         }
       >
-        {loading ? <LoadingBlock label="Loading pay runs…" /> : null}
+        {loading ? <LoadingBlock label={t('payroll.payRuns.loading')} /> : null}
         {!loading && error ? <ErrorBlock message={error} onRetry={reload} /> : null}
         {!loading && !error && payRuns.length === 0 ? (
           <EmptyState
             title={t('payroll.payRuns.empty.title')}
-            description={isAdmin ? 'Create a pay run for a month to generate payslips for every active employee.' : 'An administrator has not created a pay run yet.'}
+            description={isAdmin ? t('payroll.payRuns.empty.bodyAdmin') : t('payroll.payRuns.empty.bodyReadOnly')}
           />
         ) : null}
         {!loading && !error && payRuns.length > 0 ? (
-          <DataTable columns={columns} rows={payRuns} rowKey={(row) => row.id} caption="Monthly pay runs" />
+          <DataTable columns={columns} rows={payRuns} rowKey={(row) => row.id} caption={t('payroll.payRuns.caption')} />
         ) : null}
       </Card>
 
@@ -130,18 +130,18 @@ export function PayRunsTab() {
 
       <ConfirmDialog
         open={!!approving}
-        title="Approve pay run"
+        title={t('payroll.payRuns.approveDialog.title')}
         message={
           approving ? (
             <>
-              Approve the <strong>{approving.periodLabel}</strong> pay run for {formatCurrency(approving.totalNet, currency)} net? Payslips are
-              locked once approved, and you can then record the payment.
+              {t('payroll.payRuns.approveDialog.before')} <strong>{approving.periodLabel}</strong>{' '}
+              {t('payroll.payRuns.approveDialog.after', { amount: formatCurrency(approving.totalNet, currency) })}
             </>
           ) : (
             ''
           )
         }
-        confirmLabel="Approve"
+        confirmLabel={t('payroll.payRuns.approve')}
         tone="primary"
         busy={action.submitting}
         onConfirm={confirmApprove}
@@ -150,17 +150,17 @@ export function PayRunsTab() {
 
       <ConfirmDialog
         open={!!deleting}
-        title="Delete pay run"
+        title={t('payroll.payRuns.deleteDialog.title')}
         message={
           deleting ? (
             <>
-              The <strong>{deleting.periodLabel}</strong> pay run and its payslips will be deleted. Paid pay runs cannot be deleted.
+              {t('payroll.payRuns.deleteDialog.before')} <strong>{deleting.periodLabel}</strong> {t('payroll.payRuns.deleteDialog.after')}
             </>
           ) : (
             ''
           )
         }
-        confirmLabel="Delete"
+        confirmLabel={t('payroll.payRuns.delete')}
         busy={action.submitting}
         onConfirm={confirmDelete}
         onCancel={() => setDeleting(null)}

@@ -3,6 +3,7 @@ import { Eye, Undo2 } from 'lucide-react';
 
 import { accountingApi } from '@/api/endpoints';
 import type { Account, JournalEntry } from '@/api/types';
+import { useAppContent } from '@/app/AppContentContext';
 import { IfCanWrite } from '@/auth/RouteGuards';
 import { useAuth } from '@/auth/AuthContext';
 import { Badge } from '@/components/ui/Badge';
@@ -39,12 +40,8 @@ const SOURCE_TYPES = [
   'item_opening',
 ];
 
-const SOURCE_OPTIONS = [
-  { value: '', label: 'All sources' },
-  ...SOURCE_TYPES.map((sourceType) => ({ value: sourceType, label: titleCase(sourceType) })),
-];
-
 export function ManualJournalsTab({ accounts }: { accounts: Account[] }) {
+  const { t } = useAppContent();
   const { canWrite } = useAuth();
   const toast = useToast();
   const [page, setPage] = useState(1);
@@ -75,12 +72,17 @@ export function ManualJournalsTab({ accounts }: { accounts: Account[] }) {
     if (action.error) toast.error(action.error);
   }, [action.error, toast]);
 
+  const sourceOptions = [
+    { value: '', label: t('accounting.journals.filter.allSources') },
+    ...SOURCE_TYPES.map((value) => ({ value, label: titleCase(value) })),
+  ];
+
   const confirmReverse = async () => {
     if (!reverseTarget) return;
     const reversal = await action.run(() => accountingApi.reverseJournal(reverseTarget.id));
     setReverseTarget(null);
     if (reversal) {
-      toast.success(`Reversal ${reversal.entryNumber} posted.`);
+      toast.success(t('accounting.journals.toast.reversed', { number: reversal.entryNumber }));
       journals.reload();
     }
   };
@@ -88,12 +90,16 @@ export function ManualJournalsTab({ accounts }: { accounts: Account[] }) {
   const rows = journals.data?.items ?? [];
 
   const columns: Array<Column<JournalEntry>> = [
-    { key: 'entryNumber', header: 'Entry #', render: (entry) => <span className="code-tag">{entry.entryNumber}</span> },
-    { key: 'date', header: 'Date', render: (entry) => formatDate(entry.date) },
-    { key: 'reference', header: 'Reference', render: (entry) => <span className="text-muted">{entry.reference ?? '—'}</span> },
-    { key: 'source', header: 'Source', render: (entry) => <Badge tone={entry.sourceType === 'manual' ? 'info' : 'neutral'}>{titleCase(entry.sourceType)}</Badge> },
-    { key: 'reversal', header: 'Reversal', render: (entry) => (entry.isReversal ? <Badge tone="warning">Reversal</Badge> : <span className="text-subtle">—</span>) },
-    { key: 'total', header: 'Total', align: 'right', render: (entry) => <span className="num">{formatCurrency(entry.total)}</span> },
+    { key: 'entryNumber', header: t('accounting.journals.col.entryNumber'), render: (entry) => <span className="code-tag">{entry.entryNumber}</span> },
+    { key: 'date', header: t('accounting.journals.col.date'), render: (entry) => formatDate(entry.date) },
+    { key: 'reference', header: t('accounting.journals.col.reference'), render: (entry) => <span className="text-muted">{entry.reference ?? '—'}</span> },
+    { key: 'source', header: t('accounting.journals.col.source'), render: (entry) => <Badge tone={entry.sourceType === 'manual' ? 'info' : 'neutral'}>{titleCase(entry.sourceType)}</Badge> },
+    {
+      key: 'reversal',
+      header: t('accounting.journals.col.reversal'),
+      render: (entry) => (entry.isReversal ? <Badge tone="warning">{t('accounting.journals.badge.reversal')}</Badge> : <span className="text-subtle">—</span>),
+    },
+    { key: 'total', header: t('accounting.journals.col.total'), align: 'right', render: (entry) => <span className="num">{formatCurrency(entry.total)}</span> },
     {
       key: 'actions',
       header: '',
@@ -101,11 +107,21 @@ export function ManualJournalsTab({ accounts }: { accounts: Account[] }) {
       width: '80px',
       render: (entry) => (
         <div className="row-actions" onClick={(event) => event.stopPropagation()}>
-          <button type="button" className="action-btn" aria-label={`View journal ${entry.entryNumber}`} onClick={() => setDetail(entry)}>
+          <button
+            type="button"
+            className="action-btn"
+            aria-label={t('accounting.journals.viewAria', { number: entry.entryNumber })}
+            onClick={() => setDetail(entry)}
+          >
             <Eye size={15} />
           </button>
           {canWrite && entry.sourceType === 'manual' && !entry.isReversal ? (
-            <button type="button" className="action-btn" aria-label={`Reverse journal ${entry.entryNumber}`} onClick={() => setReverseTarget(entry)}>
+            <button
+              type="button"
+              className="action-btn"
+              aria-label={t('accounting.journals.reverseAria', { number: entry.entryNumber })}
+              onClick={() => setReverseTarget(entry)}
+            >
               <Undo2 size={15} />
             </button>
           ) : null}
@@ -125,10 +141,10 @@ export function ManualJournalsTab({ accounts }: { accounts: Account[] }) {
             setSearch(value);
             resetPage();
           }}
-          placeholder="Search entry number, reference or notes…"
+          placeholder={t('accounting.journals.searchPlaceholder')}
         />
         <label className="filter-select">
-          <span>From</span>
+          <span>{t('accounting.journals.filter.from')}</span>
           <input
             type="date"
             className="select select-sm"
@@ -140,7 +156,7 @@ export function ManualJournalsTab({ accounts }: { accounts: Account[] }) {
           />
         </label>
         <label className="filter-select">
-          <span>To</span>
+          <span>{t('accounting.journals.filter.to')}</span>
           <input
             type="date"
             className="select select-sm"
@@ -152,9 +168,9 @@ export function ManualJournalsTab({ accounts }: { accounts: Account[] }) {
           />
         </label>
         <FilterSelect
-          label="Source"
+          label={t('accounting.journals.filter.source')}
           value={sourceType}
-          options={SOURCE_OPTIONS}
+          options={sourceOptions}
           onChange={(value) => {
             setSourceType(value);
             resetPage();
@@ -162,21 +178,21 @@ export function ManualJournalsTab({ accounts }: { accounts: Account[] }) {
         />
         <IfCanWrite>
           <Button variant="primary" size="sm" onClick={() => setNewOpen(true)}>
-            New journal entry
+            {t('accounting.journals.newEntry')}
           </Button>
         </IfCanWrite>
       </Toolbar>
 
-      <Card title="Journal entries" subtitle={`${journals.data?.total ?? 0} entry(s)`}>
+      <Card title={t('accounting.journals.cardTitle')} subtitle={t('accounting.journals.count', { count: journals.data?.total ?? 0 })}>
         {journals.loading ? (
           <SkeletonRows rows={8} columns={6} />
         ) : journals.error ? (
           <ErrorBlock message={journals.error} onRetry={journals.reload} />
         ) : !rows.length ? (
-          <EmptyState title="No journal entries found" description="Adjust the filters, or post a manual journal entry." />
+          <EmptyState title={t('accounting.journals.empty.title')} description={t('accounting.journals.empty.body')} />
         ) : (
           <>
-            <DataTable columns={columns} rows={rows} rowKey={(entry) => entry.id} onRowClick={setDetail} caption="Journal entries" />
+            <DataTable columns={columns} rows={rows} rowKey={(entry) => entry.id} onRowClick={setDetail} caption={t('accounting.journals.tableCaption')} />
             <Pagination page={page} pageSize={PAGE_SIZE} total={journals.data?.total ?? 0} onPageChange={setPage} />
           </>
         )}
@@ -195,13 +211,13 @@ export function ManualJournalsTab({ accounts }: { accounts: Account[] }) {
       />
       <ConfirmDialog
         open={!!reverseTarget}
-        title="Reverse journal entry"
+        title={t('accounting.journals.reverse.title')}
         message={
           reverseTarget
-            ? `Post a reversing entry for ${reverseTarget.entryNumber} dated ${formatDate(reverseTarget.date)}? The original entry stays on record.`
+            ? t('accounting.journals.reverse.body', { number: reverseTarget.entryNumber, date: formatDate(reverseTarget.date) })
             : ''
         }
-        confirmLabel="Reverse entry"
+        confirmLabel={t('accounting.journals.reverse.confirm')}
         tone="primary"
         busy={action.submitting}
         onConfirm={() => void confirmReverse()}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, LogOut, User as UserIcon, Wallet } from 'lucide-react';
 
+import { useAppContent } from '@/app/AppContentContext';
 import { employeePortalApi } from '@/api/endpoints';
 import { useAuth } from '@/auth/AuthContext';
 import { Card, StatTile } from '@/components/ui/Card';
@@ -16,6 +17,7 @@ import type { LeaveRecord, Payslip, TimeEntry } from '@/api/types';
 type PortalTab = 'payslips' | 'profile' | 'time' | 'leave';
 
 export function EmployeePortalPage() {
+  const { t } = useAppContent();
   const { user, organization, logout } = useAuth();
   const navigate = useNavigate();
   const [tab, setTab] = useState<PortalTab>('payslips');
@@ -54,25 +56,34 @@ export function EmployeePortalPage() {
   };
 
   const payslipColumns: Array<Column<Payslip>> = [
-    { key: 'period', header: 'Period', render: (p) => p.periodLabel ?? '—' },
-    { key: 'gross', header: 'Gross', align: 'right', render: (p) => formatCurrency(p.gross) },
-    { key: 'deductions', header: 'Deductions', align: 'right', render: (p) => formatCurrency(p.totalDeductions) },
-    { key: 'net', header: 'Net pay', align: 'right', render: (p) => <strong>{formatCurrency(p.netPay)}</strong> },
-    { key: 'status', header: 'Status', render: (p) => (p.payRunStatus === 'paid' ? `Paid${p.payDate ? ` · ${formatDate(p.payDate)}` : ''}` : 'Approved') },
+    { key: 'period', header: t('portal.payslips.col.period'), render: (p) => p.periodLabel ?? '—' },
+    { key: 'gross', header: t('portal.payslips.col.gross'), align: 'right', render: (p) => formatCurrency(p.gross) },
+    { key: 'deductions', header: t('portal.payslips.col.deductions'), align: 'right', render: (p) => formatCurrency(p.totalDeductions) },
+    { key: 'net', header: t('portal.payslips.col.net'), align: 'right', render: (p) => <strong>{formatCurrency(p.netPay)}</strong> },
+    {
+      key: 'status',
+      header: t('portal.payslips.col.status'),
+      render: (p) =>
+        p.payRunStatus === 'paid'
+          ? p.payDate
+            ? t('portal.payslips.status.paidOn', { date: formatDate(p.payDate) })
+            : t('portal.payslips.status.paid')
+          : t('portal.payslips.status.approved'),
+    },
   ];
 
   const timeColumns: Array<Column<TimeEntry>> = [
-    { key: 'date', header: 'Date', render: (t) => formatDate(t.date) },
-    { key: 'project', header: 'Project', render: (t) => t.projectName },
-    { key: 'hours', header: 'Hours', align: 'right', render: (t) => t.hours },
-    { key: 'description', header: 'Notes', render: (t) => t.description ?? '—' },
-    { key: 'billable', header: 'Billable', render: (t) => (t.isBillable ? 'Yes' : 'No') },
+    { key: 'date', header: t('portal.time.col.date'), render: (entry) => formatDate(entry.date) },
+    { key: 'project', header: t('portal.time.col.project'), render: (entry) => entry.projectName },
+    { key: 'hours', header: t('portal.time.col.hours'), align: 'right', render: (entry) => entry.hours },
+    { key: 'description', header: t('portal.time.col.notes'), render: (entry) => entry.description ?? '—' },
+    { key: 'billable', header: t('portal.time.col.billable'), render: (entry) => (entry.isBillable ? t('portal.time.yes') : t('portal.time.no')) },
   ];
 
   const leaveColumns: Array<Column<LeaveRecord>> = [
-    { key: 'date', header: 'Date', render: (l) => formatDate(l.date) },
-    { key: 'type', header: 'Type', render: (l) => (l.leaveType === 'unpaid' ? 'Unpaid' : 'Paid') },
-    { key: 'notes', header: 'Notes', render: (l) => l.notes ?? '—' },
+    { key: 'date', header: t('portal.leave.col.date'), render: (l) => formatDate(l.date) },
+    { key: 'type', header: t('portal.leave.col.type'), render: (l) => (l.leaveType === 'unpaid' ? t('portal.leave.type.unpaid') : t('portal.leave.type.paid')) },
+    { key: 'notes', header: t('portal.leave.col.notes'), render: (l) => l.notes ?? '—' },
   ];
 
   return (
@@ -82,43 +93,43 @@ export function EmployeePortalPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <img src="/rooman-logo.png" alt="" style={{ height: '36px' }} />
             <div>
-              <h1 style={{ margin: 0, fontSize: '18px' }}>{organization?.name ?? 'Rooman Books'}</h1>
-              <span className="small text-muted">Employee portal — {user?.name}</span>
+              <h1 style={{ margin: 0, fontSize: '18px' }}>{organization?.name ?? t('portal.orgFallback')}</h1>
+              <span className="small text-muted">{t('portal.heading', { name: user?.name ?? '' })}</span>
             </div>
           </div>
           <Button variant="secondary" size="sm" icon={<LogOut size={14} />} onClick={() => void onSignOut()}>
-            Sign out
+            {t('portal.signOut')}
           </Button>
         </div>
 
         <div className="stack">
           <Tabs
             tabs={[
-              { id: 'payslips', label: 'My Payslips' },
-              { id: 'profile', label: 'My Profile' },
-              { id: 'leave', label: 'My Leave' },
-              { id: 'time', label: 'My Time Entries' },
+              { id: 'payslips', label: t('portal.tab.payslips') },
+              { id: 'profile', label: t('portal.tab.profile') },
+              { id: 'leave', label: t('portal.tab.leave') },
+              { id: 'time', label: t('portal.tab.time') },
             ]}
             active={tab}
             onChange={(id) => setTab(id as PortalTab)}
           />
 
           {tab === 'payslips' ? (
-            <Card title="Payslips" subtitle="Approved and paid pay runs that include you">
+            <Card title={t('portal.payslips.title')} subtitle={t('portal.payslips.subtitle')}>
               {payslips.loading ? (
                 <SkeletonRows rows={3} />
               ) : payslips.error ? (
                 <ErrorBlock message={payslips.error} onRetry={payslips.reload} />
               ) : !payslips.data || payslips.data.length === 0 ? (
-                <EmptyState title="No payslips yet" description="They'll appear here once a pay run including you is approved." />
+                <EmptyState title={t('portal.payslips.empty.title')} description={t('portal.payslips.empty.body')} />
               ) : (
-                <DataTable columns={payslipColumns} rows={payslips.data} rowKey={(p) => p.id} caption="Payslips" />
+                <DataTable columns={payslipColumns} rows={payslips.data} rowKey={(p) => p.id} caption={t('portal.payslips.title')} />
               )}
             </Card>
           ) : null}
 
           {tab === 'profile' ? (
-            <Card title="My profile" subtitle="Read-only — ask an administrator to update these details">
+            <Card title={t('portal.profile.title')} subtitle={t('portal.profile.subtitle')}>
               {employee.loading ? (
                 <SkeletonRows rows={3} />
               ) : employee.error ? (
@@ -126,36 +137,36 @@ export function EmployeePortalPage() {
               ) : employee.data ? (
                 <div className="stack">
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-                    <StatTile label="Gross salary" value={formatCurrency(employee.data.grossSalary)} icon={<Wallet size={16} />} />
-                    <StatTile label="Net salary" value={formatCurrency(employee.data.netSalary)} icon={<Wallet size={16} />} />
-                    <StatTile label="Employee code" value={employee.data.employeeCode} icon={<UserIcon size={16} />} />
+                    <StatTile label={t('portal.profile.gross')} value={formatCurrency(employee.data.grossSalary)} icon={<Wallet size={16} />} />
+                    <StatTile label={t('portal.profile.net')} value={formatCurrency(employee.data.netSalary)} icon={<Wallet size={16} />} />
+                    <StatTile label={t('portal.profile.code')} value={employee.data.employeeCode} icon={<UserIcon size={16} />} />
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
                     <StatTile
-                      label="Next pay date"
+                      label={t('portal.profile.nextPayDate')}
                       value={employee.data.nextPayDate ? formatDate(employee.data.nextPayDate) : '—'}
                       icon={<Wallet size={16} />}
                     />
-                    <StatTile label="Daily rate" value={`${formatCurrency(employee.data.dailyRate)}/day`} icon={<Wallet size={16} />} />
+                    <StatTile label={t('portal.profile.dailyRate')} value={t('portal.profile.perDay', { amount: formatCurrency(employee.data.dailyRate) })} icon={<Wallet size={16} />} />
                     <StatTile
-                      label="Accrued this period"
+                      label={t('portal.profile.accrued')}
                       value={formatCurrency(employee.data.accruedThisPeriod)}
-                      sublabel={`${employee.data.daysElapsedThisPeriod} of ${employee.data.daysInPeriod} days so far`}
+                      sublabel={t('portal.profile.daysSoFar', { elapsed: employee.data.daysElapsedThisPeriod, total: employee.data.daysInPeriod })}
                       icon={<Wallet size={16} />}
                     />
                   </div>
                   <p className="small text-muted">
-                    This is an estimate based on today's date and your monthly gross — your actual payslip is finalised when payroll runs.
+                    {t('portal.profile.estimateNote')}
                   </p>
                   <dl className="detail-grid">
-                    <div><dt>Name</dt><dd>{employee.data.name}</dd></div>
-                    <div><dt>Email</dt><dd>{employee.data.email ?? '—'}</dd></div>
-                    <div><dt>Designation</dt><dd>{employee.data.designation ?? '—'}</dd></div>
-                    <div><dt>Department</dt><dd>{employee.data.department ?? '—'}</dd></div>
-                    <div><dt>Date of joining</dt><dd>{formatDate(employee.data.dateOfJoining)}</dd></div>
-                    <div><dt>PAN</dt><dd>{employee.data.pan ?? '—'}</dd></div>
-                    <div><dt>Bank account</dt><dd>{employee.data.bankAccountNumberMasked ?? '—'}</dd></div>
-                    <div><dt>IFSC</dt><dd>{employee.data.bankIfsc ?? '—'}</dd></div>
+                    <div><dt>{t('portal.profile.name')}</dt><dd>{employee.data.name}</dd></div>
+                    <div><dt>{t('portal.profile.email')}</dt><dd>{employee.data.email ?? '—'}</dd></div>
+                    <div><dt>{t('portal.profile.designation')}</dt><dd>{employee.data.designation ?? '—'}</dd></div>
+                    <div><dt>{t('portal.profile.department')}</dt><dd>{employee.data.department ?? '—'}</dd></div>
+                    <div><dt>{t('portal.profile.dateOfJoining')}</dt><dd>{formatDate(employee.data.dateOfJoining)}</dd></div>
+                    <div><dt>{t('portal.profile.pan')}</dt><dd>{employee.data.pan ?? '—'}</dd></div>
+                    <div><dt>{t('portal.profile.bankAccount')}</dt><dd>{employee.data.bankAccountNumberMasked ?? '—'}</dd></div>
+                    <div><dt>{t('portal.profile.ifsc')}</dt><dd>{employee.data.bankIfsc ?? '—'}</dd></div>
                   </dl>
                 </div>
               ) : null}
@@ -163,29 +174,29 @@ export function EmployeePortalPage() {
           ) : null}
 
           {tab === 'leave' ? (
-            <Card title="Leave" subtitle="Days recorded against you by an administrator">
+            <Card title={t('portal.leave.title')} subtitle={t('portal.leave.subtitle')}>
               {leaves.loading ? (
                 <SkeletonRows rows={3} />
               ) : leaves.error ? (
                 <ErrorBlock message={leaves.error} onRetry={leaves.reload} />
               ) : !leaves.data || leaves.data.length === 0 ? (
-                <EmptyState title="No leave recorded" />
+                <EmptyState title={t('portal.leave.empty')} />
               ) : (
-                <DataTable columns={leaveColumns} rows={leaves.data} rowKey={(l) => l.id} caption="Leave" />
+                <DataTable columns={leaveColumns} rows={leaves.data} rowKey={(l) => l.id} caption={t('portal.leave.title')} />
               )}
             </Card>
           ) : null}
 
           {tab === 'time' ? (
-            <Card title="Time entries" subtitle="Hours logged against your account by an administrator or staff member">
+            <Card title={t('portal.time.title')} subtitle={t('portal.time.subtitle')}>
               {timeEntries.loading ? (
                 <SkeletonRows rows={3} />
               ) : timeEntries.error ? (
                 <ErrorBlock message={timeEntries.error} onRetry={timeEntries.reload} />
               ) : !timeEntries.data || timeEntries.data.length === 0 ? (
-                <EmptyState title="No time entries yet" icon={<Clock size={20} />} />
+                <EmptyState title={t('portal.time.empty')} icon={<Clock size={20} />} />
               ) : (
-                <DataTable columns={timeColumns} rows={timeEntries.data} rowKey={(t) => t.id} caption="Time entries" />
+                <DataTable columns={timeColumns} rows={timeEntries.data} rowKey={(entry) => entry.id} caption={t('portal.time.title')} />
               )}
             </Card>
           ) : null}

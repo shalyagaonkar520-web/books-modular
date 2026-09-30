@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
+import { useAppContent } from '@/app/AppContentContext';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth/AuthContext';
 import { useAsync } from '@/hooks/useAsync';
@@ -34,6 +35,7 @@ interface RecordPaymentModalProps {
 }
 
 export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers = [] }: RecordPaymentModalProps) {
+  const { t } = useAppContent();
   const toast = useToast();
   const { submitting, error, fieldErrors, run, reset, setError } = useSubmit();
   // The bank/cash account list is Admin/Viewer-only to read. A payment must name
@@ -111,20 +113,20 @@ export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers 
   const submit = async () => {
     const payerId = invoice ? invoice.customerId : customerId;
     if (!payerId) {
-      setError('Select the customer who paid.');
+      setError(t('paymentsReceived.recordModal.selectCustomer'));
       return;
     }
     if (!bankAccountId) {
-      setError('Select the bank or cash account the money landed in.');
+      setError(t('paymentsReceived.recordModal.selectAccount'));
       return;
     }
     const value = round2(parseNumber(amount));
     if (value <= 0) {
-      setError('Enter a payment amount greater than zero.');
+      setError(t('paymentsReceived.recordModal.amountPositive'));
       return;
     }
     if (maxAmount !== null && value > round2(maxAmount)) {
-      setError(`Payment cannot exceed the invoice balance of ${formatCurrency(maxAmount)}.`);
+      setError(t('paymentsReceived.recordModal.exceedsBalance', { amount: formatCurrency(maxAmount) }));
       return;
     }
     const result = await run(() =>
@@ -140,7 +142,7 @@ export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers 
       }),
     );
     if (result) {
-      toast.success(`Payment ${result.paymentNumber} recorded`);
+      toast.success(t('paymentsReceived.recordModal.recorded', { number: result.paymentNumber }));
       onSaved();
       onClose();
     }
@@ -151,26 +153,26 @@ export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers 
   return (
     <Modal
       open={open}
-      title="Record payment"
-      subtitle={invoice ? `Against invoice ${invoice.invoiceNumber}` : 'Money received from a customer'}
+      title={t('paymentsReceived.recordModal.title')}
+      subtitle={invoice ? t('paymentsReceived.recordModal.subtitleInvoice', { number: invoice.invoiceNumber }) : t('paymentsReceived.recordModal.subtitleCustomer')}
       onClose={onClose}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('paymentsReceived.recordModal.cancel')}
           </Button>
           <Button variant="primary" onClick={submit} loading={submitting}>
-            Record payment
+            {t('paymentsReceived.recordModal.submit')}
           </Button>
         </>
       }
     >
       {accounts.loading ? (
-        <LoadingBlock label="Loading accounts…" />
+        <LoadingBlock label={t('paymentsReceived.recordModal.loadingAccounts')} />
       ) : accounts.error ? (
         <ErrorBlock message={accounts.error} onRetry={accounts.reload} />
       ) : !bankOptions.length ? (
-        <ErrorBlock message="Add a bank or cash account in Banking before recording payments." />
+        <ErrorBlock message={t('paymentsReceived.recordModal.noAccounts')} />
       ) : (
         <div className="stack">
           <FormError message={error} />
@@ -178,21 +180,21 @@ export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers 
           {invoice ? (
             <dl className="detail-grid">
               <div className="detail-item">
-                <dt>Invoice</dt>
+                <dt>{t('paymentsReceived.recordModal.invoice')}</dt>
                 <dd className="strong">{invoice.invoiceNumber}</dd>
               </div>
               <div className="detail-item">
-                <dt>Balance due</dt>
+                <dt>{t('paymentsReceived.recordModal.balanceDue')}</dt>
                 <dd className="num strong">{formatCurrency(invoice.balanceDue)}</dd>
               </div>
             </dl>
           ) : (
             <div className="form-grid">
               <SelectField
-                label="Customer"
+                label={t('paymentsReceived.recordModal.customer')}
                 required
                 value={customerId}
-                placeholder="Select a customer"
+                placeholder={t('paymentsReceived.recordModal.customerPlaceholder')}
                 error={fieldErrors.customerId}
                 options={customers.map((customer) => ({ value: customer.id, label: customer.displayName }))}
                 onChange={(event) => {
@@ -202,15 +204,15 @@ export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers 
                 }}
               />
               <SelectField
-                label="Apply to invoice"
+                label={t('paymentsReceived.recordModal.applyTo')}
                 value={invoiceId}
-                placeholder={openInvoices.loading ? 'Loading invoices…' : 'Unapplied advance'}
-                hint={customerId ? 'Leave blank to hold the money as a customer advance.' : 'Pick a customer first.'}
+                placeholder={openInvoices.loading ? t('paymentsReceived.recordModal.loadingInvoices') : t('paymentsReceived.recordModal.unapplied')}
+                hint={customerId ? t('paymentsReceived.recordModal.applyHint') : t('paymentsReceived.recordModal.pickCustomerFirst')}
                 error={fieldErrors.invoiceId}
                 disabled={!customerId || openInvoices.loading}
                 options={(openInvoices.data?.items ?? []).map((item) => ({
                   value: item.id,
-                  label: `${item.invoiceNumber} · ${formatCurrency(item.balanceDue)} due`,
+                  label: t('paymentsReceived.recordModal.invoiceOption', { number: item.invoiceNumber, amount: formatCurrency(item.balanceDue) }),
                 }))}
                 onChange={(event) => chooseInvoice(event.target.value)}
               />
@@ -219,16 +221,16 @@ export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers 
 
           <div className="form-grid">
             <SelectField
-              label="Deposit to"
+              label={t('paymentsReceived.recordModal.depositTo')}
               required
               value={bankAccountId}
               options={bankOptions}
               error={fieldErrors.bankAccountId}
               onChange={(event) => setBankAccountId(event.target.value)}
             />
-            <TextField label="Payment date" type="date" required value={date} error={fieldErrors.date} onChange={(event) => setDate(event.target.value)} />
+            <TextField label={t('paymentsReceived.recordModal.date')} type="date" required value={date} error={fieldErrors.date} onChange={(event) => setDate(event.target.value)} />
             <TextField
-              label="Amount"
+              label={t('paymentsReceived.recordModal.amount')}
               type="number"
               min="0"
               step="0.01"
@@ -237,25 +239,25 @@ export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers 
               value={amount}
               prefix="₹"
               error={fieldErrors.amount}
-              hint={maxAmount !== null ? `Up to ${formatCurrency(maxAmount)}` : undefined}
+              hint={maxAmount !== null ? t('paymentsReceived.recordModal.amountHint', { amount: formatCurrency(maxAmount) }) : undefined}
               onChange={(event) => setAmount(event.target.value)}
             />
             <SelectField
-              label="Payment mode"
+              label={t('paymentsReceived.recordModal.mode')}
               value={mode}
-              options={PAYMENT_MODES.map((option) => ({ value: option.value, label: option.label }))}
+              options={PAYMENT_MODES.map((option) => ({ value: option.value, label: t(option.labelKey) }))}
               error={fieldErrors.mode}
               onChange={(event) => setMode(event.target.value)}
             />
             <TextField
-              label="Reference"
+              label={t('paymentsReceived.recordModal.reference')}
               value={reference}
-              placeholder="UTR, cheque or transaction number"
+              placeholder={t('paymentsReceived.recordModal.referencePlaceholder')}
               error={fieldErrors.reference}
               onChange={(event) => setReference(event.target.value)}
             />
           </div>
-          <TextAreaField label="Notes" value={notes} rows={2} error={fieldErrors.notes} onChange={(event) => setNotes(event.target.value)} />
+          <TextAreaField label={t('paymentsReceived.recordModal.notes')} value={notes} rows={2} error={fieldErrors.notes} onChange={(event) => setNotes(event.target.value)} />
         </div>
       )}
     </Modal>

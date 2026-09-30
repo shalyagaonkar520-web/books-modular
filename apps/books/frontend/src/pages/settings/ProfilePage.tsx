@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 
 import { authApi } from '@/api/endpoints';
+import { useAppContent } from '@/app/AppContentContext';
 import type { Session } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
 import { useAsync } from '@/hooks/useAsync';
@@ -37,7 +38,7 @@ import { useToast } from '@/components/ui/Toast';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { formatDateTime, initials } from '@/utils/format';
 
-import { PASSWORD_HINT, validatePassword } from './passwordRules';
+import { PASSWORD_HINT_KEY, validatePassword } from './passwordRules';
 import './ProfilePage.css';
 
 type ActiveTab = 'personal' | 'security' | 'groups' | 'sessions' | 'notifications' | 'preferences' | 'terms';
@@ -65,6 +66,7 @@ const DEFAULT_PROFILE_EXTRAS: ExtraProfileData = {
 };
 
 export function ProfilePage() {
+  const { t } = useAppContent();
   const toast = useToast();
   const { user, organization, updateUser } = useAuth();
 
@@ -150,7 +152,7 @@ export function ProfilePage() {
     if (!file || !user?.id) return;
 
     if (!file.type.startsWith('image/')) {
-      toast.error('Please choose a valid image file');
+      toast.error(t('settings.profile.toast.invalidImage'));
       return;
     }
 
@@ -179,7 +181,7 @@ export function ProfilePage() {
         }
       }, 100);
     } catch {
-      toast.error('Unable to access camera. Please check browser permissions or use file upload.');
+      toast.error(t('settings.profile.toast.cameraUnavailable'));
       setModalMode('select');
     }
   };
@@ -282,7 +284,7 @@ export function ProfilePage() {
     localStorage.setItem(`rooman_avatar_${user.id}`, croppedDataUrl);
     window.dispatchEvent(new Event('rooman_avatar_updated'));
     closeModal();
-    toast.success('Profile photo adjusted, cropped, and saved!');
+    toast.success(t('settings.profile.toast.photoSaved'));
   };
 
   const removeAvatar = () => {
@@ -291,7 +293,7 @@ export function ProfilePage() {
     localStorage.removeItem(`rooman_avatar_${user.id}`);
     window.dispatchEvent(new Event('rooman_avatar_updated'));
     closeModal();
-    toast.success('Profile photo removed');
+    toast.success(t('settings.profile.toast.photoRemoved'));
   };
 
   const closeModal = () => {
@@ -306,7 +308,7 @@ export function ProfilePage() {
     if (!user) return;
     const trimmedName = name.trim();
     if (trimmedName.length < 2) {
-      toast.error('Name must be at least 2 characters');
+      toast.error(t('settings.profile.toast.nameTooShort'));
       return;
     }
 
@@ -319,7 +321,7 @@ export function ProfilePage() {
         // ignore storage quota
       }
       setIsEditing(false);
-      toast.success('Profile updated successfully');
+      toast.success(t('settings.profile.toast.profileSaved'));
     }
   };
 
@@ -329,7 +331,7 @@ export function ProfilePage() {
     const result = await revokeSubmit.run(() => authApi.revokeSession(session.id));
     setRevokingId(null);
     if (result) {
-      toast.success(`Signed out ${session.device} • ${session.browser}`);
+      toast.success(t('settings.profile.toast.signedOut', { device: session.device, browser: session.browser }));
       reloadSessions();
     } else if (revokeSubmit.errorRef.current) {
       toast.error(revokeSubmit.errorRef.current);
@@ -339,16 +341,16 @@ export function ProfilePage() {
   // Change password
   const changePassword = async () => {
     if (newPassword !== confirmNewPassword) {
-      setPasswordProblem('The new passwords do not match.');
+      setPasswordProblem(t('settings.profile.security.mismatch'));
       return;
     }
-    const problem = validatePassword(newPassword);
+    const problem = validatePassword(newPassword, t);
     if (problem) {
       setPasswordProblem(problem);
       return;
     }
     if (newPassword === currentPassword) {
-      setPasswordProblem('Choose a password different from your current one.');
+      setPasswordProblem(t('settings.profile.security.samePassword'));
       return;
     }
     setPasswordProblem(null);
@@ -390,7 +392,7 @@ export function ProfilePage() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    toast.success('Account data exported successfully');
+    toast.success(t('settings.profile.toast.exported'));
   };
 
   if (!user) return null;
@@ -401,7 +403,7 @@ export function ProfilePage() {
       <aside className="zp-sidebar">
         <div className="zp-sidebar-header">
           <span className="zp-brand-badge">R</span>
-          <span className="zp-sidebar-title">Accounts</span>
+          <span className="zp-sidebar-title">{t('settings.profile.sidebar.title')}</span>
         </div>
 
         <ul className="zp-nav">
@@ -412,7 +414,7 @@ export function ProfilePage() {
               onClick={() => setActiveTab('personal')}
             >
               <UserIcon size={16} />
-              <span>Personal Information</span>
+              <span>{t('settings.profile.tab.personal')}</span>
               {activeTab === 'personal' && <span className="zp-nav-indicator" />}
             </button>
           </li>
@@ -423,7 +425,7 @@ export function ProfilePage() {
               onClick={() => setActiveTab('security')}
             >
               <Shield size={16} />
-              <span>Security & Password</span>
+              <span>{t('settings.profile.tab.security')}</span>
               {activeTab === 'security' && <span className="zp-nav-indicator" />}
             </button>
           </li>
@@ -434,7 +436,7 @@ export function ProfilePage() {
               onClick={() => setActiveTab('groups')}
             >
               <Users size={16} />
-              <span>Groups & Roles</span>
+              <span>{t('settings.profile.tab.groups')}</span>
               {activeTab === 'groups' && <span className="zp-nav-indicator" />}
             </button>
           </li>
@@ -445,7 +447,7 @@ export function ProfilePage() {
               onClick={() => setActiveTab('sessions')}
             >
               <Laptop size={16} />
-              <span>Active Sessions</span>
+              <span>{t('settings.profile.tab.sessions')}</span>
               {activeTab === 'sessions' && <span className="zp-nav-indicator" />}
             </button>
           </li>
@@ -456,7 +458,7 @@ export function ProfilePage() {
               onClick={() => setActiveTab('notifications')}
             >
               <Bell size={16} />
-              <span>Notifications</span>
+              <span>{t('settings.profile.tab.notifications')}</span>
               {activeTab === 'notifications' && <span className="zp-nav-indicator" />}
             </button>
           </li>
@@ -467,7 +469,7 @@ export function ProfilePage() {
               onClick={() => setActiveTab('preferences')}
             >
               <Palette size={16} />
-              <span>Theme & Preferences</span>
+              <span>{t('settings.profile.tab.preferences')}</span>
               {activeTab === 'preferences' && <span className="zp-nav-indicator" />}
             </button>
           </li>
@@ -478,7 +480,7 @@ export function ProfilePage() {
               onClick={() => setActiveTab('terms')}
             >
               <FileCheck size={16} />
-              <span>Terms & Privacy</span>
+              <span>{t('settings.profile.tab.terms')}</span>
               {activeTab === 'terms' && <span className="zp-nav-indicator" />}
             </button>
           </li>
@@ -486,7 +488,7 @@ export function ProfilePage() {
 
         <div className="zp-sidebar-footer">
           <div style={{ fontSize: '11px', color: 'var(--zp-sidebar-text)', marginBottom: '8px', fontWeight: 500 }}>
-            QUICK THEME
+            {t('settings.profile.quickTheme')}
           </div>
           <div className="zp-sidebar-theme-toggles">
             <button
@@ -494,21 +496,21 @@ export function ProfilePage() {
               className={`zp-theme-btn ${themeMode === 'light' ? 'active' : ''}`}
               onClick={() => applyTheme('light')}
             >
-              <Sun size={12} /> Light
+              <Sun size={12} /> {t('settings.profile.quickTheme.light')}
             </button>
             <button
               type="button"
               className={`zp-theme-btn ${themeMode === 'dark' ? 'active' : ''}`}
               onClick={() => applyTheme('dark')}
             >
-              <Moon size={12} /> Dark
+              <Moon size={12} /> {t('settings.profile.quickTheme.dark')}
             </button>
             <button
               type="button"
               className={`zp-theme-btn ${themeMode === 'luxury' ? 'active' : ''}`}
               onClick={() => applyTheme('luxury')}
             >
-              <Palette size={12} /> Gold
+              <Palette size={12} /> {t('settings.profile.quickTheme.gold')}
             </button>
           </div>
         </div>
@@ -519,7 +521,7 @@ export function ProfilePage() {
         {/* TAB 1: Personal Information */}
         {activeTab === 'personal' && (
           <div>
-            <h1 className="zp-page-title">Personal Information</h1>
+            <h1 className="zp-page-title">{t('settings.profile.tab.personal')}</h1>
 
             {/* Profile Overview Card */}
             <div className="zp-card">
@@ -534,7 +536,7 @@ export function ProfilePage() {
                     <button
                       type="button"
                       className="zp-avatar-edit-badge"
-                      title="Update and crop profile photo"
+                      title={t('settings.profile.photo.update')}
                       onClick={() => {
                         setModalMode('select');
                         setPhotoModalOpen(true);
@@ -547,7 +549,7 @@ export function ProfilePage() {
                     <h2>{name || user.name}</h2>
                     <p>{user.email}</p>
                     <span style={{ fontSize: '12px', color: 'var(--zp-text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
-                      Organization: <strong>{organization?.name ?? 'Rooman Books'}</strong>
+                      {t('settings.profile.organizationLabel')} <strong>{organization?.name ?? t('settings.profile.orgFallback')}</strong>
                     </span>
                   </div>
                 </div>
@@ -556,15 +558,15 @@ export function ProfilePage() {
                   {isEditing ? (
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button type="button" className="zp-cancel-btn" onClick={() => setIsEditing(false)}>
-                        Cancel
+                        {t('common.cancel')}
                       </button>
                       <button type="button" className="zp-edit-btn" onClick={saveProfile} disabled={profileSubmit.submitting}>
-                        <Check size={14} /> Save
+                        <Check size={14} /> {t('settings.profile.save')}
                       </button>
                     </div>
                   ) : (
                     <button type="button" className="zp-edit-btn" onClick={() => setIsEditing(true)}>
-                      Edit Profile
+                      {t('settings.profile.editProfile')}
                     </button>
                   )}
                 </div>
@@ -574,14 +576,14 @@ export function ProfilePage() {
 
               <div className="zp-info-grid">
                 <div className="zp-field-block">
-                  <span className="zp-field-label">Full Name</span>
+                  <span className="zp-field-label">{t('settings.profile.field.fullName')}</span>
                   {isEditing ? (
                     <input
                       type="text"
                       className="zp-field-input"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="Enter your full name"
+                      placeholder={t('settings.profile.field.fullNamePlaceholder')}
                     />
                   ) : (
                     <span className="zp-field-value">{name || user.name}</span>
@@ -589,14 +591,14 @@ export function ProfilePage() {
                 </div>
 
                 <div className="zp-field-block">
-                  <span className="zp-field-label">Display Name</span>
+                  <span className="zp-field-label">{t('settings.profile.field.displayName')}</span>
                   {isEditing ? (
                     <input
                       type="text"
                       className="zp-field-input"
                       value={extras.displayName}
                       onChange={(e) => setExtras({ ...extras, displayName: e.target.value })}
-                      placeholder="Display name"
+                      placeholder={t('settings.profile.field.displayNamePlaceholder')}
                     />
                   ) : (
                     <span className="zp-field-value">{extras.displayName || user.name}</span>
@@ -604,17 +606,17 @@ export function ProfilePage() {
                 </div>
 
                 <div className="zp-field-block">
-                  <span className="zp-field-label">Gender</span>
+                  <span className="zp-field-label">{t('settings.profile.field.gender')}</span>
                   {isEditing ? (
                     <select
                       className="zp-field-input"
                       value={extras.gender}
                       onChange={(e) => setExtras({ ...extras, gender: e.target.value })}
                     >
-                      <option value="I'd prefer not to say">I'd prefer not to say</option>
-                      <option value="Female">Female</option>
-                      <option value="Male">Male</option>
-                      <option value="Other">Other</option>
+                      <option value="I'd prefer not to say">{t('settings.profile.gender.unspecified')}</option>
+                      <option value="Female">{t('settings.profile.gender.female')}</option>
+                      <option value="Male">{t('settings.profile.gender.male')}</option>
+                      <option value="Other">{t('settings.profile.gender.other')}</option>
                     </select>
                   ) : (
                     <span className="zp-field-value">{extras.gender}</span>
@@ -622,7 +624,7 @@ export function ProfilePage() {
                 </div>
 
                 <div className="zp-field-block">
-                  <span className="zp-field-label">Country / Region</span>
+                  <span className="zp-field-label">{t('settings.profile.field.country')}</span>
                   {isEditing ? (
                     <input
                       type="text"
@@ -636,7 +638,7 @@ export function ProfilePage() {
                 </div>
 
                 <div className="zp-field-block">
-                  <span className="zp-field-label">State</span>
+                  <span className="zp-field-label">{t('settings.profile.field.state')}</span>
                   {isEditing ? (
                     <input
                       type="text"
@@ -650,17 +652,17 @@ export function ProfilePage() {
                 </div>
 
                 <div className="zp-field-block">
-                  <span className="zp-field-label">Language</span>
+                  <span className="zp-field-label">{t('settings.profile.field.language')}</span>
                   {isEditing ? (
                     <select
                       className="zp-field-input"
                       value={extras.language}
                       onChange={(e) => setExtras({ ...extras, language: e.target.value })}
                     >
-                      <option value="English">English</option>
-                      <option value="Hindi">Hindi</option>
-                      <option value="Kannada">Kannada</option>
-                      <option value="Tamil">Tamil</option>
+                      <option value="English">{t('settings.profile.language.english')}</option>
+                      <option value="Hindi">{t('settings.profile.language.hindi')}</option>
+                      <option value="Kannada">{t('settings.profile.language.kannada')}</option>
+                      <option value="Tamil">{t('settings.profile.language.tamil')}</option>
                     </select>
                   ) : (
                     <span className="zp-field-value">{extras.language}</span>
@@ -668,7 +670,7 @@ export function ProfilePage() {
                 </div>
 
                 <div className="zp-field-block" style={{ gridColumn: 'span 2' }}>
-                  <span className="zp-field-label">Time Zone</span>
+                  <span className="zp-field-label">{t('settings.profile.field.timezone')}</span>
                   <span className="zp-field-value">{extras.timezone}</span>
                 </div>
               </div>
@@ -678,9 +680,9 @@ export function ProfilePage() {
             <div className="zp-card">
               <div className="zp-card-header">
                 <div>
-                  <h3 className="zp-card-title">My Email Addresses</h3>
+                  <h3 className="zp-card-title">{t('settings.profile.email.title')}</h3>
                   <p className="zp-card-subtitle">
-                    View and manage the email address associated with your account. Used to sign in and receive invoices.
+                    {t('settings.profile.email.subtitle')}
                   </p>
                 </div>
               </div>
@@ -692,11 +694,11 @@ export function ProfilePage() {
                     <strong style={{ color: 'var(--zp-text-primary)', fontSize: '14px', display: 'block' }}>
                       {user.email}
                     </strong>
-                    <span style={{ fontSize: '12px', color: 'var(--zp-text-secondary)' }}>Primary Email Address</span>
+                    <span style={{ fontSize: '12px', color: 'var(--zp-text-secondary)' }}>{t('settings.profile.email.primary')}</span>
                   </div>
                 </div>
                 <span className="zp-badge-verified">
-                  <CheckCircle2 size={12} /> Verified
+                  <CheckCircle2 size={12} /> {t('settings.profile.verified')}
                 </span>
               </div>
             </div>
@@ -705,9 +707,9 @@ export function ProfilePage() {
             <div className="zp-card">
               <div className="zp-card-header">
                 <div>
-                  <h3 className="zp-card-title">Mobile Numbers</h3>
+                  <h3 className="zp-card-title">{t('settings.profile.mobile.title')}</h3>
                   <p className="zp-card-subtitle">
-                    Your mobile number is used for OTP verification, two-factor authentication, and critical security alerts.
+                    {t('settings.profile.mobile.subtitle')}
                   </p>
                 </div>
               </div>
@@ -717,14 +719,14 @@ export function ProfilePage() {
                   <Phone size={18} style={{ color: 'var(--zp-text-secondary)' }} />
                   <div>
                     <strong style={{ color: extras.phone ? 'var(--zp-text-primary)' : 'var(--zp-text-secondary)', fontSize: '14px', display: 'block' }}>
-                      {extras.phone || 'No mobile number added'}
+                      {extras.phone || t('settings.profile.mobile.none')}
                     </strong>
-                    <span style={{ fontSize: '12px', color: 'var(--zp-text-secondary)' }}>Primary Recovery Number</span>
+                    <span style={{ fontSize: '12px', color: 'var(--zp-text-secondary)' }}>{t('settings.profile.mobile.primary')}</span>
                   </div>
                 </div>
                 {extras.phone ? (
                   <span className="zp-badge-verified">
-                    <CheckCircle2 size={12} /> Active
+                    <CheckCircle2 size={12} /> {t('settings.profile.active')}
                   </span>
                 ) : null}
               </div>
@@ -735,14 +737,14 @@ export function ProfilePage() {
         {/* TAB 2: Security & Password */}
         {activeTab === 'security' && (
           <div>
-            <h1 className="zp-page-title">Security & Credentials</h1>
+            <h1 className="zp-page-title">{t('settings.profile.security.title')}</h1>
 
             <div className="zp-card">
               <div className="zp-card-header">
                 <div>
-                  <h3 className="zp-card-title">Change Password</h3>
+                  <h3 className="zp-card-title">{t('settings.profile.security.changePassword')}</h3>
                   <p className="zp-card-subtitle">
-                    Set a unique, strong password to protect your financial records and organization data.
+                    {t('settings.profile.security.changePasswordHint')}
                   </p>
                 </div>
               </div>
@@ -751,38 +753,38 @@ export function ProfilePage() {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '440px' }}>
                 <div className="zp-field-block">
-                  <span className="zp-field-label">Current Password</span>
+                  <span className="zp-field-label">{t('settings.profile.security.currentPassword')}</span>
                   <input
                     type="password"
                     className="zp-field-input"
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="Enter current password"
+                    placeholder={t('settings.profile.security.currentPasswordPlaceholder')}
                   />
                 </div>
 
                 <div className="zp-field-block">
-                  <span className="zp-field-label">New Password</span>
+                  <span className="zp-field-label">{t('settings.profile.security.newPassword')}</span>
                   <input
                     type="password"
                     className="zp-field-input"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Enter new password"
+                    placeholder={t('settings.profile.security.newPasswordPlaceholder')}
                   />
                   <span style={{ fontSize: '11.5px', color: 'var(--zp-text-secondary)', marginTop: '2px' }}>
-                    {PASSWORD_HINT}
+                    {t(PASSWORD_HINT_KEY)}
                   </span>
                 </div>
 
                 <div className="zp-field-block">
-                  <span className="zp-field-label">Confirm New Password</span>
+                  <span className="zp-field-label">{t('settings.profile.security.confirmPassword')}</span>
                   <input
                     type="password"
                     className="zp-field-input"
                     value={confirmNewPassword}
                     onChange={(e) => setConfirmNewPassword(e.target.value)}
-                    placeholder="Confirm new password"
+                    placeholder={t('settings.profile.security.confirmPasswordPlaceholder')}
                   />
                 </div>
 
@@ -793,7 +795,7 @@ export function ProfilePage() {
                   onClick={changePassword}
                   disabled={passwordSubmit.submitting || !currentPassword || !newPassword || !confirmNewPassword}
                 >
-                  <Lock size={14} /> Update Password
+                  <Lock size={14} /> {t('settings.profile.security.update')}
                 </button>
               </div>
             </div>
@@ -803,14 +805,14 @@ export function ProfilePage() {
         {/* TAB 4: Groups & Roles */}
         {activeTab === 'groups' && (
           <div>
-            <h1 className="zp-page-title">Groups & Roles</h1>
+            <h1 className="zp-page-title">{t('settings.profile.tab.groups')}</h1>
 
             {/* Current Role Card */}
             <div className="zp-card">
               <div className="zp-card-header">
                 <div>
-                  <h3 className="zp-card-title">Assigned Role</h3>
-                  <p className="zp-card-subtitle">Your authorization level within {organization?.name ?? 'Rooman Books'}.</p>
+                  <h3 className="zp-card-title">{t('settings.profile.groups.assignedRole')}</h3>
+                  <p className="zp-card-subtitle">{t('settings.profile.groups.assignedRoleHint', { org: organization?.name ?? t('settings.profile.orgFallback') })}</p>
                 </div>
                 <span className={user.role === 'admin' ? 'zp-role-badge-admin' : user.role === 'staff' ? 'zp-role-badge-staff' : 'zp-role-badge-viewer'}>
                   <Shield size={13} />
@@ -821,17 +823,17 @@ export function ProfilePage() {
               <div style={{ background: 'var(--zp-bg)', padding: '16px', borderRadius: '8px', border: '1px solid var(--zp-card-border)' }}>
                 <strong style={{ color: 'var(--zp-text-primary)', fontSize: '14px', display: 'block', marginBottom: '4px' }}>
                   {user.role === 'admin'
-                    ? 'Full Organization Administrator'
+                    ? t('settings.profile.role.admin')
                     : user.role === 'staff'
-                    ? 'Finance & Accounting Staff'
-                    : 'Read-Only Viewer'}
+                    ? t('settings.profile.role.staff')
+                    : t('settings.profile.role.viewer')}
                 </strong>
                 <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--zp-text-secondary)' }}>
                   {user.role === 'admin'
-                    ? 'You have unrestricted access to chart of accounts, tax setup, user roles, banking, payroll, financial statements, and organizational deletion.'
+                    ? t('settings.profile.role.adminHint')
                     : user.role === 'staff'
-                    ? 'You can record and manage invoices, bills, items, and contacts, but cannot manage other users or fiscal periods.'
-                    : 'You can review financial dashboards and reports in read-only mode.'}
+                    ? t('settings.profile.role.staffHint')
+                    : t('settings.profile.role.viewerHint')}
                 </p>
               </div>
             </div>
@@ -840,8 +842,8 @@ export function ProfilePage() {
             <div className="zp-card">
               <div className="zp-card-header">
                 <div>
-                  <h3 className="zp-card-title">Organization Groups</h3>
-                  <p className="zp-card-subtitle">Functional teams and departmental access groups you are a member of.</p>
+                  <h3 className="zp-card-title">{t('settings.profile.groups.title')}</h3>
+                  <p className="zp-card-subtitle">{t('settings.profile.groups.subtitle')}</p>
                 </div>
               </div>
 
@@ -850,14 +852,14 @@ export function ProfilePage() {
                   <Building2 size={18} style={{ color: 'var(--zp-accent)' }} />
                   <div>
                     <strong style={{ color: 'var(--zp-text-primary)', fontSize: '14px', display: 'block' }}>
-                      Executive Finance Group
+                      {t('settings.profile.groups.executive')}
                     </strong>
                     <span style={{ fontSize: '12px', color: 'var(--zp-text-secondary)' }}>
-                      Default governance group for financial approval and tax filing
+                      {t('settings.profile.groups.executiveHint')}
                     </span>
                   </div>
                 </div>
-                <span className="zp-badge-verified">Active Member</span>
+                <span className="zp-badge-verified">{t('settings.profile.groups.activeMember')}</span>
               </div>
 
               <div className="zp-list-item">
@@ -865,14 +867,14 @@ export function ProfilePage() {
                   <Users size={18} style={{ color: '#0284c7' }} />
                   <div>
                     <strong style={{ color: 'var(--zp-text-primary)', fontSize: '14px', display: 'block' }}>
-                      Audit & Compliance Team
+                      {t('settings.profile.groups.audit')}
                     </strong>
                     <span style={{ fontSize: '12px', color: 'var(--zp-text-secondary)' }}>
-                      Access to audit logs, journal reversal histories, and GST return summaries
+                      {t('settings.profile.groups.auditHint')}
                     </span>
                   </div>
                 </div>
-                <span className="zp-badge-verified">Active Member</span>
+                <span className="zp-badge-verified">{t('settings.profile.groups.activeMember')}</span>
               </div>
             </div>
 
@@ -880,52 +882,52 @@ export function ProfilePage() {
             <div className="zp-card">
               <div className="zp-card-header">
                 <div>
-                  <h3 className="zp-card-title">Module Permissions Matrix</h3>
-                  <p className="zp-card-subtitle">Breakdown of read, write, and approval privileges.</p>
+                  <h3 className="zp-card-title">{t('settings.profile.permissions.title')}</h3>
+                  <p className="zp-card-subtitle">{t('settings.profile.permissions.subtitle')}</p>
                 </div>
               </div>
 
               <table className="zp-permissions-table">
                 <thead>
                   <tr>
-                    <th>Module</th>
-                    <th>View</th>
-                    <th>Create / Edit</th>
-                    <th>Delete</th>
-                    <th>Approve</th>
+                    <th>{t('settings.profile.permissions.col.module')}</th>
+                    <th>{t('settings.profile.permissions.col.view')}</th>
+                    <th>{t('settings.profile.permissions.col.edit')}</th>
+                    <th>{t('settings.profile.permissions.col.delete')}</th>
+                    <th>{t('settings.profile.permissions.col.approve')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td><strong>Invoices & Sales</strong></td>
+                    <td><strong>{t('settings.profile.permissions.invoices')}</strong></td>
                     <td><Check size={16} style={{ color: 'var(--zp-accent)' }} /></td>
                     <td><Check size={16} style={{ color: 'var(--zp-accent)' }} /></td>
                     <td>{user.role === 'admin' ? <Check size={16} style={{ color: 'var(--zp-accent)' }} /> : '—'}</td>
                     <td><Check size={16} style={{ color: 'var(--zp-accent)' }} /></td>
                   </tr>
                   <tr>
-                    <td><strong>Bills & Purchases</strong></td>
+                    <td><strong>{t('settings.profile.permissions.bills')}</strong></td>
                     <td><Check size={16} style={{ color: 'var(--zp-accent)' }} /></td>
                     <td><Check size={16} style={{ color: 'var(--zp-accent)' }} /></td>
                     <td>{user.role === 'admin' ? <Check size={16} style={{ color: 'var(--zp-accent)' }} /> : '—'}</td>
                     <td><Check size={16} style={{ color: 'var(--zp-accent)' }} /></td>
                   </tr>
                   <tr>
-                    <td><strong>Banking & Transfers</strong></td>
+                    <td><strong>{t('settings.profile.permissions.banking')}</strong></td>
                     <td><Check size={16} style={{ color: 'var(--zp-accent)' }} /></td>
                     <td><Check size={16} style={{ color: 'var(--zp-accent)' }} /></td>
                     <td>{user.role === 'admin' ? <Check size={16} style={{ color: 'var(--zp-accent)' }} /> : '—'}</td>
                     <td><Check size={16} style={{ color: 'var(--zp-accent)' }} /></td>
                   </tr>
                   <tr>
-                    <td><strong>Chart of Accounts & Journals</strong></td>
+                    <td><strong>{t('settings.profile.permissions.accounts')}</strong></td>
                     <td><Check size={16} style={{ color: 'var(--zp-accent)' }} /></td>
                     <td>{user.role === 'admin' ? <Check size={16} style={{ color: 'var(--zp-accent)' }} /> : '—'}</td>
                     <td>{user.role === 'admin' ? <Check size={16} style={{ color: 'var(--zp-accent)' }} /> : '—'}</td>
                     <td><Check size={16} style={{ color: 'var(--zp-accent)' }} /></td>
                   </tr>
                   <tr>
-                    <td><strong>Payroll & Pay Runs</strong></td>
+                    <td><strong>{t('settings.profile.permissions.payroll')}</strong></td>
                     <td><Check size={16} style={{ color: 'var(--zp-accent)' }} /></td>
                     <td><Check size={16} style={{ color: 'var(--zp-accent)' }} /></td>
                     <td>{user.role === 'admin' ? <Check size={16} style={{ color: 'var(--zp-accent)' }} /> : '—'}</td>
@@ -941,12 +943,12 @@ export function ProfilePage() {
         {activeTab === 'sessions' && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-              <h1 className="zp-page-title" style={{ margin: 0 }}>Active Sessions</h1>
+              <h1 className="zp-page-title" style={{ margin: 0 }}>{t('settings.profile.tab.sessions')}</h1>
             </div>
 
             {sessionsLoading ? (
               <div className="zp-card">
-                <LoadingBlock label="Loading sessions…" />
+                <LoadingBlock label={t('settings.profile.sessions.loading')} />
               </div>
             ) : sessionsError ? (
               <div className="zp-card">
@@ -957,8 +959,8 @@ export function ProfilePage() {
                 <div className="zp-card">
                   <div className="zp-card-header">
                     <div>
-                      <h3 className="zp-card-title">Current Session</h3>
-                      <p className="zp-card-subtitle">This device and browser you are currently logged into.</p>
+                      <h3 className="zp-card-title">{t('settings.profile.sessions.current')}</h3>
+                      <p className="zp-card-subtitle">{t('settings.profile.sessions.currentHint')}</p>
                     </div>
                   </div>
 
@@ -975,12 +977,13 @@ export function ProfilePage() {
                               {session.device}
                             </strong>
                             <span style={{ fontSize: '12px', color: 'var(--zp-text-secondary)' }}>
-                              {session.browser} Browser{session.ipAddress ? ` • ${session.ipAddress}` : ''}
+                              {t('settings.profile.sessions.browser', { browser: session.browser })}
+                              {session.ipAddress ? ` • ${session.ipAddress}` : ''}
                             </span>
                           </div>
                         </div>
                         <span className="zp-badge-verified">
-                          <CheckCircle2 size={12} /> Current Session
+                          <CheckCircle2 size={12} /> {t('settings.profile.sessions.current')}
                         </span>
                       </div>
                     ))}
@@ -989,14 +992,14 @@ export function ProfilePage() {
                 <div className="zp-card">
                   <div className="zp-card-header">
                     <div>
-                      <h3 className="zp-card-title">Other Active Sessions</h3>
-                      <p className="zp-card-subtitle">Other devices and browsers currently signed into your account.</p>
+                      <h3 className="zp-card-title">{t('settings.profile.sessions.other')}</h3>
+                      <p className="zp-card-subtitle">{t('settings.profile.sessions.otherHint')}</p>
                     </div>
                   </div>
 
                   {sessions.filter((session) => !session.isCurrent).length === 0 ? (
                     <p style={{ fontSize: '13px', color: 'var(--zp-text-secondary)', padding: '4px 0' }}>
-                      No other devices are currently signed in.
+                      {t('settings.profile.sessions.noOther')}
                     </p>
                   ) : (
                     sessions
@@ -1012,7 +1015,9 @@ export function ProfilePage() {
                                 {session.device}
                               </strong>
                               <span style={{ fontSize: '12px', color: 'var(--zp-text-secondary)' }}>
-                                {session.browser} Browser{session.ipAddress ? ` • ${session.ipAddress}` : ''} • Signed in {formatDateTime(session.createdAt)}
+                                {t('settings.profile.sessions.browser', { browser: session.browser })}
+                                {session.ipAddress ? ` • ${session.ipAddress}` : ''}{' '}
+                                {t('settings.profile.sessions.signedIn', { date: formatDateTime(session.createdAt) })}
                               </span>
                             </div>
                           </div>
@@ -1022,7 +1027,7 @@ export function ProfilePage() {
                             disabled={revokeSubmit.submitting && revokingId === session.id}
                             onClick={() => revokeDevice(session)}
                           >
-                            {revokeSubmit.submitting && revokingId === session.id ? 'Signing out…' : 'Sign out'}
+                            {revokeSubmit.submitting && revokingId === session.id ? t('settings.profile.sessions.signingOut') : t('settings.profile.sessions.signOut')}
                           </button>
                         </div>
                       ))
@@ -1034,8 +1039,8 @@ export function ProfilePage() {
             <div className="zp-card">
               <div className="zp-card-header">
                 <div>
-                  <h3 className="zp-card-title">Recent Activity History</h3>
-                  <p className="zp-card-subtitle">Recent authentications and account interactions.</p>
+                  <h3 className="zp-card-title">{t('settings.profile.history.title')}</h3>
+                  <p className="zp-card-subtitle">{t('settings.profile.history.subtitle')}</p>
                 </div>
               </div>
 
@@ -1044,14 +1049,14 @@ export function ProfilePage() {
                   <KeyRound size={16} style={{ color: 'var(--zp-text-secondary)' }} />
                   <div>
                     <span style={{ color: 'var(--zp-text-primary)', fontSize: '13.5px', fontWeight: 500 }}>
-                      Successful Password Sign-In
+                      {t('settings.profile.history.passwordSignIn')}
                     </span>
                     <span style={{ display: 'block', fontSize: '12px', color: 'var(--zp-text-secondary)' }}>
-                      Just now • IP: 127.0.0.1
+                      {t('settings.profile.history.justNow')}
                     </span>
                   </div>
                 </div>
-                <span style={{ fontSize: '12px', color: 'var(--zp-accent)', fontWeight: 600 }}>Success</span>
+                <span style={{ fontSize: '12px', color: 'var(--zp-accent)', fontWeight: 600 }}>{t('settings.profile.history.success')}</span>
               </div>
             </div>
           </div>
@@ -1060,20 +1065,20 @@ export function ProfilePage() {
         {/* TAB 6: Notifications */}
         {activeTab === 'notifications' && (
           <div>
-            <h1 className="zp-page-title">Notification Preferences</h1>
+            <h1 className="zp-page-title">{t('settings.profile.notifications.title')}</h1>
 
             <div className="zp-card">
               <div className="zp-card-header">
                 <div>
-                  <h3 className="zp-card-title">Security & Account Alerts</h3>
-                  <p className="zp-card-subtitle">Manage which activities trigger instant email notifications.</p>
+                  <h3 className="zp-card-title">{t('settings.profile.notifications.security')}</h3>
+                  <p className="zp-card-subtitle">{t('settings.profile.notifications.securityHint')}</p>
                 </div>
               </div>
 
               <div className="zp-toggle-row">
                 <div className="zp-toggle-label">
-                  <h4>New sign-in to account alert</h4>
-                  <p>Receive email alerts whenever your account is accessed from a new device or browser.</p>
+                  <h4>{t('settings.profile.notifications.login')}</h4>
+                  <p>{t('settings.profile.notifications.loginHint')}</p>
                 </div>
                 <label className="zp-switch">
                   <input
@@ -1087,8 +1092,8 @@ export function ProfilePage() {
 
               <div className="zp-toggle-row">
                 <div className="zp-toggle-label">
-                  <h4>Third-party app access alert</h4>
-                  <p>Receive alerts whenever external integrations or API keys access your records.</p>
+                  <h4>{t('settings.profile.notifications.thirdParty')}</h4>
+                  <p>{t('settings.profile.notifications.thirdPartyHint')}</p>
                 </div>
                 <label className="zp-switch">
                   <input
@@ -1102,8 +1107,8 @@ export function ProfilePage() {
 
               <div className="zp-toggle-row">
                 <div className="zp-toggle-label">
-                  <h4>Weekly Financial Digest & Summaries</h4>
-                  <p>Receive weekly updates on outstanding receivables, bills due, and cash flow position.</p>
+                  <h4>{t('settings.profile.notifications.weekly')}</h4>
+                  <p>{t('settings.profile.notifications.weeklyHint')}</p>
                 </div>
                 <label className="zp-switch">
                   <input
@@ -1117,8 +1122,8 @@ export function ProfilePage() {
 
               <div className="zp-toggle-row">
                 <div className="zp-toggle-label">
-                  <h4>Customer Invoice & Payment Alerts</h4>
-                  <p>Notify me when a customer views an invoice or submits an online payment.</p>
+                  <h4>{t('settings.profile.notifications.invoice')}</h4>
+                  <p>{t('settings.profile.notifications.invoiceHint')}</p>
                 </div>
                 <label className="zp-switch">
                   <input
@@ -1136,14 +1141,14 @@ export function ProfilePage() {
         {/* TAB 7: Preferences & Theme */}
         {activeTab === 'preferences' && (
           <div>
-            <h1 className="zp-page-title">Theme & Workspace Preferences</h1>
+            <h1 className="zp-page-title">{t('settings.profile.preferences.title')}</h1>
 
             <div className="zp-card">
               <div className="zp-card-header">
                 <div>
-                  <h3 className="zp-card-title">Appearance & Luxury Theme</h3>
+                  <h3 className="zp-card-title">{t('settings.profile.preferences.appearance')}</h3>
                   <p className="zp-card-subtitle">
-                    Select your preferred interface color mode for a comfortable, luxury accounting experience.
+                    {t('settings.profile.preferences.appearanceHint')}
                   </p>
                 </div>
               </div>
@@ -1167,12 +1172,12 @@ export function ProfilePage() {
                 >
                   <Sun size={24} style={{ color: '#059669' }} />
                   <div>
-                    <strong style={{ display: 'block', fontSize: '14px', color: '#0f172a' }}>Light Luxury</strong>
-                    <span style={{ fontSize: '12px', color: '#64748b' }}>Zoho emerald & clean white</span>
+                    <strong style={{ display: 'block', fontSize: '14px', color: '#0f172a' }}>{t('settings.profile.preferences.light')}</strong>
+                    <span style={{ fontSize: '12px', color: '#64748b' }}>{t('settings.profile.preferences.lightHint')}</span>
                   </div>
                   {themeMode === 'light' && (
                     <span className="zp-badge-verified" style={{ marginTop: '4px' }}>
-                      <Check size={12} /> Active
+                      <Check size={12} /> {t('settings.profile.active')}
                     </span>
                   )}
                 </div>
@@ -1196,12 +1201,12 @@ export function ProfilePage() {
                 >
                   <Moon size={24} style={{ color: '#38bdf8' }} />
                   <div>
-                    <strong style={{ display: 'block', fontSize: '14px', color: '#f8fafc' }}>Dark Obsidian</strong>
-                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>Sleek low-glare dark mode</span>
+                    <strong style={{ display: 'block', fontSize: '14px', color: '#f8fafc' }}>{t('settings.profile.preferences.dark')}</strong>
+                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>{t('settings.profile.preferences.darkHint')}</span>
                   </div>
                   {themeMode === 'dark' && (
                     <span className="zp-badge-verified" style={{ marginTop: '4px' }}>
-                      <Check size={12} /> Active
+                      <Check size={12} /> {t('settings.profile.active')}
                     </span>
                   )}
                 </div>
@@ -1224,12 +1229,12 @@ export function ProfilePage() {
                 >
                   <Palette size={24} style={{ color: '#d97706' }} />
                   <div>
-                    <strong style={{ display: 'block', fontSize: '14px', color: '#1c1917' }}>Warm Gold</strong>
-                    <span style={{ fontSize: '12px', color: '#78716c' }}>Executive luxury palette</span>
+                    <strong style={{ display: 'block', fontSize: '14px', color: '#1c1917' }}>{t('settings.profile.preferences.gold')}</strong>
+                    <span style={{ fontSize: '12px', color: '#78716c' }}>{t('settings.profile.preferences.goldHint')}</span>
                   </div>
                   {themeMode === 'luxury' && (
                     <span className="zp-badge-verified" style={{ marginTop: '4px' }}>
-                      <Check size={12} /> Active
+                      <Check size={12} /> {t('settings.profile.active')}
                     </span>
                   )}
                 </div>
@@ -1240,27 +1245,27 @@ export function ProfilePage() {
             <div className="zp-card">
               <div className="zp-card-header">
                 <div>
-                  <h3 className="zp-card-title">Regional & Currency Standards</h3>
-                  <p className="zp-card-subtitle">Format preferences for reports, ledgers, and transactions.</p>
+                  <h3 className="zp-card-title">{t('settings.profile.regional.title')}</h3>
+                  <p className="zp-card-subtitle">{t('settings.profile.regional.subtitle')}</p>
                 </div>
               </div>
 
               <div className="zp-info-grid">
                 <div className="zp-field-block">
-                  <span className="zp-field-label">Base Currency</span>
-                  <span className="zp-field-value">₹ INR (Indian Rupee)</span>
+                  <span className="zp-field-label">{t('settings.profile.regional.currency')}</span>
+                  <span className="zp-field-value">{t('settings.profile.regional.currencyValue')}</span>
                 </div>
                 <div className="zp-field-block">
-                  <span className="zp-field-label">Date Format</span>
-                  <span className="zp-field-value">DD/MM/YYYY</span>
+                  <span className="zp-field-label">{t('settings.profile.regional.dateFormat')}</span>
+                  <span className="zp-field-value">{t('settings.profile.regional.dateFormatValue')}</span>
                 </div>
                 <div className="zp-field-block">
-                  <span className="zp-field-label">Number Formatting</span>
-                  <span className="zp-field-value">Indian Lakhs & Crores (1,00,000)</span>
+                  <span className="zp-field-label">{t('settings.profile.regional.numberFormat')}</span>
+                  <span className="zp-field-value">{t('settings.profile.regional.numberFormatValue')}</span>
                 </div>
                 <div className="zp-field-block">
-                  <span className="zp-field-label">Fiscal Year Start</span>
-                  <span className="zp-field-value">1st April (India Financial Calendar)</span>
+                  <span className="zp-field-label">{t('settings.profile.regional.fiscalYear')}</span>
+                  <span className="zp-field-value">{t('settings.profile.regional.fiscalYearValue')}</span>
                 </div>
               </div>
             </div>
@@ -1270,41 +1275,41 @@ export function ProfilePage() {
         {/* TAB 8: Terms, Privacy & Compliance */}
         {activeTab === 'terms' && (
           <div>
-            <h1 className="zp-page-title">Terms, Privacy & Compliance</h1>
+            <h1 className="zp-page-title">{t('settings.profile.terms.title')}</h1>
 
             {/* Terms of Service Card */}
             <div className="zp-card">
               <div className="zp-card-header">
                 <div>
-                  <h3 className="zp-card-title">Terms of Service & Usage Agreements</h3>
+                  <h3 className="zp-card-title">{t('settings.profile.terms.tos')}</h3>
                   <p className="zp-card-subtitle">
-                    Legal framework governing the use of Rooman Books cloud accounting services.
+                    {t('settings.profile.terms.tosHint')}
                   </p>
                 </div>
                 <span className="zp-badge-verified">
-                  <CheckCircle2 size={12} /> Accepted & Active
+                  <CheckCircle2 size={12} /> {t('settings.profile.terms.accepted')}
                 </span>
               </div>
 
               <div className="zp-terms-accordion">
                 <div className="zp-terms-card">
-                  <h4>1. Double-Entry Accounting Integrity</h4>
+                  <h4>{t('settings.profile.terms.1.title')}</h4>
                   <p>
-                    All journal entries, trial balances, and financial ledgers generated within Rooman Books are immutable and balanced according to standard Indian Accounting Standards (Ind AS) and double-entry rules.
+                    {t('settings.profile.terms.1.body')}
                   </p>
                 </div>
 
                 <div className="zp-terms-card">
-                  <h4>2. Data Ownership & Privacy Policy</h4>
+                  <h4>{t('settings.profile.terms.2.title')}</h4>
                   <p>
-                    You retain 100% ownership of your customer lists, vendor details, invoices, GSTIN data, and uploaded document attachments. We never sell or share organizational financial records with third parties.
+                    {t('settings.profile.terms.2.body')}
                   </p>
                 </div>
 
                 <div className="zp-terms-card">
-                  <h4>3. Data Protection (DPDP Act & GDPR Compliance)</h4>
+                  <h4>{t('settings.profile.terms.3.title')}</h4>
                   <p>
-                    Personal data, tax identification numbers (PAN/GSTIN), and authentication tokens are encrypted at rest using industry-standard AES-256 and salted bcrypt password hashing.
+                    {t('settings.profile.terms.3.body')}
                   </p>
                 </div>
               </div>
@@ -1314,13 +1319,13 @@ export function ProfilePage() {
             <div className="zp-card">
               <div className="zp-card-header">
                 <div>
-                  <h3 className="zp-card-title">Export Account Data</h3>
+                  <h3 className="zp-card-title">{t('settings.profile.export.title')}</h3>
                   <p className="zp-card-subtitle">
-                    Download a secure JSON archive of your personal profile, organization records, and preferences.
+                    {t('settings.profile.export.subtitle')}
                   </p>
                 </div>
                 <button type="button" className="zp-edit-btn" onClick={exportAccountData}>
-                  <Download size={14} /> Export My Data
+                  <Download size={14} /> {t('settings.profile.export.button')}
                 </button>
               </div>
             </div>
@@ -1329,14 +1334,14 @@ export function ProfilePage() {
             <div className="zp-card" style={{ borderLeft: '4px solid #ef4444' }}>
               <div className="zp-card-header">
                 <div>
-                  <h3 className="zp-card-title" style={{ color: '#ef4444' }}>Close Account</h3>
+                  <h3 className="zp-card-title" style={{ color: '#ef4444' }}>{t('settings.profile.close.title')}</h3>
                   <p className="zp-card-subtitle">
-                    Permanent removal of user profile and access credentials.
+                    {t('settings.profile.close.subtitle')}
                   </p>
                 </div>
               </div>
               <p style={{ fontSize: '13px', color: 'var(--zp-text-secondary)', margin: 0 }}>
-                To permanently close your account and delete associated organization books, please contact your system administrator or submit a deletion request via Settings.
+                {t('settings.profile.close.body')}
               </p>
             </div>
           </div>
@@ -1351,14 +1356,14 @@ export function ProfilePage() {
               <strong style={{ color: 'var(--zp-text-primary)', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 {modalMode === 'crop' ? (
                   <>
-                    <Crop size={17} style={{ color: 'var(--zp-accent)' }} /> Adjust & Crop Photo
+                    <Crop size={17} style={{ color: 'var(--zp-accent)' }} /> {t('settings.profile.photo.adjustTitle')}
                   </>
                 ) : modalMode === 'camera' ? (
                   <>
-                    <Camera size={17} style={{ color: 'var(--zp-gold)' }} /> Take a Photo
+                    <Camera size={17} style={{ color: 'var(--zp-gold)' }} /> {t('settings.profile.photo.take')}
                   </>
                 ) : (
-                  'Profile Photo'
+                  t('settings.profile.photo.title')
                 )}
               </strong>
               <button
@@ -1377,7 +1382,7 @@ export function ProfilePage() {
                   <video ref={videoRef} autoPlay playsInline className="zp-camera-video" />
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button type="button" className="zp-edit-btn" onClick={capturePhoto}>
-                      <Camera size={15} /> Capture & Adjust
+                      <Camera size={15} /> {t('settings.profile.photo.capture')}
                     </button>
                     <button
                       type="button"
@@ -1387,7 +1392,7 @@ export function ProfilePage() {
                         setModalMode('select');
                       }}
                     >
-                      Cancel
+                      {t('common.cancel')}
                     </button>
                   </div>
                 </div>
@@ -1409,7 +1414,7 @@ export function ProfilePage() {
                     <img
                       ref={cropImageRef}
                       src={cropImageSrc}
-                      alt="Crop target"
+                      alt={t('settings.profile.photo.cropAlt')}
                       className="zp-crop-image"
                       style={{
                         width: '100%',
@@ -1422,7 +1427,7 @@ export function ProfilePage() {
                     <div className="zp-crop-grid-guide" />
                   </div>
 
-                  <p className="zp-crop-tip">Drag to reposition photo inside the circle</p>
+                  <p className="zp-crop-tip">{t('settings.profile.photo.dragTip')}</p>
 
                   {/* Zoom Slider */}
                   <div className="zp-crop-slider-bar">
@@ -1448,9 +1453,9 @@ export function ProfilePage() {
                       type="button"
                       className="zp-crop-tool-btn"
                       onClick={() => setRotation((r) => (r + 90) % 360)}
-                      title="Rotate 90°"
+                      title={t('settings.profile.photo.rotateHint')}
                     >
-                      <RotateCw size={14} /> Rotate
+                      <RotateCw size={14} /> {t('settings.profile.photo.rotate')}
                     </button>
                     <button
                       type="button"
@@ -1460,9 +1465,9 @@ export function ProfilePage() {
                         setPan({ x: 0, y: 0 });
                         setRotation(0);
                       }}
-                      title="Reset crop"
+                      title={t('settings.profile.photo.resetHint')}
                     >
-                      <RotateCcw size={14} /> Reset
+                      <RotateCcw size={14} /> {t('settings.profile.photo.reset')}
                     </button>
                   </div>
 
@@ -1473,10 +1478,10 @@ export function ProfilePage() {
                       className="zp-cancel-btn"
                       onClick={() => setModalMode('select')}
                     >
-                      Back
+                      {t('settings.profile.photo.back')}
                     </button>
                     <button type="button" className="zp-edit-btn" onClick={applyCrop}>
-                      <Check size={14} /> Crop & Save
+                      <Check size={14} /> {t('settings.profile.photo.cropSave')}
                     </button>
                   </div>
                 </div>
@@ -1486,7 +1491,7 @@ export function ProfilePage() {
               {modalMode === 'select' && (
                 <>
                   {avatarUrl ? (
-                    <img src={avatarUrl} alt="Avatar Preview" className="zp-upload-preview" />
+                    <img src={avatarUrl} alt={t('settings.profile.photo.previewAlt')} className="zp-upload-preview" />
                   ) : (
                     <div
                       className="zp-avatar-initials zp-upload-preview"
@@ -1499,7 +1504,7 @@ export function ProfilePage() {
                   <div className="zp-upload-actions">
                     <label className="zp-action-tile">
                       <ImageIcon size={22} style={{ color: 'var(--zp-accent)' }} />
-                      <span>Choose from Gallery</span>
+                      <span>{t('settings.profile.photo.gallery')}</span>
                       <input
                         ref={fileInputRef}
                         type="file"
@@ -1511,7 +1516,7 @@ export function ProfilePage() {
 
                     <button type="button" className="zp-action-tile" onClick={startCamera}>
                       <Camera size={22} style={{ color: 'var(--zp-gold)' }} />
-                      <span>Take a Photo</span>
+                      <span>{t('settings.profile.photo.take')}</span>
                     </button>
                   </div>
 
@@ -1528,7 +1533,7 @@ export function ProfilePage() {
                           setModalMode('crop');
                         }}
                       >
-                        <Crop size={14} /> Adjust & Crop Current Photo
+                        <Crop size={14} /> {t('settings.profile.photo.adjustCurrent')}
                       </button>
                       <button
                         type="button"
@@ -1546,7 +1551,7 @@ export function ProfilePage() {
                           borderRadius: '6px',
                         }}
                       >
-                        <Trash2 size={14} /> Remove
+                        <Trash2 size={14} /> {t('settings.profile.photo.remove')}
                       </button>
                     </div>
                   )}

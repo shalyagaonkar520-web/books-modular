@@ -1,5 +1,6 @@
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import type { ReportSection } from '@/api/types';
+import { useAppContent, type AppContentValue } from '@/app/AppContentContext';
 import { formatCurrency } from '@/utils/format';
 
 export type StatementRowKind = 'section' | 'line' | 'note' | 'total' | 'profit';
@@ -13,7 +14,7 @@ export interface StatementRow {
 }
 
 /** Flattens an API report section into header / line / total rows. */
-export function sectionRows(key: string, section: ReportSection): StatementRow[] {
+export function sectionRows(key: string, section: ReportSection, t: AppContentValue['t']): StatementRow[] {
   const rows: StatementRow[] = [{ id: `${key}-head`, kind: 'section', label: section.title }];
   if (section.lines.length) {
     section.lines.forEach((line, index) => {
@@ -26,9 +27,9 @@ export function sectionRows(key: string, section: ReportSection): StatementRow[]
       });
     });
   } else {
-    rows.push({ id: `${key}-none`, kind: 'note', label: 'No activity for this period' });
+    rows.push({ id: `${key}-none`, kind: 'note', label: t('reports.statement.noActivity') });
   }
-  rows.push({ id: `${key}-total`, kind: 'total', label: `Total ${section.title.toLowerCase()}`, amount: section.total });
+  rows.push({ id: `${key}-total`, kind: 'total', label: t('reports.statement.sectionTotal', { section: section.title.toLowerCase() }), amount: section.total });
   return rows;
 }
 
@@ -65,21 +66,22 @@ interface StatementTableProps {
 }
 
 export function StatementTable({ rows, caption, currency = 'INR' }: StatementTableProps) {
+  const { t } = useAppContent();
   const columns: Array<Column<StatementRow>> = [
     {
       key: 'code',
-      header: 'Code',
+      header: t('reports.statement.col.code'),
       width: '90px',
       render: (row) => (row.code ? <span className="code-tag">{row.code}</span> : null),
     },
     {
       key: 'label',
-      header: 'Particulars',
+      header: t('reports.statement.col.particulars'),
       render: (row) => <span className={labelClass(row.kind)}>{row.label}</span>,
     },
     {
       key: 'amount',
-      header: 'Amount',
+      header: t('reports.statement.col.amount'),
       align: 'right',
       width: '180px',
       render: (row) => (typeof row.amount === 'number' ? <span className={amountClass(row)}>{formatCurrency(row.amount, currency)}</span> : null),

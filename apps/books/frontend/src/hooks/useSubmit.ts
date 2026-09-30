@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 
 import { ApiError } from '@/api/client';
+import { useAppContent } from '@/app/AppContentContext';
 
 /**
  * Wraps a mutating request: tracks in-flight state, surfaces the API message and
@@ -18,6 +19,10 @@ export function useSubmit() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const errorRef = useRef<string | null>(null);
+  const { t } = useAppContent();
+  // A ref keeps `run` stable across content refreshes.
+  const tRef = useRef(t);
+  tRef.current = t;
 
   const reset = useCallback(() => {
     setError(null);
@@ -33,7 +38,7 @@ export function useSubmit() {
     try {
       return await action();
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Something went wrong. Please try again.';
+      const message = err instanceof ApiError ? err.message : tRef.current('common.error.generic');
       errorRef.current = message;
       setError(message);
       if (err instanceof ApiError) {

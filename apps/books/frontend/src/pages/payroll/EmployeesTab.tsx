@@ -51,10 +51,10 @@ export function EmployeesTab() {
   };
 
   const columns: Array<Column<Employee>> = [
-    { key: 'code', header: 'Code', render: (row) => <span className="code-tag">{row.employeeCode}</span> },
+    { key: 'code', header: t('payroll.employees.col.code'), render: (row) => <span className="code-tag">{row.employeeCode}</span> },
     {
       key: 'name',
-      header: 'Employee',
+      header: t('payroll.employees.col.employee'),
       render: (row) => (
         <div className="cell-stack">
           <span className="strong">{row.name}</span>
@@ -62,25 +62,25 @@ export function EmployeesTab() {
         </div>
       ),
     },
-    { key: 'designation', header: 'Designation', render: (row) => row.designation ?? <span className="text-muted">—</span> },
-    { key: 'department', header: 'Department', render: (row) => row.department ?? <span className="text-muted">—</span> },
-    { key: 'joined', header: 'Joined', render: (row) => formatDate(row.dateOfJoining) },
+    { key: 'designation', header: t('payroll.employees.col.designation'), render: (row) => row.designation ?? <span className="text-muted">—</span> },
+    { key: 'department', header: t('payroll.employees.col.department'), render: (row) => row.department ?? <span className="text-muted">—</span> },
+    { key: 'joined', header: t('payroll.employees.col.joined'), render: (row) => formatDate(row.dateOfJoining) },
     {
       key: 'nextPay',
-      header: 'Next pay',
+      header: t('payroll.employees.col.nextPay'),
       render: (row) => (
         <div className="cell-stack">
           <span>{row.nextPayDate ? formatDate(row.nextPayDate) : '—'}</span>
-          <small className="text-muted">{formatCurrency(row.dailyRate, currency)}/day</small>
+          <small className="text-muted">{t('payroll.employees.perDay', { amount: formatCurrency(row.dailyRate, currency) })}</small>
         </div>
       ),
     },
-    { key: 'gross', header: 'Gross', align: 'right', render: (row) => <span className="num">{formatCurrency(row.grossSalary, currency)}</span> },
-    { key: 'net', header: 'Net', align: 'right', render: (row) => <span className="num strong">{formatCurrency(row.netSalary, currency)}</span> },
+    { key: 'gross', header: t('payroll.employees.col.gross'), align: 'right', render: (row) => <span className="num">{formatCurrency(row.grossSalary, currency)}</span> },
+    { key: 'net', header: t('payroll.employees.col.net'), align: 'right', render: (row) => <span className="num strong">{formatCurrency(row.netSalary, currency)}</span> },
     {
       key: 'status',
-      header: 'Status',
-      render: (row) => <Badge tone={row.isActive ? 'success' : 'neutral'}>{row.isActive ? 'Active' : 'Inactive'}</Badge>,
+      header: t('payroll.employees.col.status'),
+      render: (row) => <Badge tone={row.isActive ? 'success' : 'neutral'}>{row.isActive ? t('payroll.employees.status.active') : t('payroll.employees.status.inactive')}</Badge>,
     },
     {
       key: 'actions',
@@ -90,7 +90,7 @@ export function EmployeesTab() {
       render: (row) => (
         <div className="row-actions">
           {isAdmin ? (
-            <button type="button" className="action-btn" onClick={() => setLeaveFor(row)} aria-label={`Apply leave for ${row.name}`} title="Apply leave">
+            <button type="button" className="action-btn" onClick={() => setLeaveFor(row)} aria-label={t('payroll.employees.applyLeaveFor', { name: row.name })} title={t('payroll.employees.applyLeave')}>
               <CalendarClock size={15} />
             </button>
           ) : null}
@@ -102,14 +102,14 @@ export function EmployeesTab() {
                 setEditing(row);
                 setFormOpen(true);
               }}
-              aria-label={`Edit ${row.name}`}
-              title="Edit"
+              aria-label={t('payroll.employees.editFor', { name: row.name })}
+              title={t('payroll.employees.edit')}
             >
               <Pencil size={15} />
             </button>
           </IfCanWrite>
           {isAdmin ? (
-            <button type="button" className="action-btn is-danger" onClick={() => setDeleting(row)} aria-label={`Delete ${row.name}`} title="Delete">
+            <button type="button" className="action-btn is-danger" onClick={() => setDeleting(row)} aria-label={t('payroll.employees.deleteFor', { name: row.name })} title={t('payroll.employees.delete')}>
               <Trash2 size={15} />
             </button>
           ) : null}
@@ -121,14 +121,14 @@ export function EmployeesTab() {
   return (
     <div className="stack">
       <div className="stat-grid">
-        <StatTile label="Active employees" value={formatNumber(activeEmployees.length, 0)} sublabel={`${employees.length} on record`} />
-        <StatTile label="Monthly gross" value={formatCurrency(monthlyGross, currency)} sublabel="Active employees" />
-        <StatTile label="Monthly net" value={formatCurrency(monthlyNet, currency)} sublabel="Take-home after deductions" />
+        <StatTile label={t('payroll.employees.stat.active')} value={formatNumber(activeEmployees.length, 0)} sublabel={t('payroll.employees.stat.onRecord', { count: employees.length })} />
+        <StatTile label={t('payroll.employees.stat.monthlyGross')} value={formatCurrency(monthlyGross, currency)} sublabel={t('payroll.employees.stat.monthlyGrossSub')} />
+        <StatTile label={t('payroll.employees.stat.monthlyNet')} value={formatCurrency(monthlyNet, currency)} sublabel={t('payroll.employees.stat.monthlyNetSub')} />
       </div>
 
       <Card
-        title="Employees"
-        subtitle="Salary structure used to build each pay run"
+        title={t('payroll.employees.card.title')}
+        subtitle={t('payroll.employees.card.subtitle')}
         actions={
           <IfCanWrite>
             <Button
@@ -140,18 +140,18 @@ export function EmployeesTab() {
                 setFormOpen(true);
               }}
             >
-              Add employee
+              {t('payroll.employees.add')}
             </Button>
           </IfCanWrite>
         }
       >
-        {loading ? <LoadingBlock label="Loading employees…" /> : null}
+        {loading ? <LoadingBlock label={t('payroll.employees.loading')} /> : null}
         {!loading && error ? <ErrorBlock message={error} onRetry={reload} /> : null}
         {!loading && !error && employees.length === 0 ? (
           <EmptyState title={t('payroll.employees.empty.title')} description={t('payroll.employees.empty.body')} />
         ) : null}
         {!loading && !error && employees.length > 0 ? (
-          <DataTable columns={columns} rows={employees} rowKey={(row) => row.id} caption="Employees" />
+          <DataTable columns={columns} rows={employees} rowKey={(row) => row.id} caption={t('payroll.employees.card.title')} />
         ) : null}
       </Card>
 
@@ -161,18 +161,17 @@ export function EmployeesTab() {
 
       <ConfirmDialog
         open={!!deleting}
-        title="Delete employee"
+        title={t('payroll.employees.deleteDialog.title')}
         message={
           deleting ? (
             <>
-              <strong>{deleting.name}</strong> will be deleted. If they already appear on a payslip they are marked inactive instead, so past pay
-              runs stay intact.
+              <strong>{deleting.name}</strong> {t('payroll.employees.deleteDialog.body')}
             </>
           ) : (
             ''
           )
         }
-        confirmLabel="Delete"
+        confirmLabel={t('payroll.employees.delete')}
         busy={remove.submitting}
         onConfirm={confirmDelete}
         onCancel={() => setDeleting(null)}

@@ -35,12 +35,13 @@ import { useAsync } from '@/hooks/useAsync';
 import { formatCurrency, formatCurrencyCompact, formatDate, formatNumber, titleCase } from '@/utils/format';
 import { statusLabel, statusTone } from '@/utils/status';
 
-const PERIOD_OPTIONS: Array<{ value: DashboardPeriod; label: string }> = [
-  { value: 'this_fiscal_year', label: 'This fiscal year' },
-  { value: 'last_fiscal_year', label: 'Last fiscal year' },
-  { value: 'this_quarter', label: 'This quarter' },
-  { value: 'this_month', label: 'This month' },
-  { value: 'last_month', label: 'Last month' },
+// Labels are app-content keys, resolved with t() at render.
+const PERIOD_OPTIONS: Array<{ value: DashboardPeriod; labelKey: string }> = [
+  { value: 'this_fiscal_year', labelKey: 'dashboard.period.thisFiscalYear' },
+  { value: 'last_fiscal_year', labelKey: 'dashboard.period.lastFiscalYear' },
+  { value: 'this_quarter', labelKey: 'dashboard.period.thisQuarter' },
+  { value: 'this_month', labelKey: 'dashboard.period.thisMonth' },
+  { value: 'last_month', labelKey: 'dashboard.period.lastMonth' },
 ];
 
 // Where clicking a Recent activity row should go. Invoices, bills and expenses
@@ -121,7 +122,7 @@ export function DashboardPage() {
   const activityColumns: Array<Column<Activity>> = [
     {
       key: 'document',
-      header: 'Document',
+      header: t('dashboard.activity.col.document'),
       render: (row) => (
         <Link to={activityRoute(row)} className="cell-stack">
           <span className="strong">{row.number}</span>
@@ -129,14 +130,14 @@ export function DashboardPage() {
         </Link>
       ),
     },
-    { key: 'contact', header: 'Contact', render: (row) => row.contactName ?? '—' },
-    { key: 'date', header: 'Date', render: (row) => formatDate(row.date) },
+    { key: 'contact', header: t('dashboard.activity.col.contact'), render: (row) => row.contactName ?? '—' },
+    { key: 'date', header: t('dashboard.activity.col.date'), render: (row) => formatDate(row.date) },
     {
       key: 'status',
-      header: 'Status',
-      render: (row) => (row.status ? <Badge tone={statusTone(row.status)}>{statusLabel(row.status)}</Badge> : <span className="text-subtle">—</span>),
+      header: t('dashboard.activity.col.status'),
+      render: (row) => (row.status ? <Badge tone={statusTone(row.status)}>{statusLabel(row.status, t)}</Badge> : <span className="text-subtle">—</span>),
     },
-    { key: 'amount', header: 'Amount', align: 'right', render: (row) => <span className="num">{formatCurrency(row.amount, currency)}</span> },
+    { key: 'amount', header: t('dashboard.activity.col.amount'), align: 'right', render: (row) => <span className="num">{formatCurrency(row.amount, currency)}</span> },
   ];
 
   return (
@@ -146,7 +147,12 @@ export function DashboardPage() {
         subtitle={t('dashboard.subtitle', { org: organization?.name ?? t('dashboard.orgFallback') })}
         actions={
           <div className="row" style={{ gap: 12 }}>
-            <FilterSelect label="Period" value={period} onChange={(value) => setPeriod(value as DashboardPeriod)} options={PERIOD_OPTIONS} />
+            <FilterSelect
+              label={t('dashboard.period.label')}
+              value={period}
+              onChange={(value) => setPeriod(value as DashboardPeriod)}
+              options={PERIOD_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))}
+            />
           </div>
         }
       />
@@ -179,7 +185,7 @@ export function DashboardPage() {
           <StatTile
             label={t('dashboard.kpi.cash')}
             value={formatCurrency(data.totalCash ?? 0, currency)}
-            sublabel={`${bankBalances?.length ?? 0} account(s)`}
+            sublabel={t('dashboard.kpi.cashSub', { count: bankBalances?.length ?? 0 })}
             icon={<Landmark size={16} />}
             chart={<Sparkline values={cashSparkline} tone={(data.totalCash ?? 0) >= 0 ? 'positive' : 'negative'} />}
           />
@@ -187,7 +193,7 @@ export function DashboardPage() {
         <StatTile
           label={t('dashboard.kpi.receivables')}
           value={formatCurrency(receivables.totalReceivables, currency)}
-          sublabel={`${receivables.totalUnpaidInvoices} unpaid invoice(s)`}
+          sublabel={t('dashboard.kpi.receivablesSub', { count: receivables.totalUnpaidInvoices })}
           tone={receivables.overdueAmount > 0 ? 'warning' : 'neutral'}
           icon={<ArrowUpRight size={16} />}
           chart={<Sparkline values={receivablesSparkline} tone={receivables.overdueAmount > 0 ? 'warning' : 'positive'} />}
@@ -195,14 +201,14 @@ export function DashboardPage() {
         <StatTile
           label={t('dashboard.kpi.payables')}
           value={formatCurrency(payables.totalPayables, currency)}
-          sublabel={`${payables.totalUnpaidBills} unpaid bill(s)`}
+          sublabel={t('dashboard.kpi.payablesSub', { count: payables.totalUnpaidBills })}
           icon={<ArrowDownRight size={16} />}
           chart={<Sparkline values={payablesSparkline} tone={payables.overdueAmount > 0 ? 'warning' : 'neutral'} />}
         />
         <StatTile
           label={incomeExpense.totalIncome >= incomeExpense.totalExpense ? t('dashboard.kpi.netProfit') : t('dashboard.kpi.netLoss')}
           value={formatCurrency(Math.abs(incomeExpense.net), currency)}
-          sublabel={`${formatDate(incomeExpense.startDate)} – ${formatDate(incomeExpense.endDate)}`}
+          sublabel={t('dashboard.kpi.netSub', { start: formatDate(incomeExpense.startDate), end: formatDate(incomeExpense.endDate) })}
           tone={incomeExpense.net >= 0 ? 'positive' : 'negative'}
           icon={<Wallet size={16} />}
           chart={<Sparkline values={profitSparkline} tone={incomeExpense.net >= 0 ? 'positive' : 'negative'} />}
@@ -220,17 +226,17 @@ export function DashboardPage() {
                   type="button"
                   className={`chart-pill ${receivablesView === 'bar' ? 'active' : ''}`}
                   onClick={() => setReceivablesView('bar')}
-                  title="Bar split"
+                  title={t('dashboard.chart.barSplit')}
                 >
-                  <span>Bar</span>
+                  <span>{t('dashboard.chart.bar')}</span>
                 </button>
                 <button
                   type="button"
                   className={`chart-pill ${receivablesView === 'donut' ? 'active' : ''}`}
                   onClick={() => setReceivablesView('donut')}
-                  title="Donut chart"
+                  title={t('dashboard.chart.donutChart')}
                 >
-                  <span>Donut</span>
+                  <span>{t('dashboard.chart.donut')}</span>
                 </button>
               </div>
               {isModuleEnabled('invoices') ? (
@@ -247,8 +253,8 @@ export function DashboardPage() {
             <div style={{ margin: '12px 0' }}>
               <DonutChart
                 slices={[
-                  { label: 'Current', value: receivables.currentAmount },
-                  { label: 'Overdue', value: receivables.overdueAmount },
+                  { label: t('dashboard.split.current'), value: receivables.currentAmount },
+                  { label: t('dashboard.split.overdue'), value: receivables.overdueAmount },
                 ]}
                 currency={currency}
               />
@@ -257,22 +263,22 @@ export function DashboardPage() {
             <SplitBar
               total={receivables.totalReceivables}
               segments={[
-                { label: 'Current', value: receivables.currentAmount, tone: 'current' },
-                { label: 'Overdue', value: receivables.overdueAmount, tone: 'overdue' },
+                { label: t('dashboard.split.current'), value: receivables.currentAmount, tone: 'current' },
+                { label: t('dashboard.split.overdue'), value: receivables.overdueAmount, tone: 'overdue' },
               ]}
             />
           )}
           <dl className="detail-grid">
             <div className="detail-item">
-              <dt>Current</dt>
+              <dt>{t('dashboard.split.current')}</dt>
               <dd className="num">{formatCurrency(receivables.currentAmount, currency)}</dd>
             </div>
             <div className="detail-item">
-              <dt>Overdue</dt>
+              <dt>{t('dashboard.split.overdue')}</dt>
               <dd className={`num ${receivables.overdueAmount > 0 ? 'text-danger' : ''}`}>{formatCurrency(receivables.overdueAmount, currency)}</dd>
             </div>
             <div className="detail-item">
-              <dt>Unpaid invoices</dt>
+              <dt>{t('dashboard.receivables.unpaidInvoices')}</dt>
               <dd className="num">{receivables.totalUnpaidInvoices}</dd>
             </div>
           </dl>
@@ -288,17 +294,17 @@ export function DashboardPage() {
                   type="button"
                   className={`chart-pill ${payablesView === 'bar' ? 'active' : ''}`}
                   onClick={() => setPayablesView('bar')}
-                  title="Bar split"
+                  title={t('dashboard.chart.barSplit')}
                 >
-                  <span>Bar</span>
+                  <span>{t('dashboard.chart.bar')}</span>
                 </button>
                 <button
                   type="button"
                   className={`chart-pill ${payablesView === 'donut' ? 'active' : ''}`}
                   onClick={() => setPayablesView('donut')}
-                  title="Donut chart"
+                  title={t('dashboard.chart.donutChart')}
                 >
-                  <span>Donut</span>
+                  <span>{t('dashboard.chart.donut')}</span>
                 </button>
               </div>
               {isModuleEnabled('bills') ? (
@@ -315,8 +321,8 @@ export function DashboardPage() {
             <div style={{ margin: '12px 0' }}>
               <DonutChart
                 slices={[
-                  { label: 'Current', value: payables.currentAmount },
-                  { label: 'Overdue', value: payables.overdueAmount },
+                  { label: t('dashboard.split.current'), value: payables.currentAmount },
+                  { label: t('dashboard.split.overdue'), value: payables.overdueAmount },
                 ]}
                 currency={currency}
               />
@@ -325,22 +331,22 @@ export function DashboardPage() {
             <SplitBar
               total={payables.totalPayables}
               segments={[
-                { label: 'Current', value: payables.currentAmount, tone: 'current' },
-                { label: 'Overdue', value: payables.overdueAmount, tone: 'overdue' },
+                { label: t('dashboard.split.current'), value: payables.currentAmount, tone: 'current' },
+                { label: t('dashboard.split.overdue'), value: payables.overdueAmount, tone: 'overdue' },
               ]}
             />
           )}
           <dl className="detail-grid">
             <div className="detail-item">
-              <dt>Current</dt>
+              <dt>{t('dashboard.split.current')}</dt>
               <dd className="num">{formatCurrency(payables.currentAmount, currency)}</dd>
             </div>
             <div className="detail-item">
-              <dt>Overdue</dt>
+              <dt>{t('dashboard.split.overdue')}</dt>
               <dd className={`num ${payables.overdueAmount > 0 ? 'text-warning' : ''}`}>{formatCurrency(payables.overdueAmount, currency)}</dd>
             </div>
             <div className="detail-item">
-              <dt>Unpaid bills</dt>
+              <dt>{t('dashboard.payables.unpaidBills')}</dt>
               <dd className="num">{payables.totalUnpaidBills}</dd>
             </div>
           </dl>
@@ -356,16 +362,16 @@ export function DashboardPage() {
       {cashFlow ? (
         <Card title={t('dashboard.cashFlow.title')} subtitle={t('dashboard.cashFlow.subtitle', { start: formatDate(cashFlow.startDate), end: formatDate(cashFlow.endDate) })}>
           <div className="stat-grid">
-            <StatTile label="Opening balance" value={formatCurrency(cashFlow.openingBalance, currency)} />
-            <StatTile label="Money in" value={formatCurrency(cashFlow.incomingAmount, currency)} tone="positive" />
-            <StatTile label="Money out" value={formatCurrency(cashFlow.outgoingAmount, currency)} tone="negative" />
-            <StatTile label="Closing balance" value={formatCurrency(cashFlow.closingBalance, currency)} tone={cashFlow.netCashFlow >= 0 ? 'positive' : 'negative'} />
+            <StatTile label={t('dashboard.cashFlow.opening')} value={formatCurrency(cashFlow.openingBalance, currency)} />
+            <StatTile label={t('dashboard.cashFlow.moneyIn')} value={formatCurrency(cashFlow.incomingAmount, currency)} tone="positive" />
+            <StatTile label={t('dashboard.cashFlow.moneyOut')} value={formatCurrency(cashFlow.outgoingAmount, currency)} tone="negative" />
+            <StatTile label={t('dashboard.cashFlow.closing')} value={formatCurrency(cashFlow.closingBalance, currency)} tone={cashFlow.netCashFlow >= 0 ? 'positive' : 'negative'} />
           </div>
           <InteractiveSeriesChart
             data={cashFlow.breakdown.map((point) => ({ label: point.label, incoming: point.incoming, outgoing: point.outgoing }))}
-            incomingLabel="Money in"
-            outgoingLabel="Money out"
-            netLabel="Net Cash Flow"
+            incomingLabel={t('dashboard.cashFlow.moneyIn')}
+            outgoingLabel={t('dashboard.cashFlow.moneyOut')}
+            netLabel={t('dashboard.cashFlow.net')}
             currency={currency}
             selectedType={cashFlowChartType}
             onTypeChange={setCashFlowChartType}
@@ -377,9 +383,9 @@ export function DashboardPage() {
       <Card title={t('dashboard.incomeExpense.title')} subtitle={t('dashboard.incomeExpense.subtitle')}>
         <InteractiveSeriesChart
           data={incomeExpense.breakdown.map((point) => ({ label: point.label, incoming: point.incoming, outgoing: point.outgoing }))}
-          incomingLabel="Income"
-          outgoingLabel="Expense"
-          netLabel="Net Profit"
+          incomingLabel={t('dashboard.incomeExpense.income')}
+          outgoingLabel={t('dashboard.incomeExpense.expense')}
+          netLabel={t('dashboard.incomeExpense.net')}
           currency={currency}
           selectedType={incomeChartType}
           onTypeChange={setIncomeChartType}
@@ -387,7 +393,10 @@ export function DashboardPage() {
         />
         <div className="row-between" style={{ marginTop: 8 }}>
           <span className="text-muted small">
-            Income {formatCurrency(incomeExpense.totalIncome, currency)} · Expense {formatCurrency(incomeExpense.totalExpense, currency)}
+            {t('dashboard.incomeExpense.summary', {
+              income: formatCurrency(incomeExpense.totalIncome, currency),
+              expense: formatCurrency(incomeExpense.totalExpense, currency),
+            })}
           </span>
           {isModuleEnabled('reports') ? (
             <Link to="/reports" className="btn btn-link btn-sm">
@@ -409,17 +418,17 @@ export function DashboardPage() {
                   type="button"
                   className={`chart-pill ${topCustomersChartType === 'donut' ? 'active' : ''}`}
                   onClick={() => setTopCustomersChartType('donut')}
-                  title="Donut chart"
+                  title={t('dashboard.chart.donutChart')}
                 >
-                  <span>Donut</span>
+                  <span>{t('dashboard.chart.donut')}</span>
                 </button>
                 <button
                   type="button"
                   className={`chart-pill ${topCustomersChartType === 'hbar' ? 'active' : ''}`}
                   onClick={() => setTopCustomersChartType('hbar')}
-                  title="Bar chart"
+                  title={t('dashboard.chart.barChart')}
                 >
-                  <span>Bar</span>
+                  <span>{t('dashboard.chart.bar')}</span>
                 </button>
               </div>
             ) : null
@@ -450,17 +459,17 @@ export function DashboardPage() {
                     type="button"
                     className={`chart-pill ${inventoryView === 'overview' ? 'active' : ''}`}
                     onClick={() => setInventoryView('overview')}
-                    title="Overview & Stat Tiles"
+                    title={t('dashboard.chart.overviewTiles')}
                   >
-                    <span>Tiles</span>
+                    <span>{t('dashboard.chart.tiles')}</span>
                   </button>
                   <button
                     type="button"
                     className={`chart-pill ${inventoryView === 'donut' ? 'active' : ''}`}
                     onClick={() => setInventoryView('donut')}
-                    title="Category Donut Chart"
+                    title={t('dashboard.chart.categoryDonut')}
                   >
-                    <span>Donut</span>
+                    <span>{t('dashboard.chart.donut')}</span>
                   </button>
                 </div>
               )}
@@ -471,11 +480,14 @@ export function DashboardPage() {
           }
         >
           <div className="stat-grid">
-            <StatTile label="Items" value={formatNumber(inventory.totalItemsCount, 0)} sublabel={`${inventory.goodsCount} goods · ${inventory.serviceCount} services`} icon={<Package size={16} />} />
-            <StatTile label="Tracked" value={formatNumber(inventory.trackedCount, 0)} />
-            <StatTile label="Stock value" value={formatCurrencyCompact(inventory.totalInventoryValuation, currency)} />
             <StatTile
-              label="Low stock"
+              label={t('dashboard.inventory.items')}
+              value={formatNumber(inventory.totalItemsCount, 0)}
+              sublabel={t('dashboard.inventory.itemsSub', { goods: inventory.goodsCount, services: inventory.serviceCount })} icon={<Package size={16} />} />
+            <StatTile label={t('dashboard.inventory.tracked')} value={formatNumber(inventory.trackedCount, 0)} />
+            <StatTile label={t('dashboard.inventory.stockValue')} value={formatCurrencyCompact(inventory.totalInventoryValuation, currency)} />
+            <StatTile
+              label={t('dashboard.inventory.lowStock')}
               value={formatNumber(inventory.lowStockItemsCount, 0)}
               tone={inventory.lowStockItemsCount > 0 ? 'warning' : 'neutral'}
               icon={<AlertTriangle size={16} />}
@@ -485,8 +497,8 @@ export function DashboardPage() {
             <div style={{ marginTop: 12 }}>
               <DonutChart
                 slices={[
-                  { label: 'Goods', value: inventory.goodsCount },
-                  { label: 'Services', value: inventory.serviceCount },
+                  { label: t('dashboard.inventory.goods'), value: inventory.goodsCount },
+                  { label: t('dashboard.inventory.services'), value: inventory.serviceCount },
                 ]}
                 currency=""
               />
@@ -494,14 +506,14 @@ export function DashboardPage() {
           ) : inventory.totalItemsCount > 0 ? (
             <div style={{ marginTop: 12 }}>
               <div className="row-between small text-muted" style={{ marginBottom: 4 }}>
-                <span>Goods ({inventory.goodsCount})</span>
-                <span>Services ({inventory.serviceCount})</span>
+                <span>{t('dashboard.inventory.goodsCount', { count: inventory.goodsCount })}</span>
+                <span>{t('dashboard.inventory.servicesCount', { count: inventory.serviceCount })}</span>
               </div>
               <SplitBar
                 total={inventory.totalItemsCount}
                 segments={[
-                  { label: 'Goods', value: inventory.goodsCount, tone: 'current' },
-                  { label: 'Services', value: inventory.serviceCount, tone: 'neutral' },
+                  { label: t('dashboard.inventory.goods'), value: inventory.goodsCount, tone: 'current' },
+                  { label: t('dashboard.inventory.services'), value: inventory.serviceCount, tone: 'neutral' },
                 ]}
               />
             </div>
@@ -518,8 +530,8 @@ export function DashboardPage() {
           }
         >
           <div className="stat-grid">
-            <StatTile label="Unbilled hours" value={formatNumber(data.unbilledHours, 2)} icon={<Clock size={16} />} />
-            <StatTile label="Value at project rates" value={formatCurrency(data.unbilledAmount, currency)} tone={data.unbilledAmount > 0 ? 'warning' : 'neutral'} />
+            <StatTile label={t('dashboard.unbilled.hours')} value={formatNumber(data.unbilledHours, 2)} icon={<Clock size={16} />} />
+            <StatTile label={t('dashboard.unbilled.value')} value={formatCurrency(data.unbilledAmount, currency)} tone={data.unbilledAmount > 0 ? 'warning' : 'neutral'} />
           </div>
 
           <div className="row" style={{ gap: 20, alignItems: 'center', marginTop: 14 }}>
@@ -528,14 +540,14 @@ export function DashboardPage() {
               max={40}
               size={96}
               strokeWidth={8}
-              centerText={`${formatNumber(data.unbilledHours, 1)}h`}
-              label="Capacity"
-              sublabel="Logged billable"
+              centerText={t('dashboard.unbilled.hoursShort', { hours: formatNumber(data.unbilledHours, 1) })}
+              label={t('dashboard.unbilled.capacity')}
+              sublabel={t('dashboard.unbilled.loggedBillable')}
               tone={data.unbilledHours > 0 ? 'positive' : 'neutral'}
             />
             <div style={{ flex: 1 }}>
               <div className="row-between small" style={{ marginBottom: 4 }}>
-                <span className="text-muted">Unbilled value pipeline</span>
+                <span className="text-muted">{t('dashboard.unbilled.pipeline')}</span>
                 <span className="num strong text-primary">{formatCurrency(data.unbilledAmount, currency)}</span>
               </div>
               <div className="hbar-track" style={{ height: 8 }}>
@@ -548,7 +560,9 @@ export function DashboardPage() {
                 />
               </div>
               <small className="text-muted" style={{ display: 'block', marginTop: 6 }}>
-                {data.unbilledHours > 0 ? `${formatNumber(data.unbilledHours, 2)} hours ready to convert to client invoice` : 'No open unbilled hours in this period'}
+                {data.unbilledHours > 0
+                  ? t('dashboard.unbilled.ready', { hours: formatNumber(data.unbilledHours, 2) })
+                  : t('dashboard.unbilled.none')}
               </small>
             </div>
           </div>
@@ -567,17 +581,17 @@ export function DashboardPage() {
                 type="button"
                 className={`chart-pill ${activityView === 'table' ? 'active' : ''}`}
                 onClick={() => setActivityView('table')}
-                title="Table view"
+                title={t('dashboard.chart.tableView')}
               >
-                <span>Table</span>
+                <span>{t('dashboard.chart.table')}</span>
               </button>
               <button
                 type="button"
                 className={`chart-pill ${activityView === 'chart' ? 'active' : ''}`}
                 onClick={() => setActivityView('chart')}
-                title="Activity breakdown bar chart"
+                title={t('dashboard.chart.activityBar')}
               >
-                <span>Bar</span>
+                <span>{t('dashboard.chart.bar')}</span>
               </button>
             </div>
           )}
@@ -600,13 +614,13 @@ export function DashboardPage() {
               ).map(([type, stats]) => ({
                 label: type,
                 value: stats.total,
-                sublabel: `${stats.count} transaction(s)`,
+                sublabel: t('dashboard.activity.transactions', { count: stats.count }),
               }))}
               currency={currency}
             />
           </div>
         ) : (
-          <DataTable<Activity> columns={activityColumns} rows={recentActivity} rowKey={(row) => `${row.type}-${row.id}`} caption="Recent activity" />
+          <DataTable<Activity> columns={activityColumns} rows={recentActivity} rowKey={(row) => `${row.type}-${row.id}`} caption={t('dashboard.activity.title')} />
         )}
       </div>
     </>

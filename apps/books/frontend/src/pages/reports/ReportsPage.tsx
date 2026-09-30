@@ -118,16 +118,22 @@ export function ReportsPage() {
         <Tabs tabs={visibleReports.map((report) => ({ id: report.id, label: t(`${report.textKey}.label`) }))} active={active.id} onChange={(id) => setActiveId(id as ReportId)} />
         {active.range === 'period' ? (
           <div className="form-grid-3">
-            <TextField label="From" type="date" value={startDate} max={endDate} onChange={(event) => setStartDate(event.target.value)} />
-            <TextField label="To" type="date" value={endDate} min={startDate} onChange={(event) => setEndDate(event.target.value)} />
+            <TextField label={t('reports.range.from')} type="date" value={startDate} max={endDate} onChange={(event) => setStartDate(event.target.value)} />
+            <TextField label={t('reports.range.to')} type="date" value={endDate} min={startDate} onChange={(event) => setEndDate(event.target.value)} />
           </div>
         ) : null}
         {active.range === 'as_of' ? (
           <div className="form-grid-3">
-            <TextField label="As of" type="date" value={asOf} onChange={(event) => setAsOf(event.target.value)} hint="Balances and ageing are calculated on this date" />
+            <TextField
+              label={t('reports.range.asOf')}
+              type="date"
+              value={asOf}
+              onChange={(event) => setAsOf(event.target.value)}
+              hint={t('reports.range.asOfHint')}
+            />
           </div>
         ) : null}
-        {active.range === 'none' ? <p className="text-muted small">This report always shows the current position.</p> : null}
+        {active.range === 'none' ? <p className="text-muted small">{t('reports.range.currentPosition')}</p> : null}
       </div>
 
       <div className="printable">{renderReport()}</div>

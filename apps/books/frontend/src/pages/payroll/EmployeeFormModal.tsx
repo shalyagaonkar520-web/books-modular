@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { useAppContent } from '@/app/AppContentContext';
 import { Button } from '@/components/ui/Button';
 import { FormError } from '@/components/ui/Feedback';
 import { Modal } from '@/components/ui/Modal';
@@ -60,6 +61,7 @@ function initialState(employee: Employee | null): FormState {
 }
 
 export function EmployeeFormModal({ employee, onClose, onSaved }: EmployeeFormModalProps) {
+  const { t } = useAppContent();
   const toast = useToast();
   const { organization } = useAuth();
   const currency = organization?.currency ?? 'INR';
@@ -97,7 +99,7 @@ export function EmployeeFormModal({ employee, onClose, onSaved }: EmployeeFormMo
 
     const saved = await run(() => (employee ? payrollApi.updateEmployee(employee.id, body) : payrollApi.createEmployee(body)));
     if (saved) {
-      toast.success(employee ? `${saved.name} updated.` : `${saved.name} added as ${saved.employeeCode}.`);
+      toast.success(employee ? t('payroll.employeeForm.toast.updated', { name: saved.name }) : t('payroll.employeeForm.toast.added', { name: saved.name, code: saved.employeeCode }));
       onSaved();
       onClose();
     }
@@ -107,16 +109,16 @@ export function EmployeeFormModal({ employee, onClose, onSaved }: EmployeeFormMo
     <Modal
       open
       size="lg"
-      title={employee ? `Edit ${employee.name}` : 'Add employee'}
-      subtitle="Salary components drive every future pay run"
+      title={employee ? t('payroll.employeeForm.editTitle', { name: employee.name }) : t('payroll.employeeForm.addTitle')}
+      subtitle={t('payroll.employeeForm.subtitle')}
       onClose={onClose}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('payroll.employeeForm.cancel')}
           </Button>
           <Button variant="primary" onClick={save} loading={submitting} disabled={!form.name.trim() || net < 0}>
-            {employee ? 'Save changes' : 'Add employee'}
+            {employee ? t('payroll.employeeForm.save') : t('payroll.employeeForm.addTitle')}
           </Button>
         </>
       }
@@ -127,20 +129,20 @@ export function EmployeeFormModal({ employee, onClose, onSaved }: EmployeeFormMo
         <div className="form-grid">
           {employee ? null : (
             <TextField
-              label="Employee code"
+              label={t('payroll.employeeForm.code')}
               value={form.employeeCode}
               onChange={set('employeeCode')}
               error={fieldErrors.employeeCode}
-              hint="Leave blank to generate one automatically"
+              hint={t('payroll.employeeForm.codeHint')}
               maxLength={30}
             />
           )}
-          <TextField label="Full name" value={form.name} onChange={set('name')} error={fieldErrors.name} required maxLength={120} />
-          <TextField label="Email" type="email" value={form.email} onChange={set('email')} error={fieldErrors.email} />
-          <TextField label="Designation" value={form.designation} onChange={set('designation')} error={fieldErrors.designation} maxLength={120} />
-          <TextField label="Department" value={form.department} onChange={set('department')} error={fieldErrors.department} maxLength={120} />
+          <TextField label={t('payroll.employeeForm.name')} value={form.name} onChange={set('name')} error={fieldErrors.name} required maxLength={120} />
+          <TextField label={t('payroll.employeeForm.email')} type="email" value={form.email} onChange={set('email')} error={fieldErrors.email} />
+          <TextField label={t('payroll.employeeForm.designation')} value={form.designation} onChange={set('designation')} error={fieldErrors.designation} maxLength={120} />
+          <TextField label={t('payroll.employeeForm.department')} value={form.department} onChange={set('department')} error={fieldErrors.department} maxLength={120} />
           <TextField
-            label="Date of joining"
+            label={t('payroll.employeeForm.dateOfJoining')}
             type="date"
             value={form.dateOfJoining}
             onChange={set('dateOfJoining')}
@@ -148,30 +150,30 @@ export function EmployeeFormModal({ employee, onClose, onSaved }: EmployeeFormMo
             required
           />
           <TextField
-            label="Salary day"
+            label={t('payroll.employeeForm.salaryDay')}
             type="number"
             min={1}
             max={31}
             value={form.salaryDay}
             onChange={set('salaryDay')}
             error={fieldErrors.salaryDay}
-            hint="Day of the month salary is paid. Leave blank for the last day of the month."
+            hint={t('payroll.employeeForm.salaryDayHint')}
           />
         </div>
 
         <div className="form-section">
-          <h3 className="form-section-title">Statutory and bank details</h3>
+          <h3 className="form-section-title">{t('payroll.employeeForm.section.statutory')}</h3>
           <div className="form-grid-3">
             <TextField
-              label="PAN"
+              label={t('payroll.employeeForm.pan')}
               value={form.pan}
               onChange={(event) => set('pan')({ target: { value: event.target.value.toUpperCase() } })}
               error={fieldErrors.pan}
               maxLength={10}
-              hint="10 characters, e.g. AABCR1234F"
+              hint={t('payroll.employeeForm.panHint')}
             />
             <TextField
-              label="Bank account number"
+              label={t('payroll.employeeForm.bankAccount')}
               value={form.bankAccountNumber}
               inputMode="numeric"
               onChange={set('bankAccountNumber')}
@@ -179,54 +181,54 @@ export function EmployeeFormModal({ employee, onClose, onSaved }: EmployeeFormMo
               maxLength={18}
               hint={
                 employee?.bankAccountNumberMasked
-                  ? `Currently ${employee.bankAccountNumberMasked} — leave blank to keep it`
-                  : '9 to 18 digits'
+                  ? t('payroll.employeeForm.bankAccountCurrent', { masked: employee.bankAccountNumberMasked })
+                  : t('payroll.employeeForm.bankAccountHint')
               }
             />
             <TextField
-              label="Bank IFSC"
+              label={t('payroll.employeeForm.ifsc')}
               value={form.bankIfsc}
               onChange={(event) => set('bankIfsc')({ target: { value: event.target.value.toUpperCase() } })}
               error={fieldErrors.bankIfsc}
               maxLength={11}
-              hint="11 characters, e.g. HDFC0001234"
+              hint={t('payroll.employeeForm.ifscHint')}
             />
           </div>
         </div>
 
         <div className="form-section">
-          <h3 className="form-section-title">Earnings</h3>
+          <h3 className="form-section-title">{t('payroll.employeeForm.section.earnings')}</h3>
           <div className="form-grid-3">
-            <TextField label="Basic salary" type="number" min={0} step="0.01" value={form.basicSalary} onChange={set('basicSalary')} error={fieldErrors.basicSalary} required />
-            <TextField label="HRA" type="number" min={0} step="0.01" value={form.hra} onChange={set('hra')} error={fieldErrors.hra} />
-            <TextField label="Other allowances" type="number" min={0} step="0.01" value={form.otherAllowances} onChange={set('otherAllowances')} error={fieldErrors.otherAllowances} />
+            <TextField label={t('payroll.employeeForm.basic')} type="number" min={0} step="0.01" value={form.basicSalary} onChange={set('basicSalary')} error={fieldErrors.basicSalary} required />
+            <TextField label={t('payroll.employeeForm.hra')} type="number" min={0} step="0.01" value={form.hra} onChange={set('hra')} error={fieldErrors.hra} />
+            <TextField label={t('payroll.employeeForm.otherAllowances')} type="number" min={0} step="0.01" value={form.otherAllowances} onChange={set('otherAllowances')} error={fieldErrors.otherAllowances} />
           </div>
         </div>
 
         <div className="form-section">
-          <h3 className="form-section-title">Deductions</h3>
+          <h3 className="form-section-title">{t('payroll.employeeForm.section.deductions')}</h3>
           <div className="form-grid-3">
-            <TextField label="PF (employee)" type="number" min={0} step="0.01" value={form.pfEmployee} onChange={set('pfEmployee')} error={fieldErrors.pfEmployee} />
-            <TextField label="Professional tax" type="number" min={0} step="0.01" value={form.professionalTax} onChange={set('professionalTax')} error={fieldErrors.professionalTax} />
-            <TextField label="TDS" type="number" min={0} step="0.01" value={form.tds} onChange={set('tds')} error={fieldErrors.tds} />
+            <TextField label={t('payroll.employeeForm.pf')} type="number" min={0} step="0.01" value={form.pfEmployee} onChange={set('pfEmployee')} error={fieldErrors.pfEmployee} />
+            <TextField label={t('payroll.employeeForm.professionalTax')} type="number" min={0} step="0.01" value={form.professionalTax} onChange={set('professionalTax')} error={fieldErrors.professionalTax} />
+            <TextField label={t('payroll.employeeForm.tds')} type="number" min={0} step="0.01" value={form.tds} onChange={set('tds')} error={fieldErrors.tds} />
           </div>
         </div>
 
         <div className="totals-list">
           <div>
-            <span>Monthly gross</span>
+            <span>{t('payroll.employeeForm.monthlyGross')}</span>
             <span className="num">{formatCurrency(gross, currency)}</span>
           </div>
           <div>
-            <span>Total deductions</span>
+            <span>{t('payroll.employeeForm.totalDeductions')}</span>
             <span className="num">{formatCurrency(deductions, currency)}</span>
           </div>
           <div className="grand">
-            <span>Monthly net</span>
+            <span>{t('payroll.employeeForm.monthlyNet')}</span>
             <span className={net < 0 ? 'num text-danger' : 'num'}>{formatCurrency(net, currency)}</span>
           </div>
         </div>
-        {net < 0 ? <p className="text-danger small">Deductions cannot exceed gross pay.</p> : null}
+        {net < 0 ? <p className="text-danger small">{t('payroll.employeeForm.negativeNet')}</p> : null}
       </div>
     </Modal>
   );

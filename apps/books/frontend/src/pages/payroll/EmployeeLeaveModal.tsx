@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Trash2 } from 'lucide-react';
 
+import { useAppContent } from '@/app/AppContentContext';
 import { Button } from '@/components/ui/Button';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
@@ -20,6 +21,7 @@ interface EmployeeLeaveModalProps {
 }
 
 export function EmployeeLeaveModal({ employee, onClose, onChanged }: EmployeeLeaveModalProps) {
+  const { t } = useAppContent();
   const toast = useToast();
   const { data, loading, error, reload } = useAsync(() => payrollApi.leaves(employee.id), [employee.id]);
   const create = useSubmit();
@@ -33,7 +35,7 @@ export function EmployeeLeaveModal({ employee, onClose, onChanged }: EmployeeLea
   const apply = async () => {
     const saved = await create.run(() => payrollApi.createLeave(employee.id, { date, leaveType, notes: notes.trim() || null }));
     if (saved) {
-      toast.success(`Leave recorded for ${formatDate(saved.date)}.`);
+      toast.success(t('payroll.leave.toast.recorded', { date: formatDate(saved.date) }));
       setNotes('');
       reload();
       onChanged();
@@ -52,16 +54,16 @@ export function EmployeeLeaveModal({ employee, onClose, onChanged }: EmployeeLea
   };
 
   const columns: Array<Column<LeaveRecord>> = [
-    { key: 'date', header: 'Date', render: (row) => formatDate(row.date) },
-    { key: 'type', header: 'Type', render: (row) => (row.leaveType === 'unpaid' ? 'Unpaid' : 'Paid') },
-    { key: 'notes', header: 'Notes', render: (row) => row.notes ?? <span className="text-muted">—</span> },
+    { key: 'date', header: t('payroll.leave.col.date'), render: (row) => formatDate(row.date) },
+    { key: 'type', header: t('payroll.leave.col.type'), render: (row) => (row.leaveType === 'unpaid' ? t('payroll.leave.type.unpaid') : t('payroll.leave.type.paid')) },
+    { key: 'notes', header: t('payroll.leave.col.notes'), render: (row) => row.notes ?? <span className="text-muted">—</span> },
     {
       key: 'actions',
       header: '',
       align: 'right',
       width: '60px',
       render: (row) => (
-        <button type="button" className="action-btn is-danger" onClick={() => void removeLeave(row)} aria-label="Remove leave" title="Remove">
+        <button type="button" className="action-btn is-danger" onClick={() => void removeLeave(row)} aria-label={t('payroll.leave.removeAria')} title={t('payroll.leave.remove')}>
           <Trash2 size={15} />
         </button>
       ),
@@ -69,31 +71,31 @@ export function EmployeeLeaveModal({ employee, onClose, onChanged }: EmployeeLea
   ];
 
   return (
-    <Modal open size="lg" title={`Leave — ${employee.name}`} subtitle="Unpaid days here automatically become loss-of-pay on this employee's next pay run" onClose={onClose}>
+    <Modal open size="lg" title={t('payroll.leave.title', { name: employee.name })} subtitle={t('payroll.leave.subtitle')} onClose={onClose}>
       <div className="stack">
         <FormError message={create.error} />
         <div className="form-grid-3">
-          <TextField label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+          <TextField label={t('payroll.leave.col.date')} type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
           <SelectField
-            label="Type"
+            label={t('payroll.leave.col.type')}
             value={leaveType}
             onChange={(e) => setLeaveType(e.target.value as 'unpaid' | 'paid')}
             options={[
-              { value: 'unpaid', label: 'Unpaid (counts as loss-of-pay)' },
-              { value: 'paid', label: 'Paid (no deduction)' },
+              { value: 'unpaid', label: t('payroll.leave.option.unpaid') },
+              { value: 'paid', label: t('payroll.leave.option.paid') },
             ]}
           />
-          <TextField label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={255} />
+          <TextField label={t('payroll.leave.col.notes')} value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={255} />
         </div>
         <Button variant="primary" size="sm" onClick={() => void apply()} loading={create.submitting} disabled={!date}>
-          Apply leave
+          {t('payroll.leave.apply')}
         </Button>
 
-        {loading ? <LoadingBlock label="Loading leave records…" /> : null}
+        {loading ? <LoadingBlock label={t('payroll.leave.loading')} /> : null}
         {!loading && error ? <ErrorBlock message={error} onRetry={reload} /> : null}
-        {!loading && !error && leaves.length === 0 ? <EmptyState title="No leave recorded" description="Apply a day of leave above." /> : null}
+        {!loading && !error && leaves.length === 0 ? <EmptyState title={t('payroll.leave.empty.title')} description={t('payroll.leave.empty.body')} /> : null}
         {!loading && !error && leaves.length > 0 ? (
-          <DataTable columns={columns} rows={leaves} rowKey={(row) => row.id} caption="Leave records" />
+          <DataTable columns={columns} rows={leaves} rowKey={(row) => row.id} caption={t('payroll.leave.caption')} />
         ) : null}
       </div>
     </Modal>

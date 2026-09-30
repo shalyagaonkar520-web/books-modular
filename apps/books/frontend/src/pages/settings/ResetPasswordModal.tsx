@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { useAppContent } from '@/app/AppContentContext';
 import { Button } from '@/components/ui/Button';
 import { FormError } from '@/components/ui/Feedback';
 import { Modal } from '@/components/ui/Modal';
@@ -9,7 +10,7 @@ import type { User } from '@/api/types';
 import { useSubmit } from '@/hooks/useSubmit';
 import { useToast } from '@/components/ui/Toast';
 
-import { PASSWORD_HINT, validatePassword } from './passwordRules';
+import { PASSWORD_HINT_KEY, validatePassword } from './passwordRules';
 
 interface ResetPasswordModalProps {
   user: User;
@@ -17,6 +18,7 @@ interface ResetPasswordModalProps {
 }
 
 export function ResetPasswordModal({ user, onClose }: ResetPasswordModalProps) {
+  const { t } = useAppContent();
   const toast = useToast();
   const { submitting, error, fieldErrors, run } = useSubmit();
   const [password, setPassword] = useState('');
@@ -25,10 +27,10 @@ export function ResetPasswordModal({ user, onClose }: ResetPasswordModalProps) {
 
   const reset = async () => {
     if (password !== confirm) {
-      setLocalError('The two passwords do not match.');
+      setLocalError(t('settings.resetPassword.mismatch'));
       return;
     }
-    const problem = validatePassword(password);
+    const problem = validatePassword(password, t);
     if (problem) {
       setLocalError(problem);
       return;
@@ -36,7 +38,7 @@ export function ResetPasswordModal({ user, onClose }: ResetPasswordModalProps) {
     setLocalError(null);
     const result = await run(() => orgApi.resetUserPassword(user.id, password));
     if (result) {
-      toast.success(`${user.name}'s password was reset.`);
+      toast.success(t('settings.resetPassword.success', { name: user.name }));
       onClose();
     }
   };
@@ -44,35 +46,35 @@ export function ResetPasswordModal({ user, onClose }: ResetPasswordModalProps) {
   return (
     <Modal
       open
-      title={`Reset password · ${user.name}`}
+      title={t('settings.resetPassword.title', { name: user.name })}
       subtitle={user.email}
       onClose={onClose}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button variant="primary" onClick={reset} loading={submitting} disabled={!password || !confirm}>
-            Reset password
+            {t('settings.resetPassword.submit')}
           </Button>
         </>
       }
     >
       <div className="stack">
         <FormError message={localError ?? error} />
-        <p className="text-muted small">Their existing sessions keep working until they sign out. Share the new password securely.</p>
+        <p className="text-muted small">{t('settings.resetPassword.note')}</p>
         <TextField
-          label="New password"
+          label={t('settings.resetPassword.newPassword')}
           type="password"
           value={password}
           required
-          hint={PASSWORD_HINT}
+          hint={t(PASSWORD_HINT_KEY)}
           error={fieldErrors.new_password ?? fieldErrors.newPassword}
           autoComplete="new-password"
           onChange={(event) => setPassword(event.target.value)}
         />
         <TextField
-          label="Confirm new password"
+          label={t('settings.resetPassword.confirmPassword')}
           type="password"
           value={confirm}
           required

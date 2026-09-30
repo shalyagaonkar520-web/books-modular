@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { useAppContent } from '@/app/AppContentContext';
 import { Button } from '@/components/ui/Button';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
@@ -13,20 +14,7 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { useToast } from '@/components/ui/Toast';
 import { formatCurrency, parseNumber } from '@/utils/format';
 
-const MONTHS = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
+const MONTH_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
 interface PayRunCreateModalProps {
   onClose: () => void;
@@ -34,6 +22,7 @@ interface PayRunCreateModalProps {
 }
 
 export function PayRunCreateModal({ onClose, onCreated }: PayRunCreateModalProps) {
+  const { t } = useAppContent();
   const toast = useToast();
   const { organization } = useAuth();
   const currency = organization?.currency ?? 'INR';
@@ -58,7 +47,7 @@ export function PayRunCreateModal({ onClose, onCreated }: PayRunCreateModalProps
       payrollApi.createPayRun({ periodYear: Number(year), periodMonth: Number(month), lossOfPay: lop }),
     );
     if (created) {
-      toast.success(`Draft pay run created for ${created.periodLabel}.`);
+      toast.success(t('payroll.payRunCreate.toast.created', { period: created.periodLabel }));
       onCreated();
       onClose();
     }
@@ -67,7 +56,7 @@ export function PayRunCreateModal({ onClose, onCreated }: PayRunCreateModalProps
   const columns: Array<Column<Employee>> = [
     {
       key: 'employee',
-      header: 'Employee',
+      header: t('payroll.payRunCreate.col.employee'),
       render: (row) => (
         <div className="cell-stack">
           <span className="strong">{row.name}</span>
@@ -78,10 +67,10 @@ export function PayRunCreateModal({ onClose, onCreated }: PayRunCreateModalProps
         </div>
       ),
     },
-    { key: 'gross', header: 'Monthly gross', align: 'right', render: (row) => <span className="num">{formatCurrency(row.grossSalary, currency)}</span> },
+    { key: 'gross', header: t('payroll.payRunCreate.col.gross'), align: 'right', render: (row) => <span className="num">{formatCurrency(row.grossSalary, currency)}</span> },
     {
       key: 'lop',
-      header: 'Loss of pay (days)',
+      header: t('payroll.payRunCreate.col.lop'),
       align: 'right',
       width: '160px',
       render: (row) => (
@@ -93,7 +82,7 @@ export function PayRunCreateModal({ onClose, onCreated }: PayRunCreateModalProps
           step="0.5"
           value={lossOfPay[row.id] ?? ''}
           placeholder="0"
-          aria-label={`Loss of pay days for ${row.name}`}
+          aria-label={t('payroll.payRunCreate.lopAria', { name: row.name })}
           onChange={(event) => setLossOfPay((current) => ({ ...current, [row.id]: event.target.value }))}
         />
       ),
@@ -106,16 +95,16 @@ export function PayRunCreateModal({ onClose, onCreated }: PayRunCreateModalProps
     <Modal
       open
       size="lg"
-      title="New pay run"
-      subtitle="One pay run per period — approve it, then record the payment"
+      title={t('payroll.payRunCreate.title')}
+      subtitle={t('payroll.payRunCreate.subtitle')}
       onClose={onClose}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('payroll.payRunCreate.cancel')}
           </Button>
           <Button variant="primary" onClick={create} loading={submitting} disabled={!employees.length}>
-            Create draft pay run
+            {t('payroll.payRunCreate.submit')}
           </Button>
         </>
       }
@@ -123,32 +112,31 @@ export function PayRunCreateModal({ onClose, onCreated }: PayRunCreateModalProps
       <div className="stack">
         <FormError message={error} />
         <p className="text-muted small">
-          A pay run can only be created once for a period. It starts as a draft built from each active employee&apos;s current salary
-          structure, minus any loss-of-pay days you enter below.
+          {t('payroll.payRunCreate.intro')}
         </p>
 
         <div className="form-grid">
           <SelectField
-            label="Month"
+            label={t('payroll.payRunCreate.month')}
             value={month}
-            options={MONTHS.map((label, index) => ({ value: String(index + 1), label }))}
+            options={MONTH_NUMBERS.map((number) => ({ value: String(number), label: t(`payroll.month.${number}`) }))}
             onChange={(event) => setMonth(event.target.value)}
           />
           <SelectField
-            label="Year"
+            label={t('payroll.payRunCreate.year')}
             value={year}
             options={years.map((value) => ({ value: String(value), label: String(value) }))}
             onChange={(event) => setYear(event.target.value)}
           />
         </div>
 
-        {loading ? <LoadingBlock label="Loading active employees…" /> : null}
+        {loading ? <LoadingBlock label={t('payroll.payRunCreate.loading')} /> : null}
         {!loading && loadError ? <ErrorBlock message={loadError} onRetry={reload} /> : null}
         {!loading && !loadError && employees.length === 0 ? (
-          <EmptyState title="No active employees" description="Add an active employee before creating a pay run." />
+          <EmptyState title={t('payroll.payRunCreate.empty.title')} description={t('payroll.payRunCreate.empty.body')} />
         ) : null}
         {!loading && !loadError && employees.length > 0 ? (
-          <DataTable columns={columns} rows={employees} rowKey={(row) => row.id} caption="Loss of pay per employee" />
+          <DataTable columns={columns} rows={employees} rowKey={(row) => row.id} caption={t('payroll.payRunCreate.caption')} />
         ) : null}
       </div>
     </Modal>

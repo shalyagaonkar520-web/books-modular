@@ -2,6 +2,7 @@
 import { useId, useState } from 'react';
 import { BarChart3, LineChart as LineChartIcon, AreaChart as AreaChartIcon, TrendingUp } from 'lucide-react';
 
+import { useAppContent } from '@/app/AppContentContext';
 import { formatCurrency, formatCurrencyCompact } from '@/utils/format';
 
 export interface SeriesPoint {
@@ -22,12 +23,15 @@ export interface GroupedBarChartProps {
 
 export function GroupedBarChart({
   data,
-  incomingLabel = 'Money in',
-  outgoingLabel = 'Money out',
+  incomingLabel: incomingLabelProp,
+  outgoingLabel: outgoingLabelProp,
   height = 260,
   currency = 'INR',
 }: GroupedBarChartProps) {
   const titleId = useId();
+  const { t } = useAppContent();
+  const incomingLabel = incomingLabelProp ?? t('common.chart.moneyIn');
+  const outgoingLabel = outgoingLabelProp ?? t('common.chart.moneyOut');
   // Minimum is wide, not square: the SVG scales to the card width, so a
   // near-square viewBox on a wide screen renders hundreds of pixels tall.
   const width = Math.max(760, data.length * 64);
@@ -38,7 +42,7 @@ export function GroupedBarChart({
   const barWidth = Math.min(18, groupWidth / 3);
 
   if (!data.length) {
-    return <p className="chart-empty">No activity in this period yet.</p>;
+    return <p className="chart-empty">{t('common.chart.noActivity')}</p>;
   }
 
   return (
@@ -56,7 +60,7 @@ export function GroupedBarChart({
       <div className="chart-scroll">
         <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby={titleId} className="chart-svg" preserveAspectRatio="xMidYMid meet">
           <title id={titleId}>
-            {incomingLabel} versus {outgoingLabel} by period
+            {t('common.chart.versusByPeriod', { incoming: incomingLabel, outgoing: outgoingLabel })}
           </title>
           {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
             const y = padding.top + plotHeight * ratio;
@@ -150,13 +154,16 @@ export interface LineChartProps {
 
 export function LineChart({
   data,
-  incomingLabel = 'Money in',
-  outgoingLabel = 'Money out',
+  incomingLabel: incomingLabelProp,
+  outgoingLabel: outgoingLabelProp,
   height = 260,
   currency = 'INR',
   showArea = false,
 }: LineChartProps) {
   const chartId = useId().replace(/:/g, '');
+  const { t } = useAppContent();
+  const incomingLabel = incomingLabelProp ?? t('common.chart.moneyIn');
+  const outgoingLabel = outgoingLabelProp ?? t('common.chart.moneyOut');
   const width = Math.max(760, data.length * 64);
   const padding = { top: 20, right: 24, bottom: 36, left: 24 };
   const plotWidth = width - padding.left - padding.right;
@@ -164,7 +171,7 @@ export function LineChart({
   const bottomY = padding.top + plotHeight;
 
   if (!data.length) {
-    return <p className="chart-empty">No activity in this period yet.</p>;
+    return <p className="chart-empty">{t('common.chart.noActivity')}</p>;
   }
 
   const max = Math.max(1, ...data.flatMap((point) => [point.incoming, point.outgoing]));
@@ -284,11 +291,13 @@ export interface NetTrendChartProps {
 
 export function NetTrendChart({
   data,
-  netLabel = 'Net Position',
+  netLabel: netLabelProp,
   height = 260,
   currency = 'INR',
 }: NetTrendChartProps) {
   const chartId = useId().replace(/:/g, '');
+  const { t } = useAppContent();
+  const netLabel = netLabelProp ?? t('common.chart.netPosition');
   const width = Math.max(760, data.length * 64);
   const padding = { top: 20, right: 24, bottom: 36, left: 24 };
   const plotWidth = width - padding.left - padding.right;
@@ -296,7 +305,7 @@ export function NetTrendChart({
   const bottomY = padding.top + plotHeight;
 
   if (!data.length) {
-    return <p className="chart-empty">No activity in this period yet.</p>;
+    return <p className="chart-empty">{t('common.chart.noActivity')}</p>;
   }
 
   const netValues = data.map((p) => p.incoming - p.outgoing);
@@ -398,15 +407,16 @@ export function ChartTypeToggle({
   onChange,
   allowedTypes = ['bar', 'line', 'area', 'net'],
 }: ChartTypeToggleProps) {
+  const { t } = useAppContent();
   const options: Array<{ type: ChartType; label: string; icon: typeof BarChart3 }> = [
-    { type: 'bar', label: 'Bar', icon: BarChart3 },
-    { type: 'line', label: 'Line', icon: LineChartIcon },
-    { type: 'area', label: 'Area', icon: AreaChartIcon },
-    { type: 'net', label: 'Net', icon: TrendingUp },
+    { type: 'bar', label: t('common.chart.type.bar'), icon: BarChart3 },
+    { type: 'line', label: t('common.chart.type.line'), icon: LineChartIcon },
+    { type: 'area', label: t('common.chart.type.area'), icon: AreaChartIcon },
+    { type: 'net', label: t('common.chart.type.net'), icon: TrendingUp },
   ];
 
   return (
-    <div className="chart-type-picker" role="group" aria-label="Select chart visual style">
+    <div className="chart-type-picker" role="group" aria-label={t('common.chart.typePicker')}>
       {options
         .filter((opt) => allowedTypes.includes(opt.type))
         .map((opt) => {
@@ -418,7 +428,7 @@ export function ChartTypeToggle({
               type="button"
               className={`chart-pill ${isActive ? 'active' : ''}`}
               onClick={() => onChange(opt.type)}
-              title={`Switch to ${opt.label} chart`}
+              title={t('common.chart.switchTo', { type: opt.label })}
             >
               <Icon size={13} />
               <span>{opt.label}</span>
@@ -444,9 +454,9 @@ export interface InteractiveSeriesChartProps {
 
 export function InteractiveSeriesChart({
   data,
-  incomingLabel = 'Money in',
-  outgoingLabel = 'Money out',
-  netLabel = 'Net Position',
+  incomingLabel,
+  outgoingLabel,
+  netLabel,
   height = 260,
   currency = 'INR',
   defaultType = 'bar',
@@ -601,13 +611,14 @@ export function HorizontalBarChart({
   items,
   currency = 'INR',
   maxItems = 5,
-  emptyText = 'No data to display.',
+  emptyText,
 }: HorizontalBarChartProps) {
+  const { t } = useAppContent();
   const displayItems = items.slice(0, maxItems);
   const maxValue = Math.max(1, ...displayItems.map((item) => item.value));
 
   if (!displayItems.length || maxValue === 0) {
-    return <p className="chart-empty">{emptyText}</p>;
+    return <p className="chart-empty">{emptyText ?? t('common.chart.noData')}</p>;
   }
 
   const defaultColors = ['#2563eb', '#0891b2', '#7c3aed', '#059669', '#d97706', '#dc2626'];
@@ -675,8 +686,9 @@ export const DONUT_COLORS = ['#2563eb', '#0891b2', '#7c3aed', '#059669', '#d9770
 
 export function DonutChart({ slices, size = 160, currency = 'INR' }: DonutProps) {
   const titleId = useId();
+  const { t } = useAppContent();
   const total = slices.reduce((sum, slice) => sum + slice.value, 0);
-  if (total <= 0) return <p className="chart-empty">Nothing to chart yet.</p>;
+  if (total <= 0) return <p className="chart-empty">{t('common.chart.nothingToChart')}</p>;
   const radius = size / 2;
   const strokeWidth = size * 0.22;
   const innerRadius = radius - strokeWidth / 2;
@@ -686,7 +698,7 @@ export function DonutChart({ slices, size = 160, currency = 'INR' }: DonutProps)
   return (
     <figure className="donut">
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-labelledby={titleId}>
-        <title id={titleId}>Distribution chart</title>
+        <title id={titleId}>{t('common.chart.distribution')}</title>
         <g transform={`rotate(-90 ${radius} ${radius})`}>
           {slices.map((slice, index) => {
             const fraction = slice.value / total;
@@ -819,6 +831,7 @@ export interface ComparisonBarProps {
 }
 
 export function ComparisonBar({ receivables, payables, currency = 'INR' }: ComparisonBarProps) {
+  const { t } = useAppContent();
   const max = Math.max(1, receivables, payables);
   const arPct = Math.min(100, Math.max(4, (receivables / max) * 100));
   const apPct = Math.min(100, Math.max(4, (payables / max) * 100));
@@ -829,7 +842,7 @@ export function ComparisonBar({ receivables, payables, currency = 'INR' }: Compa
       <div className="comparison-row">
         <div className="comparison-col">
           <div className="row-between small">
-            <span className="text-muted">Receivables (What customers owe)</span>
+            <span className="text-muted">{t('common.chart.receivables')}</span>
             <span className="num strong" style={{ color: '#059669' }}>{formatCurrency(receivables, currency)}</span>
           </div>
           <div className="hbar-track" style={{ height: 9, marginTop: 4 }}>
@@ -841,7 +854,7 @@ export function ComparisonBar({ receivables, payables, currency = 'INR' }: Compa
       <div className="comparison-row" style={{ marginTop: 10 }}>
         <div className="comparison-col">
           <div className="row-between small">
-            <span className="text-muted">Payables (What you owe vendors)</span>
+            <span className="text-muted">{t('common.chart.payables')}</span>
             <span className="num strong" style={{ color: '#d97706' }}>{formatCurrency(payables, currency)}</span>
           </div>
           <div className="hbar-track" style={{ height: 9, marginTop: 4 }}>
@@ -851,9 +864,11 @@ export function ComparisonBar({ receivables, payables, currency = 'INR' }: Compa
       </div>
 
       <div className="comparison-footer row-between">
-        <span className="small text-muted">Net Working Capital (AR - AP):</span>
+        <span className="small text-muted">{t('common.chart.netWorkingCapital')}</span>
         <span className={`num strong small ${net >= 0 ? 'text-success' : 'text-danger'}`}>
-          {net >= 0 ? `+${formatCurrency(net, currency)} (Surplus)` : `-${formatCurrency(Math.abs(net), currency)} (Deficit)`}
+          {net >= 0
+            ? t('common.chart.surplus', { amount: `+${formatCurrency(net, currency)}` })
+            : t('common.chart.deficit', { amount: `-${formatCurrency(Math.abs(net), currency)}` })}
         </span>
       </div>
     </div>

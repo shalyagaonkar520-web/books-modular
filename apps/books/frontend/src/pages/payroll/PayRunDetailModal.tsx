@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { FileText } from 'lucide-react';
 
 import { Badge } from '@/components/ui/Badge';
+import { useAppContent } from '@/app/AppContentContext';
 import { Button } from '@/components/ui/Button';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
@@ -21,6 +22,7 @@ interface PayRunDetailModalProps {
 }
 
 export function PayRunDetailModal({ payRunId, onClose }: PayRunDetailModalProps) {
+  const { t } = useAppContent();
   const { organization } = useAuth();
   const currency = organization?.currency ?? 'INR';
   const [openSlip, setOpenSlip] = useState<Payslip | null>(null);
@@ -29,7 +31,7 @@ export function PayRunDetailModal({ payRunId, onClose }: PayRunDetailModalProps)
   const columns: Array<Column<Payslip>> = [
     {
       key: 'employee',
-      header: 'Employee',
+      header: t('payroll.payRunDetail.col.employee'),
       render: (row) => (
         <div className="cell-stack">
           <span className="strong">{row.employeeName}</span>
@@ -40,25 +42,25 @@ export function PayRunDetailModal({ payRunId, onClose }: PayRunDetailModalProps)
         </div>
       ),
     },
-    { key: 'gross', header: 'Gross', align: 'right', render: (row) => <span className="num">{formatCurrency(row.gross, currency)}</span> },
-    { key: 'pf', header: 'PF', align: 'right', render: (row) => <span className="num">{formatCurrency(row.pfEmployee, currency)}</span> },
-    { key: 'pt', header: 'Prof. tax', align: 'right', render: (row) => <span className="num">{formatCurrency(row.professionalTax, currency)}</span> },
-    { key: 'tds', header: 'TDS', align: 'right', render: (row) => <span className="num">{formatCurrency(row.tds, currency)}</span> },
+    { key: 'gross', header: t('payroll.payRunDetail.col.gross'), align: 'right', render: (row) => <span className="num">{formatCurrency(row.gross, currency)}</span> },
+    { key: 'pf', header: t('payroll.payRunDetail.col.pf'), align: 'right', render: (row) => <span className="num">{formatCurrency(row.pfEmployee, currency)}</span> },
+    { key: 'pt', header: t('payroll.payRunDetail.col.pt'), align: 'right', render: (row) => <span className="num">{formatCurrency(row.professionalTax, currency)}</span> },
+    { key: 'tds', header: t('payroll.payRunDetail.col.tds'), align: 'right', render: (row) => <span className="num">{formatCurrency(row.tds, currency)}</span> },
     {
       key: 'lop',
-      header: 'Loss of pay',
+      header: t('payroll.payRunDetail.col.lop'),
       align: 'right',
       render: (row) =>
         row.lossOfPayDays > 0 ? (
           <span className="num text-warning">
-            {formatQuantity(row.lossOfPayDays)} d · {formatCurrency(row.lossOfPayAmount, currency)}
+            {t('payroll.payRunDetail.lopValue', { days: formatQuantity(row.lossOfPayDays), amount: formatCurrency(row.lossOfPayAmount, currency) })}
           </span>
         ) : (
           <span className="text-muted">—</span>
         ),
     },
-    { key: 'deductions', header: 'Deductions', align: 'right', render: (row) => <span className="num">{formatCurrency(row.totalDeductions, currency)}</span> },
-    { key: 'net', header: 'Net pay', align: 'right', render: (row) => <span className="num strong">{formatCurrency(row.netPay, currency)}</span> },
+    { key: 'deductions', header: t('payroll.payRunDetail.col.deductions'), align: 'right', render: (row) => <span className="num">{formatCurrency(row.totalDeductions, currency)}</span> },
+    { key: 'net', header: t('payroll.payRunDetail.col.net'), align: 'right', render: (row) => <span className="num strong">{formatCurrency(row.netPay, currency)}</span> },
     {
       key: 'actions',
       header: '',
@@ -66,7 +68,7 @@ export function PayRunDetailModal({ payRunId, onClose }: PayRunDetailModalProps)
       width: '130px',
       render: (row) => (
         <Button variant="link" size="sm" icon={<FileText size={14} />} onClick={() => setOpenSlip(row)}>
-          View payslip
+          {t('payroll.payRunDetail.viewPayslip')}
         </Button>
       ),
     },
@@ -90,34 +92,34 @@ export function PayRunDetailModal({ payRunId, onClose }: PayRunDetailModalProps)
       <Modal
         open
         size="xl"
-        title={data ? `Pay run · ${data.periodLabel}` : 'Pay run'}
-        subtitle={data ? `${data.employeeCount} employees${data.payDate ? ` · paid on ${formatDate(data.payDate)}` : ''}` : undefined}
+        title={data ? t('payroll.payRunDetail.title', { period: data.periodLabel }) : t('payroll.payRunDetail.titleFallback')}
+        subtitle={data ? `${t('payroll.payRunDetail.employees', { count: data.employeeCount })}${data.payDate ? ' ' + t('payroll.payRunDetail.paidOn', { date: formatDate(data.payDate) }) : ''}` : undefined}
         onClose={onClose}
         footer={
           <Button variant="secondary" onClick={onClose}>
-            Close
+            {t('payroll.payRunDetail.close')}
           </Button>
         }
       >
-        {loading ? <LoadingBlock label="Loading payslips…" /> : null}
+        {loading ? <LoadingBlock label={t('payroll.payRunDetail.loading')} /> : null}
         {!loading && error ? <ErrorBlock message={error} onRetry={reload} /> : null}
         {!loading && !error && data ? (
           <div className="stack">
             <div className="row-between">
-              <Badge tone={statusTone(data.status)}>{statusLabel(data.status)}</Badge>
-              <span className="text-muted small">Created {formatDate(data.createdAt)}</span>
+              <Badge tone={statusTone(data.status)}>{statusLabel(data.status, t)}</Badge>
+              <span className="text-muted small">{t('payroll.payRunDetail.created', { date: formatDate(data.createdAt) })}</span>
             </div>
             {data.payslips.length === 0 ? (
-              <EmptyState title="This pay run has no payslips" description="Delete it and create a new pay run for the period." />
+              <EmptyState title={t('payroll.payRunDetail.empty.title')} description={t('payroll.payRunDetail.empty.body')} />
             ) : (
               <DataTable
                 columns={columns}
                 rows={data.payslips}
                 rowKey={(row) => row.id}
-                caption="Payslips in this pay run"
+                caption={t('payroll.payRunDetail.caption')}
                 footer={
                   <tr>
-                    <td>Total</td>
+                    <td>{t('payroll.payRunDetail.total')}</td>
                     <td className="align-right num">{formatCurrency(totals.gross, currency)}</td>
                     <td className="align-right num">{formatCurrency(totals.pf, currency)}</td>
                     <td className="align-right num">{formatCurrency(totals.pt, currency)}</td>

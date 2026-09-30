@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ApiError } from '@/api/client';
+import { useAppContent } from '@/app/AppContentContext';
 
 interface AsyncState<T> {
   data: T | null;
@@ -17,6 +18,10 @@ export function useAsync<T>(loader: (signal: AbortSignal) => Promise<T>, deps: u
   const [nonce, setNonce] = useState(0);
   const loaderRef = useRef(loader);
   loaderRef.current = loader;
+  const { t } = useAppContent();
+  // A ref so a content refresh never re-runs the loader.
+  const tRef = useRef(t);
+  tRef.current = t;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -29,7 +34,7 @@ export function useAsync<T>(loader: (signal: AbortSignal) => Promise<T>, deps: u
       })
       .catch((error: unknown) => {
         if (!active || (error as Error).name === 'AbortError') return;
-        const message = error instanceof ApiError ? error.message : 'Something went wrong while loading this page.';
+        const message = error instanceof ApiError ? error.message : tRef.current('common.error.loadPage');
         setState({ data: null, loading: false, error: message });
       });
     return () => {

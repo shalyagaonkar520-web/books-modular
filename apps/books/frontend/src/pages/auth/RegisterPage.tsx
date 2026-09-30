@@ -10,13 +10,16 @@ import { TextField } from '@/components/ui/Field';
 import { FormError } from '@/components/ui/Feedback';
 import { useSubmit } from '@/hooks/useSubmit';
 
-/** Server-side rules, mirrored here so the user gets feedback before submitting. */
+/**
+ * Server-side rules, mirrored here so the user gets feedback before submitting.
+ * Returns the app-content key of the problem, or null.
+ */
 function passwordProblem(password: string): string | null {
-  if (password.length < 8) return 'Use at least 8 characters.';
+  if (password.length < 8) return 'auth.register.password.tooShort';
   if (password === password.toLowerCase() || password === password.toUpperCase()) {
-    return 'Include both upper and lower case letters.';
+    return 'auth.register.password.mixedCase';
   }
-  if (!/\d/.test(password)) return 'Include at least one digit.';
+  if (!/\d/.test(password)) return 'auth.register.password.digit';
   return null;
 }
 
@@ -91,11 +94,11 @@ export function RegisterPage() {
     setVerificationError(null);
 
     if (!cleanEmail) {
-      setVerificationError('Please enter your email address first.');
+      setVerificationError(t('auth.register.verify.error.emailRequired'));
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      setVerificationError('Please enter a valid email address.');
+      setVerificationError(t('auth.register.verify.error.emailInvalid'));
       return;
     }
 
@@ -103,10 +106,10 @@ export function RegisterPage() {
     try {
       const res = await authApi.sendVerificationEmail(cleanEmail);
       setVerificationSent(true);
-      setVerificationNotice(res.message || `Verification code sent to ${cleanEmail}`);
+      setVerificationNotice(res.message || t('auth.register.verify.sent', { email: cleanEmail }));
       setCooldown(res.cooldownSeconds || res.cooldown_seconds || 60);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to send verification code. Please try again.';
+      const msg = err instanceof Error ? err.message : t('auth.register.verify.error.sendFailed');
       setVerificationError(msg);
     } finally {
       setSendingVerification(false);
@@ -119,7 +122,7 @@ export function RegisterPage() {
     setVerificationError(null);
 
     if (!cleanOtp) {
-      setVerificationError('Please enter the 6-digit verification code.');
+      setVerificationError(t('auth.register.verify.error.otpRequired'));
       return;
     }
 
@@ -133,7 +136,7 @@ export function RegisterPage() {
       setOtp('');
       localStorage.setItem('rooman_verified_email', cleanEmail);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Invalid verification code. Please try again.';
+      const msg = err instanceof Error ? err.message : t('auth.register.verify.error.invalidOtp');
       setVerificationError(msg);
     } finally {
       setVerifyingOtp(false);
@@ -167,24 +170,25 @@ export function RegisterPage() {
     }
   };
 
-  const passwordHint = touched ? passwordProblem(password) : null;
+  const passwordProblemKey = touched ? passwordProblem(password) : null;
+  const passwordHint = passwordProblemKey ? t(passwordProblemKey) : null;
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setTouched(true);
 
     if (!isVerified) {
-      setError('Please verify your email address before creating your organization.');
+      setError(t('auth.register.error.verifyFirst'));
       return;
     }
 
     const problem = passwordProblem(password);
     if (problem) {
-      setError(`Password: ${problem}`);
+      setError(t('auth.register.error.passwordPrefix', { problem: t(problem) }));
       return;
     }
     if (password !== confirm) {
-      setError('The two passwords do not match.');
+      setError(t('auth.register.error.mismatch'));
       return;
     }
     const result = await run(async () => {
@@ -239,7 +243,7 @@ export function RegisterPage() {
             </div>
           </div>
           <p className="auth-subtitle">
-            You can sign in as <strong>{submitted.email}</strong> once an administrator approves the organization.
+            {t('auth.register.pending.signInAsBefore')} <strong>{submitted.email}</strong> {t('auth.register.pending.signInAsAfter')}
           </p>
           <Link to="/login" state={{ email: submitted.email }} className="btn btn-primary btn-md btn-block">
             <LogIn size={15} aria-hidden="true" />
@@ -270,8 +274,8 @@ export function RegisterPage() {
             onChange={(event) => setOrganizationName(event.target.value)}
           />
           <TextField
-            label="GSTIN"
-            hint="Optional. You can add it later in settings."
+            label={t('auth.register.gstin')}
+            hint={t('auth.register.gstinHint')}
             value={gstin}
             error={fieldErrors.gstin}
             onChange={(event) => setGstin(event.target.value.toUpperCase())}
@@ -286,7 +290,7 @@ export function RegisterPage() {
               autoComplete="email"
               required
               value={email}
-              placeholder="user@gmail.com"
+              placeholder={t('auth.register.emailPlaceholder')}
               error={verificationError || fieldErrors.email}
               onChange={(event) => onEmailChange(event.target.value)}
             />
@@ -294,10 +298,10 @@ export function RegisterPage() {
             {isVerified ? (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '-6px', marginBottom: '8px' }}>
                 <span style={{ fontSize: '12.5px', color: '#059669', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                  <CheckCircle2 size={14} /> ✓ Verified
+                  <CheckCircle2 size={14} /> {t('auth.register.verify.verifiedBadge')}
                 </span>
                 <span style={{ fontSize: '12px', color: '#059669', fontWeight: 500 }}>
-                  ✓ {email} is verified
+                  {t('auth.register.verify.verifiedEmail', { email })}
                 </span>
                 <button
                   type="button"
@@ -312,7 +316,7 @@ export function RegisterPage() {
                     padding: 0,
                   }}
                 >
-                  Change email
+                  {t('auth.register.verify.changeEmail')}
                 </button>
               </div>
             ) : (
@@ -325,7 +329,7 @@ export function RegisterPage() {
                   disabled={!email.trim() || cooldown > 0}
                   onClick={handleSendVerification}
                 >
-                  {cooldown > 0 ? `Resend in ${cooldown}s` : verificationSent ? 'Resend OTP' : 'Send OTP'}
+                  {cooldown > 0 ? t('auth.register.verify.resendIn', { seconds: cooldown }) : verificationSent ? t('auth.register.verify.resendOtp') : t('auth.register.verify.sendOtp')}
                 </Button>
               </div>
             )}
@@ -345,7 +349,7 @@ export function RegisterPage() {
                 }}
               >
                 <AlertTriangle size={14} style={{ flexShrink: 0 }} />
-                <span>Please verify your email address before creating your organization.</span>
+                <span>{t('auth.register.error.verifyFirst')}</span>
               </div>
             )}
 
@@ -362,10 +366,10 @@ export function RegisterPage() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <label htmlFor="otp-input" style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>
-                    Enter 6-digit OTP code
+                    {t('auth.register.verify.otpLabel')}
                   </label>
                   {cooldown > 0 ? (
-                    <span style={{ fontSize: '11px', color: '#64748b' }}>Resend in {cooldown}s</span>
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>{t('auth.register.verify.resendIn', { seconds: cooldown })}</span>
                   ) : (
                     <button
                       type="button"
@@ -381,7 +385,7 @@ export function RegisterPage() {
                         padding: 0,
                       }}
                     >
-                      Resend code
+                      {t('auth.register.verify.resendCode')}
                     </button>
                   )}
                 </div>
@@ -393,7 +397,7 @@ export function RegisterPage() {
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     maxLength={6}
-                    placeholder="123456"
+                    placeholder={t('auth.register.verify.otpPlaceholder')}
                     value={otp}
                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     onKeyDown={(e) => {
@@ -422,7 +426,7 @@ export function RegisterPage() {
                     onClick={handleVerifyOtp}
                     style={{ whiteSpace: 'nowrap' }}
                   >
-                    Verify OTP
+                    {t('auth.register.verify.verifyOtp')}
                   </Button>
                 </div>
               </div>
@@ -455,7 +459,7 @@ export function RegisterPage() {
               required
               value={password}
               error={passwordHint ?? fieldErrors.password}
-              hint={passwordHint ? undefined : 'At least 8 characters, mixed case, with a digit.'}
+              hint={passwordHint ? undefined : t('auth.register.passwordHint')}
               onChange={(event) => setPassword(event.target.value)}
               onBlur={() => setTouched(true)}
             />
@@ -463,7 +467,7 @@ export function RegisterPage() {
               type="button"
               className="password-toggle"
               onClick={() => setShowPassword((visible) => !visible)}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-label={showPassword ? t('auth.register.hidePassword') : t('auth.register.showPassword')}
             >
               {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
@@ -475,7 +479,7 @@ export function RegisterPage() {
             autoComplete="new-password"
             required
             value={confirm}
-            error={confirm && confirm !== password ? 'Passwords do not match.' : undefined}
+            error={confirm && confirm !== password ? t('auth.register.mismatchInline') : undefined}
             onChange={(event) => setConfirm(event.target.value)}
           />
 
@@ -487,7 +491,7 @@ export function RegisterPage() {
             disabled={!isVerified}
             icon={<UserPlus size={15} />}
             className="btn-block"
-            title={!isVerified ? 'Please verify your email address before creating your organization' : undefined}
+            title={!isVerified ? t('auth.register.submitTooltip') : undefined}
           >
             {t('auth.register.submit')}
           </Button>

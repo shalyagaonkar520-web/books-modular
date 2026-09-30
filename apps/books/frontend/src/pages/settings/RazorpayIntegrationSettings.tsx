@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 
 import { razorpaySyncApi, type IntegrationStatus, type SyncLog } from '@/api/razorpay';
+import { useAppContent } from '@/app/AppContentContext';
 import { useAuth } from '@/auth/AuthContext';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -31,18 +32,20 @@ function syncTone(status: SyncLog['status']) {
 }
 
 function LastSync({ log }: { log?: SyncLog | null }) {
-  if (!log) return <span className="small">Never synchronised</span>;
+  const { t } = useAppContent();
+  if (!log) return <span className="small">{t('settings.razorpay.neverSynced')}</span>;
   return (
     <div className="cell-stack">
       <span>{formatDateTime(log.completed_at ?? log.started_at)}</span>
       <span className="small">
-        {log.records_created} created · {log.records_updated} updated · {log.records_skipped} skipped
+        {t('settings.razorpay.syncCounts', { created: log.records_created, updated: log.records_updated, skipped: log.records_skipped })}
       </span>
     </div>
   );
 }
 
 export function RazorpayIntegrationSettings() {
+  const { t } = useAppContent();
   const toast = useToast();
   const { isAdmin } = useAuth();
   const [syncing, setSyncing] = useState(false);
@@ -81,18 +84,18 @@ export function RazorpayIntegrationSettings() {
         const refreshed = await razorpaySyncApi.getIntegrationStatus();
         setData(refreshed);
       } catch {
-        toast.error('Could not reach the server to start the synchronisation.');
+        toast.error(t('settings.razorpay.syncUnreachable'));
       } finally {
         setSyncing(false);
       }
     },
-    [setData, toast],
+    [setData, toast, t],
   );
 
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!keyId.trim() || !keySecret.trim()) {
-      toast.error('Both Key ID and Key Secret are required to connect Razorpay.');
+      toast.error(t('settings.razorpay.keysRequired'));
       return;
     }
     setConnecting(true);
@@ -112,7 +115,7 @@ export function RazorpayIntegrationSettings() {
       }
       setData(res.status);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to connect Razorpay.';
+      const msg = err instanceof Error ? err.message : t('settings.razorpay.connectFailed');
       toast.error(msg);
     } finally {
       setConnecting(false);
@@ -120,7 +123,7 @@ export function RazorpayIntegrationSettings() {
   };
 
   const handleDisconnect = async () => {
-    if (!window.confirm('Are you sure you want to disconnect Razorpay? Active webhooks and automated sync will be deactivated.')) {
+    if (!window.confirm(t('settings.razorpay.disconnectConfirm'))) {
       return;
     }
     setDisconnecting(true);
@@ -132,7 +135,7 @@ export function RazorpayIntegrationSettings() {
       setKeySecret('');
       setKeyId('');
     } catch {
-      toast.error('Could not disconnect Razorpay.');
+      toast.error(t('settings.razorpay.disconnectFailed'));
     } finally {
       setDisconnecting(false);
     }
@@ -142,11 +145,11 @@ export function RazorpayIntegrationSettings() {
     const origin = window.location.origin;
     const url = `${origin}${data?.webhook_path || '/api/razorpay/webhook'}`;
     void navigator.clipboard.writeText(url);
-    toast.success('Webhook URL copied to clipboard!');
+    toast.success(t('settings.razorpay.webhookCopied'));
   };
 
-  if (loading) return <LoadingBlock label="Checking the Razorpay connection…" />;
-  if (error || !data) return <ErrorBlock message={error ?? 'Could not load the integration status.'} onRetry={reload} />;
+  if (loading) return <LoadingBlock label={t('settings.razorpay.loading')} />;
+  if (error || !data) return <ErrorBlock message={error ?? t('settings.razorpay.loadFailed')} onRetry={reload} />;
 
   const connected = data.connected;
   const statusIcon = connected ? (
@@ -161,13 +164,13 @@ export function RazorpayIntegrationSettings() {
     <div className="stack" style={{ gap: '24px' }}>
       {/* Overview & Actions Card */}
       <Card
-        title="Razorpay Payment Gateway & Financial Hub"
-        subtitle="Accept online customer payments, process refunds, and automatically import Razorpay settlements into Rooman Books."
+        title={t('settings.razorpay.title')}
+        subtitle={t('settings.razorpay.subtitle')}
         actions={
           <div className="row" style={{ gap: '8px', flexWrap: 'wrap' }}>
             {connected && !formOpen && isAdmin ? (
               <Button variant="ghost" size="sm" icon={<KeyRound size={14} />} onClick={() => setFormOpen(true)}>
-                Edit Credentials
+                {t('settings.razorpay.editCredentials')}
               </Button>
             ) : null}
 
@@ -180,7 +183,7 @@ export function RazorpayIntegrationSettings() {
                 onClick={handleDisconnect}
                 style={{ color: 'var(--color-danger, #dc2626)' }}
               >
-                Disconnect
+                {t('settings.razorpay.disconnect')}
               </Button>
             ) : null}
 
@@ -191,9 +194,9 @@ export function RazorpayIntegrationSettings() {
               onClick={() => runSync(true)}
               loading={syncing}
               disabled={!connected}
-              title={connected ? 'Re-scan the full history window' : 'Connect Razorpay first'}
+              title={connected ? t('settings.razorpay.fullReimportHint') : t('settings.razorpay.connectFirst')}
             >
-              Full re-import
+              {t('settings.razorpay.fullReimport')}
             </Button>
             <Button
               variant="primary"
@@ -203,60 +206,60 @@ export function RazorpayIntegrationSettings() {
               loading={syncing}
               disabled={!connected}
             >
-              Sync now
+              {t('settings.razorpay.syncNow')}
             </Button>
           </div>
         }
       >
         <div className="detail-grid">
           <div className="detail-item">
-            <span className="detail-label">Connection status</span>
+            <span className="detail-label">{t('settings.razorpay.connectionStatus')}</span>
             <span className="detail-value row" style={{ gap: '6px' }}>
               {statusIcon}
               <Badge tone={connected ? 'success' : data.configured ? 'warning' : 'neutral'}>
                 {connected
                   ? data.reachable
-                    ? 'Connected (Live API)'
-                    : 'Connected (Test Sandbox)'
+                    ? t('settings.razorpay.status.connectedLive')
+                    : t('settings.razorpay.status.connectedTest')
                   : data.configured
-                  ? 'Not reachable'
-                  : 'Not connected'}
+                  ? t('settings.razorpay.status.unreachable')
+                  : t('settings.razorpay.status.notConnected')}
               </Badge>
             </span>
           </div>
 
           <div className="detail-item">
-            <span className="detail-label">Gateway Mode</span>
+            <span className="detail-label">{t('settings.razorpay.gatewayMode')}</span>
             <span className="detail-value">
               <Badge tone={data.mode === 'live' ? 'danger' : 'info'}>
-                {data.mode === 'live' ? 'Live Production' : 'Test Sandbox'}
+                {data.mode === 'live' ? t('settings.razorpay.mode.live') : t('settings.razorpay.mode.test')}
               </Badge>
             </span>
           </div>
 
           <div className="detail-item">
-            <span className="detail-label">Key ID</span>
-            <span className="detail-value mono">{data.key_id_masked || 'Not configured'}</span>
+            <span className="detail-label">{t('settings.razorpay.keyId')}</span>
+            <span className="detail-value mono">{data.key_id_masked || t('settings.razorpay.notConfigured')}</span>
           </div>
 
           <div className="detail-item">
-            <span className="detail-label">Webhook Verification</span>
+            <span className="detail-label">{t('settings.razorpay.webhookVerification')}</span>
             <span className="detail-value">
               <Badge tone={data.webhook_configured ? 'success' : 'warning'}>
-                {data.webhook_configured ? 'Secret Configured' : 'No Webhook Secret'}
+                {data.webhook_configured ? t('settings.razorpay.webhook.configured') : t('settings.razorpay.webhook.missing')}
               </Badge>
             </span>
           </div>
 
           <div className="detail-item">
-            <span className="detail-label">Last successful sync</span>
+            <span className="detail-label">{t('settings.razorpay.lastSuccessfulSync')}</span>
             <span className="detail-value">
               <LastSync log={data.last_successful_sync} />
             </span>
           </div>
 
           <div className="detail-item">
-            <span className="detail-label">Last execution</span>
+            <span className="detail-label">{t('settings.razorpay.lastExecution')}</span>
             <span className="detail-value">
               {data.last_sync ? (
                 <div className="cell-stack">
@@ -266,23 +269,23 @@ export function RazorpayIntegrationSettings() {
                   ) : null}
                 </div>
               ) : (
-                <span className="small text-muted">No runs yet</span>
+                <span className="small text-muted">{t('settings.razorpay.noRuns')}</span>
               )}
             </span>
           </div>
 
           <div className="detail-item">
-            <span className="detail-label">Transactions imported</span>
+            <span className="detail-label">{t('settings.razorpay.transactionsImported')}</span>
             <span className="detail-value num">{data.transactions_imported.toLocaleString('en-IN')}</span>
           </div>
 
           <div className="detail-item">
-            <span className="detail-label">Auto Background Sync</span>
+            <span className="detail-label">{t('settings.razorpay.autoSync')}</span>
             <span className="detail-value">
               {data.auto_sync_enabled ? (
-                <Badge tone="success">Every {data.sync_interval_minutes}m</Badge>
+                <Badge tone="success">{t('settings.razorpay.autoSyncEvery', { minutes: data.sync_interval_minutes })}</Badge>
               ) : (
-                <Badge tone="neutral">Disabled</Badge>
+                <Badge tone="neutral">{t('settings.razorpay.autoSyncDisabled')}</Badge>
               )}
             </span>
           </div>
@@ -299,19 +302,19 @@ export function RazorpayIntegrationSettings() {
       {!isAdmin ? (
         <div className="notification notification-info" role="status">
           <AlertTriangle size={16} aria-hidden="true" />
-          <span>Only administrators can connect, edit, or disconnect the Razorpay integration.</span>
+          <span>{t('settings.razorpay.adminOnly')}</span>
         </div>
       ) : null}
 
       {/* Connection Credentials Form Card */}
       {(!connected || formOpen) && isAdmin && (
         <Card
-          title="Connect Razorpay API Credentials"
-          subtitle="Configure your Key ID and Secret from Razorpay Dashboard (Settings > API Keys) to activate checkout and payment reconciliation."
+          title={t('settings.razorpay.form.title')}
+          subtitle={t('settings.razorpay.form.subtitle')}
           actions={
             connected ? (
               <Button variant="ghost" size="sm" onClick={() => setFormOpen(false)}>
-                Close Form
+                {t('settings.razorpay.form.close')}
               </Button>
             ) : null
           }
@@ -319,21 +322,21 @@ export function RazorpayIntegrationSettings() {
           <form onSubmit={handleConnect} className="stack" style={{ gap: '16px' }}>
             <div className="row" style={{ gap: '16px', flexWrap: 'wrap' }}>
               <div style={{ flex: '1 1 200px' }}>
-                <label className="field-label" htmlFor="razorpay-mode-select">Mode</label>
+                <label className="field-label" htmlFor="razorpay-mode-select">{t('settings.razorpay.form.mode')}</label>
                 <select
                   id="razorpay-mode-select"
                   className="input input-block"
                   value={mode}
                   onChange={(e) => setMode(e.target.value as 'test' | 'live')}
                 >
-                  <option value="test">Test Mode (Sandbox)</option>
-                  <option value="live">Live Mode (Production)</option>
+                  <option value="test">{t('settings.razorpay.form.mode.test')}</option>
+                  <option value="live">{t('settings.razorpay.form.mode.live')}</option>
                 </select>
               </div>
 
               <div style={{ flex: '2 1 280px' }}>
                 <label className="field-label" htmlFor="razorpay-key-id">
-                  Key ID ({mode === 'live' ? 'rzp_live_...' : 'rzp_test_...'})
+                  {t('settings.razorpay.form.keyId', { prefix: mode === 'live' ? 'rzp_live_...' : 'rzp_test_...' })}
                 </label>
                 <input
                   id="razorpay-key-id"
@@ -350,7 +353,7 @@ export function RazorpayIntegrationSettings() {
             <div className="row" style={{ gap: '16px', flexWrap: 'wrap' }}>
               <div style={{ flex: '1 1 280px' }}>
                 <div className="row" style={{ justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <label className="field-label" htmlFor="razorpay-key-secret">Key Secret</label>
+                  <label className="field-label" htmlFor="razorpay-key-secret">{t('settings.razorpay.form.keySecret')}</label>
                   <button
                     type="button"
                     className="small text-muted row"
@@ -358,14 +361,14 @@ export function RazorpayIntegrationSettings() {
                     onClick={() => setShowSecret(!showSecret)}
                   >
                     {showSecret ? <EyeOff size={14} /> : <Eye size={14} />}
-                    <span>{showSecret ? 'Hide' : 'Reveal'}</span>
+                    <span>{showSecret ? t('settings.razorpay.form.hide') : t('settings.razorpay.form.reveal')}</span>
                   </button>
                 </div>
                 <input
                   id="razorpay-key-secret"
                   type={showSecret ? 'text' : 'password'}
                   className="input input-block mono"
-                  placeholder="Paste your Razorpay Key Secret"
+                  placeholder={t('settings.razorpay.form.keySecretPlaceholder')}
                   value={keySecret}
                   onChange={(e) => setKeySecret(e.target.value)}
                   required
@@ -374,13 +377,13 @@ export function RazorpayIntegrationSettings() {
 
               <div style={{ flex: '1 1 280px' }}>
                 <label className="field-label" htmlFor="razorpay-webhook-secret">
-                  Webhook Secret (for verifying incoming webhooks)
+                  {t('settings.razorpay.form.webhookSecret')}
                 </label>
                 <input
                   id="razorpay-webhook-secret"
                   type="text"
                   className="input input-block mono"
-                  placeholder="Paste the webhook secret shown in Razorpay Dashboard"
+                  placeholder={t('settings.razorpay.form.webhookSecretPlaceholder')}
                   value={webhookSecret}
                   onChange={(e) => setWebhookSecret(e.target.value)}
                 />
@@ -401,11 +404,11 @@ export function RazorpayIntegrationSettings() {
               <div className="row" style={{ gap: '8px' }}>
                 {connected && (
                   <Button variant="ghost" size="md" type="button" onClick={() => setFormOpen(false)}>
-                    Cancel
+                    {t('common.cancel')}
                   </Button>
                 )}
                 <Button variant="primary" size="md" type="submit" loading={connecting} icon={<Link size={14} />}>
-                  {connected ? 'Update & Test Connection' : 'Connect & Verify Razorpay'}
+                  {connected ? t('settings.razorpay.form.update') : t('settings.razorpay.form.connect')}
                 </Button>
               </div>
             </div>
@@ -414,34 +417,36 @@ export function RazorpayIntegrationSettings() {
       )}
 
       {/* Webhook Instructions & Security Details */}
-      <Card title="How to Setup Razorpay Webhooks (Real-Time Sync)">
+      <Card title={t('settings.razorpay.howto.title')}>
         <p className="small" style={{ marginBottom: '12px' }}>
-          To automatically capture payments, refunds, and bank payouts instantly when customers pay:
+          {t('settings.razorpay.howto.intro')}
         </p>
         <ol className="plain-list" style={{ gap: '8px', marginBottom: '16px' }}>
           <li className="row" style={{ gap: '8px', alignItems: 'flex-start' }}>
             <span className="badge badge-neutral" style={{ fontSize: '11px' }}>1</span>
             <span>
-              Log in to your <strong>Razorpay Dashboard</strong> &gt; <strong>Settings</strong> &gt; <strong>Webhooks</strong> &gt; Click <strong>Add New Webhook</strong>.
+              {t('settings.razorpay.howto.step1.logIn')} <strong>{t('settings.razorpay.howto.step1.dashboard')}</strong> &gt; 
+              <strong>{t('settings.razorpay.howto.step1.settings')}</strong> &gt; <strong>{t('settings.razorpay.howto.step1.webhooks')}</strong> &gt; 
+              {t('settings.razorpay.howto.step1.click')} <strong>{t('settings.razorpay.howto.step1.addNew')}</strong>.
             </span>
           </li>
           <li className="row" style={{ gap: '8px', alignItems: 'center' }}>
             <span className="badge badge-neutral" style={{ fontSize: '11px' }}>2</span>
-            <span>Webhook URL:</span>
+            <span>{t('settings.razorpay.howto.webhookUrl')}</span>
             <code className="code-tag">{window.location.origin}{data.webhook_path}</code>
             <Button variant="ghost" size="sm" icon={<Copy size={12} />} onClick={copyWebhookUrl}>
-              Copy URL
+              {t('settings.razorpay.howto.copyUrl')}
             </Button>
           </li>
           <li className="row" style={{ gap: '8px', alignItems: 'center' }}>
             <span className="badge badge-neutral" style={{ fontSize: '11px' }}>3</span>
-            <span>Secret:</span>
-            <code className="code-tag">{data.webhook_configured ? 'Configured in Rooman Books' : webhookSecret || 'Set a webhook secret above'}</code>
+            <span>{t('settings.razorpay.howto.secret')}</span>
+            <code className="code-tag">{data.webhook_configured ? t('settings.razorpay.howto.secretConfigured') : webhookSecret || t('settings.razorpay.howto.secretMissing')}</code>
           </li>
           <li className="row" style={{ gap: '8px', alignItems: 'flex-start' }}>
             <span className="badge badge-neutral" style={{ fontSize: '11px' }}>4</span>
             <span>
-              Select Active Events:{' '}
+              {t('settings.razorpay.howto.events')}{' '}
               <code className="code-tag">payment.captured</code>,{' '}
               <code className="code-tag">payment.failed</code>,{' '}
               <code className="code-tag">refund.created</code>,{' '}
@@ -453,7 +458,9 @@ export function RazorpayIntegrationSettings() {
         <div className="notification notification-info" role="status">
           <ShieldCheck size={16} aria-hidden="true" />
           <span>
-            Rooman Books securely validates every incoming webhook against your secret using HMAC-SHA256 signature verification (<code className="code-tag">X-Razorpay-Signature</code>) to ensure maximum accounting security.
+            {t('settings.razorpay.howto.security.before')}
+            <code className="code-tag">X-Razorpay-Signature</code>
+            {t('settings.razorpay.howto.security.after')}
           </span>
         </div>
       </Card>

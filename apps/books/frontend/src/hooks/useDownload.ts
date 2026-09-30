@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 
 import { ApiError } from '@/api/client';
+import { useAppContent } from '@/app/AppContentContext';
 import { useToast } from '@/components/ui/Toast';
 
 /**
@@ -12,6 +13,7 @@ import { useToast } from '@/components/ui/Toast';
  */
 export function useDownload() {
   const toast = useToast();
+  const { t } = useAppContent();
   const [downloading, setDownloading] = useState(false);
 
   const download = useCallback(
@@ -20,12 +22,12 @@ export function useDownload() {
       try {
         await run();
       } catch (err) {
-        toast.error(err instanceof ApiError ? err.message : 'The download could not be completed. Please try again.');
+        toast.error(err instanceof ApiError ? err.message : t('common.error.download'));
       } finally {
         setDownloading(false);
       }
     },
-    [toast],
+    [toast, t],
   );
 
   return { download, downloading };

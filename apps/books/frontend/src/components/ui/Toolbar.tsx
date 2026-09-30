@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { Search, X } from 'lucide-react';
 
+import { useAppContent } from '@/app/AppContentContext';
+
 interface SearchInputProps {
   value: string;
   onChange: (value: string) => void;
@@ -8,13 +10,14 @@ interface SearchInputProps {
   label?: string;
 }
 
-export function SearchInput({ value, onChange, placeholder = 'Search…', label = 'Search' }: SearchInputProps) {
+export function SearchInput({ value, onChange, placeholder, label }: SearchInputProps) {
+  const { t } = useAppContent();
   return (
     <div className="search-input">
       <Search size={15} aria-hidden="true" />
-      <input type="search" value={value} placeholder={placeholder} aria-label={label} onChange={(event) => onChange(event.target.value)} />
+      <input type="search" value={value} placeholder={placeholder ?? t('common.searchPlaceholder')} aria-label={label ?? t('common.search')} onChange={(event) => onChange(event.target.value)} />
       {value ? (
-        <button type="button" onClick={() => onChange('')} aria-label="Clear search">
+        <button type="button" onClick={() => onChange('')} aria-label={t('common.clearSearch')}>
           <X size={14} />
         </button>
       ) : null}

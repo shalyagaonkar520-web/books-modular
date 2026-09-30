@@ -144,23 +144,23 @@ export function InvoiceFormPage() {
 
   const submit = async (status: 'draft' | 'sent') => {
     if (!customerId) {
-      setError('Select the customer this invoice is for.');
+      setError(t('invoices.form.selectCustomer'));
       return;
     }
     if (!lines.length) {
-      setError('Add at least one line item.');
+      setError(t('invoices.form.needLine'));
       return;
     }
     if (lines.some((line) => !line.description.trim())) {
-      setError('Every line needs a description.');
+      setError(t('invoices.form.needDescription'));
       return;
     }
     if (lines.some((line) => parseNumber(line.quantity) <= 0)) {
-      setError('Every line needs a quantity greater than zero.');
+      setError(t('invoices.form.needQuantity'));
       return;
     }
     if (discount > subtotal) {
-      setError('The discount cannot exceed the subtotal.');
+      setError(t('invoices.form.discountTooHigh'));
       return;
     }
     const payload = {
@@ -187,7 +187,7 @@ export function InvoiceFormPage() {
     };
     const saved = await run<Invoice>(() => (invoiceId ? invoicesApi.update(invoiceId, payload) : invoicesApi.create(payload)));
     if (saved) {
-      toast.success(`Invoice ${saved.invoiceNumber} ${isEdit ? 'updated' : 'created'}`);
+      toast.success(isEdit ? t('invoices.form.updated', { number: saved.invoiceNumber }) : t('invoices.form.created', { number: saved.invoiceNumber }));
       navigate(`/invoices/${saved.id}`);
     }
   };
@@ -196,15 +196,15 @@ export function InvoiceFormPage() {
     return (
       <>
         <PageHeader title={t('invoices.form.newTitle')} />
-        <ErrorBlock message="Your account has read-only access, so you cannot create or edit invoices." />
+        <ErrorBlock message={t('invoices.form.readOnly')} />
       </>
     );
   }
-  if (isEdit && existing.loading) return <LoadingBlock label="Loading invoice…" />;
+  if (isEdit && existing.loading) return <LoadingBlock label={t('invoices.form.loading')} />;
   if (isEdit && existing.error) {
     return (
       <>
-        <PageHeader title="Edit invoice" />
+        <PageHeader title={t('invoices.form.editTitle')} />
         <ErrorBlock message={existing.error} onRetry={existing.reload} />
       </>
     );
@@ -213,14 +213,14 @@ export function InvoiceFormPage() {
     return (
       <>
         <PageHeader
-          title={`Invoice ${loaded.invoiceNumber}`}
-          actions={<Button onClick={() => navigate(`/invoices/${loaded.id}`)}>Back to invoice</Button>}
+          title={t('invoices.form.blockedTitle', { number: loaded.invoiceNumber })}
+          actions={<Button onClick={() => navigate(`/invoices/${loaded.id}`)}>{t('invoices.form.backToInvoice')}</Button>}
         />
         <ErrorBlock
           message={
             loaded.status === 'void'
-              ? 'This invoice has been voided, so it can no longer be edited. Create a new invoice instead.'
-              : 'This invoice already has payments recorded against it. Delete those payments first if you need to change it.'
+              ? t('invoices.form.voided')
+              : t('invoices.form.hasPayments')
           }
         />
       </>
@@ -230,24 +230,24 @@ export function InvoiceFormPage() {
   return (
     <>
       <PageHeader
-        title={isEdit && loaded ? `Edit invoice ${loaded.invoiceNumber}` : t('invoices.form.newTitle')}
+        title={isEdit && loaded ? t('invoices.form.editNumberTitle', { number: loaded.invoiceNumber }) : t('invoices.form.newTitle')}
         subtitle={isEdit ? t('invoices.form.subtitleEdit') : t('invoices.form.subtitleNew')}
-        breadcrumb={['Sales', 'Invoices']}
-        actions={<Button onClick={() => navigate(isEdit && loaded ? `/invoices/${loaded.id}` : '/invoices')}>Cancel</Button>}
+        breadcrumb={[t('invoices.form.breadcrumb.sales'), t('invoices.form.breadcrumb.invoices')]}
+        actions={<Button onClick={() => navigate(isEdit && loaded ? `/invoices/${loaded.id}` : '/invoices')}>{t('invoices.form.cancel')}</Button>}
       />
 
       {customers.error ? <ErrorBlock message={customers.error} onRetry={customers.reload} /> : null}
       {items.error ? <ErrorBlock message={items.error} onRetry={items.reload} /> : null}
 
       <div className="stack">
-        <Card title="Invoice details">
+        <Card title={t('invoices.form.section.details')}>
           <FormError message={error} />
           <div className="form-grid">
             <SelectField
-              label="Customer"
+              label={t('invoices.form.customer')}
               required
               value={customerId}
-              placeholder={customers.loading ? 'Loading customers…' : 'Select a customer'}
+              placeholder={customers.loading ? t('invoices.form.loadingCustomers') : t('invoices.form.customerPlaceholder')}
               disabled={customers.loading}
               error={fieldErrors.customerId}
               options={customerList.map((customer) => ({ value: customer.id, label: customer.displayName }))}
@@ -257,7 +257,7 @@ export function InvoiceFormPage() {
               }}
             />
             <TextField
-              label="Invoice date"
+              label={t('invoices.form.date')}
               type="date"
               required
               value={date}
@@ -268,41 +268,41 @@ export function InvoiceFormPage() {
               }}
             />
             <TextField
-              label="Due date"
+              label={t('invoices.form.dueDate')}
               type="date"
               required
               value={dueDate}
               min={date}
-              hint="Prefilled from the customer's payment terms."
+              hint={t('invoices.form.dueDateHint')}
               error={fieldErrors.dueDate}
               onChange={(event) => setDueDate(event.target.value)}
             />
             <TextField
-              label="Reference"
+              label={t('invoices.form.reference')}
               value={reference}
-              placeholder="Internal reference"
+              placeholder={t('invoices.form.referencePlaceholder')}
               error={fieldErrors.reference}
               onChange={(event) => setReference(event.target.value)}
             />
             <TextField
-              label="Order number"
+              label={t('invoices.form.orderNumber')}
               value={orderNumber}
-              placeholder="The customer's purchase order number"
+              placeholder={t('invoices.form.orderNumberPlaceholder')}
               error={fieldErrors.orderNumber}
               onChange={(event) => setOrderNumber(event.target.value)}
             />
             <TextField
-              label="Salesperson"
+              label={t('invoices.form.salesperson')}
               value={salesperson}
               error={fieldErrors.salesperson}
               onChange={(event) => setSalesperson(event.target.value)}
             />
             <TextField
-              label="Subject"
+              label={t('invoices.form.subject')}
               value={subject}
               maxLength={250}
-              placeholder="What this invoice is for"
-              hint="Printed above the line items"
+              placeholder={t('invoices.form.subjectPlaceholder')}
+              hint={t('invoices.form.subjectHint')}
               error={fieldErrors.subject}
               onChange={(event) => setSubject(event.target.value)}
             />
@@ -310,11 +310,11 @@ export function InvoiceFormPage() {
         </Card>
 
         <Card
-          title="Line items"
-          subtitle="Amounts are calculated as quantity × rate, with tax applied per line."
+          title={t('invoices.form.section.lines')}
+          subtitle={t('invoices.form.linesSubtitle')}
           footer={
             <Button icon={<Plus size={15} />} onClick={() => setLines((current) => [...current, newLine(defaultLineTaxRate)])}>
-              Add line
+              {t('invoices.form.addLine')}
             </Button>
           }
         >
@@ -322,14 +322,14 @@ export function InvoiceFormPage() {
             <table className="line-items-table">
               <thead>
                 <tr>
-                  <th scope="col">Item</th>
-                  <th scope="col">Description</th>
-                  <th scope="col">Qty</th>
-                  <th scope="col">Rate</th>
-                  <th scope="col">Tax %</th>
-                  <th scope="col">Amount</th>
+                  <th scope="col">{t('invoices.form.col.item')}</th>
+                  <th scope="col">{t('invoices.form.col.description')}</th>
+                  <th scope="col">{t('invoices.form.col.qty')}</th>
+                  <th scope="col">{t('invoices.form.col.rate')}</th>
+                  <th scope="col">{t('invoices.form.col.tax')}</th>
+                  <th scope="col">{t('invoices.form.col.amount')}</th>
                   <th scope="col">
-                    <span className="sr-only">Remove</span>
+                    <span className="sr-only">{t('invoices.form.col.remove')}</span>
                   </th>
                 </tr>
               </thead>
@@ -341,12 +341,12 @@ export function InvoiceFormPage() {
                       <td>
                         <select
                           className="select"
-                          aria-label={`Item for line ${index + 1}`}
+                          aria-label={t('invoices.form.line.itemAria', { n: index + 1 })}
                           value={line.itemId}
                           disabled={items.loading}
                           onChange={(event) => chooseItem(line.key, event.target.value)}
                         >
-                          <option value="">Custom line</option>
+                          <option value="">{t('invoices.form.line.custom')}</option>
                           {itemList.map((entry) => (
                             <option key={entry.id} value={entry.id}>
                               {entry.name}
@@ -355,14 +355,14 @@ export function InvoiceFormPage() {
                         </select>
                         {item?.trackInventory ? (
                           <small className={item.stockOnHand > 0 ? 'text-subtle' : 'text-danger'}>
-                            {formatQuantity(item.stockOnHand)} {item.unit} in stock
+                            {t('invoices.form.line.inStock', { quantity: formatQuantity(item.stockOnHand), unit: item.unit })}
                           </small>
                         ) : null}
                       </td>
                       <td>
                         <input
                           className="input"
-                          aria-label={`Description for line ${index + 1}`}
+                          aria-label={t('invoices.form.line.descriptionAria', { n: index + 1 })}
                           value={line.description}
                           required
                           onChange={(event) => updateLine(line.key, { description: event.target.value })}
@@ -374,7 +374,7 @@ export function InvoiceFormPage() {
                           type="number"
                           min="0"
                           step="0.001"
-                          aria-label={`Quantity for line ${index + 1}`}
+                          aria-label={t('invoices.form.line.quantityAria', { n: index + 1 })}
                           value={line.quantity}
                           onChange={(event) => updateLine(line.key, { quantity: event.target.value })}
                         />
@@ -385,7 +385,7 @@ export function InvoiceFormPage() {
                           type="number"
                           min="0"
                           step="0.01"
-                          aria-label={`Rate for line ${index + 1}`}
+                          aria-label={t('invoices.form.line.rateAria', { n: index + 1 })}
                           value={line.rate}
                           onChange={(event) => updateLine(line.key, { rate: event.target.value })}
                         />
@@ -393,7 +393,7 @@ export function InvoiceFormPage() {
                       <td>
                         <select
                           className="select"
-                          aria-label={`Tax rate for line ${index + 1}`}
+                          aria-label={t('invoices.form.line.taxAria', { n: index + 1 })}
                           value={line.taxRate}
                           onChange={(event) => updateLine(line.key, { taxRate: event.target.value })}
                         >
@@ -409,7 +409,7 @@ export function InvoiceFormPage() {
                         <button
                           type="button"
                           className="action-btn is-danger"
-                          aria-label={`Remove line ${index + 1}`}
+                          aria-label={t('invoices.form.line.removeAria', { n: index + 1 })}
                           disabled={lines.length === 1}
                           onClick={() => setLines((current) => current.filter((entry) => entry.key !== line.key))}
                         >
@@ -426,19 +426,19 @@ export function InvoiceFormPage() {
         </Card>
 
         <div className="grid-2">
-          <Card title="Notes and terms">
+          <Card title={t('invoices.form.section.notes')}>
             <TextAreaField
-              label="Notes"
+              label={t('invoices.form.notes')}
               value={notes}
-              hint="Shown to the customer on the invoice."
+              hint={t('invoices.form.notesHint')}
               error={fieldErrors.notes}
               onChange={(event) => setNotes(event.target.value)}
             />
-            <TextAreaField label="Terms" value={terms} error={fieldErrors.terms} onChange={(event) => setTerms(event.target.value)} />
+            <TextAreaField label={t('invoices.form.terms')} value={terms} error={fieldErrors.terms} onChange={(event) => setTerms(event.target.value)} />
           </Card>
-          <Card title="Totals">
+          <Card title={t('invoices.form.section.totals')}>
             <TextField
-              label="Discount"
+              label={t('invoices.form.discount')}
               type="number"
               min="0"
               step="0.01"
@@ -450,19 +450,19 @@ export function InvoiceFormPage() {
             <div className="form-section">
               <div className="totals-list">
                 <div>
-                  <span>Subtotal</span>
+                  <span>{t('invoices.form.totals.subtotal')}</span>
                   <span>{formatCurrency(subtotal)}</span>
                 </div>
                 <div>
-                  <span>Discount</span>
+                  <span>{t('invoices.form.totals.discount')}</span>
                   <span>{discount > 0 ? `- ${formatCurrency(discount)}` : formatCurrency(0)}</span>
                 </div>
                 <div>
-                  <span>Tax total</span>
+                  <span>{t('invoices.form.totals.tax')}</span>
                   <span>{formatCurrency(taxTotal)}</span>
                 </div>
                 <div className="grand">
-                  <span>Total</span>
+                  <span>{t('invoices.form.totals.total')}</span>
                   <span>{formatCurrency(total)}</span>
                 </div>
               </div>
@@ -472,20 +472,20 @@ export function InvoiceFormPage() {
 
         <div className="row-between">
           <span className="text-subtle small">
-            {lines.length} {lines.length === 1 ? 'line' : 'lines'} · {formatCurrency(total)} payable
+            {t(lines.length === 1 ? 'invoices.form.summaryOne' : 'invoices.form.summaryMany', { count: lines.length, total: formatCurrency(total) })}
           </span>
           <div className="row">
             {keepSent ? (
               <Button variant="primary" loading={submitting} onClick={() => submit('sent')}>
-                Save changes
+                {t('invoices.form.saveChanges')}
               </Button>
             ) : (
               <>
                 <Button variant="secondary" disabled={submitting} onClick={() => submit('draft')}>
-                  Save as draft
+                  {t('invoices.form.saveDraft')}
                 </Button>
                 <Button variant="primary" loading={submitting} onClick={() => submit('sent')}>
-                  Save and mark as sent
+                  {t('invoices.form.saveSent')}
                 </Button>
               </>
             )}

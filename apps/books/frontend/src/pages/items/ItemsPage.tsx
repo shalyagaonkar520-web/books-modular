@@ -28,16 +28,16 @@ import { type Tone } from '@/utils/status';
 const PAGE_SIZE = 25;
 
 const TYPE_FILTERS = [
-  { value: 'all', label: 'All types' },
-  { value: 'goods', label: 'Goods' },
-  { value: 'service', label: 'Services' },
+  { value: 'all', label: 'items.filter.allTypes' },
+  { value: 'goods', label: 'items.filter.goods' },
+  { value: 'service', label: 'items.filter.services' },
 ];
 
 const INVENTORY_FILTERS = [
-  { value: 'all', label: 'All items' },
-  { value: 'tracked', label: 'Inventory tracked' },
-  { value: 'non-tracked', label: 'Not tracked' },
-  { value: 'low-stock', label: 'Low stock' },
+  { value: 'all', label: 'items.filter.allItems' },
+  { value: 'tracked', label: 'items.filter.tracked' },
+  { value: 'non-tracked', label: 'items.filter.notTracked' },
+  { value: 'low-stock', label: 'items.filter.lowStock' },
 ];
 
 
@@ -49,7 +49,8 @@ function stockTone(item: Item): Tone {
 }
 
 function StockCell({ item }: { item: Item }) {
-  if (item.type === 'service' || !item.trackInventory) return <span className="text-muted">Not tracked</span>;
+  const { t } = useAppContent();
+  if (item.type === 'service' || !item.trackInventory) return <span className="text-muted">{t('items.stock.notTracked')}</span>;
   return (
     <Badge tone={stockTone(item)}>
       {formatQuantity(item.stockOnHand)} {item.unit}
@@ -171,9 +172,9 @@ export function ItemsPage() {
     setBulkDeleting(false);
     if (failedIds.size > 0) {
       const reason = lastError ? ` ${lastError}` : '';
-      toast.error(`Deleted ${count} of ${selectedIds.size} item(s); ${failedIds.size} could not be deleted.${reason}`);
+      toast.error(t('items.bulk.partialFailed', { count, total: selectedIds.size, failed: failedIds.size, reason }));
     } else {
-      toast.success(`Deleted ${count} item(s)`);
+      toast.success(t('items.bulk.deleted', { count }));
     }
     setSelectedIds(failedIds);
     reloadAll();
@@ -185,7 +186,7 @@ export function ItemsPage() {
   const columns: Array<Column<Item>> = [
     {
       key: 'name',
-      header: 'Item',
+      header: t('items.col.item'),
       sortable: true,
       render: (item) => (
         <div className="cell-stack">
@@ -195,15 +196,15 @@ export function ItemsPage() {
         </div>
       ),
     },
-    { key: 'type', header: 'Type', render: (item) => <Badge tone={item.type === 'goods' ? 'info' : 'neutral'}>{item.type === 'goods' ? 'Goods' : 'Service'}</Badge> },
-    { key: 'unit', header: 'Unit', render: (item) => <span className="text-muted">{item.unit}</span> },
-    { key: 'taxRate', header: 'Tax', align: 'right', render: (item) => <span className="num">{formatPercent(item.taxRate)}</span> },
-    { key: 'sellingPrice', header: 'Selling price', align: 'right', sortable: true, render: (item) => <span className="num">{formatCurrency(item.sellingPrice)}</span> },
-    { key: 'costPrice', header: 'Cost price', align: 'right', sortable: true, render: (item) => <span className="num">{formatCurrency(item.costPrice)}</span> },
-    { key: 'stockOnHand', header: 'Stock', align: 'right', sortable: true, render: (item) => <StockCell item={item} /> },
+    { key: 'type', header: t('items.col.type'), render: (item) => <Badge tone={item.type === 'goods' ? 'info' : 'neutral'}>{item.type === 'goods' ? t('items.type.goods') : t('items.type.service')}</Badge> },
+    { key: 'unit', header: t('items.col.unit'), render: (item) => <span className="text-muted">{item.unit}</span> },
+    { key: 'taxRate', header: t('items.col.tax'), align: 'right', render: (item) => <span className="num">{formatPercent(item.taxRate)}</span> },
+    { key: 'sellingPrice', header: t('items.col.sellingPrice'), align: 'right', sortable: true, render: (item) => <span className="num">{formatCurrency(item.sellingPrice)}</span> },
+    { key: 'costPrice', header: t('items.col.costPrice'), align: 'right', sortable: true, render: (item) => <span className="num">{formatCurrency(item.costPrice)}</span> },
+    { key: 'stockOnHand', header: t('items.col.stock'), align: 'right', sortable: true, render: (item) => <StockCell item={item} /> },
     {
       key: 'reorderLevel',
-      header: 'Low stock at',
+      header: t('items.col.lowStockAt'),
       align: 'right',
       sortable: true,
       render: (item) =>
@@ -215,31 +216,31 @@ export function ItemsPage() {
           </span>
         ),
     },
-    { key: 'createdAt', header: 'Added', sortable: true, render: (item) => <span className="text-muted small">{formatDate(item.createdAt)}</span> },
+    { key: 'createdAt', header: t('items.col.added'), sortable: true, render: (item) => <span className="text-muted small">{formatDate(item.createdAt)}</span> },
     {
       key: 'actions',
-      header: 'Actions',
+      header: t('items.col.actions'),
       align: 'right',
       render: (item) => (
         <div className="row-actions" onClick={(event) => event.stopPropagation()}>
-          <button type="button" className="action-btn" aria-label={`View ${item.name}`} onClick={() => setDetailsItem(item)}>
+          <button type="button" className="action-btn" aria-label={t('items.action.view', { name: item.name })} onClick={() => setDetailsItem(item)}>
             <Eye size={15} />
           </button>
           <IfCanWrite>
             <button
               type="button"
               className="action-btn"
-              aria-label={`Edit ${item.name}`}
+              aria-label={t('items.action.edit', { name: item.name })}
               onClick={() => navigate(`/items/${item.id}/edit`)}
             >
               <Pencil size={15} />
             </button>
             {item.trackInventory ? (
-              <button type="button" className="action-btn" aria-label={`Adjust stock for ${item.name}`} onClick={() => setAdjustItem(item)}>
+              <button type="button" className="action-btn" aria-label={t('items.action.adjust', { name: item.name })} onClick={() => setAdjustItem(item)}>
                 <SlidersHorizontal size={15} />
               </button>
             ) : null}
-            <button type="button" className="action-btn is-danger" aria-label={`Delete ${item.name}`} onClick={() => setDeleteItem(item)}>
+            <button type="button" className="action-btn is-danger" aria-label={t('items.action.delete', { name: item.name })} onClick={() => setDeleteItem(item)}>
               <Trash2 size={15} />
             </button>
           </IfCanWrite>
@@ -268,13 +269,13 @@ export function ItemsPage() {
 
       {stats ? (
         <div className="stat-grid">
-          <StatTile label="Total items" value={formatQuantity(stats.totalItems)} sublabel={`${list.data?.total ?? 0} matching filters`} icon={<Package size={16} />} />
-          <StatTile label="Tracked items" value={formatQuantity(stats.trackedItems)} sublabel="Inventory managed" icon={<Boxes size={16} />} />
-          <StatTile label="Stock value" value={formatCurrency(stats.totalStockValue)} sublabel="At cost price" icon={<Wallet size={16} />} />
+          <StatTile label={t('items.stat.total')} value={formatQuantity(stats.totalItems)} sublabel={t('items.stat.totalSub', { count: list.data?.total ?? 0 })} icon={<Package size={16} />} />
+          <StatTile label={t('items.stat.tracked')} value={formatQuantity(stats.trackedItems)} sublabel={t('items.stat.trackedSub')} icon={<Boxes size={16} />} />
+          <StatTile label={t('items.stat.stockValue')} value={formatCurrency(stats.totalStockValue)} sublabel={t('items.stat.stockValueSub')} icon={<Wallet size={16} />} />
           <StatTile
-            label="Low stock"
+            label={t('items.stat.lowStock')}
             value={formatQuantity(stats.lowStockItems)}
-            sublabel="At or below reorder level"
+            sublabel={t('items.stat.lowStockSub')}
             tone={stats.lowStockItems > 0 ? 'negative' : 'neutral'}
             icon={<TrendingDown size={16} />}
           />
@@ -288,26 +289,26 @@ export function ItemsPage() {
             setSearch(value);
             setPage(1);
           }}
-          placeholder="Search name, SKU, HSN…"
-          label="Search items"
+          placeholder={t('items.search.placeholder')}
+          label={t('items.search.label')}
         />
         <FilterSelect
-          label="Type"
+          label={t('items.filter.typeLabel')}
           value={typeFilter}
           onChange={(value) => {
             setTypeFilter(value);
             setPage(1);
           }}
-          options={TYPE_FILTERS}
+          options={TYPE_FILTERS.map((option) => ({ ...option, label: t(option.label) }))}
         />
         <FilterSelect
-          label="Inventory"
+          label={t('items.filter.inventoryLabel')}
           value={inventoryFilter}
           onChange={(value) => {
             setInventoryFilter(value);
             setPage(1);
           }}
-          options={INVENTORY_FILTERS}
+          options={INVENTORY_FILTERS.map((option) => ({ ...option, label: t(option.label) }))}
         />
       </Toolbar>
 
@@ -354,10 +355,10 @@ export function ItemsPage() {
                     }
                   }}
                 >
-                  {selectedIds.size === rows.length && rows.length > 0 ? 'Deselect All' : `Select All on Page (${rows.length})`}
+                  {selectedIds.size === rows.length && rows.length > 0 ? t('items.bulk.deselectAll') : t('items.bulk.selectAllOnPage', { count: rows.length })}
                 </Button>
                 {selectedIds.size > 0 ? (
-                  <span className="small text-muted">{selectedIds.size} selected</span>
+                  <span className="small text-muted">{t('items.bulk.selected', { count: selectedIds.size })}</span>
                 ) : null}
               </div>
               {selectedIds.size > 0 ? (
@@ -369,7 +370,7 @@ export function ItemsPage() {
                     onClick={() => setBulkDeleteConfirmOpen(true)}
                     icon={<Trash2 size={13} />}
                   >
-                    Delete Selected ({selectedIds.size})
+                    {t('items.bulk.deleteSelected', { count: selectedIds.size })}
                   </Button>
                 </IfCanWrite>
               ) : null}
@@ -382,7 +383,7 @@ export function ItemsPage() {
               sortBy={sortBy}
               sortOrder={sortOrder}
               onSort={handleSort}
-              caption="Item catalogue"
+              caption={t('items.table.caption')}
               selectedKeys={selectedIds}
               onSelectRow={(id) => {
                 const next = new Set(selectedIds);
@@ -417,16 +418,16 @@ export function ItemsPage() {
 
       <ConfirmDialog
         open={!!deleteItem}
-        title="Delete item"
+        title={t('items.delete.title')}
         message={
           <>
             <FormError message={deleteSubmit.error} />
             {deleteItem
-              ? `Delete “${deleteItem.name}” (${deleteItem.sku})? If the item is used on invoices or bills it will be marked inactive instead.`
+              ? t('items.delete.body', { name: deleteItem.name, sku: deleteItem.sku })
               : ''}
           </>
         }
-        confirmLabel="Delete item"
+        confirmLabel={t('items.delete.confirm')}
         busy={deleteSubmit.submitting}
         onConfirm={confirmDelete}
         onCancel={() => {
@@ -437,9 +438,9 @@ export function ItemsPage() {
 
       <ConfirmDialog
         open={bulkDeleteConfirmOpen}
-        title="Delete selected items"
-        message={<p>{selectedIds.size} selected item(s) will be permanently removed. Any used on invoices or bills are marked inactive instead.</p>}
-        confirmLabel="Delete"
+        title={t('items.bulkDelete.title')}
+        message={<p>{t('items.bulkDelete.body', { count: selectedIds.size })}</p>}
+        confirmLabel={t('items.bulkDelete.confirm')}
         busy={bulkDeleting}
         onCancel={() => setBulkDeleteConfirmOpen(false)}
         onConfirm={() => void confirmBulkDelete()}
@@ -458,41 +459,43 @@ function Detail({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function ItemDetailsModal({ item, onClose }: { item: Item; onClose: () => void }) {
+  const { t } = useAppContent();
   const dash = <span className="text-muted">—</span>;
+  const typeLabel = item.type === 'goods' ? t('items.type.goods') : t('items.type.service');
   return (
-    <Modal open size="lg" title={item.name} subtitle={`${item.sku} · ${item.type === 'goods' ? 'Goods' : 'Service'}`} onClose={onClose}>
+    <Modal open size="lg" title={item.name} subtitle={t('items.details.subtitle', { sku: item.sku, type: typeLabel })} onClose={onClose}>
       <div className="detail-grid">
-        <Detail label="SKU" value={<span className="mono">{item.sku}</span>} />
-        <Detail label="Type" value={<Badge tone={item.type === 'goods' ? 'info' : 'neutral'}>{item.type === 'goods' ? 'Goods' : 'Service'}</Badge>} />
-        <Detail label="Unit" value={item.unit} />
-        <Detail label="HSN / SAC" value={item.hsnSac || dash} />
-        <Detail label="Tax rate" value={formatPercent(item.taxRate)} />
-        <Detail label="Status" value={<Badge tone={item.isActive ? 'success' : 'neutral'}>{item.isActive ? 'Active' : 'Inactive'}</Badge>} />
-        <Detail label="Selling price" value={formatCurrency(item.sellingPrice)} />
-        <Detail label="Sales account" value={item.salesAccountName || dash} />
-        <Detail label="Cost price" value={formatCurrency(item.costPrice)} />
-        <Detail label="Purchase account" value={item.purchaseAccountName || dash} />
-        <Detail label="Preferred vendor" value={item.preferredVendorName || dash} />
-        <Detail label="Inventory" value={item.trackInventory ? 'Tracked' : 'Not tracked'} />
+        <Detail label={t('items.details.sku')} value={<span className="mono">{item.sku}</span>} />
+        <Detail label={t('items.details.type')} value={<Badge tone={item.type === 'goods' ? 'info' : 'neutral'}>{typeLabel}</Badge>} />
+        <Detail label={t('items.details.unit')} value={item.unit} />
+        <Detail label={t('items.details.hsnSac')} value={item.hsnSac || dash} />
+        <Detail label={t('items.details.taxRate')} value={formatPercent(item.taxRate)} />
+        <Detail label={t('items.details.status')} value={<Badge tone={item.isActive ? 'success' : 'neutral'}>{item.isActive ? t('items.status.active') : t('items.status.inactive')}</Badge>} />
+        <Detail label={t('items.details.sellingPrice')} value={formatCurrency(item.sellingPrice)} />
+        <Detail label={t('items.details.salesAccount')} value={item.salesAccountName || dash} />
+        <Detail label={t('items.details.costPrice')} value={formatCurrency(item.costPrice)} />
+        <Detail label={t('items.details.purchaseAccount')} value={item.purchaseAccountName || dash} />
+        <Detail label={t('items.details.preferredVendor')} value={item.preferredVendorName || dash} />
+        <Detail label={t('items.details.inventory')} value={item.trackInventory ? t('items.details.tracked') : t('items.details.notTracked')} />
         {item.trackInventory ? (
           <>
-            <Detail label="Stock on hand" value={<Badge tone={stockTone(item)}>{`${formatQuantity(item.stockOnHand)} ${item.unit}`}</Badge>} />
-            <Detail label="Low stock threshold" value={`${formatQuantity(item.reorderLevel)} ${item.unit}`} />
-            <Detail label="Opening stock" value={`${formatQuantity(item.openingStock)} ${item.unit}`} />
-            <Detail label="Opening stock rate" value={formatCurrency(item.openingStockRate)} />
-            <Detail label="Stock valuation" value={<span className="strong">{formatCurrency(item.stockOnHand * item.costPrice)}</span>} />
-            <Detail label="Warehouse" value={item.warehouseLocation || dash} />
+            <Detail label={t('items.details.stockOnHand')} value={<Badge tone={stockTone(item)}>{`${formatQuantity(item.stockOnHand)} ${item.unit}`}</Badge>} />
+            <Detail label={t('items.details.lowStockThreshold')} value={`${formatQuantity(item.reorderLevel)} ${item.unit}`} />
+            <Detail label={t('items.details.openingStock')} value={`${formatQuantity(item.openingStock)} ${item.unit}`} />
+            <Detail label={t('items.details.openingStockRate')} value={formatCurrency(item.openingStockRate)} />
+            <Detail label={t('items.details.stockValuation')} value={<span className="strong">{formatCurrency(item.stockOnHand * item.costPrice)}</span>} />
+            <Detail label={t('items.details.warehouse')} value={item.warehouseLocation || dash} />
           </>
         ) : null}
-        <Detail label="Created" value={formatDateTime(item.createdAt)} />
-        <Detail label="Last updated" value={formatDateTime(item.updatedAt)} />
+        <Detail label={t('items.details.created')} value={formatDateTime(item.createdAt)} />
+        <Detail label={t('items.details.lastUpdated')} value={formatDateTime(item.updatedAt)} />
       </div>
 
       {item.description || item.salesDescription || item.purchaseDescription ? (
         <div className="stack">
-          {item.description ? <Detail label="Description" value={item.description} /> : null}
-          {item.salesDescription ? <Detail label="Sales description" value={item.salesDescription} /> : null}
-          {item.purchaseDescription ? <Detail label="Purchase description" value={item.purchaseDescription} /> : null}
+          {item.description ? <Detail label={t('items.details.description')} value={item.description} /> : null}
+          {item.salesDescription ? <Detail label={t('items.details.salesDescription')} value={item.salesDescription} /> : null}
+          {item.purchaseDescription ? <Detail label={t('items.details.purchaseDescription')} value={item.purchaseDescription} /> : null}
         </div>
       ) : null}
     </Modal>
@@ -500,6 +503,7 @@ function ItemDetailsModal({ item, onClose }: { item: Item; onClose: () => void }
 }
 
 function AdjustStockModal({ item, onClose, onSaved }: { item: Item; onClose: () => void; onSaved: (message: string) => void }) {
+  const { t } = useAppContent();
   const [date, setDate] = useState(todayIso());
   const [quantityDelta, setQuantityDelta] = useState('');
   const [reason, setReason] = useState('');
@@ -518,51 +522,51 @@ function AdjustStockModal({ item, onClose, onSaved }: { item: Item; onClose: () 
         notes: notes.trim() || undefined,
       }),
     );
-    if (result) onSaved(`${result.adjustmentNumber} recorded for ${item.name}`);
+    if (result) onSaved(t('items.adjust.recorded', { number: result.adjustmentNumber, name: item.name }));
   }
 
   return (
     <Modal
       open
-      title="Adjust stock"
-      subtitle={`${item.name} · on hand ${formatQuantity(item.stockOnHand)} ${item.unit}`}
+      title={t('items.adjust.title')}
+      subtitle={t('items.adjust.subtitle', { name: item.name, quantity: formatQuantity(item.stockOnHand), unit: item.unit })}
       onClose={onClose}
       footer={
         <>
           <Button onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('items.adjust.cancel')}
           </Button>
           <Button variant="primary" loading={submitting} onClick={save}>
-            Save adjustment
+            {t('items.adjust.save')}
           </Button>
         </>
       }
     >
       <FormError message={error} />
       <div className="form-grid">
-        <TextField label="Date" type="date" required value={date} error={fieldErrors.date} onChange={(event) => setDate(event.target.value)} />
+        <TextField label={t('items.adjust.date')} type="date" required value={date} error={fieldErrors.date} onChange={(event) => setDate(event.target.value)} />
         <TextField
-          label="Quantity change"
+          label={t('items.adjust.quantity')}
           type="number"
           step="0.001"
           required
           value={quantityDelta}
           error={fieldErrors.quantityDelta}
-          hint="Use a negative number to reduce stock"
+          hint={t('items.adjust.quantityHint')}
           onChange={(event) => setQuantityDelta(event.target.value)}
         />
       </div>
-      <TextField label="Reason" required value={reason} error={fieldErrors.reason} onChange={(event) => setReason(event.target.value)} />
-      <TextAreaField label="Notes" rows={2} value={notes} error={fieldErrors.notes} onChange={(event) => setNotes(event.target.value)} />
+      <TextField label={t('items.adjust.reason')} required value={reason} error={fieldErrors.reason} onChange={(event) => setReason(event.target.value)} />
+      <TextAreaField label={t('items.adjust.notes')} rows={2} value={notes} error={fieldErrors.notes} onChange={(event) => setNotes(event.target.value)} />
 
       <section className="form-section">
-        <h3 className="form-section-title">Recent adjustments</h3>
+        <h3 className="form-section-title">{t('items.adjust.recent')}</h3>
         {history.loading ? (
           <SkeletonRows rows={3} columns={3} />
         ) : history.error ? (
           <ErrorBlock message={history.error} onRetry={history.reload} />
         ) : !history.data?.items.length ? (
-          <p className="text-muted small">No stock adjustments recorded for this item yet.</p>
+          <p className="text-muted small">{t('items.adjust.noHistory')}</p>
         ) : (
           <ul className="totals-list">
             {history.data.items.map((adjustment) => (

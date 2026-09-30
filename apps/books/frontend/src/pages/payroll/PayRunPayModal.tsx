@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { useAppContent } from '@/app/AppContentContext';
 import { Button } from '@/components/ui/Button';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { Modal } from '@/components/ui/Modal';
@@ -19,6 +20,7 @@ interface PayRunPayModalProps {
 }
 
 export function PayRunPayModal({ payRun, onClose, onPaid }: PayRunPayModalProps) {
+  const { t } = useAppContent();
   const toast = useToast();
   const { organization } = useAuth();
   const currency = organization?.currency ?? 'INR';
@@ -32,7 +34,7 @@ export function PayRunPayModal({ payRun, onClose, onPaid }: PayRunPayModalProps)
   const pay = async () => {
     const paid = await run(() => payrollApi.payPayRun(payRun.id, { bankAccountId, payDate }));
     if (paid) {
-      toast.success(`${paid.periodLabel} payroll recorded from the selected account.`);
+      toast.success(t('payroll.payRunPay.toast.paid', { period: paid.periodLabel }));
       onPaid();
       onClose();
     }
@@ -41,30 +43,30 @@ export function PayRunPayModal({ payRun, onClose, onPaid }: PayRunPayModalProps)
   return (
     <Modal
       open
-      title={`Record payment · ${payRun.periodLabel}`}
-      subtitle={`${formatCurrency(payRun.totalNet, currency)} net across ${payRun.employeeCount} employees`}
+      title={t('payroll.payRunPay.title', { period: payRun.periodLabel })}
+      subtitle={t('payroll.payRunPay.subtitle', { amount: formatCurrency(payRun.totalNet, currency), count: payRun.employeeCount })}
       onClose={onClose}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('payroll.payRunPay.cancel')}
           </Button>
           <Button variant="primary" onClick={pay} loading={submitting} disabled={!bankAccountId || !payDate}>
-            Record payment
+            {t('payroll.payRunPay.submit')}
           </Button>
         </>
       }
     >
       <div className="stack">
         <FormError message={error} />
-        {loading ? <LoadingBlock label="Loading bank accounts…" /> : null}
+        {loading ? <LoadingBlock label={t('payroll.payRunPay.loading')} /> : null}
         {!loading && loadError ? <ErrorBlock message={loadError} onRetry={reload} /> : null}
         {!loading && !loadError ? (
           <>
             <SelectField
-              label="Pay from"
+              label={t('payroll.payRunPay.payFrom')}
               value={bankAccountId}
-              placeholder={accounts.length ? 'Select an account' : 'No bank accounts available'}
+              placeholder={accounts.length ? t('payroll.payRunPay.selectAccount') : t('payroll.payRunPay.noAccounts')}
               required
               error={fieldErrors.bankAccountId}
               options={accounts.map((account) => ({
@@ -74,13 +76,13 @@ export function PayRunPayModal({ payRun, onClose, onPaid }: PayRunPayModalProps)
               onChange={(event) => setBankAccountId(event.target.value)}
             />
             <TextField
-              label="Pay date"
+              label={t('payroll.payRunPay.payDate')}
               type="date"
               value={payDate}
               required
               error={fieldErrors.payDate}
               onChange={(event) => setPayDate(event.target.value)}
-              hint="Salary expense, statutory payables and the bank withdrawal are posted on this date"
+              hint={t('payroll.payRunPay.payDateHint')}
             />
           </>
         ) : null}

@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
 
 import { projectsApi } from '@/api/endpoints';
 import type { Invoice, Project } from '@/api/types';
+import { useAppContent } from '@/app/AppContentContext';
 import { Button } from '@/components/ui/Button';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { EmptyState, ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
@@ -21,6 +22,7 @@ interface InvoiceTimeModalProps {
 }
 
 export function InvoiceTimeModal({ open, project, onClose, onInvoiced }: InvoiceTimeModalProps) {
+  const { t } = useAppContent();
   const formId = useId();
   const { submitting, error, fieldErrors, run, reset } = useSubmit();
   const [date, setDate] = useState(todayIso());
@@ -81,17 +83,17 @@ export function InvoiceTimeModal({ open, project, onClose, onInvoiced }: Invoice
   return (
     <Modal
       open={open}
-      title="Invoice unbilled time"
-      subtitle={project ? `${project.name} · ${formatCurrency(project.hourlyRate)} / hour` : undefined}
+      title={t('timeTracking.invoiceTime.title')}
+      subtitle={project ? t('timeTracking.invoiceTime.subtitle', { project: project.name, rate: formatCurrency(project.hourlyRate) }) : undefined}
       size="lg"
       onClose={onClose}
       footer={
         <>
           <Button onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('timeTracking.invoiceTime.cancel')}
           </Button>
           <Button variant="primary" type="submit" form={formId} loading={submitting} disabled={!selectedIds.length}>
-            Create invoice
+            {t('timeTracking.invoiceTime.create')}
           </Button>
         </>
       }
@@ -99,38 +101,38 @@ export function InvoiceTimeModal({ open, project, onClose, onInvoiced }: Invoice
       <form id={formId} className="stack" onSubmit={onSubmit}>
         <FormError message={error} />
         <div className="form-grid-3">
-          <TextField label="Invoice date" type="date" required value={date} error={fieldErrors.date} onChange={(event) => setDate(event.target.value)} />
-          <TextField label="Due date" type="date" required value={dueDate} error={fieldErrors.dueDate} onChange={(event) => setDueDate(event.target.value)} />
-          <SelectField label="Tax rate" options={TAX_OPTIONS} value={taxRate} error={fieldErrors.taxRate} onChange={(event) => setTaxRate(event.target.value)} />
+          <TextField label={t('timeTracking.invoiceTime.invoiceDate')} type="date" required value={date} error={fieldErrors.date} onChange={(event) => setDate(event.target.value)} />
+          <TextField label={t('timeTracking.invoiceTime.dueDate')} type="date" required value={dueDate} error={fieldErrors.dueDate} onChange={(event) => setDueDate(event.target.value)} />
+          <SelectField label={t('timeTracking.invoiceTime.taxRate')} options={TAX_OPTIONS} value={taxRate} error={fieldErrors.taxRate} onChange={(event) => setTaxRate(event.target.value)} />
         </div>
 
         {entries.loading ? (
-          <LoadingBlock label="Loading unbilled time…" />
+          <LoadingBlock label={t('timeTracking.invoiceTime.loading')} />
         ) : entries.error ? (
           <ErrorBlock message={entries.error} onRetry={entries.reload} />
         ) : !items.length ? (
-          <EmptyState title="No unbilled time" description="Every billable entry on this project has already been invoiced." />
+          <EmptyState title={t('timeTracking.invoiceTime.empty.title')} description={t('timeTracking.invoiceTime.empty.body')} />
         ) : (
           <>
             <div className="row-between">
-              <span className="strong">Unbilled entries</span>
+              <span className="strong">{t('timeTracking.invoiceTime.unbilledEntries')}</span>
               <div className="row">
                 <Button size="sm" variant="ghost" onClick={() => setSelectedIds(items.map((entry) => entry.id))}>
-                  Select all
+                  {t('timeTracking.invoiceTime.selectAll')}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setSelectedIds([])} disabled={!selectedIds.length}>
-                  Clear
+                  {t('timeTracking.invoiceTime.clear')}
                 </Button>
               </div>
             </div>
             <table className="line-items-table">
               <thead>
                 <tr>
-                  <th>Include</th>
-                  <th>Date</th>
-                  <th>Description</th>
-                  <th>Logged by</th>
-                  <th className="align-right">Hours</th>
+                  <th>{t('timeTracking.invoiceTime.col.include')}</th>
+                  <th>{t('timeTracking.invoiceTime.col.date')}</th>
+                  <th>{t('timeTracking.invoiceTime.col.description')}</th>
+                  <th>{t('timeTracking.invoiceTime.col.loggedBy')}</th>
+                  <th className="align-right">{t('timeTracking.invoiceTime.col.hours')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -141,7 +143,7 @@ export function InvoiceTimeModal({ open, project, onClose, onInvoiced }: Invoice
                         type="checkbox"
                         className="checkbox"
                         checked={selectedIds.includes(entry.id)}
-                        aria-label={`Include ${entry.hours} hours on ${formatDate(entry.date)}`}
+                        aria-label={t('timeTracking.invoiceTime.includeAria', { hours: entry.hours, date: formatDate(entry.date) })}
                         onChange={() => toggle(entry.id)}
                       />
                     </td>
@@ -156,19 +158,19 @@ export function InvoiceTimeModal({ open, project, onClose, onInvoiced }: Invoice
 
             <div className="totals-list">
               <div>
-                <span>Selected hours</span>
+                <span>{t('timeTracking.invoiceTime.selectedHours')}</span>
                 <span className="num">{formatNumber(totals.hours)}</span>
               </div>
               <div>
-                <span>Subtotal</span>
+                <span>{t('timeTracking.invoiceTime.subtotal')}</span>
                 <span className="num">{formatCurrency(totals.subtotal)}</span>
               </div>
               <div>
-                <span>Tax ({taxRate}%)</span>
+                <span>{t('timeTracking.invoiceTime.tax', { rate: taxRate })}</span>
                 <span className="num">{formatCurrency(totals.tax)}</span>
               </div>
               <div className="grand">
-                <span>Invoice total</span>
+                <span>{t('timeTracking.invoiceTime.total')}</span>
                 <span className="num">{formatCurrency(totals.total)}</span>
               </div>
             </div>

@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight } from 'lucide-react';
 
+import { useAppContent } from '@/app/AppContentContext';
+
 export interface Column<T> {
   key: string;
   header: string;
@@ -47,6 +49,7 @@ export function DataTable<T>({
   isRowSelectable,
   rowNotSelectableReason,
 }: DataTableProps<T>) {
+  const { t } = useAppContent();
   return (
     <div className="table-wrap">
       <table className="data-table">
@@ -59,7 +62,7 @@ export function DataTable<T>({
                   type="checkbox"
                   checked={Boolean(isAllSelected)}
                   onChange={onSelectAll}
-                  aria-label="Select all rows"
+                  aria-label={t('common.table.selectAll')}
                 />
               </th>
             ) : null}
@@ -116,7 +119,7 @@ export function DataTable<T>({
                       checked={Boolean(isSelected)}
                       disabled={!isSelectable}
                       onChange={() => isSelectable && onSelectRow(key)}
-                      aria-label={`Select row ${key}`}
+                      aria-label={t('common.table.selectRow', { key })}
                       title={!isSelectable ? rowNotSelectableReason?.(row) : undefined}
                     />
                   </td>
@@ -144,6 +147,7 @@ interface PaginationProps {
 }
 
 export function Pagination({ page, pageSize, total, onPageChange }: PaginationProps) {
+  const { t } = useAppContent();
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   if (total === 0) return null;
   const from = (page - 1) * pageSize + 1;
@@ -151,18 +155,18 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
   return (
     <div className="pagination">
       <span className="pagination-info">
-        Showing {from}–{to} of {total}
+        {t('common.pagination.showing', { from, to, total })}
       </span>
       <div className="pagination-controls">
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
           <ChevronLeft size={14} />
-          <span>Previous</span>
+          <span>{t('common.pagination.previous')}</span>
         </button>
         <span className="pagination-page">
-          Page {page} of {totalPages}
+          {t('common.pagination.page', { page, totalPages })}
         </span>
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>
-          <span>Next</span>
+          <span>{t('common.pagination.next')}</span>
           <ChevronRight size={14} />
         </button>
       </div>

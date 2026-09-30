@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { useAppContent } from '@/app/AppContentContext';
 import { Button } from '@/components/ui/Button';
 import { FormError } from '@/components/ui/Feedback';
 import { Modal } from '@/components/ui/Modal';
@@ -16,6 +17,7 @@ interface InviteUserModalProps {
 }
 
 export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
+  const { t } = useAppContent();
   const toast = useToast();
   const { submitting, error, fieldErrors, run, setError } = useSubmit();
   const [name, setName] = useState('');
@@ -38,7 +40,7 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
 
   const invite = async () => {
     if (role === 'employee' && !employeeId) {
-      setError('Select which employee this portal login is for.');
+      setError(t('settings.invite.employeeRequired'));
       return;
     }
     const created = await run(() =>
@@ -50,7 +52,7 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
       }),
     );
     if (created) {
-      toast.success(`Invite sent to ${created.email}. They'll set their own password from the link in that email.`);
+      toast.success(t('settings.invite.success', { email: created.email }));
       onInvited();
       onClose();
     }
@@ -59,13 +61,13 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
   return (
     <Modal
       open
-      title="Invite user"
-      subtitle="We'll email them a link to set their own password. They sign in here once that's done."
+      title={t('settings.invite.title')}
+      subtitle={t('settings.invite.subtitle')}
       onClose={onClose}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             variant="primary"
@@ -73,7 +75,7 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
             loading={submitting}
             disabled={!name.trim() || !email.trim() || (role === 'employee' && !employeeId)}
           >
-            Send invite
+            {t('settings.invite.submit')}
           </Button>
         </>
       }
@@ -81,17 +83,17 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
       <div className="stack">
         <FormError message={error} />
         <SelectField
-          label="Role"
+          label={t('settings.invite.role')}
           value={role}
           error={fieldErrors.role}
           options={[
-            { value: 'admin', label: 'Administrator — full access' },
+            { value: 'admin', label: t('settings.invite.role.admin') },
             {
               value: 'staff',
-              label: 'Staff — everything except Accounting, Banking and Razorpay Payments',
+              label: t('settings.invite.role.staff'),
             },
-            { value: 'viewer', label: 'Viewer — read-only' },
-            { value: 'employee', label: 'Employee — portal only: their own payslips, profile and time entries' },
+            { value: 'viewer', label: t('settings.invite.role.viewer') },
+            { value: 'employee', label: t('settings.invite.role.employee') },
           ]}
           onChange={(event) => {
             setRole(event.target.value);
@@ -101,15 +103,15 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
 
         {role === 'employee' ? (
           <SelectField
-            label="Which payroll employee is this?"
+            label={t('settings.invite.employee')}
             value={employeeId}
             hint={
               unlinkedEmployees.data && unlinkedEmployees.data.length === 0
-                ? 'Every active employee already has portal access, or add one under Payroll first.'
+                ? t('settings.invite.noEmployees')
                 : undefined
             }
             options={[
-              { value: '', label: unlinkedEmployees.loading ? 'Loading employees…' : 'Select an employee' },
+              { value: '', label: unlinkedEmployees.loading ? t('settings.invite.loadingEmployees') : t('settings.invite.selectEmployee') },
               ...(unlinkedEmployees.data ?? []).map((e) => ({
                 value: e.id,
                 label: `${e.name} (${e.employeeCode})`,
@@ -119,8 +121,8 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
           />
         ) : null}
 
-        <TextField label="Full name" value={name} required error={fieldErrors.name} onChange={(event) => setName(event.target.value)} />
-        <TextField label="Email" type="email" value={email} required error={fieldErrors.email} onChange={(event) => setEmail(event.target.value)} />
+        <TextField label={t('settings.invite.fullName')} value={name} required error={fieldErrors.name} onChange={(event) => setName(event.target.value)} />
+        <TextField label={t('settings.invite.email')} type="email" value={email} required error={fieldErrors.email} onChange={(event) => setEmail(event.target.value)} />
       </div>
     </Modal>
   );

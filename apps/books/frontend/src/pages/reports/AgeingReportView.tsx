@@ -1,3 +1,4 @@
+import { useAppContent } from '@/app/AppContentContext';
 import { Card, StatTile } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
@@ -15,6 +16,7 @@ interface AgeingReportViewProps {
 }
 
 export function AgeingReportView({ kind, asOf }: AgeingReportViewProps) {
+  const { t } = useAppContent();
   const { organization } = useAuth();
   const currency = organization?.currency ?? 'INR';
   const { data, loading, error, reload } = useAsync(
@@ -22,22 +24,18 @@ export function AgeingReportView({ kind, asOf }: AgeingReportViewProps) {
     [kind, asOf],
   );
 
-  if (loading) return <LoadingBlock label="Building the ageing report…" />;
+  if (loading) return <LoadingBlock label={t('reports.ageing.loading')} />;
   if (error) return <ErrorBlock message={error} onRetry={reload} />;
   if (!data) return null;
 
   const isReceivables = kind === 'receivables';
-  const contactHeader = isReceivables ? 'Customer' : 'Vendor';
+  const contactHeader = isReceivables ? t('reports.ageing.col.customer') : t('reports.ageing.col.vendor');
 
   if (!data.rows.length) {
     return (
       <EmptyState
-        title={isReceivables ? 'Nothing outstanding from customers' : 'Nothing outstanding to vendors'}
-        description={
-          isReceivables
-            ? 'Every sent invoice has been paid as of this date.'
-            : 'Every open bill has been paid as of this date.'
-        }
+        title={isReceivables ? t('reports.ageing.empty.receivablesTitle') : t('reports.ageing.empty.payablesTitle')}
+        description={isReceivables ? t('reports.ageing.empty.receivablesBody') : t('reports.ageing.empty.payablesBody')}
       />
     );
   }
@@ -58,12 +56,17 @@ export function AgeingReportView({ kind, asOf }: AgeingReportViewProps) {
 
   const columns: Array<Column<AgeingRow>> = [
     { key: 'contact', header: contactHeader, render: (row) => <span className="strong">{row.contactName}</span> },
-    { key: 'current', header: 'Current', align: 'right', render: (row) => money(row.current) },
-    { key: 'd1', header: '1–30 days', align: 'right', render: (row) => money(row.days1To30) },
-    { key: 'd2', header: '31–60 days', align: 'right', render: (row) => money(row.days31To60) },
-    { key: 'd3', header: '61–90 days', align: 'right', render: (row) => money(row.days61To90) },
-    { key: 'd4', header: '> 90 days', align: 'right', render: (row) => <span className={row.daysOver90 > 0 ? 'num text-danger' : 'num'}>{formatCurrency(row.daysOver90, currency)}</span> },
-    { key: 'total', header: 'Total', align: 'right', render: (row) => <span className="num strong">{formatCurrency(row.total, currency)}</span> },
+    { key: 'current', header: t('reports.ageing.col.current'), align: 'right', render: (row) => money(row.current) },
+    { key: 'd1', header: t('reports.ageing.col.days1To30'), align: 'right', render: (row) => money(row.days1To30) },
+    { key: 'd2', header: t('reports.ageing.col.days31To60'), align: 'right', render: (row) => money(row.days31To60) },
+    { key: 'd3', header: t('reports.ageing.col.days61To90'), align: 'right', render: (row) => money(row.days61To90) },
+    {
+      key: 'd4',
+      header: t('reports.ageing.col.daysOver90'),
+      align: 'right',
+      render: (row) => <span className={row.daysOver90 > 0 ? 'num text-danger' : 'num'}>{formatCurrency(row.daysOver90, currency)}</span>,
+    },
+    { key: 'total', header: t('reports.ageing.col.total'), align: 'right', render: (row) => <span className="num strong">{formatCurrency(row.total, currency)}</span> },
   ];
 
   return (
@@ -74,23 +77,23 @@ export function AgeingReportView({ kind, asOf }: AgeingReportViewProps) {
             key={bucket.label}
             label={bucket.label}
             value={formatCurrency(bucket.amount, currency)}
-            sublabel={`${bucket.count} ${bucket.count === 1 ? 'document' : 'documents'}`}
+            sublabel={t(bucket.count === 1 ? 'reports.ageing.bucket.documentCountOne' : 'reports.ageing.bucket.documentCountMany', { count: bucket.count })}
             tone={bucket.label === 'Current' ? 'neutral' : bucket.amount > 0 ? 'negative' : 'neutral'}
           />
         ))}
       </div>
       <Card
-        title={isReceivables ? 'Receivables ageing' : 'Payables ageing'}
-        subtitle={`As of ${formatDate(data.asOf)} · ${formatCurrency(data.total, currency)} outstanding`}
+        title={isReceivables ? t('reports.ageing.receivablesTitle') : t('reports.ageing.payablesTitle')}
+        subtitle={t('reports.ageing.cardSubtitle', { date: formatDate(data.asOf), amount: formatCurrency(data.total, currency) })}
       >
         <DataTable
           columns={columns}
           rows={data.rows}
           rowKey={(row) => row.contactId}
-          caption={isReceivables ? 'Receivables ageing by customer' : 'Payables ageing by vendor'}
+          caption={isReceivables ? t('reports.ageing.receivablesCaption') : t('reports.ageing.payablesCaption')}
           footer={
             <tr>
-              <td>Total</td>
+              <td>{t('reports.ageing.footer.total')}</td>
               <td className="align-right num">{formatCurrency(totals.current, currency)}</td>
               <td className="align-right num">{formatCurrency(totals.days1To30, currency)}</td>
               <td className="align-right num">{formatCurrency(totals.days31To60, currency)}</td>

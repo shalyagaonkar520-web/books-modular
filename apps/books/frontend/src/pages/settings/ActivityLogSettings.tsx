@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { useAppContent } from '@/app/AppContentContext';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
@@ -39,6 +40,7 @@ const ENTITY_TYPES = [
 const ACTION_TONES: Record<string, Tone> = { create: 'success', update: 'info', delete: 'danger' };
 
 export function ActivityLogSettings() {
+  const { t } = useAppContent();
   const [entityType, setEntityType] = useState('');
   const [page, setPage] = useState(1);
 
@@ -48,42 +50,42 @@ export function ActivityLogSettings() {
   );
 
   const columns: Array<Column<AuditLog>> = [
-    { key: 'when', header: 'When', width: '190px', render: (row) => formatDateTime(row.createdAt) },
-    { key: 'user', header: 'User', render: (row) => row.userName ?? <span className="text-muted">System</span> },
+    { key: 'when', header: t('settings.activity.col.when'), width: '190px', render: (row) => formatDateTime(row.createdAt) },
+    { key: 'user', header: t('settings.activity.col.user'), render: (row) => row.userName ?? <span className="text-muted">{t('settings.activity.system')}</span> },
     {
       key: 'action',
-      header: 'Action',
+      header: t('settings.activity.col.action'),
       render: (row) => <Badge tone={ACTION_TONES[row.action] ?? 'neutral'}>{titleCase(row.action)}</Badge>,
     },
-    { key: 'entity', header: 'Entity', render: (row) => titleCase(row.entityType) },
-    { key: 'summary', header: 'Summary', render: (row) => row.summary ?? <span className="text-muted">—</span> },
+    { key: 'entity', header: t('settings.activity.col.entity'), render: (row) => titleCase(row.entityType) },
+    { key: 'summary', header: t('settings.activity.col.summary'), render: (row) => row.summary ?? <span className="text-muted">—</span> },
   ];
 
   return (
-    <Card title="Activity log" subtitle="Every change made in this organization, newest first">
+    <Card title={t('settings.activity.title')} subtitle={t('settings.activity.subtitle')}>
       <Toolbar>
         <FilterSelect
-          label="Entity type"
+          label={t('settings.activity.entityType')}
           value={entityType}
           onChange={(next) => {
             setEntityType(next);
             setPage(1);
           }}
-          options={[{ value: '', label: 'All entity types' }, ...ENTITY_TYPES.map((value) => ({ value, label: titleCase(value) }))]}
+          options={[{ value: '', label: t('settings.activity.allEntityTypes') }, ...ENTITY_TYPES.map((value) => ({ value, label: titleCase(value) }))]}
         />
       </Toolbar>
 
-      {loading ? <LoadingBlock label="Loading activity…" /> : null}
+      {loading ? <LoadingBlock label={t('settings.activity.loading')} /> : null}
       {!loading && error ? <ErrorBlock message={error} onRetry={reload} /> : null}
       {!loading && !error && data && data.items.length === 0 ? (
         <EmptyState
-          title="Nothing logged yet"
-          description={entityType ? 'No activity recorded for this entity type.' : 'Activity appears here as your team records transactions.'}
+          title={t('settings.activity.empty.title')}
+          description={entityType ? t('settings.activity.empty.filtered') : t('settings.activity.empty.description')}
         />
       ) : null}
       {!loading && !error && data && data.items.length > 0 ? (
         <>
-          <DataTable columns={columns} rows={data.items} rowKey={(row) => row.id} caption="Audit log entries" />
+          <DataTable columns={columns} rows={data.items} rowKey={(row) => row.id} caption={t('settings.activity.caption')} />
           <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPageChange={setPage} />
         </>
       ) : null}

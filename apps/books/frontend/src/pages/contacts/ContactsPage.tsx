@@ -23,27 +23,25 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchInput, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
 import { formatCurrency, formatDateTime, formatNumber } from '@/utils/format';
-import { GST_TREATMENTS, type Tone } from '@/utils/status';
+import { gstTreatmentLabel, type Tone, type Translate } from '@/utils/status';
 
 const PAGE_SIZE = 25;
 
 
-function gstLabel(treatment: GstTreatment): string {
-  return GST_TREATMENTS.find((option) => option.value === treatment)?.label ?? treatment;
+function gstLabel(treatment: GstTreatment, t: Translate): string {
+  return gstTreatmentLabel(treatment, t);
 }
 
 interface Copy {
-  plural: string;
-  singular: string;
-  documentsLabel: string;
+  /** Text-catalog group whose kind-specific strings this page shows. */
+  group: 'customers' | 'vendors';
   documentsPath: string;
-  invoicedLabel: string;
 }
 
 function copyFor(type: ContactType): Copy {
   return type === 'customer'
-    ? { plural: 'Customers', singular: 'customer', documentsLabel: 'invoices', documentsPath: '/invoices?customer=', invoicedLabel: 'Total invoiced' }
-    : { plural: 'Vendors', singular: 'vendor', documentsLabel: 'bills', documentsPath: '/bills?vendor=', invoicedLabel: 'Total billed' };
+    ? { group: 'customers', documentsPath: '/invoices?customer=' }
+    : { group: 'vendors', documentsPath: '/bills?vendor=' };
 }
 
 function balanceTone(amount: number): string {
@@ -164,7 +162,7 @@ export function ContactsPage({ type }: { type: ContactType }) {
       setSelectAllPages(false);
       list.reload();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : `Failed to delete ${copy.plural.toLowerCase()}`;
+      const msg = err instanceof Error ? err.message : t(`${textGroup}.list.deleteFailed`);
       toast.error(msg);
     } finally {
       setBulkDeleting(false);
@@ -174,21 +172,21 @@ export function ContactsPage({ type }: { type: ContactType }) {
   const columns: Array<Column<Contact>> = [
     {
       key: 'displayName',
-      header: 'Name',
+      header: t('customers.col.name'),
       render: (contact) => {
         const maskedName = formatVendorMaskedName(contact.displayName, type === 'vendor');
         return (
           <div className="cell-stack">
             <span className="strong" title={contact.displayName}>{maskedName}</span>
             {contact.companyName ? <small className="text-muted">{contact.companyName}</small> : null}
-            {contact.isActive ? null : <small><Badge tone="neutral">Inactive</Badge></small>}
+            {contact.isActive ? null : <small><Badge tone="neutral">{t('customers.status.inactive')}</Badge></small>}
           </div>
         );
       },
     },
     {
       key: 'contactPerson',
-      header: 'Contact person name',
+      header: t('customers.col.contactPerson'),
       render: (contact) => {
         if (!contact.contactPerson) return <span className="text-muted">—</span>;
         const maskedPerson = formatVendorMaskedName(contact.contactPerson, type === 'vendor');
@@ -197,20 +195,20 @@ export function ContactsPage({ type }: { type: ContactType }) {
     },
     {
       key: 'email',
-      header: 'Email',
+      header: t('customers.col.email'),
       render: (contact) => (contact.email ? <a href={`mailto:${contact.email}`} onClick={(event) => event.stopPropagation()}>{contact.email}</a> : <span className="text-muted">—</span>),
     },
     {
       key: 'mailing',
-      header: 'Mailing / Gmail',
+      header: t('customers.col.mailing'),
       render: (contact) => (
         contact.email ? (
           <div className="row-actions" onClick={(event) => event.stopPropagation()} style={{ justifyContent: 'flex-start' }}>
             <button
               type="button"
               className="action-btn"
-              title={`Send Gmail to ${contact.displayName}`}
-              aria-label={`Send Gmail to ${contact.displayName}`}
+              title={t('customers.action.sendGmail', { name: contact.displayName })}
+              aria-label={t('customers.action.sendGmail', { name: contact.displayName })}
               onClick={() => setEmailContact(contact)}
               style={{ color: '#ea4335' }}
             >
@@ -222,34 +220,34 @@ export function ContactsPage({ type }: { type: ContactType }) {
         )
       ),
     },
-    { key: 'phone', header: 'Phone', render: (contact) => contact.phone || <span className="text-muted">—</span> },
-    { key: 'gstin', header: 'GSTIN', render: (contact) => (contact.gstin ? <span className="code-tag">{contact.gstin}</span> : <span className="text-muted">—</span>) },
-    { key: 'paymentTermsDays', header: 'Terms', align: 'right', render: (contact) => <span className="text-muted small">{`${formatNumber(contact.paymentTermsDays, 0)} days`}</span> },
+    { key: 'phone', header: t('customers.col.phone'), render: (contact) => contact.phone || <span className="text-muted">—</span> },
+    { key: 'gstin', header: t('customers.col.gstin'), render: (contact) => (contact.gstin ? <span className="code-tag">{contact.gstin}</span> : <span className="text-muted">—</span>) },
+    { key: 'paymentTermsDays', header: t('customers.col.terms'), align: 'right', render: (contact) => <span className="text-muted small">{t('customers.col.termsDays', { days: formatNumber(contact.paymentTermsDays, 0) })}</span> },
     {
       key: 'outstandingBalance',
-      header: 'Outstanding',
+      header: t('customers.col.outstanding'),
       align: 'right',
       render: (contact) => <span className={balanceTone(contact.outstandingBalance)}>{formatCurrency(contact.outstandingBalance)}</span>,
     },
     {
       key: 'actions',
-      header: 'Actions',
+      header: t('customers.col.actions'),
       align: 'right',
       render: (contact) => (
         <div className="row-actions" onClick={(event) => event.stopPropagation()}>
-          <Link className="action-btn" to={`${copy.documentsPath}${contact.id}`} aria-label={`View ${copy.documentsLabel} for ${contact.displayName}`}>
+          <Link className="action-btn" to={`${copy.documentsPath}${contact.id}`} aria-label={t(`${textGroup}.action.viewDocuments`, { name: contact.displayName })}>
             <FileText size={15} />
           </Link>
           <IfCanWrite>
             <button
               type="button"
               className="action-btn"
-              aria-label={`Edit ${contact.displayName}`}
+              aria-label={t('customers.action.edit', { name: contact.displayName })}
               onClick={() => navigate(`${basePath}/${contact.id}/edit`)}
             >
               <Pencil size={15} />
             </button>
-            <button type="button" className="action-btn is-danger" aria-label={`Delete ${contact.displayName}`} onClick={() => setDeleteTarget(contact)}>
+            <button type="button" className="action-btn is-danger" aria-label={t('customers.action.delete', { name: contact.displayName })} onClick={() => setDeleteTarget(contact)}>
               <Trash2 size={15} />
             </button>
           </IfCanWrite>
@@ -302,14 +300,14 @@ export function ContactsPage({ type }: { type: ContactType }) {
 
       {list.data ? (
         <div className="stat-grid">
-          <StatTile label={copy.plural} value={formatNumber(list.data.total, 0)} sublabel={includeInactive ? 'Including inactive' : 'Active only'} icon={<Users size={16} />} />
+          <StatTile label={t(`${textGroup}.stat.count`)} value={formatNumber(list.data.total, 0)} sublabel={includeInactive ? t('customers.stat.includingInactive') : t('customers.stat.activeOnly')} icon={<Users size={16} />} />
           <StatTile
-            label="Outstanding on this page"
+            label={t('customers.stat.outstandingPage')}
             value={formatCurrency(outstandingTotal)}
-            sublabel={type === 'customer' ? 'Receivable from these customers' : 'Payable to these vendors'}
+            sublabel={t(`${textGroup}.stat.outstandingSub`)}
             tone={outstandingTotal > 0 ? 'warning' : 'neutral'}
           />
-          <StatTile label="With a balance" value={formatNumber(withBalance, 0)} sublabel={`of ${formatNumber(rows.length, 0)} shown`} />
+          <StatTile label={t('customers.stat.withBalance')} value={formatNumber(withBalance, 0)} sublabel={t('customers.stat.withBalanceSub', { count: formatNumber(rows.length, 0) })} />
         </div>
       ) : null}
 
@@ -320,11 +318,11 @@ export function ContactsPage({ type }: { type: ContactType }) {
             setSearch(value);
             setPage(1);
           }}
-          placeholder={`Search ${copy.plural.toLowerCase()}…`}
-          label={`Search ${copy.plural.toLowerCase()}`}
+          placeholder={t(`${textGroup}.search.placeholder`)}
+          label={t(`${textGroup}.search.label`)}
         />
         <CheckboxField
-          label="Include inactive"
+          label={t('customers.filter.includeInactive')}
           checked={includeInactive}
           onChange={(event) => {
             setIncludeInactive(event.target.checked);
@@ -375,10 +373,10 @@ export function ContactsPage({ type }: { type: ContactType }) {
                   }}
                 >
                   {selectAllPages
-                    ? 'Clear All Selection'
+                    ? t('customers.bulk.clearAll')
                     : selectedIds.size === rows.length && rows.length > 0
-                    ? 'Deselect Page'
-                    : `Select All on Page (${rows.length})`}
+                    ? t('customers.bulk.deselectPage')
+                    : t('customers.bulk.selectAllOnPage', { count: rows.length })}
                 </Button>
 
                 {(list.data?.total ?? 0) > rows.length && (
@@ -396,17 +394,17 @@ export function ContactsPage({ type }: { type: ContactType }) {
                     }}
                   >
                     {selectAllPages
-                      ? `✓ All ${list.data?.total} Across All Pages Selected`
-                      : `Select All ${list.data?.total} Across All Pages`}
+                      ? t('customers.bulk.allPagesSelected', { count: list.data?.total ?? 0 })
+                      : t('customers.bulk.selectAllPages', { count: list.data?.total ?? 0 })}
                   </Button>
                 )}
 
                 {selectAllPages ? (
                   <span className="small font-medium" style={{ color: 'var(--primary)' }}>
-                    All {list.data?.total} {copy.plural.toLowerCase()} selected across all pages
+                    {t(`${textGroup}.bulk.allSelected`, { count: list.data?.total ?? 0 })}
                   </span>
                 ) : selectedIds.size > 0 ? (
-                  <span className="small text-muted">{selectedIds.size} selected on this page</span>
+                  <span className="small text-muted">{t('customers.bulk.selectedOnPage', { count: selectedIds.size })}</span>
                 ) : null}
               </div>
 
@@ -419,9 +417,9 @@ export function ContactsPage({ type }: { type: ContactType }) {
                     onClick={() => setBulkDeleteConfirm({ allPages: true })}
                     icon={<Trash2 size={13} />}
                     style={{ color: 'var(--color-danger, #dc2626)' }}
-                    title={`Delete all ${list.data?.total} ${copy.plural.toLowerCase()} across all pages at once`}
+                    title={t(`${textGroup}.bulk.deleteAllTitle`, { count: list.data?.total ?? 0 })}
                   >
-                    Delete All {copy.plural} ({list.data?.total} total)
+                    {t(`${textGroup}.bulk.deleteAll`, { count: list.data?.total ?? 0 })}
                   </Button>
                 )}
 
@@ -434,8 +432,8 @@ export function ContactsPage({ type }: { type: ContactType }) {
                     icon={<Trash2 size={13} />}
                   >
                     {selectAllPages
-                      ? `Delete All ${list.data?.total} ${copy.plural} (All Pages)`
-                      : `Delete Selected (${selectedIds.size})`}
+                      ? t(`${textGroup}.bulk.deleteAllPages`, { count: list.data?.total ?? 0 })
+                      : t('customers.bulk.deleteSelected', { count: selectedIds.size })}
                   </Button>
                 ) : null}
               </div>
@@ -445,7 +443,7 @@ export function ContactsPage({ type }: { type: ContactType }) {
               rows={rows}
               rowKey={(contact) => contact.id}
               onRowClick={(contact) => setDetailsId(contact.id)}
-              caption={`${copy.plural} list`}
+              caption={t(`${textGroup}.table.caption`)}
               selectedKeys={selectedIds}
               onSelectRow={(id) => {
                 const next = new Set(selectedIds);
@@ -493,16 +491,16 @@ export function ContactsPage({ type }: { type: ContactType }) {
 
       <ConfirmDialog
         open={!!deleteTarget}
-        title={`Delete ${copy.singular}`}
+        title={t(`${textGroup}.delete.title`)}
         message={
           <>
             <FormError message={deleteSubmit.error} />
             {deleteTarget
-              ? `Delete “${formatVendorMaskedName(deleteTarget.displayName, type === 'vendor')}”? If this ${copy.singular} has ${copy.documentsLabel} they will be deactivated instead of deleted.`
+              ? t(`${textGroup}.delete.body`, { name: formatVendorMaskedName(deleteTarget.displayName, type === 'vendor') })
               : ''}
           </>
         }
-        confirmLabel={`Delete ${copy.singular}`}
+        confirmLabel={t(`${textGroup}.delete.confirm`)}
         busy={deleteSubmit.submitting}
         onConfirm={confirmDelete}
         onCancel={() => {
@@ -513,15 +511,15 @@ export function ContactsPage({ type }: { type: ContactType }) {
 
       <ConfirmDialog
         open={!!bulkDeleteConfirm}
-        title={`Delete ${copy.plural.toLowerCase()}`}
+        title={t(`${textGroup}.bulkDelete.title`)}
         message={
           <p>
             {bulkDeleteConfirm?.allPages || selectAllPages
-              ? `All ${list.data?.total ?? 0} ${copy.plural.toLowerCase()} across all pages will be deleted. ${copy.singular}s with existing transactions will be safely marked inactive instead.`
-              : `${selectedIds.size} selected ${copy.plural.toLowerCase()} will be deleted. Any with existing transactions will be safely marked inactive instead.`}
+              ? t(`${textGroup}.bulkDelete.allBody`, { count: list.data?.total ?? 0 })
+              : t(`${textGroup}.bulkDelete.selectedBody`, { count: selectedIds.size })}
           </p>
         }
-        confirmLabel="Delete"
+        confirmLabel={t('customers.bulkDelete.confirm')}
         busy={bulkDeleting}
         onCancel={() => setBulkDeleteConfirm(null)}
         onConfirm={() => {
@@ -553,6 +551,8 @@ interface ContactDetailsModalProps {
 }
 
 function ContactDetailsModal({ contactId, copy, onClose, onEdit, onSendEmail }: ContactDetailsModalProps) {
+  const { t } = useAppContent();
+  const g = copy.group;
   const summary = useAsync(() => contactsApi.summary(contactId), [contactId]);
   const contact = summary.data?.contact ?? null;
   const dash = <span className="text-muted">—</span>;
@@ -563,13 +563,13 @@ function ContactDetailsModal({ contactId, copy, onClose, onEdit, onSendEmail }: 
     <Modal
       open
       size="lg"
-      title={contact ? formatVendorMaskedName(contact.displayName, contact.type === 'vendor') : copy.plural}
+      title={contact ? formatVendorMaskedName(contact.displayName, contact.type === 'vendor') : t(`${g}.details.fallbackTitle`)}
       subtitle={contact?.companyName ?? undefined}
       onClose={onClose}
       footer={
         <>
           <Link className="btn btn-secondary btn-md" to={`${copy.documentsPath}${contactId}`}>
-            <span>View {copy.documentsLabel}</span>
+            <span>{t(`${g}.details.viewDocuments`)}</span>
           </Link>
           {contact && contact.email && onSendEmail ? (
             <Button
@@ -577,13 +577,13 @@ function ContactDetailsModal({ contactId, copy, onClose, onEdit, onSendEmail }: 
               icon={<Mail size={15} style={{ color: '#ea4335' }} />}
               onClick={() => onSendEmail(contact)}
             >
-              Send Gmail
+              {t('customers.details.sendGmail')}
             </Button>
           ) : null}
           {contact ? (
             <IfCanWrite>
               <Button variant="primary" icon={<Pencil size={15} />} onClick={() => onEdit(contact)}>
-                Edit {copy.singular}
+                {t(`${g}.details.edit`)}
               </Button>
             </IfCanWrite>
           ) : null}
@@ -593,22 +593,22 @@ function ContactDetailsModal({ contactId, copy, onClose, onEdit, onSendEmail }: 
       {summary.loading ? (
         <SkeletonRows rows={4} columns={3} />
       ) : summary.error || !summary.data || !contact ? (
-        <ErrorBlock message={summary.error ?? 'This contact could not be loaded.'} onRetry={summary.reload} />
+        <ErrorBlock message={summary.error ?? t('customers.details.loadError')} onRetry={summary.reload} />
       ) : (
         <>
           <div className="stat-grid">
-            <StatTile label={copy.invoicedLabel} value={formatCurrency(summary.data.totalInvoiced)} sublabel={`${formatNumber(summary.data.documentCount, 0)} ${copy.documentsLabel}`} />
-            <StatTile label="Total paid" value={formatCurrency(summary.data.totalPaid)} tone="positive" />
-            <StatTile label="Outstanding" value={formatCurrency(summary.data.outstanding)} tone={summary.data.outstanding > 0 ? 'warning' : 'neutral'} />
-            <StatTile label="Overdue" value={formatCurrency(summary.data.overdue)} tone={summary.data.overdue > 0 ? 'negative' : 'neutral'} />
+            <StatTile label={t(`${g}.details.totalInvoiced`)} value={formatCurrency(summary.data.totalInvoiced)} sublabel={t(`${g}.details.documentCount`, { count: formatNumber(summary.data.documentCount, 0) })} />
+            <StatTile label={t('customers.details.totalPaid')} value={formatCurrency(summary.data.totalPaid)} tone="positive" />
+            <StatTile label={t('customers.details.outstanding')} value={formatCurrency(summary.data.outstanding)} tone={summary.data.outstanding > 0 ? 'warning' : 'neutral'} />
+            <StatTile label={t('customers.details.overdue')} value={formatCurrency(summary.data.overdue)} tone={summary.data.overdue > 0 ? 'negative' : 'neutral'} />
           </div>
 
           <div className="detail-grid">
-            <Detail label="Status" value={<Badge tone={contact.isActive ? 'success' : 'neutral'}>{contact.isActive ? 'Active' : 'Inactive'}</Badge>} />
-            <Detail label="Overdue" value={<Badge tone={overdueTone}>{formatCurrency(summary.data.overdue)}</Badge>} />
-            <Detail label="Contact person name" value={contact.contactPerson ? formatVendorMaskedName(contact.contactPerson, contact.type === 'vendor') : dash} />
+            <Detail label={t('customers.details.status')} value={<Badge tone={contact.isActive ? 'success' : 'neutral'}>{contact.isActive ? t('customers.status.active') : t('customers.status.inactive')}</Badge>} />
+            <Detail label={t('customers.details.overdue')} value={<Badge tone={overdueTone}>{formatCurrency(summary.data.overdue)}</Badge>} />
+            <Detail label={t('customers.details.contactPerson')} value={contact.contactPerson ? formatVendorMaskedName(contact.contactPerson, contact.type === 'vendor') : dash} />
             <Detail
-              label="Email"
+              label={t('customers.details.email')}
               value={
                 contact.email ? (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
@@ -621,7 +621,7 @@ function ContactDetailsModal({ contactId, copy, onClose, onEdit, onSendEmail }: 
                         onClick={() => onSendEmail(contact)}
                       >
                         <Mail size={12} style={{ color: '#ea4335' }} />
-                        <span>Send Gmail</span>
+                        <span>{t('customers.details.sendGmail')}</span>
                       </button>
                     ) : null}
                   </span>
@@ -630,21 +630,21 @@ function ContactDetailsModal({ contactId, copy, onClose, onEdit, onSendEmail }: 
                 )
               }
             />
-            <Detail label="Phone" value={contact.phone || dash} />
-            <Detail label="GSTIN" value={contact.gstin ? <span className="code-tag">{contact.gstin}</span> : dash} />
-            <Detail label="PAN" value={contact.pan ? <span className="code-tag">{contact.pan}</span> : dash} />
-            <Detail label="GST treatment" value={gstLabel(contact.gstTreatment)} />
-            <Detail label="Payment terms" value={`${formatNumber(contact.paymentTermsDays, 0)} days`} />
-            <Detail label="Billing address" value={contact.billingAddress || dash} />
-            <Detail label="Shipping address" value={contact.shippingAddress || dash} />
-            <Detail label="Notes" value={contact.notes || dash} />
-            <Detail label="Created" value={formatDateTime(contact.createdAt)} />
-            <Detail label="Last updated" value={formatDateTime(contact.updatedAt)} />
+            <Detail label={t('customers.details.phone')} value={contact.phone || dash} />
+            <Detail label={t('customers.details.gstin')} value={contact.gstin ? <span className="code-tag">{contact.gstin}</span> : dash} />
+            <Detail label={t('customers.details.pan')} value={contact.pan ? <span className="code-tag">{contact.pan}</span> : dash} />
+            <Detail label={t('customers.details.gstTreatment')} value={gstLabel(contact.gstTreatment, t)} />
+            <Detail label={t('customers.details.paymentTerms')} value={t('customers.details.paymentTermsDays', { days: formatNumber(contact.paymentTermsDays, 0) })} />
+            <Detail label={t('customers.details.billingAddress')} value={contact.billingAddress || dash} />
+            <Detail label={t('customers.details.shippingAddress')} value={contact.shippingAddress || dash} />
+            <Detail label={t('customers.details.notes')} value={contact.notes || dash} />
+            <Detail label={t('customers.details.created')} value={formatDateTime(contact.createdAt)} />
+            <Detail label={t('customers.details.lastUpdated')} value={formatDateTime(contact.updatedAt)} />
           </div>
 
           <p className="small text-muted">
             <Link className="text-primary" to={`${copy.documentsPath}${contact.id}`}>
-              Open all {copy.documentsLabel} for {formatVendorMaskedName(contact.displayName, contact.type === 'vendor')}
+              {t(`${g}.details.openAll`, { name: formatVendorMaskedName(contact.displayName, contact.type === 'vendor') })}
             </Link>
           </p>
         </>
@@ -660,10 +660,9 @@ interface SendContactEmailModalProps {
 }
 
 function SendContactEmailModal({ contact, onClose, onSent }: SendContactEmailModalProps) {
-  const [subject, setSubject] = useState(`Communication from Rooman Technologies - ${contact.displayName}`);
-  const [message, setMessage] = useState(
-    `Dear ${contact.contactPerson || contact.displayName},\n\nWe are reaching out to you from Rooman Technologies regarding your account. Please feel free to get in touch if you have any questions.\n\nWarm regards,\nAccounts & Client Relations\nRooman Technologies Pvt Ltd`
-  );
+  const { t } = useAppContent();
+  const [subject, setSubject] = useState(() => t('customers.email.defaultSubject', { name: contact.displayName }));
+  const [message, setMessage] = useState(() => t('customers.email.defaultBody', { name: contact.contactPerson || contact.displayName }));
   const { submitting, error, run } = useSubmit();
 
   async function handleSend() {
@@ -676,7 +675,7 @@ function SendContactEmailModal({ contact, onClose, onSent }: SendContactEmailMod
       })
     );
     if (result) {
-      onSent(`Email sent to ${contact.email} successfully via Gmail`);
+      onSent(t('customers.email.sent', { email: contact.email }));
     }
   }
 
@@ -684,13 +683,13 @@ function SendContactEmailModal({ contact, onClose, onSent }: SendContactEmailMod
     <Modal
       open
       size="md"
-      title="Send Email via Gmail"
-      subtitle={`To: ${contact.displayName} (${contact.email})`}
+      title={t('customers.email.title')}
+      subtitle={t('customers.email.subtitle', { name: contact.displayName, email: contact.email ?? '' })}
       onClose={onClose}
       footer={
         <>
           <Button onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('customers.email.cancel')}
           </Button>
           <Button
             variant="primary"
@@ -698,7 +697,7 @@ function SendContactEmailModal({ contact, onClose, onSent }: SendContactEmailMod
             icon={<Mail size={15} />}
             onClick={handleSend}
           >
-            Send via Gmail
+            {t('customers.email.send')}
           </Button>
         </>
       }
@@ -706,19 +705,19 @@ function SendContactEmailModal({ contact, onClose, onSent }: SendContactEmailMod
       <FormError message={error} />
       <div className="form-grid">
         <TextField
-          label="To Email"
+          label={t('customers.email.to')}
           value={contact.email ?? ''}
           disabled
         />
         <TextField
-          label="Subject"
+          label={t('customers.email.subject')}
           required
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
         />
       </div>
       <TextAreaField
-        label="Email Message"
+        label={t('customers.email.message')}
         rows={6}
         required
         value={message}

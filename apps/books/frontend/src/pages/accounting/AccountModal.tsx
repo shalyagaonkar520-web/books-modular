@@ -2,18 +2,20 @@ import { useEffect, useId, useState, type FormEvent } from 'react';
 
 import { accountingApi } from '@/api/endpoints';
 import type { Account, AccountType } from '@/api/types';
+import { useAppContent } from '@/app/AppContentContext';
 import { Button } from '@/components/ui/Button';
 import { CheckboxField, SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { FormError } from '@/components/ui/Feedback';
 import { Modal } from '@/components/ui/Modal';
 import { useSubmit } from '@/hooks/useSubmit';
 
+/** Account-type options; `label` is a content key, resolve it with `t()` at render. */
 export const ACCOUNT_TYPE_OPTIONS = [
-  { value: 'asset', label: 'Asset' },
-  { value: 'liability', label: 'Liability' },
-  { value: 'equity', label: 'Equity' },
-  { value: 'income', label: 'Income' },
-  { value: 'expense', label: 'Expense' },
+  { value: 'asset', label: 'accounting.accountType.asset' },
+  { value: 'liability', label: 'accounting.accountType.liability' },
+  { value: 'equity', label: 'accounting.accountType.equity' },
+  { value: 'income', label: 'accounting.accountType.income' },
+  { value: 'expense', label: 'accounting.accountType.expense' },
 ];
 
 interface FormState {
@@ -36,6 +38,7 @@ interface AccountModalProps {
 }
 
 export function AccountModal({ open, account, onClose, onSaved }: AccountModalProps) {
+  const { t } = useAppContent();
   const formId = useId();
   const { submitting, error, fieldErrors, run, reset } = useSubmit();
   const [form, setForm] = useState<FormState>(BLANK);
@@ -77,22 +80,22 @@ export function AccountModal({ open, account, onClose, onSaved }: AccountModalPr
             description: form.description.trim() || null,
           }),
     );
-    if (saved) onSaved(account ? 'Account updated.' : 'Account created.');
+    if (saved) onSaved(account ? t('accounting.accountModal.toast.updated') : t('accounting.accountModal.toast.created'));
   };
 
   return (
     <Modal
       open={open}
-      title={account ? 'Edit account' : 'New account'}
-      subtitle={account ? `${account.code} · ${account.name}` : 'Add a ledger account to your chart of accounts.'}
+      title={account ? t('accounting.accountModal.editTitle') : t('accounting.accountModal.newTitle')}
+      subtitle={account ? `${account.code} · ${account.name}` : t('accounting.accountModal.newSubtitle')}
       onClose={onClose}
       footer={
         <>
           <Button onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('accounting.accountModal.cancel')}
           </Button>
           <Button variant="primary" type="submit" form={formId} loading={submitting}>
-            {account ? 'Save changes' : 'Create account'}
+            {account ? t('accounting.accountModal.saveChanges') : t('accounting.accountModal.create')}
           </Button>
         </>
       }
@@ -102,38 +105,38 @@ export function AccountModal({ open, account, onClose, onSaved }: AccountModalPr
         <div className="form-grid">
           {account ? null : (
             <TextField
-              label="Code"
+              label={t('accounting.accountModal.code')}
               required
               value={form.code}
               error={fieldErrors.code}
-              hint="Must be unique in your chart of accounts."
+              hint={t('accounting.accountModal.codeHint')}
               onChange={(event) => set('code', event.target.value)}
             />
           )}
-          <TextField label="Name" required value={form.name} error={fieldErrors.name} onChange={(event) => set('name', event.target.value)} />
+          <TextField label={t('accounting.accountModal.name')} required value={form.name} error={fieldErrors.name} onChange={(event) => set('name', event.target.value)} />
           {account ? null : (
             <SelectField
-              label="Type"
+              label={t('accounting.accountModal.type')}
               required
-              options={ACCOUNT_TYPE_OPTIONS}
+              options={ACCOUNT_TYPE_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
               value={form.type}
               error={fieldErrors.type}
               onChange={(event) => set('type', event.target.value as AccountType)}
             />
           )}
-          <TextField label="Subtype" value={form.subtype} error={fieldErrors.subtype} onChange={(event) => set('subtype', event.target.value)} />
+          <TextField label={t('accounting.accountModal.subtype')} value={form.subtype} error={fieldErrors.subtype} onChange={(event) => set('subtype', event.target.value)} />
         </div>
         <TextAreaField
-          label="Description"
+          label={t('accounting.accountModal.description')}
           rows={2}
           value={form.description}
           error={fieldErrors.description}
           onChange={(event) => set('description', event.target.value)}
         />
         {account && !account.isSystem ? (
-          <CheckboxField label="Active" checked={form.isActive} onChange={(event) => set('isActive', event.target.checked)} />
+          <CheckboxField label={t('accounting.accountModal.active')} checked={form.isActive} onChange={(event) => set('isActive', event.target.checked)} />
         ) : null}
-        {account?.isSystem ? <p className="small text-muted">This is a system account, so it cannot be deactivated or deleted.</p> : null}
+        {account?.isSystem ? <p className="small text-muted">{t('accounting.accountModal.systemNote')}</p> : null}
       </form>
     </Modal>
   );

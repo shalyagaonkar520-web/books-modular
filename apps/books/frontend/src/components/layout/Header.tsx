@@ -149,7 +149,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   return (
     <header className="app-header" ref={headerRef}>
       <div className="header-left">
-        <button type="button" className="icon-btn menu-btn" onClick={onToggleSidebar} aria-label="Toggle navigation">
+        <button type="button" className="icon-btn menu-btn" onClick={onToggleSidebar} aria-label={t('header.toggleNavigation')}>
           <Menu size={19} />
         </button>
         <Link to="/" className="brand">
@@ -204,7 +204,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
             type="button"
             className="icon-btn"
             onClick={() => setOpenMenu(openMenu === 'bell' ? 'none' : 'bell')}
-            aria-label={`Notifications (${notifications.length})`}
+            aria-label={t('header.notifications.aria', { count: notifications.length })}
             aria-expanded={openMenu === 'bell'}
           >
             <Bell size={18} />
@@ -248,7 +248,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
                     <button
                       type="button"
                       className="notification-dismiss"
-                      aria-label={`Dismiss: ${item.title}`}
+                      aria-label={t('header.notifications.dismiss', { title: item.title })}
                       onClick={() => dismissNotification(item.id)}
                     >
                       <X size={14} />
@@ -298,7 +298,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
                 </div>
                 <button
                   type="button"
-                  aria-label="Close"
+                  aria-label={t('header.profile.close')}
                   onClick={() => setOpenMenu('none')}
                   style={{
                     position: 'absolute',
@@ -316,7 +316,10 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
               </div>
 
               <div className="zoho-dropdown-meta">
-                User ID: {user?.id ? user.id.slice(0, 11) : '—'} • Org ID: {organization?.id ? organization.id.slice(0, 11) : 'Main'}
+                {t('header.profile.ids', {
+                  userId: user?.id ? user.id.slice(0, 11) : '—',
+                  orgId: organization?.id ? organization.id.slice(0, 11) : t('header.profile.orgIdFallback'),
+                })}
               </div>
 
               <div className="zoho-dropdown-nav">
@@ -361,7 +364,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
                     background: '#059669',
                   }}
                 />
-                <span>Active Books • {organization?.name ?? branding.appName}</span>
+                <span>{t('header.profile.activeBooks', { org: organization?.name ?? branding.appName })}</span>
               </div>
 
               <div style={{ padding: '10px 16px', background: '#f8fafc' }}>
@@ -385,7 +388,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
                     navigate('/profile');
                   }}
                 >
-                  <span>Accessibility & Theme</span>
+                  <span>{t('header.profile.accessibility')}</span>
                   <ChevronDown size={13} style={{ transform: 'rotate(-90deg)' }} />
                 </button>
               </div>

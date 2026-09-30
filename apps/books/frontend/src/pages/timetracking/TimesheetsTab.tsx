@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 
 import { projectsApi } from '@/api/endpoints';
 import type { Project, TimeEntry } from '@/api/types';
+import { useAppContent } from '@/app/AppContentContext';
 import { IfCanWrite } from '@/auth/RouteGuards';
 import { useAuth } from '@/auth/AuthContext';
 import { Badge } from '@/components/ui/Badge';
@@ -33,6 +34,7 @@ function currentWeek(): { start: string; end: string } {
 }
 
 export function TimesheetsTab({ projects, onEntriesChanged }: { projects: Project[]; onEntriesChanged: () => void }) {
+  const { t } = useAppContent();
   const { canWrite, user: currentUser, isAdmin } = useAuth();
   const toast = useToast();
   const week = currentWeek();
@@ -89,10 +91,10 @@ export function TimesheetsTab({ projects, onEntriesChanged }: { projects: Projec
   const rows = entries.data?.items ?? [];
 
   const columns: Array<Column<TimeEntry>> = [
-    { key: 'date', header: 'Date', render: (entry) => formatDate(entry.date) },
+    { key: 'date', header: t('timeTracking.timesheets.col.date'), render: (entry) => formatDate(entry.date) },
     {
       key: 'project',
-      header: 'Project',
+      header: t('timeTracking.timesheets.col.project'),
       render: (entry) => (
         <div className="cell-stack">
           <span>{entry.projectName}</span>
@@ -100,24 +102,24 @@ export function TimesheetsTab({ projects, onEntriesChanged }: { projects: Projec
         </div>
       ),
     },
-    { key: 'user', header: 'Logged by', render: (entry) => entry.userName },
-    { key: 'hours', header: 'Hours', align: 'right', render: (entry) => <span className="num">{formatNumber(entry.hours)}</span> },
-    { key: 'description', header: 'Description', render: (entry) => <span className="text-muted">{entry.description ?? '—'}</span> },
+    { key: 'user', header: t('timeTracking.timesheets.col.loggedBy'), render: (entry) => entry.userName },
+    { key: 'hours', header: t('timeTracking.timesheets.col.hours'), align: 'right', render: (entry) => <span className="num">{formatNumber(entry.hours)}</span> },
+    { key: 'description', header: t('timeTracking.timesheets.col.description'), render: (entry) => <span className="text-muted">{entry.description ?? '—'}</span> },
     {
       key: 'billable',
-      header: 'Billable',
-      render: (entry) => <Badge tone={entry.isBillable ? 'success' : 'neutral'}>{entry.isBillable ? 'Billable' : 'Non-billable'}</Badge>,
+      header: t('timeTracking.timesheets.col.billable'),
+      render: (entry) => <Badge tone={entry.isBillable ? 'success' : 'neutral'}>{entry.isBillable ? t('timeTracking.timesheets.badge.billable') : t('timeTracking.timesheets.badge.nonBillable')}</Badge>,
     },
     {
       key: 'invoiced',
-      header: 'Invoiced',
+      header: t('timeTracking.timesheets.col.invoiced'),
       render: (entry) =>
         entry.invoiceId ? (
           <Link className="btn btn-link btn-sm" to={`/invoices/${entry.invoiceId}`}>
-            <span>View invoice</span>
+            <span>{t('timeTracking.timesheets.viewInvoice')}</span>
           </Link>
         ) : (
-          <Badge tone="warning">Unbilled</Badge>
+          <Badge tone="warning">{t('timeTracking.timesheets.badge.unbilled')}</Badge>
         ),
     },
     ...(canWrite
@@ -132,11 +134,11 @@ export function TimesheetsTab({ projects, onEntriesChanged }: { projects: Projec
               // are an admin, so don't offer the buttons on other people's rows.
               if (!isAdmin && entry.userId !== currentUser?.id) return null;
               return (
-                <div className="row-actions" title={entry.invoiceId ? 'Invoiced time entries cannot be edited or deleted' : undefined}>
+                <div className="row-actions" title={entry.invoiceId ? t('timeTracking.timesheets.invoicedLocked') : undefined}>
                   <button
                     type="button"
                     className="action-btn"
-                    aria-label={`Edit time entry from ${formatDate(entry.date)}`}
+                    aria-label={t('timeTracking.timesheets.editAria', { date: formatDate(entry.date) })}
                     disabled={!!entry.invoiceId}
                     onClick={() => setModal({ open: true, entry })}
                   >
@@ -145,7 +147,7 @@ export function TimesheetsTab({ projects, onEntriesChanged }: { projects: Projec
                   <button
                     type="button"
                     className="action-btn is-danger"
-                    aria-label={`Delete time entry from ${formatDate(entry.date)}`}
+                    aria-label={t('timeTracking.timesheets.deleteAria', { date: formatDate(entry.date) })}
                     disabled={!!entry.invoiceId}
                     onClick={() => setDeleteTarget(entry)}
                   >
@@ -163,16 +165,16 @@ export function TimesheetsTab({ projects, onEntriesChanged }: { projects: Projec
     <>
       <Toolbar>
         <FilterSelect
-          label="Project"
+          label={t('timeTracking.timesheets.filter.project')}
           value={projectFilter}
-          options={[{ value: '', label: 'All projects' }, ...projects.map((project) => ({ value: project.id, label: project.name }))]}
+          options={[{ value: '', label: t('timeTracking.timesheets.filter.allProjects') }, ...projects.map((project) => ({ value: project.id, label: project.name }))]}
           onChange={(value) => {
             setProjectFilter(value);
             resetPage();
           }}
         />
         <label className="filter-select">
-          <span>From</span>
+          <span>{t('timeTracking.timesheets.filter.from')}</span>
           <input
             type="date"
             className="select select-sm"
@@ -184,7 +186,7 @@ export function TimesheetsTab({ projects, onEntriesChanged }: { projects: Projec
           />
         </label>
         <label className="filter-select">
-          <span>To</span>
+          <span>{t('timeTracking.timesheets.filter.to')}</span>
           <input
             type="date"
             className="select select-sm"
@@ -196,7 +198,7 @@ export function TimesheetsTab({ projects, onEntriesChanged }: { projects: Projec
           />
         </label>
         <CheckboxField
-          label="Unbilled only"
+          label={t('timeTracking.timesheets.filter.unbilledOnly')}
           checked={unbilledOnly}
           onChange={(event) => {
             setUnbilledOnly(event.target.checked);
@@ -205,16 +207,17 @@ export function TimesheetsTab({ projects, onEntriesChanged }: { projects: Projec
         />
         <IfCanWrite>
           <Button variant="primary" size="sm" onClick={() => setModal({ open: true, entry: null })} disabled={!projects.length}>
-            Log time
+            {t('timeTracking.timesheets.logTime')}
           </Button>
         </IfCanWrite>
       </Toolbar>
 
-      <Card title="Timesheets" subtitle={`${entries.data?.total ?? 0} entry(s) in the selected range`}>
+      <Card title={t('timeTracking.timesheets.cardTitle')} subtitle={t('timeTracking.timesheets.count', { count: entries.data?.total ?? 0 })}>
         <p className="small text-muted">
-          {formatDate(startDate)} – {formatDate(endDate)}: <span className="strong num">{formatNumber(totalHours)} h</span> logged ·{' '}
-          <span className="strong num">{formatNumber(billableHours)} h</span> billable
-          {summaryTruncated ? ` (first ${summaryRows.length} entries)` : ''}
+          {t('timeTracking.timesheets.summary.range', { start: formatDate(startDate), end: formatDate(endDate) })}{' '}
+          <span className="strong num">{t('timeTracking.hoursShort', { hours: formatNumber(totalHours) })}</span> {t('timeTracking.timesheets.summary.logged')}{' '}
+          <span className="strong num">{t('timeTracking.hoursShort', { hours: formatNumber(billableHours) })}</span> {t('timeTracking.timesheets.summary.billable')}
+          {summaryTruncated ? ` ${t('timeTracking.timesheets.summary.truncated', { count: summaryRows.length })}` : ''}
         </p>
 
         {entries.loading ? (
@@ -222,10 +225,10 @@ export function TimesheetsTab({ projects, onEntriesChanged }: { projects: Projec
         ) : entries.error ? (
           <ErrorBlock message={entries.error} onRetry={entries.reload} />
         ) : !rows.length ? (
-          <EmptyState title="No time logged in this range" description="Change the date range or log time against a project." />
+          <EmptyState title={t('timeTracking.timesheets.empty.title')} description={t('timeTracking.timesheets.empty.body')} />
         ) : (
           <>
-            <DataTable columns={columns} rows={rows} rowKey={(entry) => entry.id} caption="Time entries" />
+            <DataTable columns={columns} rows={rows} rowKey={(entry) => entry.id} caption={t('timeTracking.timesheets.tableCaption')} />
             <Pagination page={page} pageSize={PAGE_SIZE} total={entries.data?.total ?? 0} onPageChange={setPage} />
           </>
         )}
@@ -244,16 +247,20 @@ export function TimesheetsTab({ projects, onEntriesChanged }: { projects: Projec
       />
       <ConfirmDialog
         open={!!deleteTarget}
-        title="Delete time entry"
+        title={t('timeTracking.timesheets.delete.title')}
         message={
           <>
             <FormError message={action.error} />
             {deleteTarget
-              ? `Delete the ${formatNumber(deleteTarget.hours)} hour entry on ${deleteTarget.projectName} dated ${formatDate(deleteTarget.date)}?`
+              ? t('timeTracking.timesheets.delete.body', {
+                  hours: formatNumber(deleteTarget.hours),
+                  project: deleteTarget.projectName,
+                  date: formatDate(deleteTarget.date),
+                })
               : ''}
           </>
         }
-        confirmLabel="Delete"
+        confirmLabel={t('timeTracking.timesheets.delete.confirm')}
         busy={action.submitting}
         onConfirm={() => void confirmDelete()}
         onCancel={() => {

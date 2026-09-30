@@ -1,6 +1,7 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
 
 import { bankingApi } from '@/api/endpoints';
+import { useAppContent } from '@/app/AppContentContext';
 import type { BankAccount, BankAccountType } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { CheckboxField, SelectField, TextField } from '@/components/ui/Field';
@@ -10,9 +11,9 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { parseNumber, todayIso } from '@/utils/format';
 
 const ACCOUNT_TYPES = [
-  { value: 'bank', label: 'Bank' },
-  { value: 'cash', label: 'Cash' },
-  { value: 'credit_card', label: 'Credit card' },
+  { value: 'bank', labelKey: 'banking.accountModal.type.bank' },
+  { value: 'cash', labelKey: 'banking.accountModal.type.cash' },
+  { value: 'credit_card', labelKey: 'banking.accountModal.type.creditCard' },
 ];
 
 interface FormState {
@@ -48,6 +49,7 @@ interface BankAccountModalProps {
 }
 
 export function BankAccountModal({ open, account, onClose, onSaved }: BankAccountModalProps) {
+  const { t } = useAppContent();
   const formId = useId();
   const { submitting, error, fieldErrors, run, reset } = useSubmit();
   const [form, setForm] = useState<FormState>(BLANK);
@@ -97,22 +99,22 @@ export function BankAccountModal({ open, account, onClose, onSaved }: BankAccoun
             isPrimary: form.isPrimary,
           }),
     );
-    if (saved) onSaved(account ? 'Bank account updated.' : 'Bank account added.');
+    if (saved) onSaved(account ? t('banking.accountModal.toast.updated') : t('banking.accountModal.toast.added'));
   };
 
   return (
     <Modal
       open={open}
-      title={account ? 'Edit account' : 'Add account'}
-      subtitle={account ? account.name : 'Cash, bank and credit card accounts feed the ledger automatically.'}
+      title={account ? t('banking.accountModal.editTitle') : t('banking.accountModal.addTitle')}
+      subtitle={account ? account.name : t('banking.accountModal.subtitle')}
       onClose={onClose}
       footer={
         <>
           <Button onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('banking.accountModal.cancel')}
           </Button>
           <Button variant="primary" type="submit" form={formId} loading={submitting}>
-            {account ? 'Save changes' : 'Add account'}
+            {account ? t('banking.accountModal.saveChanges') : t('banking.accountModal.submit')}
           </Button>
         </>
       }
@@ -121,7 +123,7 @@ export function BankAccountModal({ open, account, onClose, onSaved }: BankAccoun
         <FormError message={error} />
         <div className="form-grid">
           <TextField
-            label="Account name"
+            label={t('banking.accountModal.name')}
             required
             value={form.name}
             error={fieldErrors.name}
@@ -129,27 +131,27 @@ export function BankAccountModal({ open, account, onClose, onSaved }: BankAccoun
           />
           {account ? null : (
             <SelectField
-              label="Type"
+              label={t('banking.accountModal.typeLabel')}
               required
-              options={ACCOUNT_TYPES}
+              options={ACCOUNT_TYPES.map((option) => ({ value: option.value, label: t(option.labelKey) }))}
               value={form.type}
               error={fieldErrors.type}
               onChange={(event) => set('type', event.target.value as BankAccountType)}
             />
           )}
-          <TextField label="Bank name" value={form.bankName} error={fieldErrors.bankName} onChange={(event) => set('bankName', event.target.value)} />
+          <TextField label={t('banking.accountModal.bankName')} value={form.bankName} error={fieldErrors.bankName} onChange={(event) => set('bankName', event.target.value)} />
           <TextField
-            label="Account number"
+            label={t('banking.accountModal.accountNumber')}
             value={form.accountNumber}
             error={fieldErrors.accountNumber}
-            hint={account ? 'Leave blank to keep the stored number' : undefined}
+            hint={account ? t('banking.accountModal.accountNumberHint') : undefined}
             onChange={(event) => set('accountNumber', event.target.value)}
           />
-          <TextField label="IFSC" value={form.ifsc} error={fieldErrors.ifsc} onChange={(event) => set('ifsc', event.target.value.toUpperCase())} />
+          <TextField label={t('banking.accountModal.ifsc')} value={form.ifsc} error={fieldErrors.ifsc} onChange={(event) => set('ifsc', event.target.value.toUpperCase())} />
           {account ? null : (
             <>
               <TextField
-                label="Opening balance"
+                label={t('banking.accountModal.openingBalance')}
                 type="number"
                 step="0.01"
                 value={form.openingBalance}
@@ -157,7 +159,7 @@ export function BankAccountModal({ open, account, onClose, onSaved }: BankAccoun
                 onChange={(event) => set('openingBalance', event.target.value)}
               />
               <TextField
-                label="Opening balance date"
+                label={t('banking.accountModal.openingBalanceDate')}
                 type="date"
                 required
                 value={form.openingBalanceDate}
@@ -167,8 +169,8 @@ export function BankAccountModal({ open, account, onClose, onSaved }: BankAccoun
             </>
           )}
         </div>
-        <CheckboxField label="Primary account" checked={form.isPrimary} onChange={(event) => set('isPrimary', event.target.checked)} />
-        {account ? <CheckboxField label="Active" checked={form.isActive} onChange={(event) => set('isActive', event.target.checked)} /> : null}
+        <CheckboxField label={t('banking.accountModal.primary')} checked={form.isPrimary} onChange={(event) => set('isPrimary', event.target.checked)} />
+        {account ? <CheckboxField label={t('banking.accountModal.active')} checked={form.isActive} onChange={(event) => set('isActive', event.target.checked)} /> : null}
       </form>
     </Modal>
   );

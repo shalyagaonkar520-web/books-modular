@@ -30,11 +30,11 @@ import { PayOnlineModal } from './PayOnlineModal';
 const PAGE_SIZE = 25;
 
 const TABS = [
-  { id: 'all', label: 'All' },
-  { id: 'draft', label: 'Draft' },
-  { id: 'unpaid', label: 'Unpaid' },
-  { id: 'overdue', label: 'Overdue' },
-  { id: 'paid', label: 'Paid' },
+  { id: 'all', label: 'invoices.tab.all' },
+  { id: 'draft', label: 'invoices.tab.draft' },
+  { id: 'unpaid', label: 'invoices.tab.unpaid' },
+  { id: 'overdue', label: 'invoices.tab.overdue' },
+  { id: 'paid', label: 'invoices.tab.paid' },
 ];
 
 type PendingAction = { kind: 'void' | 'delete' | 'send'; invoice: InvoiceListItem };
@@ -92,9 +92,9 @@ export function InvoicesPage() {
     setBulkDeleting(false);
     if (failedIds.size > 0) {
       const reason = lastError ? ` ${lastError}` : '';
-      toast.error(`Deleted ${count} of ${selectedIds.size} invoice(s); ${failedIds.size} could not be deleted.${reason}`);
+      toast.error(t('invoices.bulk.partialFailed', { count, total: selectedIds.size, failed: failedIds.size, reason }));
     } else {
-      toast.success(`Deleted ${count} invoice(s)`);
+      toast.success(t('invoices.bulk.deleted', { count }));
     }
     setSelectedIds(failedIds);
     refresh();
@@ -129,13 +129,13 @@ export function InvoicesPage() {
       setAutoReminding(true);
       const res = await invoicesApi.autoRemindOverdue();
       if (res.reminders_sent > 0) {
-        toast.success(`Successfully dispatched ${res.reminders_sent} overdue reminders via Gmail SMTP!`);
+        toast.success(t('invoices.remind.sent', { count: res.reminders_sent }));
       } else {
-        toast.notify(res.total_overdue > 0 ? 'Overdue invoices found, but no client emails on file.' : 'No overdue invoices found.', 'info');
+        toast.notify(res.total_overdue > 0 ? t('invoices.remind.noEmails') : t('invoices.remind.noneOverdue'), 'info');
       }
       refresh();
     } catch (err: unknown) {
-      toast.error((err as Error).message || 'Failed to trigger overdue reminders');
+      toast.error((err as Error).message || t('invoices.remind.failed'));
     } finally {
       setAutoReminding(false);
     }
@@ -143,10 +143,10 @@ export function InvoicesPage() {
 
   const customerOptions = useMemo(
     () => [
-      { value: '', label: 'All customers' },
+      { value: '', label: t('invoices.filter.allCustomers') },
       ...(customers.data?.items ?? []).map((customer) => ({ value: customer.id, label: customer.displayName })),
     ],
-    [customers.data],
+    [customers.data, t],
   );
 
   const runPending = async () => {
@@ -158,10 +158,10 @@ export function InvoicesPage() {
     if (result) {
       toast.success(
         kind === 'delete'
-          ? `Invoice ${invoice.invoiceNumber} deleted`
+          ? t('invoices.toast.deleted', { number: invoice.invoiceNumber })
           : kind === 'send'
-            ? `Invoice ${invoice.invoiceNumber} marked as sent`
-            : `Invoice ${invoice.invoiceNumber} voided`,
+            ? t('invoices.toast.markedSent', { number: invoice.invoiceNumber })
+            : t('invoices.toast.voided', { number: invoice.invoiceNumber }),
       );
       setPending(null);
       refresh();
@@ -177,21 +177,21 @@ export function InvoicesPage() {
   const columns: Array<Column<InvoiceListItem>> = [
     {
       key: 'invoiceNumber',
-      header: 'Invoice #',
+      header: t('invoices.col.number'),
       render: (row) => (
         <span className="cell-stack">
           <Link to={`/invoices/${row.id}`} className="strong">
             {row.invoiceNumber}
           </Link>
-          {row.reference ? <small>Ref {row.reference}</small> : null}
+          {row.reference ? <small>{t('invoices.col.ref', { reference: row.reference })}</small> : null}
         </span>
       ),
     },
-    { key: 'customerName', header: 'Customer', render: (row) => row.customerName },
-    { key: 'date', header: 'Date', render: (row) => formatDate(row.date) },
+    { key: 'customerName', header: t('invoices.col.customer'), render: (row) => row.customerName },
+    { key: 'date', header: t('invoices.col.date'), render: (row) => formatDate(row.date) },
     {
       key: 'dueDate',
-      header: 'Due date',
+      header: t('invoices.col.dueDate'),
       render: (row) => {
         const overdueBy = daysBetween(row.dueDate, today);
         return (
@@ -199,28 +199,28 @@ export function InvoicesPage() {
             <span>{formatDate(row.dueDate)}</span>
             {row.status === 'overdue' && overdueBy > 0 ? (
               <small className="text-danger">
-                {overdueBy} {overdueBy === 1 ? 'day' : 'days'} overdue
+                {t(overdueBy === 1 ? 'invoices.col.overdueDay' : 'invoices.col.overdueDays', { count: overdueBy })}
               </small>
             ) : null}
           </span>
         );
       },
     },
-    { key: 'status', header: 'Status', render: (row) => <Badge tone={statusTone(row.status)}>{statusLabel(row.status)}</Badge> },
-    { key: 'total', header: 'Total', align: 'right', render: (row) => <span className="num">{formatCurrency(row.total)}</span> },
+    { key: 'status', header: t('invoices.col.status'), render: (row) => <Badge tone={statusTone(row.status)}>{statusLabel(row.status, t)}</Badge> },
+    { key: 'total', header: t('invoices.col.total'), align: 'right', render: (row) => <span className="num">{formatCurrency(row.total)}</span> },
     {
       key: 'balanceDue',
-      header: 'Balance due',
+      header: t('invoices.col.balanceDue'),
       align: 'right',
       render: (row) => <span className={`num ${row.balanceDue > 0 ? 'strong' : 'text-subtle'}`}>{formatCurrency(row.balanceDue)}</span>,
     },
     {
       key: 'actions',
-      header: 'Actions',
+      header: t('invoices.col.actions'),
       align: 'right',
       render: (row) => (
         <span className="row-actions">
-          <button type="button" className="action-btn" aria-label={`View invoice ${row.invoiceNumber}`} onClick={() => navigate(`/invoices/${row.id}`)}>
+          <button type="button" className="action-btn" aria-label={t('invoices.action.view', { number: row.invoiceNumber })} onClick={() => navigate(`/invoices/${row.id}`)}>
             <Eye size={15} />
           </button>
           <IfCanWrite>
@@ -230,8 +230,8 @@ export function InvoicesPage() {
                   type="button"
                   className="action-btn"
                   style={{ color: '#16a34a' }}
-                  aria-label={`Pay invoice ${row.invoiceNumber} online via Razorpay`}
-                  title="Pay Online via Razorpay"
+                  aria-label={t('invoices.action.payOnlineAria', { number: row.invoiceNumber })}
+                  title={t('invoices.action.payOnlineTitle')}
                   onClick={() => setPayOnlineInvoice(row)}
                 >
                   <CreditCard size={15} />
@@ -241,8 +241,8 @@ export function InvoicesPage() {
                 type="button"
                 className="action-btn"
                 style={{ color: '#ea4335' }}
-                aria-label={`Send invoice ${row.invoiceNumber} via Gmail`}
-                title="Send invoice via Gmail"
+                aria-label={t('invoices.action.mailAria', { number: row.invoiceNumber })}
+                title={t('invoices.action.mailTitle')}
                 onClick={() => setMailInvoice(row)}
               >
                 <Mail size={15} />
@@ -251,8 +251,8 @@ export function InvoicesPage() {
                 type="button"
                 className="action-btn"
                 style={{ color: '#dc2626' }}
-                aria-label={`Download PDF for invoice ${row.invoiceNumber}`}
-                title="Full PDF Extract"
+                aria-label={t('invoices.action.pdfAria', { number: row.invoiceNumber })}
+                title={t('invoices.action.pdfTitle')}
                 onClick={() => invoicesApi.downloadPdf(row.id, row.invoiceNumber)}
               >
                 <FileDown size={15} />
@@ -261,8 +261,8 @@ export function InvoicesPage() {
                 type="button"
                 className="action-btn"
                 style={{ color: '#15803d' }}
-                aria-label={`Download Excel for invoice ${row.invoiceNumber}`}
-                title="Excel Extract"
+                aria-label={t('invoices.action.excelAria', { number: row.invoiceNumber })}
+                title={t('invoices.action.excelTitle')}
                 onClick={() => invoicesApi.downloadExcel(row.id, row.invoiceNumber)}
               >
                 <FileSpreadsheet size={15} />
@@ -271,7 +271,7 @@ export function InvoicesPage() {
                 <button
                   type="button"
                   className="action-btn"
-                  aria-label={`Edit invoice ${row.invoiceNumber}`}
+                  aria-label={t('invoices.action.edit', { number: row.invoiceNumber })}
                   onClick={() => navigate(`/invoices/${row.id}/edit`)}
                 >
                   <Pencil size={15} />
@@ -281,7 +281,7 @@ export function InvoicesPage() {
                 <button
                   type="button"
                   className="action-btn"
-                  aria-label={`Record payment for invoice ${row.invoiceNumber}`}
+                  aria-label={t('invoices.action.recordPayment', { number: row.invoiceNumber })}
                   onClick={() =>
                     setPaymentFor({ id: row.id, invoiceNumber: row.invoiceNumber, customerId: row.customerId, balanceDue: row.balanceDue })
                   }
@@ -293,7 +293,7 @@ export function InvoicesPage() {
                 <button
                   type="button"
                   className="action-btn"
-                  aria-label={`Mark invoice ${row.invoiceNumber} as sent`}
+                  aria-label={t('invoices.action.markSent', { number: row.invoiceNumber })}
                   onClick={() => {
                     reset();
                     setPending({ kind: 'send', invoice: row });
@@ -306,7 +306,7 @@ export function InvoicesPage() {
                 <button
                   type="button"
                   className="action-btn is-danger"
-                  aria-label={`Void invoice ${row.invoiceNumber}`}
+                  aria-label={t('invoices.action.void', { number: row.invoiceNumber })}
                   onClick={() => {
                     reset();
                     setPending({ kind: 'void', invoice: row });
@@ -319,7 +319,7 @@ export function InvoicesPage() {
                 <button
                   type="button"
                   className="action-btn is-danger"
-                  aria-label={`Delete invoice ${row.invoiceNumber}`}
+                  aria-label={t('invoices.action.delete', { number: row.invoiceNumber })}
                   onClick={() => {
                     reset();
                     setPending({ kind: 'delete', invoice: row });
@@ -389,15 +389,15 @@ export function InvoicesPage() {
         <ErrorBlock message={stats.error} onRetry={stats.reload} />
       ) : (
         <div className="stat-grid">
-          <StatTile label="Total outstanding" value={formatCurrency(stats.data?.totalOutstanding ?? 0)} sublabel={`${stats.data?.unpaidCount ?? 0} open invoices`} />
-          <StatTile label="Overdue" value={formatCurrency(stats.data?.overdue ?? 0)} tone="negative" sublabel={`${stats.data?.overdueCount ?? 0} past due`} />
-          <StatTile label="Due within 30 days" value={formatCurrency(stats.data?.dueWithin30Days ?? 0)} tone="warning" />
-          <StatTile label="Drafts" value={String(stats.data?.draftCount ?? 0)} sublabel="Not yet sent" icon={<FileText size={15} />} />
+          <StatTile label={t('invoices.stat.outstanding')} value={formatCurrency(stats.data?.totalOutstanding ?? 0)} sublabel={t('invoices.stat.outstandingSub', { count: stats.data?.unpaidCount ?? 0 })} />
+          <StatTile label={t('invoices.stat.overdue')} value={formatCurrency(stats.data?.overdue ?? 0)} tone="negative" sublabel={t('invoices.stat.overdueSub', { count: stats.data?.overdueCount ?? 0 })} />
+          <StatTile label={t('invoices.stat.dueSoon')} value={formatCurrency(stats.data?.dueWithin30Days ?? 0)} tone="warning" />
+          <StatTile label={t('invoices.stat.drafts')} value={String(stats.data?.draftCount ?? 0)} sublabel={t('invoices.stat.draftsSub')} icon={<FileText size={15} />} />
         </div>
       )}
 
       <Tabs
-        tabs={TABS}
+        tabs={TABS.map((tab) => ({ ...tab, label: t(tab.label) }))}
         active={status}
         onChange={(id) => {
           setStatus(id);
@@ -422,10 +422,10 @@ export function InvoicesPage() {
         >
           <div>
             <div style={{ color: '#991b1b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
-              <BellRing size={16} /> Automated Overdue Reminders via Gmail SMTP
+              <BellRing size={16} /> {t('invoices.remind.bannerTitle')}
             </div>
             <div style={{ color: '#7f1d1d', fontSize: '13px', marginTop: '2px' }}>
-              Scan and immediately send official overdue payment notices with attached PDF invoices to all customers with past-due balances.
+              {t('invoices.remind.bannerBody')}
             </div>
           </div>
           <Button
@@ -435,7 +435,7 @@ export function InvoicesPage() {
             style={{ backgroundColor: '#dc2626', borderColor: '#dc2626', color: '#ffffff' }}
             onClick={handleAutoRemindOverdue}
           >
-            Auto-Send Overdue Reminders
+            {t('invoices.remind.button')}
           </Button>
         </div>
       ) : null}
@@ -447,10 +447,10 @@ export function InvoicesPage() {
             setSearch(value);
             setPage(1);
           }}
-          placeholder="Search invoice number, customer or reference…"
+          placeholder={t('invoices.search.placeholder')}
         />
         <FilterSelect
-          label="Customer"
+          label={t('invoices.filter.customer')}
           value={customerId}
           options={customerOptions}
           onChange={(value) => {
@@ -459,7 +459,7 @@ export function InvoicesPage() {
           }}
         />
         <label className="filter-select">
-          <span>From</span>
+          <span>{t('invoices.filter.from')}</span>
           <input
             type="date"
             className="input select-sm"
@@ -471,7 +471,7 @@ export function InvoicesPage() {
           />
         </label>
         <label className="filter-select">
-          <span>To</span>
+          <span>{t('invoices.filter.to')}</span>
           <input
             type="date"
             className="input select-sm"
@@ -520,11 +520,11 @@ export function InvoicesPage() {
                   }}
                 >
                   {selectedIds.size === deletableRows.length && deletableRows.length > 0
-                    ? 'Deselect All'
-                    : `Select All on Page (${deletableRows.length})`}
+                    ? t('invoices.bulk.deselectAll')
+                    : t('invoices.bulk.selectAllOnPage', { count: deletableRows.length })}
                 </Button>
                 {selectedIds.size > 0 ? (
-                  <span className="small text-muted">{selectedIds.size} selected</span>
+                  <span className="small text-muted">{t('invoices.bulk.selected', { count: selectedIds.size })}</span>
                 ) : null}
               </div>
               {selectedIds.size > 0 ? (
@@ -536,7 +536,7 @@ export function InvoicesPage() {
                     onClick={() => setBulkDeleteConfirmOpen(true)}
                     icon={<Trash2 size={13} />}
                   >
-                    Delete Selected ({selectedIds.size})
+                    {t('invoices.bulk.deleteSelected', { count: selectedIds.size })}
                   </Button>
                 </IfCanWrite>
               ) : null}
@@ -545,7 +545,7 @@ export function InvoicesPage() {
               columns={columns}
               rows={rows}
               rowKey={(row) => row.id}
-              caption="Invoices"
+              caption={t('invoices.table.caption')}
               selectedKeys={selectedIds}
               onSelectRow={(id) => {
                 const next = new Set(selectedIds);
@@ -559,7 +559,7 @@ export function InvoicesPage() {
               }}
               isAllSelected={deletableRows.length > 0 && selectedIds.size === deletableRows.length}
               isRowSelectable={isInvoiceDeletable}
-              rowNotSelectableReason={() => 'This invoice has payments recorded against it. Delete those payments first.'}
+              rowNotSelectableReason={() => t('invoices.table.notSelectable')}
             />
             <Pagination page={page} pageSize={invoices.data?.pageSize ?? PAGE_SIZE} total={invoices.data?.total ?? 0} onPageChange={setPage} />
           </>
@@ -605,8 +605,8 @@ export function InvoicesPage() {
 
       <ConfirmDialog
         open={!!pending}
-        title={pending?.kind === 'delete' ? 'Delete invoice' : pending?.kind === 'send' ? 'Mark invoice as sent' : 'Void invoice'}
-        confirmLabel={pending?.kind === 'delete' ? 'Delete' : pending?.kind === 'send' ? 'Mark as sent' : 'Void invoice'}
+        title={pending?.kind === 'delete' ? t('invoices.confirm.deleteTitle') : pending?.kind === 'send' ? t('invoices.confirm.sendTitle') : t('invoices.confirm.voidTitle')}
+        confirmLabel={pending?.kind === 'delete' ? t('invoices.confirm.deleteConfirm') : pending?.kind === 'send' ? t('invoices.confirm.sendConfirm') : t('invoices.confirm.voidConfirm')}
         tone={pending?.kind === 'send' ? 'primary' : 'danger'}
         busy={submitting}
         onCancel={() => setPending(null)}
@@ -616,15 +616,15 @@ export function InvoicesPage() {
             <FormError message={actionError} />
             {pending?.kind === 'delete' ? (
               <p>
-                Invoice {pending.invoice.invoiceNumber} will be permanently removed. This cannot be undone.
+                {t('invoices.confirm.deleteBody', { number: pending.invoice.invoiceNumber })}
               </p>
             ) : pending?.kind === 'send' ? (
               <p>
-                Invoice {pending.invoice.invoiceNumber} will be posted to your books and can no longer be deleted.
+                {t('invoices.confirm.sendBody', { number: pending.invoice.invoiceNumber })}
               </p>
             ) : pending ? (
               <p>
-                Voiding invoice {pending.invoice.invoiceNumber} reverses its ledger entries. Recorded payments must be deleted first.
+                {t('invoices.confirm.voidBody', { number: pending.invoice.invoiceNumber })}
               </p>
             ) : null}
           </>
@@ -633,9 +633,9 @@ export function InvoicesPage() {
 
       <ConfirmDialog
         open={bulkDeleteConfirmOpen}
-        title="Delete selected invoices"
-        message={<p>{selectedIds.size} selected invoice(s) will be permanently removed. This cannot be undone.</p>}
-        confirmLabel="Delete"
+        title={t('invoices.bulkDelete.title')}
+        message={<p>{t('invoices.bulkDelete.body', { count: selectedIds.size })}</p>}
+        confirmLabel={t('invoices.bulkDelete.confirm')}
         busy={bulkDeleting}
         onCancel={() => setBulkDeleteConfirmOpen(false)}
         onConfirm={() => void confirmBulkDelete()}
@@ -651,6 +651,7 @@ interface SendInvoiceModalProps {
 }
 
 function SendInvoiceModal({ invoice, onClose, onSent }: SendInvoiceModalProps) {
+  const { t } = useAppContent();
   const [email, setEmail] = useState('');
   const [loadingContact, setLoadingContact] = useState(true);
   const [sendAsOverdue, setSendAsOverdue] = useState(invoice.status === 'overdue');
@@ -687,8 +688,8 @@ function SendInvoiceModal({ invoice, onClose, onSent }: SendInvoiceModalProps) {
     if (result) {
       onSent(
         sendAsOverdue
-          ? `Overdue Payment Reminder for ${invoice.invoiceNumber} sent to ${email.trim()} via Gmail SMTP`
-          : `Tax Invoice ${invoice.invoiceNumber} sent to ${email.trim()} via Gmail SMTP`
+          ? t('invoices.gmail.sentOverdue', { number: invoice.invoiceNumber, email: email.trim() })
+          : t('invoices.gmail.sentTax', { number: invoice.invoiceNumber, email: email.trim() })
       );
     }
   }
@@ -698,13 +699,13 @@ function SendInvoiceModal({ invoice, onClose, onSent }: SendInvoiceModalProps) {
     <Modal
       open
       size="md"
-      title={`Gmail Send Options: ${invoice.invoiceNumber}`}
-      subtitle={`Customer: ${invoice.customerName} · Total: ${formatCurrency(invoice.total)}`}
+      title={t('invoices.gmail.title', { number: invoice.invoiceNumber })}
+      subtitle={t('invoices.gmail.subtitle', { customer: invoice.customerName, total: formatCurrency(invoice.total) })}
       onClose={onClose}
       footer={
         <>
           <Button onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('invoices.gmail.cancel')}
           </Button>
           <Button
             variant="primary"
@@ -714,7 +715,7 @@ function SendInvoiceModal({ invoice, onClose, onSent }: SendInvoiceModalProps) {
             style={sendAsOverdue ? { backgroundColor: '#dc2626', borderColor: '#dc2626', color: '#ffffff' } : undefined}
             onClick={handleSend}
           >
-            {sendAsOverdue ? 'Send Overdue Reminder' : 'Send Tax Invoice'}
+            {sendAsOverdue ? t('invoices.gmail.sendOverdue') : t('invoices.gmail.sendTax')}
           </Button>
         </>
       }
@@ -723,7 +724,7 @@ function SendInvoiceModal({ invoice, onClose, onSent }: SendInvoiceModalProps) {
       <div className="stack" style={{ gap: '14px' }}>
         <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
           <label style={{ fontSize: '13px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '8px' }}>
-            Email Mode:
+            {t('invoices.gmail.mode')}
           </label>
           <div style={{ display: 'flex', gap: '16px' }}>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13.5px', cursor: 'pointer' }}>
@@ -733,7 +734,7 @@ function SendInvoiceModal({ invoice, onClose, onSent }: SendInvoiceModalProps) {
                 checked={!sendAsOverdue}
                 onChange={() => setSendAsOverdue(false)}
               />
-              <span>Standard Tax Invoice Dispatch</span>
+              <span>{t('invoices.gmail.modeStandard')}</span>
             </label>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13.5px', cursor: 'pointer', color: '#b91c1c', fontWeight: 600 }}>
               <input
@@ -742,32 +743,32 @@ function SendInvoiceModal({ invoice, onClose, onSent }: SendInvoiceModalProps) {
                 checked={sendAsOverdue}
                 onChange={() => setSendAsOverdue(true)}
               />
-              <span>Overdue Payment Reminder</span>
+              <span>{t('invoices.gmail.modeOverdue')}</span>
             </label>
           </div>
         </div>
 
         <div className="form-grid">
           <TextField
-            label="Customer"
+            label={t('invoices.gmail.customer')}
             value={invoice.customerName}
             disabled
           />
           <TextField
-            label="Recipient Email (Gmail)"
+            label={t('invoices.gmail.email')}
             type="email"
             required
-            placeholder={loadingContact ? 'Loading contact email…' : 'e.g. customer@example.com'}
+            placeholder={loadingContact ? t('invoices.gmail.loadingEmail') : t('invoices.gmail.emailPlaceholder')}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
           <TextField
-            label="Invoice Total"
+            label={t('invoices.gmail.total')}
             value={formatCurrency(invoice.total)}
             disabled
           />
           <TextField
-            label={sendAsOverdue ? 'Balance Due (Overdue)' : 'Due Date'}
+            label={sendAsOverdue ? t('invoices.gmail.balanceOverdue') : t('invoices.gmail.dueDate')}
             value={sendAsOverdue ? formatCurrency(invoice.balanceDue) : formatDate(invoice.dueDate)}
             disabled
           />
@@ -779,19 +780,19 @@ function SendInvoiceModal({ invoice, onClose, onSent }: SendInvoiceModalProps) {
             checked={attachPdf}
             onChange={(e) => setAttachPdf(e.target.checked)}
           />
-          <span style={{ fontWeight: 500 }}>Attach generated official GST Tax Invoice PDF to email</span>
+          <span style={{ fontWeight: 500 }}>{t('invoices.gmail.attachPdf')}</span>
         </label>
 
         <TextAreaField
-          label="Custom Note / Remittance Instructions (Optional)"
+          label={t('invoices.gmail.notes')}
           value={customNotes}
-          placeholder="e.g. Kindly share transaction UTR once processed..."
+          placeholder={t('invoices.gmail.notesPlaceholder')}
           rows={2}
           onChange={(e) => setCustomNotes(e.target.value)}
         />
       </div>
       <p className="small text-muted" style={{ marginTop: '12px' }}>
-        Dispatched automatically via authenticated Gmail SMTP server (shalya@rooman.com).
+        {t('invoices.gmail.footer')}
       </p>
     </Modal>
   );

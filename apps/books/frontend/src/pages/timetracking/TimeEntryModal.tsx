@@ -2,6 +2,7 @@ import { useEffect, useId, useState, type FormEvent } from 'react';
 
 import { orgApi, projectsApi } from '@/api/endpoints';
 import type { Project, TimeEntry } from '@/api/types';
+import { useAppContent } from '@/app/AppContentContext';
 import { useAuth } from '@/auth/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { CheckboxField, SelectField, TextAreaField, TextField } from '@/components/ui/Field';
@@ -30,6 +31,7 @@ interface TimeEntryModalProps {
 }
 
 export function TimeEntryModal({ open, entry, projects, onClose, onSaved }: TimeEntryModalProps) {
+  const { t } = useAppContent();
   const formId = useId();
   const { isAdmin, user } = useAuth();
   const { submitting, error, fieldErrors, run, reset } = useSubmit();
@@ -73,22 +75,22 @@ export function TimeEntryModal({ open, entry, projects, onClose, onSaved }: Time
             ...(isAdmin && form.userId ? { userId: form.userId } : {}),
           }),
     );
-    if (saved) onSaved(entry ? 'Time entry updated.' : 'Time logged.');
+    if (saved) onSaved(entry ? t('timeTracking.timeEntry.toast.updated') : t('timeTracking.timeEntry.toast.logged'));
   };
 
   return (
     <Modal
       open={open}
-      title={entry ? 'Edit time entry' : 'Log time'}
+      title={entry ? t('timeTracking.timeEntry.editTitle') : t('timeTracking.timeEntry.newTitle')}
       subtitle={entry ? `${entry.projectName} · ${entry.userName}` : undefined}
       onClose={onClose}
       footer={
         <>
           <Button onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('timeTracking.timeEntry.cancel')}
           </Button>
           <Button variant="primary" type="submit" form={formId} loading={submitting}>
-            {entry ? 'Save changes' : 'Log time'}
+            {entry ? t('timeTracking.timeEntry.saveChanges') : t('timeTracking.timeEntry.submit')}
           </Button>
         </>
       }
@@ -98,29 +100,29 @@ export function TimeEntryModal({ open, entry, projects, onClose, onSaved }: Time
         <div className="form-grid">
           {entry ? null : (
             <SelectField
-              label="Project"
+              label={t('timeTracking.timeEntry.project')}
               required
-              placeholder="Select a project"
+              placeholder={t('timeTracking.timeEntry.selectProject')}
               options={activeProjects.map((project) => ({ value: project.id, label: project.name }))}
               value={form.projectId}
               error={fieldErrors.projectId}
-              hint="Time can only be logged on active projects."
+              hint={t('timeTracking.timeEntry.projectHint')}
               onChange={(event) => set('projectId', event.target.value)}
             />
           )}
           {!entry && isAdmin ? (
             <SelectField
-              label="Team member"
+              label={t('timeTracking.timeEntry.teamMember')}
               options={(users.data ?? []).filter((member) => member.isActive).map((member) => ({ value: member.id, label: member.name }))}
-              placeholder={users.loading ? 'Loading users…' : 'Myself'}
+              placeholder={users.loading ? t('timeTracking.timeEntry.loadingUsers') : t('timeTracking.timeEntry.myself')}
               value={form.userId}
               error={fieldErrors.userId}
               onChange={(event) => set('userId', event.target.value)}
             />
           ) : null}
-          <TextField label="Date" type="date" required value={form.date} error={fieldErrors.date} onChange={(event) => set('date', event.target.value)} />
+          <TextField label={t('timeTracking.timeEntry.date')} type="date" required value={form.date} error={fieldErrors.date} onChange={(event) => set('date', event.target.value)} />
           <TextField
-            label="Hours"
+            label={t('timeTracking.timeEntry.hours')}
             type="number"
             step="0.25"
             min="0.25"
@@ -132,13 +134,13 @@ export function TimeEntryModal({ open, entry, projects, onClose, onSaved }: Time
           />
         </div>
         <TextAreaField
-          label="Description"
+          label={t('timeTracking.timeEntry.description')}
           rows={2}
           value={form.description}
           error={fieldErrors.description}
           onChange={(event) => set('description', event.target.value)}
         />
-        <CheckboxField label="Billable" checked={form.isBillable} onChange={(event) => set('isBillable', event.target.checked)} />
+        <CheckboxField label={t('timeTracking.timeEntry.billable')} checked={form.isBillable} onChange={(event) => set('isBillable', event.target.checked)} />
       </form>
     </Modal>
   );

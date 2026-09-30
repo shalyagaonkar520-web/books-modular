@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { useAppContent } from '@/app/AppContentContext';
 import { Button } from '@/components/ui/Button';
 import { FormError } from '@/components/ui/Feedback';
 import { Modal } from '@/components/ui/Modal';
@@ -10,7 +11,7 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { useToast } from '@/components/ui/Toast';
 import { formatBytes } from '@/utils/format';
 
-import { DOCUMENT_CATEGORY_OPTIONS } from './categories';
+import { documentCategoryOptions } from './categories';
 
 interface DocumentEditModalProps {
   document: StoredDocument;
@@ -19,6 +20,7 @@ interface DocumentEditModalProps {
 }
 
 export function DocumentEditModal({ document, onClose, onSaved }: DocumentEditModalProps) {
+  const { t } = useAppContent();
   const toast = useToast();
   const { submitting, error, fieldErrors, run } = useSubmit();
   const [title, setTitle] = useState(document.title);
@@ -28,7 +30,7 @@ export function DocumentEditModal({ document, onClose, onSaved }: DocumentEditMo
   const save = async () => {
     const updated = await run(() => documentsApi.update(document.id, { title: title.trim(), category, notes: notes.trim() || null }));
     if (updated) {
-      toast.success('Document details saved.');
+      toast.success(t('documents.edit.toast.saved'));
       onSaved();
       onClose();
     }
@@ -37,16 +39,16 @@ export function DocumentEditModal({ document, onClose, onSaved }: DocumentEditMo
   return (
     <Modal
       open
-      title="Edit document"
+      title={t('documents.edit.title')}
       subtitle={`${document.originalFilename} · ${formatBytes(document.sizeBytes)}`}
       onClose={onClose}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('documents.edit.cancel')}
           </Button>
           <Button variant="primary" onClick={save} loading={submitting} disabled={!title.trim()}>
-            Save changes
+            {t('documents.edit.save')}
           </Button>
         </>
       }
@@ -54,7 +56,7 @@ export function DocumentEditModal({ document, onClose, onSaved }: DocumentEditMo
       <div className="stack">
         <FormError message={error} />
         <TextField
-          label="Title"
+          label={t('documents.edit.titleLabel')}
           value={title}
           maxLength={255}
           required
@@ -62,13 +64,13 @@ export function DocumentEditModal({ document, onClose, onSaved }: DocumentEditMo
           onChange={(event) => setTitle(event.target.value)}
         />
         <SelectField
-          label="Category"
+          label={t('documents.edit.category')}
           value={category}
-          options={DOCUMENT_CATEGORY_OPTIONS}
+          options={documentCategoryOptions(t)}
           error={fieldErrors.category}
           onChange={(event) => setCategory(event.target.value)}
         />
-        <TextAreaField label="Notes" value={notes} rows={3} error={fieldErrors.notes} onChange={(event) => setNotes(event.target.value)} />
+        <TextAreaField label={t('documents.edit.notes')} value={notes} rows={3} error={fieldErrors.notes} onChange={(event) => setNotes(event.target.value)} />
       </div>
     </Modal>
   );

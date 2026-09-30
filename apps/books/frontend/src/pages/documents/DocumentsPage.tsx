@@ -20,7 +20,7 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { useToast } from '@/components/ui/Toast';
 import { formatBytes, formatDateTime, formatNumber } from '@/utils/format';
 
-import { DOCUMENT_CATEGORY_OPTIONS, documentCategoryLabel } from './categories';
+import { documentCategoryLabel, documentCategoryOptions } from './categories';
 import { DocumentEditModal } from './DocumentEditModal';
 import { DocumentUploadCard } from './DocumentUploadCard';
 
@@ -64,7 +64,7 @@ export function DocumentsPage() {
     try {
       await downloadFile(`/documents/${row.id}/download`, row.originalFilename);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'The download could not be started.');
+      toast.error(err instanceof ApiError ? err.message : t('documents.toast.downloadFailed'));
     }
   };
 
@@ -88,12 +88,12 @@ export function DocumentsPage() {
   }, {});
   const topCategory = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1])[0];
   const total = stats.data?.total ?? 0;
-  const sizeSublabel = total > sample.length ? `Across the ${sample.length} most recent uploads` : 'Across all documents';
+  const sizeSublabel = total > sample.length ? t('documents.stat.storageRecent', { count: sample.length }) : t('documents.stat.storageAll');
 
   const columns: Array<Column<StoredDocument>> = [
     {
       key: 'title',
-      header: 'Document',
+      header: t('documents.col.document'),
       render: (row) => (
         <div className="cell-stack">
           <span className="strong">{row.title}</span>
@@ -101,13 +101,13 @@ export function DocumentsPage() {
         </div>
       ),
     },
-    { key: 'category', header: 'Category', render: (row) => <Badge tone="info">{documentCategoryLabel(row.category)}</Badge> },
-    { key: 'size', header: 'Size', align: 'right', render: (row) => <span className="num">{formatBytes(row.sizeBytes)}</span> },
-    { key: 'uploadedBy', header: 'Uploaded by', render: (row) => row.uploadedByName ?? <span className="text-muted">—</span> },
-    { key: 'uploadedAt', header: 'Uploaded at', render: (row) => formatDateTime(row.createdAt) },
+    { key: 'category', header: t('documents.col.category'), render: (row) => <Badge tone="info">{documentCategoryLabel(row.category, t)}</Badge> },
+    { key: 'size', header: t('documents.col.size'), align: 'right', render: (row) => <span className="num">{formatBytes(row.sizeBytes)}</span> },
+    { key: 'uploadedBy', header: t('documents.col.uploadedBy'), render: (row) => row.uploadedByName ?? <span className="text-muted">—</span> },
+    { key: 'uploadedAt', header: t('documents.col.uploadedAt'), render: (row) => formatDateTime(row.createdAt) },
     {
       key: 'checksum',
-      header: 'SHA-256',
+      header: t('documents.col.checksum'),
       render: (row) => (
         <span className="mono" title={row.sha256}>
           {row.sha256.slice(0, 12)}
@@ -121,14 +121,14 @@ export function DocumentsPage() {
       width: '120px',
       render: (row) => (
         <div className="row-actions">
-          <button type="button" className="action-btn" onClick={() => download(row)} aria-label={`Download ${row.title}`} title="Download">
+          <button type="button" className="action-btn" onClick={() => download(row)} aria-label={t('documents.downloadAria', { title: row.title })} title={t('documents.downloadTitle')}>
             <Download size={15} />
           </button>
           <IfCanWrite>
-            <button type="button" className="action-btn" onClick={() => setEditing(row)} aria-label={`Edit ${row.title}`} title="Edit details">
+            <button type="button" className="action-btn" onClick={() => setEditing(row)} aria-label={t('documents.editAria', { title: row.title })} title={t('documents.editTitle')}>
               <Pencil size={15} />
             </button>
-            <button type="button" className="action-btn is-danger" onClick={() => setDeleting(row)} aria-label={`Delete ${row.title}`} title="Delete">
+            <button type="button" className="action-btn is-danger" onClick={() => setDeleting(row)} aria-label={t('documents.deleteAria', { title: row.title })} title={t('documents.deleteTitle')}>
               <Trash2 size={15} />
             </button>
           </IfCanWrite>
@@ -142,29 +142,33 @@ export function DocumentsPage() {
       <PageHeader title={t('documents.title')} subtitle={t('documents.subtitle')} />
 
       <div className="stat-grid">
-        <StatTile label="Documents" value={formatNumber(total, 0)} sublabel="Stored in this organization" icon={<FileText size={16} />} />
-        <StatTile label="Storage used" value={formatBytes(sampledBytes)} sublabel={sizeSublabel} />
+        <StatTile label={t('documents.stat.documents')} value={formatNumber(total, 0)} sublabel={t('documents.stat.documentsSub')} icon={<FileText size={16} />} />
+        <StatTile label={t('documents.stat.storage')} value={formatBytes(sampledBytes)} sublabel={sizeSublabel} />
         <StatTile
-          label="Largest category"
-          value={topCategory ? documentCategoryLabel(topCategory[0]) : '—'}
-          sublabel={topCategory ? `${topCategory[1]} ${topCategory[1] === 1 ? 'document' : 'documents'}` : 'Nothing uploaded yet'}
+          label={t('documents.stat.largestCategory')}
+          value={topCategory ? documentCategoryLabel(topCategory[0], t) : '—'}
+          sublabel={
+            topCategory
+              ? t(topCategory[1] === 1 ? 'documents.stat.countOne' : 'documents.stat.countMany', { count: topCategory[1] })
+              : t('documents.stat.nothingUploaded')
+          }
         />
       </div>
 
       {canWrite ? <DocumentUploadCard onUploaded={refreshAll} /> : null}
 
-      <Card title="All documents">
+      <Card title={t('documents.listTitle')}>
         <Toolbar>
-          <SearchInput value={search} onChange={changeSearch} placeholder="Search title, file name or notes…" />
+          <SearchInput value={search} onChange={changeSearch} placeholder={t('documents.searchPlaceholder')} />
           <FilterSelect
-            label="Category"
+            label={t('documents.filter.category')}
             value={category}
             onChange={changeFilter}
-            options={[{ value: '', label: 'All categories' }, ...DOCUMENT_CATEGORY_OPTIONS]}
+            options={[{ value: '', label: t('documents.filter.allCategories') }, ...documentCategoryOptions(t)]}
           />
         </Toolbar>
 
-        {list.loading ? <LoadingBlock label="Loading documents…" /> : null}
+        {list.loading ? <LoadingBlock label={t('documents.loading')} /> : null}
         {!list.loading && list.error ? <ErrorBlock message={list.error} onRetry={list.reload} /> : null}
         {!list.loading && !list.error && list.data && list.data.items.length === 0 ? (
           <EmptyState
@@ -174,7 +178,7 @@ export function DocumentsPage() {
         ) : null}
         {!list.loading && !list.error && list.data && list.data.items.length > 0 ? (
           <>
-            <DataTable columns={columns} rows={list.data.items} rowKey={(row) => row.id} caption="Stored documents" />
+            <DataTable columns={columns} rows={list.data.items} rowKey={(row) => row.id} caption={t('documents.tableCaption')} />
             <Pagination page={list.data.page} pageSize={list.data.pageSize} total={list.data.total} onPageChange={setPage} />
           </>
         ) : null}
@@ -184,17 +188,17 @@ export function DocumentsPage() {
 
       <ConfirmDialog
         open={!!deleting}
-        title="Delete document"
+        title={t('documents.delete.title')}
         message={
           deleting ? (
             <>
-              <strong>{deleting.title}</strong> and the stored file will be permanently deleted. This cannot be undone.
+              <strong>{deleting.title}</strong> {t('documents.delete.body')}
             </>
           ) : (
             ''
           )
         }
-        confirmLabel="Delete"
+        confirmLabel={t('documents.delete.confirm')}
         busy={remove.submitting}
         onConfirm={confirmDelete}
         onCancel={() => setDeleting(null)}

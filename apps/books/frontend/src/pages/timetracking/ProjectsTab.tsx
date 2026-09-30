@@ -22,11 +22,12 @@ import { statusLabel, statusTone } from '@/utils/status';
 import { InvoiceTimeModal } from './InvoiceTimeModal';
 import { ProjectModal } from './ProjectModal';
 
+/** `label` values are content keys; resolve them with `t()` at render. */
 const STATUS_OPTIONS = [
-  { value: '', label: 'All statuses' },
-  { value: 'active', label: 'Active' },
-  { value: 'on_hold', label: 'On hold' },
-  { value: 'completed', label: 'Completed' },
+  { value: '', label: 'timeTracking.projects.filter.allStatuses' },
+  { value: 'active', label: 'timeTracking.projectStatus.active' },
+  { value: 'on_hold', label: 'timeTracking.projectStatus.onHold' },
+  { value: 'completed', label: 'timeTracking.projectStatus.completed' },
 ];
 
 export function ProjectsTab({ onProjectsChanged }: { onProjectsChanged: () => void }) {
@@ -63,7 +64,12 @@ export function ProjectsTab({ onProjectsChanged }: { onProjectsChanged: () => vo
   return (
     <>
       <Toolbar>
-        <FilterSelect label="Status" value={statusFilter} options={STATUS_OPTIONS} onChange={setStatusFilter} />
+        <FilterSelect
+          label={t('timeTracking.projects.filter.status')}
+          value={statusFilter}
+          options={STATUS_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
+          onChange={setStatusFilter}
+        />
         <IfCanWrite>
           <Button variant="primary" size="sm" onClick={() => setModal({ open: true, project: null })}>
             {t('timeTracking.newProject')}
@@ -72,15 +78,15 @@ export function ProjectsTab({ onProjectsChanged }: { onProjectsChanged: () => vo
       </Toolbar>
 
       {lastInvoice ? (
-        <Card title="Invoice created" subtitle={`${lastInvoice.invoiceNumber} · ${formatCurrency(lastInvoice.total)}`}>
+        <Card title={t('timeTracking.projects.invoiceCreated.title')} subtitle={`${lastInvoice.invoiceNumber} · ${formatCurrency(lastInvoice.total)}`}>
           <div className="row-between">
-            <span className="text-muted">Unbilled time has been billed to {lastInvoice.customerName}.</span>
+            <span className="text-muted">{t('timeTracking.projects.invoiceCreated.body', { customer: lastInvoice.customerName })}</span>
             <div className="row">
               <Link className="btn btn-primary btn-sm" to={`/invoices/${lastInvoice.id}`}>
-                <span>View invoice</span>
+                <span>{t('timeTracking.projects.invoiceCreated.view')}</span>
               </Link>
               <Button size="sm" variant="ghost" onClick={() => setLastInvoice(null)}>
-                Dismiss
+                {t('timeTracking.projects.invoiceCreated.dismiss')}
               </Button>
             </div>
           </div>
@@ -113,21 +119,21 @@ export function ProjectsTab({ onProjectsChanged }: { onProjectsChanged: () => vo
               <Card
                 key={project.id}
                 title={project.name}
-                subtitle={project.customerName ?? 'No customer linked'}
-                actions={<Badge tone={statusTone(project.status)}>{statusLabel(project.status)}</Badge>}
+                subtitle={project.customerName ?? t('timeTracking.projects.noCustomerLinked')}
+                actions={<Badge tone={statusTone(project.status)}>{statusLabel(project.status, t)}</Badge>}
                 footer={
                   canWrite ? (
                     <div className="row">
                       <Button size="sm" onClick={() => setModal({ open: true, project })}>
-                        Edit
+                        {t('timeTracking.projects.editButton')}
                       </Button>
                       {canInvoice ? (
                         <Button size="sm" variant="primary" onClick={() => setInvoiceTarget(project)}>
-                          Invoice unbilled time
+                          {t('timeTracking.projects.invoiceUnbilled')}
                         </Button>
                       ) : null}
                       <Button size="sm" variant="danger" onClick={() => setDeleteTarget(project)}>
-                        Delete
+                        {t('timeTracking.projects.deleteButton')}
                       </Button>
                     </div>
                   ) : null
@@ -135,30 +141,30 @@ export function ProjectsTab({ onProjectsChanged }: { onProjectsChanged: () => vo
               >
                 <div className="detail-grid">
                   <div className="detail-item">
-                    <span className="detail-label">Billing</span>
+                    <span className="detail-label">{t('timeTracking.projects.detail.billing')}</span>
                     <span className="detail-value">
                       {titleCase(project.billingMethod)}
-                      {project.billingMethod === 'hourly' ? ` · ${formatCurrency(project.hourlyRate)}/hr` : ''}
+                      {project.billingMethod === 'hourly' ? ` · ${t('timeTracking.projects.perHour', { rate: formatCurrency(project.hourlyRate) })}` : ''}
                     </span>
                   </div>
                   <div className="detail-item">
-                    <span className="detail-label">Budget hours</span>
+                    <span className="detail-label">{t('timeTracking.projects.detail.budgetHours')}</span>
                     <span className="detail-value num">{project.budgetHours > 0 ? formatNumber(project.budgetHours) : '—'}</span>
                   </div>
                   <div className="detail-item">
-                    <span className="detail-label">Logged</span>
-                    <span className="detail-value num">{formatNumber(project.loggedHours)} h</span>
+                    <span className="detail-label">{t('timeTracking.projects.detail.logged')}</span>
+                    <span className="detail-value num">{t('timeTracking.hoursShort', { hours: formatNumber(project.loggedHours) })}</span>
                   </div>
                   <div className="detail-item">
-                    <span className="detail-label">Billable</span>
-                    <span className="detail-value num">{formatNumber(project.billableHours)} h</span>
+                    <span className="detail-label">{t('timeTracking.projects.detail.billable')}</span>
+                    <span className="detail-value num">{t('timeTracking.hoursShort', { hours: formatNumber(project.billableHours) })}</span>
                   </div>
                   <div className="detail-item">
-                    <span className="detail-label">Unbilled</span>
-                    <span className="detail-value num">{formatNumber(project.unbilledHours)} h</span>
+                    <span className="detail-label">{t('timeTracking.projects.detail.unbilled')}</span>
+                    <span className="detail-value num">{t('timeTracking.hoursShort', { hours: formatNumber(project.unbilledHours) })}</span>
                   </div>
                   <div className="detail-item">
-                    <span className="detail-label">Unbilled amount</span>
+                    <span className="detail-label">{t('timeTracking.projects.detail.unbilledAmount')}</span>
                     <span className="detail-value num">{formatCurrency(project.unbilledAmount)}</span>
                   </div>
                 </div>
@@ -167,12 +173,12 @@ export function ProjectsTab({ onProjectsChanged }: { onProjectsChanged: () => vo
                     <div
                       className="split-bar"
                       role="img"
-                      aria-label={`${formatNumber(project.loggedHours)} of ${formatNumber(project.budgetHours)} budget hours used`}
+                      aria-label={t('timeTracking.projects.budgetUsed', { logged: formatNumber(project.loggedHours), budget: formatNumber(project.budgetHours) })}
                     >
                       <span className="split-segment segment-current" style={{ width: `${budgetUsed}%` }} />
                     </div>
                     <p className="small text-subtle">
-                      {formatNumber(project.loggedHours)} of {formatNumber(project.budgetHours)} budget hours used
+                      {t('timeTracking.projects.budgetUsed', { logged: formatNumber(project.loggedHours), budget: formatNumber(project.budgetHours) })}
                     </p>
                   </>
                 ) : null}
@@ -199,22 +205,20 @@ export function ProjectsTab({ onProjectsChanged }: { onProjectsChanged: () => vo
         onInvoiced={(invoice) => {
           setInvoiceTarget(null);
           setLastInvoice(invoice);
-          toast.success(`Invoice ${invoice.invoiceNumber} created for ${formatCurrency(invoice.total)}.`);
+          toast.success(t('timeTracking.projects.toast.invoiced', { number: invoice.invoiceNumber, amount: formatCurrency(invoice.total) }));
           refresh();
         }}
       />
       <ConfirmDialog
         open={!!deleteTarget}
-        title="Delete project"
+        title={t('timeTracking.projects.delete.title')}
         message={
           <>
             <FormError message={action.error} />
-            {deleteTarget
-              ? `Delete ${deleteTarget.name}? If the project already has invoiced time it will be marked completed instead of deleted.`
-              : ''}
+            {deleteTarget ? t('timeTracking.projects.delete.body', { name: deleteTarget.name }) : ''}
           </>
         }
-        confirmLabel="Delete"
+        confirmLabel={t('timeTracking.projects.delete.confirm')}
         busy={action.submitting}
         onConfirm={() => void confirmDelete()}
         onCancel={() => {

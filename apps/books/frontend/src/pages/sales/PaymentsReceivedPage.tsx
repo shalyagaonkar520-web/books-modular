@@ -20,7 +20,7 @@ import { useAsync } from '@/hooks/useAsync';
 import { useDownload } from '@/hooks/useDownload';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatDate, formatNumber, round2 } from '@/utils/format';
-import { PAYMENT_MODES } from '@/utils/status';
+import { paymentModeLabel, type Translate } from '@/utils/status';
 
 import { RecordPaymentModal } from './RecordPaymentModal';
 
@@ -28,7 +28,7 @@ const PAGE_SIZE = 25;
 const TOTALS_PAGE_SIZE = 200;
 const MAX_TOTALS_PAGES = 20;
 
-const modeLabel = (mode: string): string => PAYMENT_MODES.find((option) => option.value === mode)?.label ?? mode;
+const modeLabel = (mode: string, t: Translate): string => paymentModeLabel(mode, t);
 
 interface RangeTotals {
   received: number;
@@ -90,10 +90,10 @@ export function PaymentsReceivedPage() {
 
   const customerOptions = useMemo(
     () => [
-      { value: '', label: 'All customers' },
+      { value: '', label: t('paymentsReceived.filter.allCustomers') },
       ...(customers.data?.items ?? []).map((customer) => ({ value: customer.id, label: customer.displayName })),
     ],
-    [customers.data],
+    [customers.data, t],
   );
 
   const confirmDelete = async () => {
@@ -107,34 +107,34 @@ export function PaymentsReceivedPage() {
   };
 
   const columns: Array<Column<CustomerPayment>> = [
-    { key: 'paymentNumber', header: 'Payment #', render: (row) => <span className="mono">{row.paymentNumber}</span> },
-    { key: 'date', header: 'Date', render: (row) => formatDate(row.date) },
-    { key: 'customerName', header: 'Customer', render: (row) => row.customerName },
+    { key: 'paymentNumber', header: t('paymentsReceived.col.number'), render: (row) => <span className="mono">{row.paymentNumber}</span> },
+    { key: 'date', header: t('paymentsReceived.col.date'), render: (row) => formatDate(row.date) },
+    { key: 'customerName', header: t('paymentsReceived.col.customer'), render: (row) => row.customerName },
     {
       key: 'invoiceNumber',
-      header: 'Invoice',
+      header: t('paymentsReceived.col.invoice'),
       render: (row) =>
         row.invoiceId && row.invoiceNumber ? (
           <Link to={`/invoices/${row.invoiceId}`}>{row.invoiceNumber}</Link>
         ) : (
-          <span className="text-subtle">Unapplied advance</span>
+          <span className="text-subtle">{t('paymentsReceived.col.unapplied')}</span>
         ),
     },
     {
       key: 'mode',
-      header: 'Mode',
+      header: t('paymentsReceived.col.mode'),
       render: (row) => (
         <span className="cell-stack">
-          <span>{modeLabel(row.mode)}</span>
+          <span>{modeLabel(row.mode, t)}</span>
           <small>{row.bankAccountName}</small>
         </span>
       ),
     },
-    { key: 'reference', header: 'Reference', render: (row) => (row.reference ? <span className="code-tag">{row.reference}</span> : '—') },
-    { key: 'amount', header: 'Amount', align: 'right', render: (row) => <span className="num strong">{formatCurrency(row.amount)}</span> },
+    { key: 'reference', header: t('paymentsReceived.col.reference'), render: (row) => (row.reference ? <span className="code-tag">{row.reference}</span> : '—') },
+    { key: 'amount', header: t('paymentsReceived.col.amount'), align: 'right', render: (row) => <span className="num strong">{formatCurrency(row.amount)}</span> },
     {
       key: 'actions',
-      header: 'Actions',
+      header: t('paymentsReceived.col.actions'),
       align: 'right',
       render: (row) => (
         <span className="row-actions">
@@ -142,8 +142,8 @@ export function PaymentsReceivedPage() {
             type="button"
             className="action-btn"
             style={{ color: '#ea4335' }}
-            aria-label={`Send receipt for ${row.paymentNumber} via Gmail`}
-            title="Send receipt via Gmail"
+            aria-label={t('paymentsReceived.action.mailAria', { number: row.paymentNumber })}
+            title={t('paymentsReceived.action.mailTitle')}
             onClick={() => setMailPayment(row)}
           >
             <Mail size={15} />
@@ -152,8 +152,8 @@ export function PaymentsReceivedPage() {
             type="button"
             className="action-btn"
             style={{ color: '#dc2626' }}
-            aria-label={`Download PDF receipt for ${row.paymentNumber}`}
-            title="Download PDF receipt"
+            aria-label={t('paymentsReceived.action.pdfAria', { number: row.paymentNumber })}
+            title={t('paymentsReceived.action.pdfTitle')}
             onClick={() => customerPaymentsApi.downloadPdf(row.id, row.paymentNumber)}
           >
             <FileDown size={15} />
@@ -162,7 +162,7 @@ export function PaymentsReceivedPage() {
             <button
               type="button"
               className="action-btn is-danger"
-              aria-label={`Delete payment ${row.paymentNumber}`}
+              aria-label={t('paymentsReceived.action.deleteAria', { number: row.paymentNumber })}
               onClick={() => {
                 reset();
                 setPendingDelete(row);
@@ -178,14 +178,20 @@ export function PaymentsReceivedPage() {
 
   const rows = payments.data?.items ?? [];
   const hasFilters = Boolean(customerId || startDate || endDate);
-  const rangeLabel = startDate || endDate ? `${startDate ? formatDate(startDate) : 'the beginning'} – ${endDate ? formatDate(endDate) : 'today'}` : 'All time';
+  const rangeLabel =
+    startDate || endDate
+      ? t('paymentsReceived.range.between', {
+          start: startDate ? formatDate(startDate) : t('paymentsReceived.range.beginning'),
+          end: endDate ? formatDate(endDate) : t('paymentsReceived.range.today'),
+        })
+      : t('paymentsReceived.range.allTime');
 
   return (
     <>
       <PageHeader
         title={t('paymentsReceived.title')}
         subtitle={t('paymentsReceived.subtitle')}
-        breadcrumb={['Sales', 'Payments received']}
+        breadcrumb={[t('paymentsReceived.breadcrumb.sales'), t('paymentsReceived.breadcrumb.current')]}
         actions={
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <Button
@@ -228,17 +234,17 @@ export function PaymentsReceivedPage() {
       ) : (
         <div className="stat-grid">
           <StatTile
-            label="Total received"
+            label={t('paymentsReceived.stat.received')}
             value={formatCurrency(totals.data?.received ?? 0)}
-            sublabel={totals.data?.truncated ? `${rangeLabel} (first ${formatNumber(TOTALS_PAGE_SIZE * MAX_TOTALS_PAGES, 0)} payments)` : rangeLabel}
+            sublabel={totals.data?.truncated ? t('paymentsReceived.stat.truncated', { range: rangeLabel, count: formatNumber(TOTALS_PAGE_SIZE * MAX_TOTALS_PAGES, 0) }) : rangeLabel}
             tone="positive"
             icon={<Wallet size={15} />}
           />
-          <StatTile label="Payments" value={formatNumber(totals.data?.count ?? 0, 0)} sublabel="Records in this range" />
+          <StatTile label={t('paymentsReceived.stat.payments')} value={formatNumber(totals.data?.count ?? 0, 0)} sublabel={t('paymentsReceived.stat.paymentsSub')} />
           <StatTile
-            label="Unapplied advances"
+            label={t('paymentsReceived.stat.unapplied')}
             value={formatCurrency(totals.data?.unapplied ?? 0)}
-            sublabel="Not linked to an invoice"
+            sublabel={t('paymentsReceived.stat.unappliedSub')}
             tone={totals.data && totals.data.unapplied > 0 ? 'warning' : 'neutral'}
           />
         </div>
@@ -246,7 +252,7 @@ export function PaymentsReceivedPage() {
 
       <Toolbar>
         <FilterSelect
-          label="Customer"
+          label={t('paymentsReceived.filter.customer')}
           value={customerId}
           options={customerOptions}
           onChange={(value) => {
@@ -255,7 +261,7 @@ export function PaymentsReceivedPage() {
           }}
         />
         <label className="filter-select">
-          <span>From</span>
+          <span>{t('paymentsReceived.filter.from')}</span>
           <input
             type="date"
             className="input select-sm"
@@ -267,7 +273,7 @@ export function PaymentsReceivedPage() {
           />
         </label>
         <label className="filter-select">
-          <span>To</span>
+          <span>{t('paymentsReceived.filter.to')}</span>
           <input
             type="date"
             className="input select-sm"
@@ -301,7 +307,7 @@ export function PaymentsReceivedPage() {
           />
         ) : (
           <>
-            <DataTable columns={columns} rows={rows} rowKey={(row) => row.id} caption="Payments received" />
+            <DataTable columns={columns} rows={rows} rowKey={(row) => row.id} caption={t('paymentsReceived.table.caption')} />
             <Pagination page={page} pageSize={payments.data?.pageSize ?? PAGE_SIZE} total={payments.data?.total ?? 0} onPageChange={setPage} />
           </>
         )}
@@ -316,8 +322,8 @@ export function PaymentsReceivedPage() {
 
       <ConfirmDialog
         open={!!pendingDelete}
-        title="Delete payment"
-        confirmLabel="Delete payment"
+        title={t('paymentsReceived.delete.title')}
+        confirmLabel={t('paymentsReceived.delete.confirm')}
         busy={submitting}
         onCancel={() => setPendingDelete(null)}
         onConfirm={confirmDelete}
@@ -326,8 +332,11 @@ export function PaymentsReceivedPage() {
             <FormError message={actionError} />
             {pendingDelete ? (
               <p>
-                Payment {pendingDelete.paymentNumber} of {formatCurrency(pendingDelete.amount)} from {pendingDelete.customerName} will be deleted and its
-                ledger entries reversed.
+                {t('paymentsReceived.delete.body', {
+                  number: pendingDelete.paymentNumber,
+                  amount: formatCurrency(pendingDelete.amount),
+                  customer: pendingDelete.customerName,
+                })}
               </p>
             ) : null}
           </>
@@ -354,8 +363,11 @@ interface SendReceiptModalProps {
 }
 
 function SendReceiptModal({ payment, onClose, onSent }: SendReceiptModalProps) {
+  const { t } = useAppContent();
   const [email, setEmail] = useState('');
-  const [notes, setNotes] = useState(`Thank you for your payment of ${formatCurrency(payment.amount)} (Receipt #${payment.paymentNumber}).`);
+  const [notes, setNotes] = useState(() =>
+    t('paymentsReceived.receipt.defaultNotes', { amount: formatCurrency(payment.amount), number: payment.paymentNumber }),
+  );
   const [attachPdf, setAttachPdf] = useState(true);
   const { submitting, error, run } = useSubmit();
 
@@ -377,16 +389,16 @@ function SendReceiptModal({ payment, onClose, onSent }: SendReceiptModalProps) {
     <Modal
       open
       size="md"
-      title="Send Payment Receipt via Gmail"
-      subtitle={`Receipt #${payment.paymentNumber} • ${payment.customerName}`}
+      title={t('paymentsReceived.receipt.title')}
+      subtitle={t('paymentsReceived.receipt.subtitle', { number: payment.paymentNumber, customer: payment.customerName })}
       onClose={onClose}
       footer={
         <>
           <Button onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('paymentsReceived.receipt.cancel')}
           </Button>
           <Button variant="primary" loading={submitting} icon={<Mail size={15} />} onClick={handleSend}>
-            Send Receipt via Gmail
+            {t('paymentsReceived.receipt.send')}
           </Button>
         </>
       }
@@ -394,24 +406,24 @@ function SendReceiptModal({ payment, onClose, onSent }: SendReceiptModalProps) {
       <FormError message={error} />
       <div className="form-grid">
         <TextField
-          label="Recipient Email"
+          label={t('paymentsReceived.receipt.email')}
           type="email"
           required
-          placeholder="customer@example.com"
+          placeholder={t('paymentsReceived.receipt.emailPlaceholder')}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
       </div>
       <div style={{ marginTop: '12px' }}>
         <CheckboxField
-          label="Attach PDF Receipt"
+          label={t('paymentsReceived.receipt.attachPdf')}
           checked={attachPdf}
           onChange={(e) => setAttachPdf(e.target.checked)}
         />
       </div>
       <div style={{ marginTop: '12px' }}>
         <TextAreaField
-          label="Custom Notes"
+          label={t('paymentsReceived.receipt.notes')}
           rows={3}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}

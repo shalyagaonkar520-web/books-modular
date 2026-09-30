@@ -28,9 +28,9 @@ import { BankTransactionModal, BankTransferModal } from './BankTransactionModals
 const PAGE_SIZE = 25;
 
 const RECONCILED_OPTIONS = [
-  { value: 'all', label: 'All transactions' },
-  { value: 'yes', label: 'Reconciled' },
-  { value: 'no', label: 'Unreconciled' },
+  { value: 'all', labelKey: 'banking.filter.all' },
+  { value: 'yes', labelKey: 'banking.filter.reconciled' },
+  { value: 'no', labelKey: 'banking.filter.unreconciled' },
 ];
 
 const DELETABLE_SOURCES = new Set(['manual', 'transfer']);
@@ -47,6 +47,10 @@ export function BankingPage() {
   const [reconciledFilter, setReconciledFilter] = useState('all');
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounced(search);
+  const reconciledOptions = useMemo(
+    () => RECONCILED_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) })),
+    [t],
+  );
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
 
   const [accountModal, setAccountModal] = useState<{ open: boolean; account: BankAccount | null }>({ open: false, account: null });
@@ -154,33 +158,33 @@ export function BankingPage() {
                 type="checkbox"
                 className="checkbox"
                 checked={selectedRows.includes(transaction.id)}
-                aria-label={`Select transaction dated ${formatDate(transaction.date)}`}
+                aria-label={t('banking.aria.selectRow', { date: formatDate(transaction.date) })}
                 onChange={() => toggleRow(transaction.id)}
               />
             ),
           },
         ]
       : []),
-    { key: 'date', header: 'Date', render: (transaction) => formatDate(transaction.date) },
+    { key: 'date', header: t('banking.col.date'), render: (transaction) => formatDate(transaction.date) },
     {
       key: 'description',
-      header: 'Description',
+      header: t('banking.col.description'),
       render: (transaction) => (
         <div className="cell-stack">
           <span>{transaction.description}</span>
-          {transaction.reference ? <small>Ref: {transaction.reference}</small> : null}
+          {transaction.reference ? <small>{t('banking.reference', { reference: transaction.reference })}</small> : null}
         </div>
       ),
     },
-    { key: 'source', header: 'Source', render: (transaction) => <Badge tone="neutral">{titleCase(transaction.sourceType)}</Badge> },
+    { key: 'source', header: t('banking.col.source'), render: (transaction) => <Badge tone="neutral">{titleCase(transaction.sourceType)}</Badge> },
     {
       key: 'counter',
-      header: 'Counter account',
+      header: t('banking.col.counter'),
       render: (transaction) => <span className="text-muted">{transaction.counterAccountName ?? '—'}</span>,
     },
     {
       key: 'deposit',
-      header: 'Deposit',
+      header: t('banking.col.deposit'),
       align: 'right',
       render: (transaction) =>
         transaction.type === 'deposit' ? (
@@ -191,7 +195,7 @@ export function BankingPage() {
     },
     {
       key: 'withdrawal',
-      header: 'Withdrawal',
+      header: t('banking.col.withdrawal'),
       align: 'right',
       render: (transaction) =>
         transaction.type === 'withdrawal' ? (
@@ -202,13 +206,13 @@ export function BankingPage() {
     },
     {
       key: 'running',
-      header: 'Running balance',
+      header: t('banking.col.running'),
       align: 'right',
       render: (transaction) => <span className="num">{formatCurrency(runningBalances.get(transaction.id) ?? 0, selectedAccount?.currency)}</span>,
     },
     {
       key: 'reconciled',
-      header: 'Reconciled',
+      header: t('banking.col.reconciled'),
       align: 'center',
       render: (transaction) =>
         canWrite ? (
@@ -217,11 +221,11 @@ export function BankingPage() {
             className="checkbox"
             checked={transaction.isReconciled}
             disabled={action.submitting}
-            aria-label={`Mark transaction dated ${formatDate(transaction.date)} as reconciled`}
+            aria-label={t('banking.aria.reconcileRow', { date: formatDate(transaction.date) })}
             onChange={(event) => void setReconciled([transaction.id], event.target.checked)}
           />
         ) : (
-          <Badge tone={transaction.isReconciled ? 'success' : 'warning'}>{transaction.isReconciled ? 'Yes' : 'No'}</Badge>
+          <Badge tone={transaction.isReconciled ? 'success' : 'warning'}>{transaction.isReconciled ? t('banking.reconciled.yes') : t('banking.reconciled.no')}</Badge>
         ),
     },
     {
@@ -231,7 +235,7 @@ export function BankingPage() {
       render: (transaction) =>
         canWrite && DELETABLE_SOURCES.has(transaction.sourceType) ? (
           <div className="row-actions">
-            <button type="button" className="action-btn is-danger" aria-label="Delete transaction" onClick={() => setDeleteTarget(transaction)}>
+            <button type="button" className="action-btn is-danger" aria-label={t('banking.aria.delete')} onClick={() => setDeleteTarget(transaction)}>
               <Trash2 size={15} />
             </button>
           </div>
@@ -278,9 +282,9 @@ export function BankingPage() {
         <>
           <div className="stat-grid">
             <StatTile
-              label="Total balance"
+              label={t('banking.stat.totalBalance')}
               value={formatCurrency(summary.data?.totalBalance)}
-              sublabel={`${accounts.length} account(s) · ${summary.data?.unreconciledCount ?? 0} unreconciled`}
+              sublabel={t('banking.stat.totalBalanceSub', { count: accounts.length, unreconciled: summary.data?.unreconciledCount ?? 0 })}
               tone={(summary.data?.totalBalance ?? 0) < 0 ? 'negative' : 'positive'}
               icon={<Landmark size={16} aria-hidden="true" />}
             />
@@ -289,13 +293,17 @@ export function BankingPage() {
           <BankAccountCards accounts={accounts} selectedAccountId={selectedAccountId} onSelect={selectAccount} />
 
           <Card
-            title={selectedAccount ? `${selectedAccount.name} register` : 'Transaction register'}
-            subtitle={selectedAccount ? formatCurrency(selectedAccount.currentBalance, selectedAccount.currency) + ' current balance' : undefined}
+            title={selectedAccount ? t('banking.register.title', { account: selectedAccount.name }) : t('banking.register.titleFallback')}
+            subtitle={
+              selectedAccount
+                ? t('banking.register.subtitle', { amount: formatCurrency(selectedAccount.currentBalance, selectedAccount.currency) })
+                : undefined
+            }
             actions={
               selectedAccount ? (
                 <IfCanWrite>
                   <Button size="sm" onClick={() => setAccountModal({ open: true, account: selectedAccount })}>
-                    Edit account
+                    {t('banking.register.editAccount')}
                   </Button>
                 </IfCanWrite>
               ) : null
@@ -308,10 +316,10 @@ export function BankingPage() {
                   setSearch(value);
                   resetFilters();
                 }}
-                placeholder="Search description or reference…"
+                placeholder={t('banking.search.placeholder')}
               />
               <label className="filter-select">
-                <span>From</span>
+                <span>{t('banking.filter.from')}</span>
                 <input
                   type="date"
                   className="select select-sm"
@@ -323,7 +331,7 @@ export function BankingPage() {
                 />
               </label>
               <label className="filter-select">
-                <span>To</span>
+                <span>{t('banking.filter.to')}</span>
                 <input
                   type="date"
                   className="select select-sm"
@@ -335,9 +343,9 @@ export function BankingPage() {
                 />
               </label>
               <FilterSelect
-                label="Status"
+                label={t('banking.filter.status')}
                 value={reconciledFilter}
-                options={RECONCILED_OPTIONS}
+                options={reconciledOptions}
                 onChange={(value) => {
                   setReconciledFilter(value);
                   resetFilters();
@@ -349,20 +357,20 @@ export function BankingPage() {
               {canWrite && rows.length ? (
                 <div className="row-between">
                   <span className="small text-muted">
-                    {selectedRows.length ? `${selectedRows.length} selected` : 'Select rows to reconcile in bulk'}
+                    {selectedRows.length ? t('banking.bulk.selected', { count: selectedRows.length }) : t('banking.bulk.hint')}
                   </span>
                   <div className="row">
                     <Button size="sm" variant="ghost" onClick={() => setSelectedRows(rows.map((transaction) => transaction.id))}>
-                      Select all on page
+                      {t('banking.bulk.selectAll')}
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setSelectedRows([])} disabled={!selectedRows.length}>
-                      Clear
+                      {t('banking.bulk.clear')}
                     </Button>
                     <Button size="sm" onClick={() => void setReconciled(selectedRows, true)} disabled={!selectedRows.length} loading={action.submitting}>
-                      Mark reconciled
+                      {t('banking.bulk.markReconciled')}
                     </Button>
                     <Button size="sm" onClick={() => void setReconciled(selectedRows, false)} disabled={!selectedRows.length}>
-                      Mark unreconciled
+                      {t('banking.bulk.markUnreconciled')}
                     </Button>
                   </div>
                 </div>
@@ -373,11 +381,11 @@ export function BankingPage() {
               ) : transactions.error ? (
                 <ErrorBlock message={transactions.error} onRetry={transactions.reload} />
               ) : !rows.length ? (
-                <EmptyState title="No transactions found" description="Adjust the filters, or record a deposit, withdrawal or transfer." />
+                <EmptyState title={t('banking.transactions.emptyTitle')} description={t('banking.transactions.emptyBody')} />
               ) : (
                 <>
-                  <DataTable columns={columns} rows={rows} rowKey={(transaction) => transaction.id} caption="Bank transaction register" />
-                  <p className="small text-subtle">Running balance is a cumulative total of the rows visible on this page, in date order.</p>
+                  <DataTable columns={columns} rows={rows} rowKey={(transaction) => transaction.id} caption={t('banking.register.caption')} />
+                  <p className="small text-subtle">{t('banking.register.runningNote')}</p>
                   <Pagination page={page} pageSize={PAGE_SIZE} total={transactions.data?.total ?? 0} onPageChange={setPage} />
                 </>
               )}
@@ -420,16 +428,20 @@ export function BankingPage() {
       />
       <ConfirmDialog
         open={!!deleteTarget}
-        title="Delete transaction"
+        title={t('banking.confirmDelete.title')}
         message={
           <>
             <FormError message={action.error} />
             {deleteTarget
-              ? `Delete the ${deleteTarget.type} of ${formatCurrency(deleteTarget.amount)} dated ${formatDate(deleteTarget.date)}? The ledger entry will be reversed.`
+              ? t('banking.confirmDelete.body', {
+                  type: deleteTarget.type,
+                  amount: formatCurrency(deleteTarget.amount),
+                  date: formatDate(deleteTarget.date),
+                })
               : ''}
           </>
         }
-        confirmLabel="Delete"
+        confirmLabel={t('banking.confirmDelete.button')}
         busy={action.submitting}
         onConfirm={() => void confirmDelete()}
         onCancel={() => {

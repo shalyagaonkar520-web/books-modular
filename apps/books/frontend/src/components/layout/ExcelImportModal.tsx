@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { CheckCircle2, FileSpreadsheet, Layers, Upload, Eye, Trash2 } from 'lucide-react';
 
 import { documentsApi } from '@/api/endpoints';
+import { useAppContent } from '@/app/AppContentContext';
 import type { ExcelCategorizeResponse, ExcelCommitResponse } from '@/api/types';
 import { useSubmit } from '@/hooks/useSubmit';
 import { Badge } from '@/components/ui/Badge';
@@ -27,6 +28,7 @@ const CATEGORY_COLORS: Record<string, Tone> = {
 };
 
 export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalProps) {
+  const { t } = useAppContent();
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -79,7 +81,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
     if (result) {
       setCategorized(result);
       setSelectedSectionIndex(0);
-      toast.success(`Extracted ${result.total_rows} rows across ${result.total_sheets} sheet(s)`);
+      toast.success(t('header.excel.extracted', { rows: result.total_rows, sheets: result.total_sheets }));
     }
   };
 
@@ -146,7 +148,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
         sections: updated,
       });
       setSelectedRowIndices(new Set());
-      toast.success(`Deleted ${selectedRowIndices.size} row(s).`);
+      toast.success(t('header.excel.rowsDeleted', { count: selectedRowIndices.size }));
     }
   };
 
@@ -158,19 +160,19 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
     <Modal
       open={open}
       size="xl"
-      title="Excel & CSV Data Input"
-      subtitle="Upload invoices, bills, customers, or expenses spreadsheets to auto-extract and categorize into your books."
+      title={t('header.excel.title')}
+      subtitle={t('header.excel.subtitle')}
       onClose={handleClose}
       footer={
         commitResult ? (
           <Button variant="primary" onClick={handleClose}>
-            Done
+            {t('header.excel.done')}
           </Button>
         ) : categorized ? (
           <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
             <div style={{ display: 'flex', gap: '8px' }}>
               <Button variant="secondary" onClick={resetAll} disabled={commitSubmit.submitting}>
-                Choose Another File
+                {t('header.excel.chooseAnother')}
               </Button>
               <Button
                 variant="danger"
@@ -178,29 +180,29 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                 disabled={commitSubmit.submitting}
                 icon={<Trash2 size={16} />}
               >
-                Delete All
+                {t('header.excel.deleteAll')}
               </Button>
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               <Button variant="secondary" onClick={handleClose} disabled={commitSubmit.submitting}>
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button
                 variant="primary"
                 loading={commitSubmit.submitting}
                 onClick={handleCommit}
                 disabled={!categorized.ready}
-                title={categorized.ready ? undefined : 'Fix the missing columns listed above first'}
+                title={categorized.ready ? undefined : t('header.excel.fixColumnsFirst')}
                 icon={<CheckCircle2 size={16} />}
               >
-                Import Categorized Data to Books
+                {t('header.excel.import')}
               </Button>
             </div>
           </div>
         ) : (
           <>
             <Button variant="secondary" onClick={handleClose}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               variant="primary"
@@ -209,7 +211,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
               onClick={handleAnalyze}
               icon={<Layers size={16} />}
             >
-              Analyze & Categorize
+              {t('header.excel.analyze')}
             </Button>
           </>
         )
@@ -233,7 +235,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
           >
             <CheckCircle2 size={36} style={{ color: '#16a34a' }} />
           </div>
-          <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '8px' }}>Data Successfully Imported!</h3>
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '8px' }}>{t('header.excel.imported')}</h3>
           <p className="text-muted" style={{ maxWidth: '480px', margin: '0 auto 24px' }}>
             {commitResult.message}
           </p>
@@ -285,10 +287,10 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                 <span>{categorized.filename}</span>
               </div>
               <small className="text-muted">
-                {categorized.total_rows} row(s) ready across {categorized.total_sheets} sheet(s)
+                {t('header.excel.readySummary', { rows: categorized.total_rows, sheets: categorized.total_sheets })}
               </small>
             </div>
-            {categorized.ready ? <Badge tone="success">Ready for Import</Badge> : <Badge tone="danger">Columns missing</Badge>}
+            {categorized.ready ? <Badge tone="success">{t('header.excel.ready')}</Badge> : <Badge tone="danger">{t('header.excel.columnsMissing')}</Badge>}
           </div>
 
           {/* Nothing has been written yet - this is the preview of what would be. */}
@@ -303,7 +305,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
               }}
             >
               <div style={{ fontWeight: 600, color: '#991b1b', marginBottom: '6px' }}>
-                Fix these before importing
+                {t('header.excel.fixBeforeImport')}
               </div>
               <ul style={{ margin: 0, paddingLeft: '18px', color: '#991b1b', fontSize: '0.875rem' }}>
                 {categorized.blocking_problems.map((problem) => (
@@ -315,7 +317,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
 
           <div style={{ marginBottom: '12px' }}>
             <label style={{ fontSize: '0.875rem', fontWeight: 500, marginBottom: '8px', display: 'block' }}>
-              Detected Categories:
+              {t('header.excel.detectedCategories')}
             </label>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               {categorized.sections.map((section, idx) => {
@@ -342,10 +344,10 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                   >
                     <Badge tone={tone}>{section.category.toUpperCase()}</Badge>
                     <span>{section.sheet_name}</span>
-                    <span className="text-muted small">({section.count} rows)</span>
+                    <span className="text-muted small">{t('header.excel.sectionRows', { count: section.count })}</span>
                     <button
                       type="button"
-                      title="Delete this section"
+                      title={t('header.excel.deleteSectionHint')}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleDeleteSection(idx);
@@ -384,18 +386,18 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                 }}
               >
                 <div style={{ fontWeight: 600, marginBottom: '6px' }}>
-                  Columns for {activeSection.category}
+                  {t('header.excel.columnsFor', { category: activeSection.category })}
                 </div>
                 <div style={{ marginBottom: '4px' }}>
-                  <strong>Required:</strong>{' '}
+                  <strong>{t('header.excel.required')}</strong>{' '}
                   {activeSection.rules.required.map((rule) => rule.label).join(', ') || '—'}
                 </div>
                 <div style={{ marginBottom: '4px' }}>
-                  <strong>Optional:</strong>{' '}
+                  <strong>{t('header.excel.optional')}</strong>{' '}
                   {activeSection.rules.optional.map((rule) => rule.label).join(', ') || '—'}
                 </div>
                 <div style={{ marginBottom: activeSection.unmapped_headers.length || activeSection.skipped_count ? '4px' : 0 }}>
-                  <strong>Read from your file:</strong>{' '}
+                  <strong>{t('header.excel.readFromFile')}</strong>{' '}
                   {Object.entries(activeSection.mapped_columns).length
                     ? Object.entries(activeSection.mapped_columns)
                         .map(([field, header]) => `${header} → ${field}`)
@@ -404,21 +406,21 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                 </div>
                 {activeSection.unmapped_headers.length > 0 ? (
                   <div style={{ color: '#92400e' }}>
-                    <strong>Ignored (not recognised):</strong> {activeSection.unmapped_headers.join(', ')}
+                    <strong>{t('header.excel.ignored')}</strong> {activeSection.unmapped_headers.join(', ')}
                   </div>
                 ) : null}
                 {activeSection.missing_required.length > 0 ? (
                   <div style={{ color: '#991b1b', marginTop: '4px' }}>
-                    <strong>Missing required:</strong> {activeSection.missing_required.join(', ')}
+                    <strong>{t('header.excel.missingRequired')}</strong> {activeSection.missing_required.join(', ')}
                   </div>
                 ) : null}
                 {activeSection.skipped_count > 0 ? (
                   <div style={{ marginTop: '6px', color: '#92400e' }}>
-                    <strong>{activeSection.skipped_count} row(s) will be skipped:</strong>
+                    <strong>{t('header.excel.willSkip', { count: activeSection.skipped_count })}</strong>
                     <ul style={{ margin: '4px 0 0', paddingLeft: '18px' }}>
                       {activeSection.issues.map((issue) => (
                         <li key={issue.row_number}>
-                          Row {issue.row_number}: {issue.errors.join('; ')}
+                          {t('header.excel.rowIssue', { row: issue.row_number, errors: issue.errors.join('; ') })}
                         </li>
                       ))}
                     </ul>
@@ -429,7 +431,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
                 <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Eye size={15} />
-                  <span>Preview for {activeSection.category.toUpperCase()} ({activeSection.sheet_name})</span>
+                  <span>{t('header.excel.previewFor', { category: activeSection.category.toUpperCase(), sheet: activeSection.sheet_name })}</span>
                 </h4>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <Button
@@ -437,7 +439,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                     variant="ghost"
                     onClick={handleToggleSelectAllRows}
                   >
-                    {activeSection.rows.length > 0 && selectedRowIndices.size === activeSection.rows.length ? 'Deselect All' : 'Select All'}
+                    {activeSection.rows.length > 0 && selectedRowIndices.size === activeSection.rows.length ? t('header.excel.deselectAll') : t('header.excel.selectAll')}
                   </Button>
                   {selectedRowIndices.size > 0 && (
                     <Button
@@ -446,7 +448,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                       onClick={handleDeleteSelectedRows}
                       icon={<Trash2 size={13} />}
                     >
-                      Delete Selected ({selectedRowIndices.size})
+                      {t('header.excel.deleteSelected', { count: selectedRowIndices.size })}
                     </Button>
                   )}
                   <Button
@@ -455,7 +457,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                     onClick={() => handleDeleteSection(selectedSectionIndex)}
                     icon={<Trash2 size={13} />}
                   >
-                    Delete Section
+                    {t('header.excel.deleteSection')}
                   </Button>
                 </div>
               </div>
@@ -477,7 +479,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                           type="checkbox"
                           checked={activeSection.rows.length > 0 && selectedRowIndices.size === activeSection.rows.length}
                           onChange={handleToggleSelectAllRows}
-                          aria-label="Select all rows"
+                          aria-label={t('common.table.selectAll')}
                         />
                       </th>
                       {/* Show the fields that will actually be imported, not
@@ -499,7 +501,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => handleToggleRowSelection(rIdx)}
-                              aria-label={`Select row ${rIdx + 1}`}
+                              aria-label={t('common.table.selectRow', { key: rIdx + 1 })}
                             />
                           </td>
                           {Object.keys(activeSection.mapped_columns).map((field) => (
@@ -526,7 +528,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', textDecoration: 'none', color: 'var(--color-text)' }}
             >
               <FileSpreadsheet size={15} style={{ color: '#16a34a' }} />
-              <span>Download Indian Demo Data (.xlsx)</span>
+              <span>{t('header.excel.downloadDemo')}</span>
             </a>
             <a
               href="/Rooman_Books_Import_Template.xlsx"
@@ -535,7 +537,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', textDecoration: 'none', color: 'var(--color-text)' }}
             >
               <FileSpreadsheet size={15} style={{ color: '#0284c7' }} />
-              <span>Download Import Template (.xlsx)</span>
+              <span>{t('header.excel.downloadTemplate')}</span>
             </a>
           </div>
           <div
@@ -574,15 +576,15 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
               <Upload size={24} style={{ color: '#0284c7' }} />
             </div>
             <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '4px' }}>
-              {file ? file.name : 'Choose an Excel or CSV file or drag it here'}
+              {file ? file.name : t('header.excel.chooseFile')}
             </div>
             <div className="text-muted" style={{ fontSize: '0.85rem' }}>
-              Supports Microsoft Excel (.xlsx, .xls) and CSV (.csv). Automatically detects customer lists, sales invoices, vendor bills, and expenses.
+              {t('header.excel.supports')}
             </div>
             {file ? (
               <div style={{ marginTop: '12px' }}>
                 <Badge tone="info">
-                  {(file.size / 1024).toFixed(1)} KB selected
+                  {t('header.excel.fileSize', { size: (file.size / 1024).toFixed(1) })}
                 </Badge>
               </div>
             ) : null}
@@ -591,7 +593,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
           {analyzeSubmit.submitting ? (
             <div style={{ marginTop: '20px' }}>
               <p className="text-muted" style={{ fontSize: '0.875rem', marginBottom: '8px' }}>
-                Reading sheets and auto-categorizing records...
+                {t('header.excel.reading')}
               </p>
               <SkeletonRows rows={4} columns={4} />
             </div>

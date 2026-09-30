@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, Eye, EyeOff, KeyRound } from 'lucide-react';
 
+import { useAppContent } from '@/app/AppContentContext';
 import { authApi } from '@/api/endpoints';
 import { ApiError } from '@/api/client';
 import type { InviteInfo } from '@/api/types';
@@ -14,6 +15,7 @@ import { PASSWORD_HINT, validatePassword } from '@/pages/settings/passwordRules'
 
 /** Where an invitee lands from the link in their invite email, to set a password and then sign in normally. */
 export function AcceptInvitePage() {
+  const { t } = useAppContent();
   const { login, isEmployee } = useAuth();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -22,6 +24,8 @@ export function AcceptInvitePage() {
 
   const [invite, setInvite] = useState<InviteInfo | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Fallback messages are stored as catalog keys so they follow the editable text.
+  const [loadErrorKey, setLoadErrorKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -30,7 +34,7 @@ export function AcceptInvitePage() {
 
   useEffect(() => {
     if (!token) {
-      setLoadError('This invite link is missing its token.');
+      setLoadErrorKey('auth.invite.missingToken');
       setLoading(false);
       return;
     }
@@ -41,7 +45,9 @@ export function AcceptInvitePage() {
         if (active) setInvite(info);
       })
       .catch((err) => {
-        if (active) setLoadError(err instanceof ApiError ? err.message : 'This invite link is invalid or has expired.');
+        if (!active) return;
+        if (err instanceof ApiError) setLoadError(err.message);
+        else setLoadErrorKey('auth.invite.invalid');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -59,7 +65,7 @@ export function AcceptInvitePage() {
       return;
     }
     if (password !== confirm) {
-      setError('The two passwords do not match.');
+      setError(t('auth.invite.mismatch'));
       return;
     }
     const result = await run(async () => {
@@ -81,28 +87,28 @@ export function AcceptInvitePage() {
     }
   };
 
-  if (loading) return <LoadingBlock label="Checking your invite…" />;
+  if (loading) return <LoadingBlock label={t('auth.invite.loading')} />;
 
   return (
     <div className="auth-shell">
       <div className="auth-card">
         <div className="auth-brand">
           <img src="/rooman-logo.png" alt="" />
-          <h1 className="auth-title">{done ? 'Password set' : 'Set your password'}</h1>
+          <h1 className="auth-title">{done ? t('auth.invite.titleDone') : t('auth.invite.title')}</h1>
         </div>
 
-        {loadError ? (
+        {loadError || loadErrorKey ? (
           <>
-            <FormError message={loadError} />
+            <FormError message={loadError ?? (loadErrorKey ? t(loadErrorKey) : null)} />
             <p className="auth-footer">
-              <Link to="/login">Back to sign in</Link>
+              <Link to="/login">{t('auth.invite.backToSignIn')}</Link>
             </p>
           </>
         ) : done ? (
           <>
             <p className="auth-subtitle">
               <CheckCircle2 size={16} style={{ verticalAlign: 'text-bottom', marginRight: 6, color: 'var(--color-success, #16a34a)' }} />
-              Your password is set. Sign in with {invite?.email} to continue.
+              {t('auth.invite.doneBody', { email: invite?.email ?? '' })}
             </p>
             <Button
               variant="primary"
@@ -110,7 +116,7 @@ export function AcceptInvitePage() {
               className="btn-block"
               onClick={() => navigate('/login', { replace: true, state: { email: invite?.email } })}
             >
-              Go to sign in
+              {t('auth.invite.goToSignIn')}
             </Button>
           </>
         ) : (
@@ -118,8 +124,8 @@ export function AcceptInvitePage() {
             <p className="auth-subtitle">
               {invite ? (
                 <>
-                  {invite.name}, you've been invited to join <strong>{invite.organizationName}</strong> as {invite.email}. Choose a
-                  password to finish setting up your account.
+                  {t('auth.invite.introBefore', { name: invite.name })} <strong>{invite.organizationName}</strong>{' '}
+                  {t('auth.invite.introAfter', { email: invite.email })}
                 </>
               ) : null}
             </p>
@@ -129,7 +135,7 @@ export function AcceptInvitePage() {
 
               <div className="password-row">
                 <TextField
-                  label="Password"
+                  label={t('auth.invite.password')}
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="new-password"
                   required
@@ -142,24 +148,24 @@ export function AcceptInvitePage() {
                   type="button"
                   className="password-toggle"
                   onClick={() => setShowPassword((visible) => !visible)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-label={showPassword ? t('auth.invite.hidePassword') : t('auth.invite.showPassword')}
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
 
               <TextField
-                label="Confirm password"
+                label={t('auth.invite.confirmPassword')}
                 type={showPassword ? 'text' : 'password'}
                 autoComplete="new-password"
                 required
                 value={confirm}
-                error={confirm && confirm !== password ? 'Passwords do not match.' : undefined}
+                error={confirm && confirm !== password ? t('auth.invite.mismatchInline') : undefined}
                 onChange={(event) => setConfirm(event.target.value)}
               />
 
               <Button type="submit" variant="primary" size="md" loading={submitting} icon={<KeyRound size={15} />} className="btn-block">
-                Set password
+                {t('auth.invite.submit')}
               </Button>
             </form>
           </>

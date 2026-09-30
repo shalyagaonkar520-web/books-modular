@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Eye, KeyRound, Plus, Trash2 } from 'lucide-react';
 
+import { useAppContent } from '@/app/AppContentContext';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -19,11 +20,12 @@ import { InviteUserModal } from './InviteUserModal';
 import { ResetPasswordModal } from './ResetPasswordModal';
 import { UserDashboardModal } from './UserDashboardModal';
 
-const ROLE_OPTIONS: Array<{ value: Role; label: string }> = [
-  { value: 'admin', label: 'Administrator' },
-  { value: 'staff', label: 'Staff' },
-  { value: 'viewer', label: 'Viewer' },
-  { value: 'employee', label: 'Employee (portal only)' },
+/** `labelKey` is an app-content key, translated at render. */
+const ROLE_OPTIONS: Array<{ value: Role; labelKey: string }> = [
+  { value: 'admin', labelKey: 'settings.users.role.admin' },
+  { value: 'staff', labelKey: 'settings.users.role.staff' },
+  { value: 'viewer', labelKey: 'settings.users.role.viewer' },
+  { value: 'employee', labelKey: 'settings.users.role.employee' },
 ];
 
 // "employee" is a portal-only role that can only be granted through the invite
@@ -33,6 +35,7 @@ const ROLE_OPTIONS: Array<{ value: Role; label: string }> = [
 const ASSIGNABLE_ROLE_OPTIONS = ROLE_OPTIONS.filter((option) => option.value !== 'employee');
 
 export function UsersSettings() {
+  const { t } = useAppContent();
   const toast = useToast();
   const { user: currentUser, isAdmin } = useAuth();
   const [viewingUser, setViewingUser] = useState<User | null>(null);
@@ -73,12 +76,12 @@ export function UsersSettings() {
   const columns: Array<Column<User>> = [
     {
       key: 'name',
-      header: 'Name',
+      header: t('settings.users.col.name'),
       render: (row) => (
         <div className="cell-stack">
           <span className="strong">
             {row.name}
-            {row.id === currentUser?.id ? ' (you)' : ''}
+            {row.id === currentUser?.id ? ` ${t('settings.users.you')}` : ''}
           </span>
           <small>{row.email}</small>
         </div>
@@ -86,11 +89,11 @@ export function UsersSettings() {
     },
     {
       key: 'role',
-      header: 'Role',
+      header: t('settings.users.col.role'),
       width: '180px',
       render: (row) => (
         <label className="filter-select">
-          <span className="sr-only">Role for {row.name}</span>
+          <span className="sr-only">{t('settings.users.roleFor', { name: row.name })}</span>
           <select
             className="select select-sm"
             value={row.role}
@@ -99,18 +102,24 @@ export function UsersSettings() {
               updateUser(
                 row,
                 { role: event.target.value },
-                `${row.name} is now ${ROLE_OPTIONS.find((option) => option.value === event.target.value)?.label ?? event.target.value}.`,
+                t('settings.users.roleChanged', {
+                  name: row.name,
+                  role: (() => {
+                    const picked = ROLE_OPTIONS.find((option) => option.value === event.target.value);
+                    return picked ? t(picked.labelKey) : event.target.value;
+                  })(),
+                }),
               )
             }
           >
             {row.role === 'employee' ? (
               <option value="employee" disabled>
-                Employee (portal only)
+                {t('settings.users.role.employee')}
               </option>
             ) : null}
             {ASSIGNABLE_ROLE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
-                {option.label}
+                {t(option.labelKey)}
               </option>
             ))}
           </select>
@@ -119,26 +128,26 @@ export function UsersSettings() {
     },
     {
       key: 'status',
-      header: 'Status',
+      header: t('settings.users.col.status'),
       render: (row) => {
-        if (!row.isActive) return <Badge tone="neutral">Deactivated</Badge>;
+        if (!row.isActive) return <Badge tone="neutral">{t('settings.users.status.deactivated')}</Badge>;
         // An invited user exists but has no password yet, so "Active" alone
         // reads as though they can already sign in.
-        if (row.pendingInvite) return <Badge tone="warning">Invite sent</Badge>;
-        return <Badge tone="success">Active</Badge>;
+        if (row.pendingInvite) return <Badge tone="warning">{t('settings.users.status.inviteSent')}</Badge>;
+        return <Badge tone="success">{t('settings.users.status.active')}</Badge>;
       },
     },
     {
       key: 'lastLogin',
-      header: 'Last login',
+      header: t('settings.users.col.lastLogin'),
       render: (row) =>
         row.lastLoginAt ? (
           formatDateTime(row.lastLoginAt)
         ) : (
-          <span className="text-muted">{row.pendingInvite ? 'Awaiting invite' : 'Never'}</span>
+          <span className="text-muted">{row.pendingInvite ? t('settings.users.awaitingInvite') : t('settings.users.never')}</span>
         ),
     },
-    { key: 'created', header: 'Added', render: (row) => formatDate(row.createdAt) },
+    { key: 'created', header: t('settings.users.col.added'), render: (row) => formatDate(row.createdAt) },
     {
       key: 'actions',
       header: '',
@@ -153,14 +162,14 @@ export function UsersSettings() {
               icon={<Eye size={14} />}
               onClick={() => setViewingUser(row)}
             >
-              View
+              {t('settings.users.view')}
             </Button>
           )}
           <Button variant="ghost" size="sm" icon={<Eye size={14} />} onClick={() => setViewingUser(row)}>
-            View
+            {t('settings.users.view')}
           </Button>
           <Button variant="ghost" size="sm" icon={<KeyRound size={14} />} onClick={() => setResetting(row)}>
-            Reset password
+            {t('settings.users.resetPassword')}
           </Button>
           <Button
             variant={row.isActive ? 'secondary' : 'primary'}
@@ -170,11 +179,11 @@ export function UsersSettings() {
               updateUser(
                 row,
                 { isActive: !row.isActive },
-                row.isActive ? `${row.name} can no longer sign in.` : `${row.name} can sign in again.`,
+                row.isActive ? t('settings.users.deactivated', { name: row.name }) : t('settings.users.activated', { name: row.name }),
               )
             }
           >
-            {row.isActive ? 'Deactivate' : 'Activate'}
+            {row.isActive ? t('settings.users.deactivate') : t('settings.users.activate')}
           </Button>
           {isAdmin && row.id !== currentUser?.id && (
             <Button
@@ -183,7 +192,7 @@ export function UsersSettings() {
               icon={<Trash2 size={14} />}
               onClick={() => setDeletingUser(row)}
             >
-              Delete
+              {t('settings.users.delete')}
             </Button>
           )}
         </div>
@@ -194,22 +203,20 @@ export function UsersSettings() {
   return (
     <div className="stack">
       <Card
-        title="Users"
-        subtitle="Administrators manage everything, staff can record transactions, viewers are read-only"
+        title={t('settings.users.title')}
+        subtitle={t('settings.users.subtitle')}
         actions={
           <Button variant="primary" size="sm" icon={<Plus size={15} />} onClick={() => setInviting(true)}>
-            Invite user
+            {t('settings.users.invite')}
           </Button>
         }
       >
-        <p className="text-muted small">
-          An organization always needs at least one active administrator, and you cannot change your own role or deactivate your own account.
-        </p>
-        {loading ? <LoadingBlock label="Loading users…" /> : null}
+        <p className="text-muted small">{t('settings.users.note')}</p>
+        {loading ? <LoadingBlock label={t('settings.users.loading')} /> : null}
         {!loading && error ? <ErrorBlock message={error} onRetry={reload} /> : null}
-        {!loading && !error && users.length === 0 ? <EmptyState title="No users yet" description="Invite a colleague to collaborate." /> : null}
+        {!loading && !error && users.length === 0 ? <EmptyState title={t('settings.users.empty.title')} description={t('settings.users.empty.description')} /> : null}
         {!loading && !error && users.length > 0 ? (
-          <DataTable columns={columns} rows={users} rowKey={(row) => row.id} caption="Users in this organization" />
+          <DataTable columns={columns} rows={users} rowKey={(row) => row.id} caption={t('settings.users.caption')} />
         ) : null}
       </Card>
 
@@ -220,18 +227,18 @@ export function UsersSettings() {
 
       <ConfirmDialog
         open={!!deletingUser}
-        title="Delete user"
+        title={t('settings.users.deleteTitle')}
         message={
           deletingUser ? (
             <>
-              Are you sure you want to delete <strong>{deletingUser.name}</strong> ({deletingUser.email})?
-              If they have recorded activity, their account will be marked inactive instead.
+              {t('settings.users.deleteConfirm.before')} <strong>{deletingUser.name}</strong>{' '}
+              {t('settings.users.deleteConfirm.after', { email: deletingUser.email })}
             </>
           ) : (
             ''
           )
         }
-        confirmLabel="Delete"
+        confirmLabel={t('settings.users.delete')}
         busy={deleteSubmit.submitting}
         onConfirm={confirmDeleteUser}
         onCancel={() => setDeletingUser(null)}

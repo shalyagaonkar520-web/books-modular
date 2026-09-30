@@ -3,6 +3,7 @@ import { Plus, Trash2 } from 'lucide-react';
 
 import { accountingApi } from '@/api/endpoints';
 import type { Account, JournalEntry } from '@/api/types';
+import { useAppContent } from '@/app/AppContentContext';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { TextAreaField, TextField } from '@/components/ui/Field';
@@ -17,46 +18,47 @@ interface JournalDetailModalProps {
 }
 
 export function JournalDetailModal({ entry, onClose }: JournalDetailModalProps) {
+  const { t } = useAppContent();
   const totalDebit = entry ? round2(entry.lines.reduce((sum, line) => sum + line.debit, 0)) : 0;
   const totalCredit = entry ? round2(entry.lines.reduce((sum, line) => sum + line.credit, 0)) : 0;
 
   return (
     <Modal
       open={!!entry}
-      title={entry ? `Journal ${entry.entryNumber}` : 'Journal entry'}
+      title={entry ? t('accounting.journalDetail.title', { number: entry.entryNumber }) : t('accounting.journalDetail.fallbackTitle')}
       subtitle={entry ? `${formatDate(entry.date)} · ${titleCase(entry.sourceType)}` : undefined}
       size="lg"
       onClose={onClose}
-      footer={<Button onClick={onClose}>Close</Button>}
+      footer={<Button onClick={onClose}>{t('accounting.journalDetail.close')}</Button>}
     >
       {entry ? (
         <div className="stack">
           <div className="detail-grid">
             <div className="detail-item">
-              <span className="detail-label">Date</span>
+              <span className="detail-label">{t('accounting.journalDetail.date')}</span>
               <span className="detail-value">{formatDate(entry.date)}</span>
             </div>
             <div className="detail-item">
-              <span className="detail-label">Reference</span>
+              <span className="detail-label">{t('accounting.journalDetail.reference')}</span>
               <span className="detail-value">{entry.reference ?? '—'}</span>
             </div>
             <div className="detail-item">
-              <span className="detail-label">Source</span>
+              <span className="detail-label">{t('accounting.journalDetail.source')}</span>
               <span className="detail-value">{titleCase(entry.sourceType)}</span>
             </div>
             <div className="detail-item">
-              <span className="detail-label">Reversal</span>
-              <span className="detail-value">{entry.isReversal ? 'Yes' : 'No'}</span>
+              <span className="detail-label">{t('accounting.journalDetail.reversal')}</span>
+              <span className="detail-value">{entry.isReversal ? t('accounting.journalDetail.yes') : t('accounting.journalDetail.no')}</span>
             </div>
           </div>
           {entry.notes ? <p className="text-muted">{entry.notes}</p> : null}
           <table className="line-items-table">
             <thead>
               <tr>
-                <th>Account</th>
-                <th>Description</th>
-                <th className="align-right">Debit</th>
-                <th className="align-right">Credit</th>
+                <th>{t('accounting.journalLines.account')}</th>
+                <th>{t('accounting.journalLines.description')}</th>
+                <th className="align-right">{t('accounting.journalLines.debit')}</th>
+                <th className="align-right">{t('accounting.journalLines.credit')}</th>
               </tr>
             </thead>
             <tbody>
@@ -77,14 +79,16 @@ export function JournalDetailModal({ entry, onClose }: JournalDetailModalProps) 
             <tfoot>
               <tr>
                 <td className="strong" colSpan={2}>
-                  Totals
+                  {t('accounting.journalDetail.totals')}
                 </td>
                 <td className="align-right num strong">{formatCurrency(totalDebit)}</td>
                 <td className="align-right num strong">{formatCurrency(totalCredit)}</td>
               </tr>
             </tfoot>
           </table>
-          <Badge tone={totalDebit === totalCredit ? 'success' : 'danger'}>{totalDebit === totalCredit ? 'Balanced' : 'Out of balance'}</Badge>
+          <Badge tone={totalDebit === totalCredit ? 'success' : 'danger'}>
+            {totalDebit === totalCredit ? t('accounting.journalDetail.balanced') : t('accounting.journalDetail.outOfBalance')}
+          </Badge>
         </div>
       ) : null}
     </Modal>
@@ -110,6 +114,7 @@ interface NewJournalModalProps {
 }
 
 export function NewJournalModal({ open, accounts, onClose, onSaved }: NewJournalModalProps) {
+  const { t } = useAppContent();
   const formId = useId();
   const { submitting, error, fieldErrors, run, reset } = useSubmit();
   const [date, setDate] = useState('');
@@ -152,23 +157,23 @@ export function NewJournalModal({ open, accounts, onClose, onSaved }: NewJournal
         })),
       }),
     );
-    if (saved) onSaved(`Journal ${saved.entryNumber} posted.`);
+    if (saved) onSaved(t('accounting.newJournal.toast.posted', { number: saved.entryNumber }));
   };
 
   return (
     <Modal
       open={open}
-      title="New journal entry"
-      subtitle="Debits and credits must balance before the entry can be posted."
+      title={t('accounting.newJournal.title')}
+      subtitle={t('accounting.newJournal.subtitle')}
       size="xl"
       onClose={onClose}
       footer={
         <>
           <Button onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('accounting.newJournal.cancel')}
           </Button>
           <Button variant="primary" type="submit" form={formId} loading={submitting} disabled={!canSubmit}>
-            Post entry
+            {t('accounting.newJournal.post')}
           </Button>
         </>
       }
@@ -176,17 +181,17 @@ export function NewJournalModal({ open, accounts, onClose, onSaved }: NewJournal
       <form id={formId} className="stack" onSubmit={onSubmit}>
         <FormError message={error} />
         <div className="form-grid-3">
-          <TextField label="Date" type="date" required value={date} error={fieldErrors.date} onChange={(event) => setDate(event.target.value)} />
-          <TextField label="Reference" value={reference} error={fieldErrors.reference} onChange={(event) => setReference(event.target.value)} />
+          <TextField label={t('accounting.newJournal.date')} type="date" required value={date} error={fieldErrors.date} onChange={(event) => setDate(event.target.value)} />
+          <TextField label={t('accounting.newJournal.reference')} value={reference} error={fieldErrors.reference} onChange={(event) => setReference(event.target.value)} />
         </div>
 
         <table className="line-items-table">
           <thead>
             <tr>
-              <th>Account</th>
-              <th>Description</th>
-              <th className="align-right">Debit</th>
-              <th className="align-right">Credit</th>
+              <th>{t('accounting.journalLines.account')}</th>
+              <th>{t('accounting.journalLines.description')}</th>
+              <th className="align-right">{t('accounting.journalLines.debit')}</th>
+              <th className="align-right">{t('accounting.journalLines.credit')}</th>
               <th />
             </tr>
           </thead>
@@ -197,10 +202,10 @@ export function NewJournalModal({ open, accounts, onClose, onSaved }: NewJournal
                   <select
                     className="select"
                     value={line.accountId}
-                    aria-label="Account"
+                    aria-label={t('accounting.journalLines.account')}
                     onChange={(event) => updateLine(line.key, { accountId: event.target.value })}
                   >
-                    <option value="">Select an account</option>
+                    <option value="">{t('accounting.newJournal.selectAccount')}</option>
                     {accounts.map((account) => (
                       <option key={account.id} value={account.id}>
                         {account.code} · {account.name}
@@ -212,7 +217,7 @@ export function NewJournalModal({ open, accounts, onClose, onSaved }: NewJournal
                   <input
                     className="input"
                     value={line.description}
-                    aria-label="Line description"
+                    aria-label={t('accounting.newJournal.lineDescriptionAria')}
                     onChange={(event) => updateLine(line.key, { description: event.target.value })}
                   />
                 </td>
@@ -223,7 +228,7 @@ export function NewJournalModal({ open, accounts, onClose, onSaved }: NewJournal
                     step="0.01"
                     min="0"
                     value={line.debit}
-                    aria-label="Debit"
+                    aria-label={t('accounting.journalLines.debit')}
                     onChange={(event) => updateLine(line.key, { debit: event.target.value, credit: '' })}
                   />
                 </td>
@@ -234,7 +239,7 @@ export function NewJournalModal({ open, accounts, onClose, onSaved }: NewJournal
                     step="0.01"
                     min="0"
                     value={line.credit}
-                    aria-label="Credit"
+                    aria-label={t('accounting.journalLines.credit')}
                     onChange={(event) => updateLine(line.key, { credit: event.target.value, debit: '' })}
                   />
                 </td>
@@ -242,7 +247,7 @@ export function NewJournalModal({ open, accounts, onClose, onSaved }: NewJournal
                   <button
                     type="button"
                     className="action-btn is-danger"
-                    aria-label="Remove line"
+                    aria-label={t('accounting.newJournal.removeLineAria')}
                     disabled={lines.length <= 2}
                     onClick={() => setLines((current) => current.filter((row) => row.key !== line.key))}
                   >
@@ -256,33 +261,33 @@ export function NewJournalModal({ open, accounts, onClose, onSaved }: NewJournal
 
         <div className="row-between">
           <Button size="sm" icon={<Plus size={14} />} onClick={() => setLines((current) => [...current, blankLine()])}>
-            Add line
+            {t('accounting.newJournal.addLine')}
           </Button>
           <div className="totals-list">
             <div>
-              <span>Total debit</span>
+              <span>{t('accounting.newJournal.totalDebit')}</span>
               <span className="num">{formatCurrency(totalDebit)}</span>
             </div>
             <div>
-              <span>Total credit</span>
+              <span>{t('accounting.newJournal.totalCredit')}</span>
               <span className="num">{formatCurrency(totalCredit)}</span>
             </div>
             <div className="grand">
-              <span>Difference</span>
+              <span>{t('accounting.newJournal.difference')}</span>
               <span className={`num ${difference === 0 ? 'text-success' : 'text-danger'}`}>{formatCurrency(difference)}</span>
             </div>
           </div>
         </div>
 
         {canSubmit ? (
-          <Badge tone="success">Balanced — ready to post</Badge>
+          <Badge tone="success">{t('accounting.newJournal.readyToPost')}</Badge>
         ) : (
           <Badge tone="warning">
-            {filled.length < 2 ? 'Add at least two lines with an account and an amount' : 'Debits and credits must match before posting'}
+            {filled.length < 2 ? t('accounting.newJournal.needTwoLines') : t('accounting.newJournal.mustBalance')}
           </Badge>
         )}
 
-        <TextAreaField label="Notes" rows={2} value={notes} error={fieldErrors.notes} onChange={(event) => setNotes(event.target.value)} />
+        <TextAreaField label={t('accounting.newJournal.notes')} rows={2} value={notes} error={fieldErrors.notes} onChange={(event) => setNotes(event.target.value)} />
       </form>
     </Modal>
   );

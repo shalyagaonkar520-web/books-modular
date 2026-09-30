@@ -1,3 +1,4 @@
+import { useAppContent } from '@/app/AppContentContext';
 import { Card } from '@/components/ui/Card';
 import { DonutChart } from '@/components/ui/Charts';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -16,6 +17,7 @@ interface ExpensesByCategoryReportProps {
 }
 
 export function ExpensesByCategoryReport({ startDate, endDate }: ExpensesByCategoryReportProps) {
+  const { t } = useAppContent();
   const { organization } = useAuth();
   const currency = organization?.currency ?? 'INR';
   const { data, loading, error, reload } = useAsync(
@@ -23,20 +25,20 @@ export function ExpensesByCategoryReport({ startDate, endDate }: ExpensesByCateg
     [startDate, endDate],
   );
 
-  if (loading) return <LoadingBlock label="Grouping expenses by category…" />;
+  if (loading) return <LoadingBlock label={t('reports.expensesByCategory.loading')} />;
   if (error) return <ErrorBlock message={error} onRetry={reload} />;
   if (!data) return null;
   if (!data.rows.length) {
-    return <EmptyState title="No expenses in this period" description="Record an expense, or widen the date range, to see the breakdown." />;
+    return <EmptyState title={t('reports.expensesByCategory.empty.title')} description={t('reports.expensesByCategory.empty.body')} />;
   }
 
   const columns: Array<Column<CategoryRow>> = [
-    { key: 'category', header: 'Category', render: (row) => <span className="strong">{row.accountName}</span> },
-    { key: 'count', header: 'Expenses', align: 'right', render: (row) => <span className="num">{formatNumber(row.count, 0)}</span> },
-    { key: 'amount', header: 'Amount', align: 'right', render: (row) => <span className="num">{formatCurrency(row.amount, currency)}</span> },
+    { key: 'category', header: t('reports.expensesByCategory.col.category'), render: (row) => <span className="strong">{row.accountName}</span> },
+    { key: 'count', header: t('reports.expensesByCategory.col.expenses'), align: 'right', render: (row) => <span className="num">{formatNumber(row.count, 0)}</span> },
+    { key: 'amount', header: t('reports.expensesByCategory.col.amount'), align: 'right', render: (row) => <span className="num">{formatCurrency(row.amount, currency)}</span> },
     {
       key: 'share',
-      header: 'Share',
+      header: t('reports.expensesByCategory.col.share'),
       align: 'right',
       render: (row) => <span className="num text-muted">{formatPercent(data.total > 0 ? (row.amount / data.total) * 100 : 0)}</span>,
     },
@@ -46,15 +48,18 @@ export function ExpensesByCategoryReport({ startDate, endDate }: ExpensesByCateg
 
   return (
     <div className="grid-2">
-      <Card title="Expenses by category" subtitle={`${formatDate(data.startDate)} to ${formatDate(data.endDate)}`}>
+      <Card
+        title={t('reports.expensesByCategory.cardTitle')}
+        subtitle={t('reports.dateRange', { start: formatDate(data.startDate), end: formatDate(data.endDate) })}
+      >
         <DataTable
           columns={columns}
           rows={data.rows}
           rowKey={(row) => row.accountId}
-          caption="Expenses grouped by category"
+          caption={t('reports.expensesByCategory.tableCaption')}
           footer={
             <tr>
-              <td>Total</td>
+              <td>{t('reports.expensesByCategory.footer.total')}</td>
               <td className="align-right num">{formatNumber(totalCount, 0)}</td>
               <td className="align-right num">{formatCurrency(data.total, currency)}</td>
               <td className="align-right num">{formatPercent(data.total > 0 ? 100 : 0)}</td>
@@ -62,7 +67,7 @@ export function ExpensesByCategoryReport({ startDate, endDate }: ExpensesByCateg
           }
         />
       </Card>
-      <Card title="Category mix" subtitle="Top categories in this period">
+      <Card title={t('reports.expensesByCategory.mixTitle')} subtitle={t('reports.expensesByCategory.mixSubtitle')}>
         <DonutChart slices={data.rows.slice(0, 6).map((row) => ({ label: row.accountName, value: row.amount }))} currency={currency} />
       </Card>
     </div>

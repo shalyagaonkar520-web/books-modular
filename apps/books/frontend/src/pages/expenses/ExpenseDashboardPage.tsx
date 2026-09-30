@@ -147,12 +147,12 @@ export function ExpenseDashboardPage() {
 
     items.forEach((e) => {
       const eRec = e as unknown as Record<string, unknown>;
-      const cat = (eRec.category as string | undefined) || e.accountName || 'Other';
+      const cat = (eRec.category as string | undefined) || e.accountName || t('expenseDashboard.fallback.category');
       if (!catMap[cat]) catMap[cat] = { total: 0, count: 0 };
       catMap[cat].total = round2(catMap[cat].total + e.total);
       catMap[cat].count += 1;
 
-      const method = (eRec.paymentMethod as string | undefined) || e.paidThroughName || 'Bank Transfer';
+      const method = (eRec.paymentMethod as string | undefined) || e.paidThroughName || t('expenseDashboard.fallback.method');
       if (!methodMap[method]) methodMap[method] = { total: 0, count: 0 };
       methodMap[method].total = round2(methodMap[method].total + e.total);
       methodMap[method].count += 1;
@@ -187,7 +187,7 @@ export function ExpenseDashboardPage() {
       .sort((a, b) => b.total - a.total)
       .slice(0, 5);
 
-    const topCategory = categories[0]?.name || 'N/A';
+    const topCategory = categories[0]?.name || t('expenseDashboard.fallback.topCategory');
 
     return {
       totalSpend,
@@ -201,22 +201,22 @@ export function ExpenseDashboardPage() {
       topCategory,
       count: items.length,
     };
-  }, [items]);
+  }, [items, t]);
 
   const recentColumns: Column<Expense>[] = [
     {
       key: 'expenseNumber',
-      header: 'Expense #',
+      header: t('expenseDashboard.col.expenseNumber'),
       render: (row) => <span className="font-mono text-bold">{row.expenseNumber}</span>,
     },
     {
       key: 'date',
-      header: 'Date',
+      header: t('expenseDashboard.col.date'),
       render: (row) => formatDate(row.date),
     },
     {
       key: 'category',
-      header: 'Category / Account',
+      header: t('expenseDashboard.col.category'),
       render: (row) => (
         <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <Tag size={13} className="text-muted" />
@@ -226,7 +226,7 @@ export function ExpenseDashboardPage() {
     },
     {
       key: 'vendorName',
-      header: 'Vendor / Payee',
+      header: t('expenseDashboard.col.vendor'),
       render: (row) => (
         row.vendorName ? (
           <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -240,21 +240,21 @@ export function ExpenseDashboardPage() {
     },
     {
       key: 'isBillable',
-      header: 'Billable',
+      header: t('expenseDashboard.col.billable'),
       render: (row) => (
         <Badge tone={row.isBillable ? 'success' : 'neutral'}>
-          {row.isBillable ? 'Billable' : 'Overhead'}
+          {row.isBillable ? t('expenseDashboard.badge.billable') : t('expenseDashboard.badge.overhead')}
         </Badge>
       ),
     },
     {
       key: 'paymentMethod',
-      header: 'Paid Through',
-      render: (row) => row.paidThroughName || (((row as unknown as Record<string, unknown>).paymentMethod as string | undefined)) || 'Bank',
+      header: t('expenseDashboard.col.paidThrough'),
+      render: (row) => row.paidThroughName || (((row as unknown as Record<string, unknown>).paymentMethod as string | undefined)) || t('expenseDashboard.fallback.paidThrough'),
     },
     {
       key: 'total',
-      header: 'Amount',
+      header: t('expenseDashboard.col.amount'),
       align: 'right',
       render: (row) => <span className="font-bold text-red-600">{formatCurrency(row.total)}</span>,
     },
@@ -265,7 +265,7 @@ export function ExpenseDashboardPage() {
       <PageHeader
         title={t('expenseDashboard.title')}
         subtitle={t('expenseDashboard.subtitle')}
-        breadcrumb={['Purchases', 'Expense Tracker']}
+        breadcrumb={[t('expenseDashboard.breadcrumb.purchases'), t('expenseDashboard.breadcrumb.tracker')]}
         actions={
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <Button
@@ -292,23 +292,23 @@ export function ExpenseDashboardPage() {
         <Toolbar>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <span className="text-muted small font-medium" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Calendar size={14} /> Time Horizon:
+              <Calendar size={14} /> {t('expenseDashboard.period.label')}
             </span>
             <FilterSelect
               label=""
               value={period}
               options={[
-                { value: 'this_month', label: 'This Month' },
-                { value: 'last_month', label: 'Last Month' },
-                { value: 'this_quarter', label: 'This Quarter' },
-                { value: 'this_fiscal_year', label: 'This Fiscal Year' },
-                { value: 'all', label: 'All Records' },
+                { value: 'this_month', label: t('expenseDashboard.period.thisMonth') },
+                { value: 'last_month', label: t('expenseDashboard.period.lastMonth') },
+                { value: 'this_quarter', label: t('expenseDashboard.period.thisQuarter') },
+                { value: 'this_fiscal_year', label: t('expenseDashboard.period.thisFiscalYear') },
+                { value: 'all', label: t('expenseDashboard.period.all') },
               ]}
               onChange={(val) => setPeriod(val as PeriodKey)}
             />
             {dates.startDate && dates.endDate ? (
               <span className="text-muted small" style={{ marginLeft: '4px' }}>
-                ({formatDate(dates.startDate)} to {formatDate(dates.endDate)})
+                {t('expenseDashboard.period.range', { start: formatDate(dates.startDate), end: formatDate(dates.endDate) })}
               </span>
             ) : null}
           </div>
@@ -316,7 +316,7 @@ export function ExpenseDashboardPage() {
       </div>
 
       {expensesQuery.loading && !expensesQuery.data ? (
-        <LoadingBlock label="Loading expense metrics…" />
+        <LoadingBlock label={t('expenseDashboard.loading')} />
       ) : expensesQuery.error ? (
         <ErrorBlock message={expensesQuery.error} onRetry={expensesQuery.reload} />
       ) : (
@@ -331,27 +331,31 @@ export function ExpenseDashboardPage() {
             }}
           >
             <StatTile
-              label="Total Spend"
+              label={t('expenseDashboard.stat.totalSpend')}
               value={formatCurrency(stats.totalSpend)}
-              sublabel={`${stats.count} recorded transaction${stats.count === 1 ? '' : 's'}`}
+              sublabel={
+                stats.count === 1
+                  ? t('expenseDashboard.stat.transactionsOne', { count: stats.count })
+                  : t('expenseDashboard.stat.transactionsMany', { count: stats.count })
+              }
               icon={<Receipt size={20} />}
             />
             <StatTile
-              label="Billable to Clients"
+              label={t('expenseDashboard.stat.billable')}
               value={formatCurrency(stats.billableSpend)}
-              sublabel={`${stats.billablePct}% of total expenditures`}
+              sublabel={t('expenseDashboard.stat.billableSub', { percent: stats.billablePct })}
               icon={<TrendingUp size={20} style={{ color: '#16a34a' }} />}
             />
             <StatTile
-              label="Non-Billable Overhead"
+              label={t('expenseDashboard.stat.overhead')}
               value={formatCurrency(stats.nonBillableSpend)}
-              sublabel="Internal operating costs"
+              sublabel={t('expenseDashboard.stat.overheadSub')}
               icon={<TrendingDown size={20} style={{ color: '#f59e0b' }} />}
             />
             <StatTile
-              label="Average Transaction"
+              label={t('expenseDashboard.stat.average')}
               value={formatCurrency(stats.avgSpend)}
-              sublabel={`Top category: ${stats.topCategory}`}
+              sublabel={t('expenseDashboard.stat.averageSub', { category: stats.topCategory })}
               icon={<Wallet size={20} />}
             />
           </div>
@@ -370,13 +374,13 @@ export function ExpenseDashboardPage() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
                 <h3 style={{ margin: 0, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <PieChart size={18} className="text-primary" />
-                  Expenses by Category
+                  {t('expenseDashboard.categories.title')}
                 </h3>
-                <span className="text-muted small">{stats.categories.length} Categories</span>
+                <span className="text-muted small">{t('expenseDashboard.categories.count', { count: stats.categories.length })}</span>
               </div>
 
               {stats.categories.length === 0 ? (
-                <p className="text-muted small">No category data recorded for this period.</p>
+                <p className="text-muted small">{t('expenseDashboard.categories.empty')}</p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                   {stats.categories.slice(0, 6).map((cat) => (
@@ -408,13 +412,13 @@ export function ExpenseDashboardPage() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
                 <h3 style={{ margin: 0, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Building2 size={18} className="text-primary" />
-                  Top Payees & Vendors
+                  {t('expenseDashboard.vendors.title')}
                 </h3>
-                <span className="text-muted small">Top 5 by volume</span>
+                <span className="text-muted small">{t('expenseDashboard.vendors.subtitle')}</span>
               </div>
 
               {stats.topVendors.length === 0 ? (
-                <p className="text-muted small">No vendor expenses recorded in this period.</p>
+                <p className="text-muted small">{t('expenseDashboard.vendors.empty')}</p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {stats.topVendors.map((v, i) => (
@@ -448,7 +452,11 @@ export function ExpenseDashboardPage() {
                         </span>
                         <div>
                           <div className="font-medium" style={{ fontSize: '0.9rem' }}>{v.name}</div>
-                          <div className="text-muted small">{v.count} invoice{v.count === 1 ? '' : 's'}</div>
+                          <div className="text-muted small">
+                            {v.count === 1
+                              ? t('expenseDashboard.vendors.invoicesOne', { count: v.count })
+                              : t('expenseDashboard.vendors.invoicesMany', { count: v.count })}
+                          </div>
                         </div>
                       </div>
                       <div className="font-bold text-right" style={{ fontSize: '0.95rem' }}>
@@ -466,7 +474,7 @@ export function ExpenseDashboardPage() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
               <h3 style={{ margin: 0, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Layers size={18} className="text-primary" />
-                Recent Expense Entries
+                {t('expenseDashboard.recent.title')}
               </h3>
               <Button
                 variant="secondary"
@@ -474,7 +482,7 @@ export function ExpenseDashboardPage() {
                 icon={<ArrowRight size={13} />}
                 onClick={() => navigate('/expenses')}
               >
-                Open Full Table
+                {t('expenseDashboard.recent.openTable')}
               </Button>
             </div>
 

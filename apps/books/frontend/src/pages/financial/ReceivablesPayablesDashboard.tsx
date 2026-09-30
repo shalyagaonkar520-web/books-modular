@@ -133,12 +133,12 @@ export function ReceivablesPayablesDashboard() {
 
   // Multi-bucket series for AR vs AP Ageing Graph
   const ageingComparisonSeries: SeriesPoint[] = useMemo(() => [
-    { label: 'Current', incoming: arTotals.current, outgoing: apTotals.current },
-    { label: '1–30d', incoming: arTotals.days1To30, outgoing: apTotals.days1To30 },
-    { label: '31–60d', incoming: arTotals.days31To60, outgoing: apTotals.days31To60 },
-    { label: '61–90d', incoming: arTotals.days61To90, outgoing: apTotals.days61To90 },
-    { label: '> 90d', incoming: arTotals.daysOver90, outgoing: apTotals.daysOver90 },
-  ], [arTotals, apTotals]);
+    { label: t('receivablesPayables.bucket.current'), incoming: arTotals.current, outgoing: apTotals.current },
+    { label: t('receivablesPayables.bucket.d1'), incoming: arTotals.days1To30, outgoing: apTotals.days1To30 },
+    { label: t('receivablesPayables.bucket.d2'), incoming: arTotals.days31To60, outgoing: apTotals.days31To60 },
+    { label: t('receivablesPayables.bucket.d3'), incoming: arTotals.days61To90, outgoing: apTotals.days61To90 },
+    { label: t('receivablesPayables.bucket.d4'), incoming: arTotals.daysOver90, outgoing: apTotals.daysOver90 },
+  ], [arTotals, apTotals, t]);
 
   // Mini sparkline data sequences for KPI cards
   const arSparkline = [
@@ -175,21 +175,21 @@ export function ReceivablesPayablesDashboard() {
   const customerColumns: Array<Column<AgeingRow>> = [
     {
       key: 'contactName',
-      header: 'Customer',
+      header: t('receivablesPayables.col.customer'),
       render: (r) => (
         <Link to={`/invoices?customer=${encodeURIComponent(r.contactId)}&status=unpaid`} className="cell-stack">
           <span className="strong">{r.contactName}</span>
-          <small className="text-muted">Click to view invoices</small>
+          <small className="text-muted">{t('receivablesPayables.col.customerHint')}</small>
         </Link>
       ),
     },
-    { key: 'current', header: 'Current', align: 'right', render: (r) => money(r.current) },
-    { key: 'd1', header: '1–30d', align: 'right', render: (r) => money(r.days1To30) },
-    { key: 'd2', header: '31–60d', align: 'right', render: (r) => money(r.days31To60) },
-    { key: 'd3', header: '61–90d', align: 'right', render: (r) => money(r.days61To90) },
+    { key: 'current', header: t('receivablesPayables.bucket.current'), align: 'right', render: (r) => money(r.current) },
+    { key: 'd1', header: t('receivablesPayables.bucket.d1'), align: 'right', render: (r) => money(r.days1To30) },
+    { key: 'd2', header: t('receivablesPayables.bucket.d2'), align: 'right', render: (r) => money(r.days31To60) },
+    { key: 'd3', header: t('receivablesPayables.bucket.d3'), align: 'right', render: (r) => money(r.days61To90) },
     {
       key: 'd4',
-      header: '> 90d',
+      header: t('receivablesPayables.bucket.d4'),
       align: 'right',
       render: (r) => (
         <span className={r.daysOver90 > 0 ? 'num text-danger strong' : 'num'}>
@@ -199,7 +199,7 @@ export function ReceivablesPayablesDashboard() {
     },
     {
       key: 'total',
-      header: 'Total Due',
+      header: t('receivablesPayables.col.totalDue'),
       align: 'right',
       render: (r) => <span className="num strong">{formatCurrency(r.total, currency)}</span>,
     },
@@ -208,21 +208,21 @@ export function ReceivablesPayablesDashboard() {
   const vendorColumns: Array<Column<AgeingRow>> = [
     {
       key: 'contactName',
-      header: 'Vendor / Supplier',
+      header: t('receivablesPayables.col.vendor'),
       render: (r) => (
         <Link to={`/bills?vendor=${encodeURIComponent(r.contactId)}&status=unpaid`} className="cell-stack">
           <span className="strong">{r.contactName}</span>
-          <small className="text-muted">Click to view bills</small>
+          <small className="text-muted">{t('receivablesPayables.col.vendorHint')}</small>
         </Link>
       ),
     },
-    { key: 'current', header: 'Current', align: 'right', render: (r) => money(r.current) },
-    { key: 'd1', header: '1–30d', align: 'right', render: (r) => money(r.days1To30) },
-    { key: 'd2', header: '31–60d', align: 'right', render: (r) => money(r.days31To60) },
-    { key: 'd3', header: '61–90d', align: 'right', render: (r) => money(r.days61To90) },
+    { key: 'current', header: t('receivablesPayables.bucket.current'), align: 'right', render: (r) => money(r.current) },
+    { key: 'd1', header: t('receivablesPayables.bucket.d1'), align: 'right', render: (r) => money(r.days1To30) },
+    { key: 'd2', header: t('receivablesPayables.bucket.d2'), align: 'right', render: (r) => money(r.days31To60) },
+    { key: 'd3', header: t('receivablesPayables.bucket.d3'), align: 'right', render: (r) => money(r.days61To90) },
     {
       key: 'd4',
-      header: '> 90d',
+      header: t('receivablesPayables.bucket.d4'),
       align: 'right',
       render: (r) => (
         <span className={r.daysOver90 > 0 ? 'num text-warning strong' : 'num'}>
@@ -232,13 +232,13 @@ export function ReceivablesPayablesDashboard() {
     },
     {
       key: 'total',
-      header: 'Total Payable',
+      header: t('receivablesPayables.col.totalPayable'),
       align: 'right',
       render: (r) => <span className="num strong">{formatCurrency(r.total, currency)}</span>,
     },
   ];
 
-  if (loading && !reportsData) return <LoadingBlock label="Calculating receivables & payables positions…" />;
+  if (loading && !reportsData) return <LoadingBlock label={t('receivablesPayables.loading')} />;
   if (error) return <ErrorBlock message={error} onRetry={reload} />;
 
   return (
@@ -256,7 +256,7 @@ export function ReceivablesPayablesDashboard() {
                 value={asOf}
                 onChange={(e) => setAsOf(e.target.value || todayIso())}
                 style={{ width: '145px' }}
-                title="Position Date (As of)"
+                title={t('receivablesPayables.asOfTooltip')}
               />
             </div>
             <div style={{ display: 'flex', background: '#f1f5f9', padding: '3px', borderRadius: '8px' }}>
@@ -292,37 +292,37 @@ export function ReceivablesPayablesDashboard() {
       {/* Top Level Metric KPIs */}
       <div className="stat-grid">
         <StatTile
-          label="Total Receivables (AR)"
+          label={t('receivablesPayables.kpi.ar')}
           value={formatCurrency(arTotals.total, currency)}
-          sublabel={`${ar?.rows.length ?? 0} customer(s) with balance · ${formatCurrency(arTotals.overdue, currency)} overdue`}
+          sublabel={t('receivablesPayables.kpi.arSub', { count: ar?.rows.length ?? 0, overdue: formatCurrency(arTotals.overdue, currency) })}
           tone={arTotals.overdue > 0 ? 'warning' : 'positive'}
           icon={<ArrowUpRight size={16} />}
           chart={<Sparkline values={arSparkline} tone={arTotals.overdue > 0 ? 'warning' : 'positive'} />}
         />
         <StatTile
-          label="Total Payables (AP)"
+          label={t('receivablesPayables.kpi.ap')}
           value={formatCurrency(apTotals.total, currency)}
-          sublabel={`${ap?.rows.length ?? 0} vendor(s) to pay · ${formatCurrency(apTotals.overdue, currency)} overdue`}
+          sublabel={t('receivablesPayables.kpi.apSub', { count: ap?.rows.length ?? 0, overdue: formatCurrency(apTotals.overdue, currency) })}
           tone={apTotals.overdue > 0 ? 'warning' : 'neutral'}
           icon={<ArrowDownRight size={16} />}
           chart={<Sparkline values={apSparkline} tone={apTotals.overdue > 0 ? 'warning' : 'neutral'} />}
         />
         <StatTile
-          label="Net AR / AP Gap"
+          label={t('receivablesPayables.kpi.gap')}
           value={formatCurrency(Math.abs(workingCapitalGap), currency)}
           sublabel={
             workingCapitalGap >= 0
-              ? 'Net Surplus: Customers owe you more than you owe vendors'
-              : 'Net Deficit: Vendor payables exceed customer receivables'
+              ? t('receivablesPayables.kpi.gapSurplus')
+              : t('receivablesPayables.kpi.gapDeficit')
           }
           tone={workingCapitalGap >= 0 ? 'positive' : 'negative'}
           icon={<ArrowLeftRight size={16} />}
           chart={<Sparkline values={gapSparkline} tone={workingCapitalGap >= 0 ? 'positive' : 'negative'} />}
         />
         <StatTile
-          label="Cash on Hand"
+          label={t('receivablesPayables.kpi.cash')}
           value={formatCurrency(summary?.totalCash ?? 0, currency)}
-          sublabel={`${summary?.bankBalances?.length ?? 0} bank/cash account(s) available`}
+          sublabel={t('receivablesPayables.kpi.cashSub', { count: summary?.bankBalances?.length ?? 0 })}
           tone={(summary?.totalCash ?? 0) >= apTotals.total ? 'positive' : 'warning'}
           icon={<Wallet size={16} />}
           chart={<Sparkline values={cashSparkline} tone={(summary?.totalCash ?? 0) >= apTotals.total ? 'positive' : 'warning'} />}
@@ -331,14 +331,14 @@ export function ReceivablesPayablesDashboard() {
 
       {/* Prominent Receivables vs Payables Ageing Graph */}
       <Card
-        title="Receivables vs Payables Ageing Graph"
-        subtitle="Visual comparative analysis across ageing intervals (Current, 1–30d, 31–60d, 61–90d, >90d)"
+        title={t('receivablesPayables.graph.title')}
+        subtitle={t('receivablesPayables.graph.subtitle')}
       >
         <InteractiveSeriesChart
           data={ageingComparisonSeries}
-          incomingLabel="Receivables (AR)"
-          outgoingLabel="Payables (AP)"
-          netLabel="Net Working Capital (AR - AP)"
+          incomingLabel={t('receivablesPayables.graph.incoming')}
+          outgoingLabel={t('receivablesPayables.graph.outgoing')}
+          netLabel={t('receivablesPayables.graph.net')}
           currency={currency}
           selectedType={graphChartType}
           onTypeChange={setGraphChartType}
@@ -355,8 +355,8 @@ export function ReceivablesPayablesDashboard() {
       <div className="grid-2">
         {(activeView === 'all' || activeView === 'receivables') && (
           <Card
-            title="Accounts Receivable Ageing (What customers owe you)"
-            subtitle={`Total: ${formatCurrency(arTotals.total, currency)} across ${ar?.rows.length ?? 0} customer account(s)`}
+            title={t('receivablesPayables.ar.title')}
+            subtitle={t('receivablesPayables.ar.subtitle', { total: formatCurrency(arTotals.total, currency), count: ar?.rows.length ?? 0 })}
             actions={
               <div className="row" style={{ gap: 8 }}>
                 <div className="chart-type-picker" role="group">
@@ -364,21 +364,21 @@ export function ReceivablesPayablesDashboard() {
                     type="button"
                     className={`chart-pill ${arChartMode === 'split' ? 'active' : ''}`}
                     onClick={() => setArChartMode('split')}
-                    title="Split bar view"
+                    title={t('receivablesPayables.chart.splitBar')}
                   >
-                    <span>Bar</span>
+                    <span>{t('receivablesPayables.chart.bar')}</span>
                   </button>
                   <button
                     type="button"
                     className={`chart-pill ${arChartMode === 'donut' ? 'active' : ''}`}
                     onClick={() => setArChartMode('donut')}
-                    title="Donut distribution view"
+                    title={t('receivablesPayables.chart.donutView')}
                   >
-                    <span>Donut</span>
+                    <span>{t('receivablesPayables.chart.donut')}</span>
                   </button>
                 </div>
                 <Link to="/invoices?status=unpaid" className="btn btn-link btn-sm">
-                  <span>View invoices</span>
+                  <span>{t('receivablesPayables.ar.viewInvoices')}</span>
                   <ArrowRight size={13} />
                 </Link>
               </div>
@@ -387,7 +387,7 @@ export function ReceivablesPayablesDashboard() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }}>
               <div className="stat-value num">{formatCurrency(arTotals.total, currency)}</div>
               <Badge tone={arTotals.overdue > 0 ? 'warning' : 'success'}>
-                {arTotals.total > 0 ? `${((arTotals.overdue / arTotals.total) * 100).toFixed(0)}% Overdue` : '0% Overdue'}
+                {t('receivablesPayables.overduePercent', { percent: arTotals.total > 0 ? ((arTotals.overdue / arTotals.total) * 100).toFixed(0) : '0' })}
               </Badge>
             </div>
 
@@ -395,11 +395,11 @@ export function ReceivablesPayablesDashboard() {
               <div style={{ margin: '14px 0' }}>
                 <DonutChart
                   slices={[
-                    { label: 'Current (Not Due)', value: arTotals.current },
-                    { label: '1–30d Overdue', value: arTotals.days1To30 },
-                    { label: '31–60d Overdue', value: arTotals.days31To60 },
-                    { label: '61–90d Overdue', value: arTotals.days61To90 },
-                    { label: '>90d High Risk', value: arTotals.daysOver90 },
+                    { label: t('receivablesPayables.bucket.currentNotDue'), value: arTotals.current },
+                    { label: t('receivablesPayables.ar.slice.d1'), value: arTotals.days1To30 },
+                    { label: t('receivablesPayables.ar.slice.d2'), value: arTotals.days31To60 },
+                    { label: t('receivablesPayables.ar.slice.d3'), value: arTotals.days61To90 },
+                    { label: t('receivablesPayables.ar.slice.d4'), value: arTotals.daysOver90 },
                   ].filter((s) => s.value > 0)}
                   currency={currency}
                 />
@@ -408,37 +408,37 @@ export function ReceivablesPayablesDashboard() {
               <SplitBar
                 total={arTotals.total}
                 segments={[
-                  { label: 'Current', value: arTotals.current, tone: 'current' },
-                  { label: 'Overdue', value: arTotals.overdue, tone: 'overdue' },
+                  { label: t('receivablesPayables.bucket.current'), value: arTotals.current, tone: 'current' },
+                  { label: t('receivablesPayables.split.overdue'), value: arTotals.overdue, tone: 'overdue' },
                 ]}
               />
             )}
 
             <dl className="detail-grid" style={{ marginTop: '16px' }}>
               <div className="detail-item">
-                <dt>Current (Not Due)</dt>
+                <dt>{t('receivablesPayables.bucket.currentNotDue')}</dt>
                 <dd className="num">{formatCurrency(arTotals.current, currency)}</dd>
               </div>
               <div className="detail-item">
-                <dt>1–30 Days Overdue</dt>
+                <dt>{t('receivablesPayables.ar.detail.d1')}</dt>
                 <dd className="num">{formatCurrency(arTotals.days1To30, currency)}</dd>
               </div>
               <div className="detail-item">
-                <dt>31–60 Days Overdue</dt>
+                <dt>{t('receivablesPayables.ar.detail.d2')}</dt>
                 <dd className="num">{formatCurrency(arTotals.days31To60, currency)}</dd>
               </div>
               <div className="detail-item">
-                <dt>61–90 Days Overdue</dt>
+                <dt>{t('receivablesPayables.ar.detail.d3')}</dt>
                 <dd className="num">{formatCurrency(arTotals.days61To90, currency)}</dd>
               </div>
               <div className="detail-item">
-                <dt>&gt; 90 Days High Risk</dt>
+                <dt>{t('receivablesPayables.ar.detail.d4')}</dt>
                 <dd className={`num ${arTotals.daysOver90 > 0 ? 'text-danger strong' : ''}`}>
                   {formatCurrency(arTotals.daysOver90, currency)}
                 </dd>
               </div>
               <div className="detail-item">
-                <dt>Unpaid Invoices</dt>
+                <dt>{t('receivablesPayables.ar.detail.unpaid')}</dt>
                 <dd className="num">{summary?.receivables.totalUnpaidInvoices ?? '—'}</dd>
               </div>
             </dl>
@@ -447,8 +447,8 @@ export function ReceivablesPayablesDashboard() {
 
         {(activeView === 'all' || activeView === 'payables') && (
           <Card
-            title="Accounts Payable Ageing (What you owe vendors)"
-            subtitle={`Total: ${formatCurrency(apTotals.total, currency)} across ${ap?.rows.length ?? 0} supplier account(s)`}
+            title={t('receivablesPayables.ap.title')}
+            subtitle={t('receivablesPayables.ap.subtitle', { total: formatCurrency(apTotals.total, currency), count: ap?.rows.length ?? 0 })}
             actions={
               <div className="row" style={{ gap: 8 }}>
                 <div className="chart-type-picker" role="group">
@@ -456,21 +456,21 @@ export function ReceivablesPayablesDashboard() {
                     type="button"
                     className={`chart-pill ${apChartMode === 'split' ? 'active' : ''}`}
                     onClick={() => setApChartMode('split')}
-                    title="Split bar view"
+                    title={t('receivablesPayables.chart.splitBar')}
                   >
-                    <span>Bar</span>
+                    <span>{t('receivablesPayables.chart.bar')}</span>
                   </button>
                   <button
                     type="button"
                     className={`chart-pill ${apChartMode === 'donut' ? 'active' : ''}`}
                     onClick={() => setApChartMode('donut')}
-                    title="Donut distribution view"
+                    title={t('receivablesPayables.chart.donutView')}
                   >
-                    <span>Donut</span>
+                    <span>{t('receivablesPayables.chart.donut')}</span>
                   </button>
                 </div>
                 <Link to="/bills?status=unpaid" className="btn btn-link btn-sm">
-                  <span>View bills</span>
+                  <span>{t('receivablesPayables.ap.viewBills')}</span>
                   <ArrowRight size={13} />
                 </Link>
               </div>
@@ -479,7 +479,7 @@ export function ReceivablesPayablesDashboard() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }}>
               <div className="stat-value num">{formatCurrency(apTotals.total, currency)}</div>
               <Badge tone={apTotals.overdue > 0 ? 'warning' : 'neutral'}>
-                {apTotals.total > 0 ? `${((apTotals.overdue / apTotals.total) * 100).toFixed(0)}% Overdue` : '0% Overdue'}
+                {t('receivablesPayables.overduePercent', { percent: apTotals.total > 0 ? ((apTotals.overdue / apTotals.total) * 100).toFixed(0) : '0' })}
               </Badge>
             </div>
 
@@ -487,11 +487,11 @@ export function ReceivablesPayablesDashboard() {
               <div style={{ margin: '14px 0' }}>
                 <DonutChart
                   slices={[
-                    { label: 'Current (Not Due)', value: apTotals.current },
-                    { label: '1–30d Past', value: apTotals.days1To30 },
-                    { label: '31–60d Past', value: apTotals.days31To60 },
-                    { label: '61–90d Past', value: apTotals.days61To90 },
-                    { label: '>90d Past', value: apTotals.daysOver90 },
+                    { label: t('receivablesPayables.bucket.currentNotDue'), value: apTotals.current },
+                    { label: t('receivablesPayables.ap.slice.d1'), value: apTotals.days1To30 },
+                    { label: t('receivablesPayables.ap.slice.d2'), value: apTotals.days31To60 },
+                    { label: t('receivablesPayables.ap.slice.d3'), value: apTotals.days61To90 },
+                    { label: t('receivablesPayables.ap.slice.d4'), value: apTotals.daysOver90 },
                   ].filter((s) => s.value > 0)}
                   currency={currency}
                 />
@@ -500,37 +500,37 @@ export function ReceivablesPayablesDashboard() {
               <SplitBar
                 total={apTotals.total}
                 segments={[
-                  { label: 'Current', value: apTotals.current, tone: 'current' },
-                  { label: 'Overdue', value: apTotals.overdue, tone: 'overdue' },
+                  { label: t('receivablesPayables.bucket.current'), value: apTotals.current, tone: 'current' },
+                  { label: t('receivablesPayables.split.overdue'), value: apTotals.overdue, tone: 'overdue' },
                 ]}
               />
             )}
 
             <dl className="detail-grid" style={{ marginTop: '16px' }}>
               <div className="detail-item">
-                <dt>Current (Not Due)</dt>
+                <dt>{t('receivablesPayables.bucket.currentNotDue')}</dt>
                 <dd className="num">{formatCurrency(apTotals.current, currency)}</dd>
               </div>
               <div className="detail-item">
-                <dt>1–30 Days Past</dt>
+                <dt>{t('receivablesPayables.ap.detail.d1')}</dt>
                 <dd className="num">{formatCurrency(apTotals.days1To30, currency)}</dd>
               </div>
               <div className="detail-item">
-                <dt>31–60 Days Past</dt>
+                <dt>{t('receivablesPayables.ap.detail.d2')}</dt>
                 <dd className="num">{formatCurrency(apTotals.days31To60, currency)}</dd>
               </div>
               <div className="detail-item">
-                <dt>61–90 Days Past</dt>
+                <dt>{t('receivablesPayables.ap.detail.d3')}</dt>
                 <dd className="num">{formatCurrency(apTotals.days61To90, currency)}</dd>
               </div>
               <div className="detail-item">
-                <dt>&gt; 90 Days Past</dt>
+                <dt>{t('receivablesPayables.ap.detail.d4')}</dt>
                 <dd className={`num ${apTotals.daysOver90 > 0 ? 'text-warning strong' : ''}`}>
                   {formatCurrency(apTotals.daysOver90, currency)}
                 </dd>
               </div>
               <div className="detail-item">
-                <dt>Unpaid Bills</dt>
+                <dt>{t('receivablesPayables.ap.detail.unpaid')}</dt>
                 <dd className="num">{summary?.payables.totalUnpaidBills ?? '—'}</dd>
               </div>
             </dl>
@@ -554,26 +554,26 @@ export function ReceivablesPayablesDashboard() {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--text, #1e293b)' }}>
           <Layers size={16} style={{ color: '#0284c7' }} />
-          <span>Quick Actions:</span>
+          <span>{t('receivablesPayables.quick.title')}</span>
         </div>
         <Link to="/invoices/new" className="btn btn-primary btn-sm">
           <FileText size={14} />
-          <span>New Invoice</span>
+          <span>{t('receivablesPayables.quick.newInvoice')}</span>
         </Link>
         <Link to="/payments-received" className="btn btn-secondary btn-sm">
           <Wallet size={14} />
-          <span>Record Customer Payment</span>
+          <span>{t('receivablesPayables.quick.customerPayment')}</span>
         </Link>
         <Link to="/bills/new" className="btn btn-secondary btn-sm">
           <Receipt size={14} />
-          <span>New Bill</span>
+          <span>{t('receivablesPayables.quick.newBill')}</span>
         </Link>
         <Link to="/payments-made" className="btn btn-secondary btn-sm">
           <CreditCard size={14} />
-          <span>Record Vendor Payment</span>
+          <span>{t('receivablesPayables.quick.vendorPayment')}</span>
         </Link>
         <Link to="/reports" className="btn btn-link btn-sm" style={{ marginLeft: 'auto' }}>
-          <span>Open Full Ageing Reports</span>
+          <span>{t('receivablesPayables.quick.reports')}</span>
           <ArrowRight size={13} />
         </Link>
       </div>
@@ -581,8 +581,8 @@ export function ReceivablesPayablesDashboard() {
       {/* Customer Receivables Section */}
       {(activeView === 'all' || activeView === 'receivables') && (
         <Card
-          title="Customer Receivables (Debtors Ledger)"
-          subtitle="All customers with outstanding invoice balances sorted by highest total balance"
+          title={t('receivablesPayables.customers.title')}
+          subtitle={t('receivablesPayables.customers.subtitle')}
           actions={
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <div className="chart-type-picker" role="group">
@@ -590,24 +590,24 @@ export function ReceivablesPayablesDashboard() {
                   type="button"
                   className={`chart-pill ${customerView === 'table' ? 'active' : ''}`}
                   onClick={() => setCustomerView('table')}
-                  title="Table view"
+                  title={t('receivablesPayables.chart.tableView')}
                 >
-                  <span>Table</span>
+                  <span>{t('receivablesPayables.chart.table')}</span>
                 </button>
                 <button
                   type="button"
                   className={`chart-pill ${customerView === 'chart' ? 'active' : ''}`}
                   onClick={() => setCustomerView('chart')}
-                  title="Bar chart ranking"
+                  title={t('receivablesPayables.chart.barRanking')}
                 >
-                  <span>Bar</span>
+                  <span>{t('receivablesPayables.chart.bar')}</span>
                 </button>
               </div>
               <div style={{ position: 'relative' }}>
                 <Search size={14} style={{ position: 'absolute', left: '8px', top: '9px', color: '#94a3b8' }} />
                 <input
                   type="text"
-                  placeholder="Filter customer..."
+                  placeholder={t('receivablesPayables.customers.filter')}
                   value={customerSearch}
                   onChange={(e) => setCustomerSearch(e.target.value)}
                   className="input input-sm"
@@ -615,7 +615,7 @@ export function ReceivablesPayablesDashboard() {
                 />
               </div>
               <Link to="/customers" className="btn btn-link btn-sm">
-                <span>View all customers</span>
+                <span>{t('receivablesPayables.customers.viewAll')}</span>
                 <ArrowRight size={13} />
               </Link>
             </div>
@@ -624,14 +624,17 @@ export function ReceivablesPayablesDashboard() {
           {filteredCustomers.length === 0 ? (
             <EmptyState
               title={t('receivablesPayables.empty.receivablesTitle')}
-              description={customerSearch ? 'No customer matched your search query.' : 'No customer has an outstanding balance as of this date.'}
+              description={customerSearch ? t('receivablesPayables.customers.emptySearch') : t('receivablesPayables.customers.emptyBody')}
             />
           ) : customerView === 'chart' ? (
             <HorizontalBarChart
               items={filteredCustomers.map((r) => ({
                 label: r.contactName,
                 value: r.total,
-                sublabel: r.daysOver90 > 0 ? `Overdue >90d: ${formatCurrency(r.daysOver90, currency)}` : `Current: ${formatCurrency(r.current, currency)}`,
+                sublabel:
+                  r.daysOver90 > 0
+                    ? t('receivablesPayables.ranking.over90', { amount: formatCurrency(r.daysOver90, currency) })
+                    : t('receivablesPayables.ranking.current', { amount: formatCurrency(r.current, currency) }),
               }))}
               currency={currency}
               maxItems={10}
@@ -641,10 +644,10 @@ export function ReceivablesPayablesDashboard() {
               columns={customerColumns}
               rows={filteredCustomers}
               rowKey={(r) => r.contactId}
-              caption="Customer receivables breakdown"
+              caption={t('receivablesPayables.customers.caption')}
               footer={
                 <tr>
-                  <td>Total ({filteredCustomers.length} customers)</td>
+                  <td>{t('receivablesPayables.customers.total', { count: filteredCustomers.length })}</td>
                   <td className="align-right num">{formatCurrency(arTotals.current, currency)}</td>
                   <td className="align-right num">{formatCurrency(arTotals.days1To30, currency)}</td>
                   <td className="align-right num">{formatCurrency(arTotals.days31To60, currency)}</td>
@@ -661,8 +664,8 @@ export function ReceivablesPayablesDashboard() {
       {/* Vendor Payables Section */}
       {(activeView === 'all' || activeView === 'payables') && (
         <Card
-          title="Supplier Payables (Creditors Ledger)"
-          subtitle="All suppliers and vendors with open unpaid bills sorted by highest total balance"
+          title={t('receivablesPayables.vendors.title')}
+          subtitle={t('receivablesPayables.vendors.subtitle')}
           actions={
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <div className="chart-type-picker" role="group">
@@ -670,24 +673,24 @@ export function ReceivablesPayablesDashboard() {
                   type="button"
                   className={`chart-pill ${vendorView === 'table' ? 'active' : ''}`}
                   onClick={() => setVendorView('table')}
-                  title="Table view"
+                  title={t('receivablesPayables.chart.tableView')}
                 >
-                  <span>Table</span>
+                  <span>{t('receivablesPayables.chart.table')}</span>
                 </button>
                 <button
                   type="button"
                   className={`chart-pill ${vendorView === 'chart' ? 'active' : ''}`}
                   onClick={() => setVendorView('chart')}
-                  title="Bar chart ranking"
+                  title={t('receivablesPayables.chart.barRanking')}
                 >
-                  <span>Bar</span>
+                  <span>{t('receivablesPayables.chart.bar')}</span>
                 </button>
               </div>
               <div style={{ position: 'relative' }}>
                 <Search size={14} style={{ position: 'absolute', left: '8px', top: '9px', color: '#94a3b8' }} />
                 <input
                   type="text"
-                  placeholder="Filter vendor..."
+                  placeholder={t('receivablesPayables.vendors.filter')}
                   value={vendorSearch}
                   onChange={(e) => setVendorSearch(e.target.value)}
                   className="input input-sm"
@@ -695,7 +698,7 @@ export function ReceivablesPayablesDashboard() {
                 />
               </div>
               <Link to="/vendors" className="btn btn-link btn-sm">
-                <span>View all vendors</span>
+                <span>{t('receivablesPayables.vendors.viewAll')}</span>
                 <ArrowRight size={13} />
               </Link>
             </div>
@@ -704,14 +707,17 @@ export function ReceivablesPayablesDashboard() {
           {filteredVendors.length === 0 ? (
             <EmptyState
               title={t('receivablesPayables.empty.payablesTitle')}
-              description={vendorSearch ? 'No vendor matched your search query.' : 'No vendor bills are open or payable as of this date.'}
+              description={vendorSearch ? t('receivablesPayables.vendors.emptySearch') : t('receivablesPayables.vendors.emptyBody')}
             />
           ) : vendorView === 'chart' ? (
             <HorizontalBarChart
               items={filteredVendors.map((r) => ({
                 label: r.contactName,
                 value: r.total,
-                sublabel: r.daysOver90 > 0 ? `Overdue >90d: ${formatCurrency(r.daysOver90, currency)}` : `Current: ${formatCurrency(r.current, currency)}`,
+                sublabel:
+                  r.daysOver90 > 0
+                    ? t('receivablesPayables.ranking.over90', { amount: formatCurrency(r.daysOver90, currency) })
+                    : t('receivablesPayables.ranking.current', { amount: formatCurrency(r.current, currency) }),
               }))}
               currency={currency}
               maxItems={10}
@@ -721,10 +727,10 @@ export function ReceivablesPayablesDashboard() {
               columns={vendorColumns}
               rows={filteredVendors}
               rowKey={(r) => r.contactId}
-              caption="Supplier payables breakdown"
+              caption={t('receivablesPayables.vendors.caption')}
               footer={
                 <tr>
-                  <td>Total ({filteredVendors.length} vendors)</td>
+                  <td>{t('receivablesPayables.vendors.total', { count: filteredVendors.length })}</td>
                   <td className="align-right num">{formatCurrency(apTotals.current, currency)}</td>
                   <td className="align-right num">{formatCurrency(apTotals.days1To30, currency)}</td>
                   <td className="align-right num">{formatCurrency(apTotals.days31To60, currency)}</td>

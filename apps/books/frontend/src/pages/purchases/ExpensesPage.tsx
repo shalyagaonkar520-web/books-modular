@@ -144,9 +144,9 @@ export function ExpensesPage() {
     setBulkDeleting(false);
     if (failedIds.size > 0) {
       const reason = lastError ? ` ${lastError}` : '';
-      toast.error(`Deleted ${count} of ${selectedIds.size} expense(s); ${failedIds.size} could not be deleted.${reason}`);
+      toast.error(t('expenses.toast.bulkDeletePartial', { count, total: selectedIds.size, failed: failedIds.size, reason }));
     } else {
-      toast.success(`Deleted ${count} expense(s)`);
+      toast.success(t('expenses.toast.bulkDeleted', { count }));
     }
     setSelectedIds(failedIds);
     refreshAll();
@@ -155,7 +155,7 @@ export function ExpensesPage() {
   const deleteExpense = async (expense: Expense) => {
     const result = await remove.run(() => expensesApi.remove(expense.id));
     if (result) {
-      toast.success(`Expense ${expense.expenseNumber} deleted`);
+      toast.success(t('expenses.toast.deleted', { number: expense.expenseNumber }));
       setPendingDelete(null);
       refreshAll();
     }
@@ -171,27 +171,27 @@ export function ExpensesPage() {
   const columns: Array<Column<Expense>> = [
     {
       key: 'expenseNumber',
-      header: 'Expense #',
+      header: t('expenses.col.expenseNumber'),
       render: (expense) => (
         <div className="cell-stack">
           <span className="code-tag">{expense.expenseNumber}</span>
-          {expense.isBillable ? <small>Billable</small> : null}
+          {expense.isBillable ? <small>{t('expenses.billableTag')}</small> : null}
         </div>
       ),
     },
-    { key: 'date', header: 'Date', render: (expense) => formatDate(expense.date) },
-    { key: 'accountName', header: 'Expense account', render: (expense) => expense.accountName },
-    { key: 'paidThroughName', header: 'Paid through', render: (expense) => expense.paidThroughName },
+    { key: 'date', header: t('expenses.col.date'), render: (expense) => formatDate(expense.date) },
+    { key: 'accountName', header: t('expenses.col.account'), render: (expense) => expense.accountName },
+    { key: 'paidThroughName', header: t('expenses.col.paidThrough'), render: (expense) => expense.paidThroughName },
     {
       key: 'vendorName',
-      header: 'Vendor',
+      header: t('expenses.col.vendor'),
       render: (expense) => expense.vendorName || <span className="text-subtle">—</span>,
     },
-    { key: 'reference', header: 'Reference', render: (expense) => expense.reference || <span className="text-subtle">—</span> },
-    { key: 'amount', header: 'Amount', align: 'right', render: (expense) => <span className="num">{formatCurrency(expense.amount)}</span> },
+    { key: 'reference', header: t('expenses.col.reference'), render: (expense) => expense.reference || <span className="text-subtle">—</span> },
+    { key: 'amount', header: t('expenses.col.amount'), align: 'right', render: (expense) => <span className="num">{formatCurrency(expense.amount)}</span> },
     {
       key: 'taxAmount',
-      header: 'Tax',
+      header: t('expenses.col.tax'),
       align: 'right',
       render: (expense) => (
         <div className="cell-stack">
@@ -200,10 +200,10 @@ export function ExpensesPage() {
         </div>
       ),
     },
-    { key: 'total', header: 'Total', align: 'right', render: (expense) => <span className="num strong">{formatCurrency(expense.total)}</span> },
+    { key: 'total', header: t('expenses.col.total'), align: 'right', render: (expense) => <span className="num strong">{formatCurrency(expense.total)}</span> },
     {
       key: 'actions',
-      header: 'Actions',
+      header: t('expenses.col.actions'),
       align: 'right',
       render: (expense) => (
         <div className="row-actions">
@@ -211,21 +211,21 @@ export function ExpensesPage() {
             type="button"
             className="action-btn"
             style={{ color: '#ea4335' }}
-            aria-label={`Send expense details for ${expense.expenseNumber} via Gmail`}
-            title="Send expense details via Gmail"
+            aria-label={t('expenses.aria.sendGmail', { number: expense.expenseNumber })}
+            title={t('expenses.tip.sendGmail')}
             onClick={() => setMailExpense(expense)}
           >
             <Mail size={15} />
           </button>
           {canWrite ? (
             <>
-              <button type="button" className="action-btn" aria-label={`Edit expense ${expense.expenseNumber}`} onClick={() => setEditing(expense)}>
+              <button type="button" className="action-btn" aria-label={t('expenses.aria.edit', { number: expense.expenseNumber })} onClick={() => setEditing(expense)}>
                 <Pencil size={15} />
               </button>
               <button
                 type="button"
                 className="action-btn is-danger"
-                aria-label={`Delete expense ${expense.expenseNumber}`}
+                aria-label={t('expenses.aria.delete', { number: expense.expenseNumber })}
                 onClick={() => setPendingDelete(expense)}
               >
                 <Trash2 size={15} />
@@ -286,39 +286,39 @@ export function ExpensesPage() {
       ) : (
         <div className="stat-grid">
           <StatTile
-            label="Total spend"
+            label={t('expenses.stat.totalSpend')}
             value={summary.data ? formatCurrency(summary.data.spend) : '—'}
             sublabel={`${formatDate(startDate)} – ${formatDate(endDate)}`}
           />
-          <StatTile label="Expenses recorded" value={summary.data ? String(summary.data.count) : '—'} />
-          <StatTile label="Average expense" value={summary.data ? formatCurrency(summary.data.average) : '—'} />
-          <StatTile label="Billable" value={summary.data ? formatCurrency(summary.data.billable) : '—'} tone="warning" sublabel="Rebillable to customers" />
+          <StatTile label={t('expenses.stat.recorded')} value={summary.data ? String(summary.data.count) : '—'} />
+          <StatTile label={t('expenses.stat.average')} value={summary.data ? formatCurrency(summary.data.average) : '—'} />
+          <StatTile label={t('expenses.stat.billable')} value={summary.data ? formatCurrency(summary.data.billable) : '—'} tone="warning" sublabel={t('expenses.stat.billableSub')} />
         </div>
       )}
 
       <Toolbar>
         <label className="filter-select">
-          <span>From</span>
-          <input type="date" className="input select-sm" value={startDate} aria-label="Expenses from date" onChange={(event) => resetPage(setStartDate)(event.target.value)} />
+          <span>{t('expenses.filter.from')}</span>
+          <input type="date" className="input select-sm" value={startDate} aria-label={t('expenses.filter.fromAria')} onChange={(event) => resetPage(setStartDate)(event.target.value)} />
         </label>
         <label className="filter-select">
-          <span>To</span>
-          <input type="date" className="input select-sm" value={endDate} aria-label="Expenses to date" onChange={(event) => resetPage(setEndDate)(event.target.value)} />
+          <span>{t('expenses.filter.to')}</span>
+          <input type="date" className="input select-sm" value={endDate} aria-label={t('expenses.filter.toAria')} onChange={(event) => resetPage(setEndDate)(event.target.value)} />
         </label>
         <FilterSelect
-          label="Account"
+          label={t('expenses.filter.account')}
           value={accountId}
           onChange={resetPage(setAccountId)}
           options={[
-            { value: '', label: 'All expense accounts' },
+            { value: '', label: t('expenses.filter.allAccounts') },
             ...(refs.data?.expenseAccounts ?? []).map((account) => ({ value: account.id, label: account.name })),
           ]}
         />
         <FilterSelect
-          label="Vendor"
+          label={t('expenses.filter.vendor')}
           value={vendorId}
           onChange={resetPage(setVendorId)}
-          options={[{ value: '', label: 'All vendors' }, ...(refs.data?.vendors ?? []).map((vendor) => ({ value: vendor.id, label: vendor.displayName }))]}
+          options={[{ value: '', label: t('expenses.filter.allVendors') }, ...(refs.data?.vendors ?? []).map((vendor) => ({ value: vendor.id, label: vendor.displayName }))]}
         />
       </Toolbar>
 
@@ -357,10 +357,10 @@ export function ExpensesPage() {
                     }
                   }}
                 >
-                  {selectedIds.size === rows.length && rows.length > 0 ? 'Deselect All' : `Select All on Page (${rows.length})`}
+                  {selectedIds.size === rows.length && rows.length > 0 ? t('expenses.bulk.deselectAll') : t('expenses.bulk.selectAllPage', { count: rows.length })}
                 </Button>
                 {selectedIds.size > 0 ? (
-                  <span className="small text-muted">{selectedIds.size} selected</span>
+                  <span className="small text-muted">{t('expenses.bulk.selected', { count: selectedIds.size })}</span>
                 ) : null}
               </div>
               {selectedIds.size > 0 ? (
@@ -372,7 +372,7 @@ export function ExpensesPage() {
                     onClick={() => setBulkDeleteConfirmOpen(true)}
                     icon={<Trash2 size={13} />}
                   >
-                    Delete Selected ({selectedIds.size})
+                    {t('expenses.bulk.deleteSelected', { count: selectedIds.size })}
                   </Button>
                 </IfCanWrite>
               ) : null}
@@ -381,7 +381,7 @@ export function ExpensesPage() {
               columns={columns}
               rows={rows}
               rowKey={(expense) => expense.id}
-              caption="Expenses"
+              caption={t('expenses.table.caption')}
               selectedKeys={selectedIds}
               onSelectRow={(id) => {
                 const next = new Set(selectedIds);
@@ -417,21 +417,24 @@ export function ExpensesPage() {
       ) : null}
 
       {(creating || editing) && !refs.data ? (
-        <Modal open title="Record expense" size="md" onClose={() => { setEditing(null); closeCreate(); }}>
-          {refs.error ? <ErrorBlock message={refs.error} onRetry={refs.reload} /> : <LoadingBlock label="Loading accounts…" />}
+        <Modal open title={t('expenses.loadingModal.title')} size="md" onClose={() => { setEditing(null); closeCreate(); }}>
+          {refs.error ? <ErrorBlock message={refs.error} onRetry={refs.reload} /> : <LoadingBlock label={t('expenses.loadingModal.loading')} />}
         </Modal>
       ) : null}
 
       <ConfirmDialog
         open={pendingDelete !== null}
-        title="Delete this expense?"
-        confirmLabel="Delete expense"
+        title={t('expenses.confirm.title')}
+        confirmLabel={t('expenses.confirm.button')}
         busy={remove.submitting}
         message={
           <>
             <p>
-              Expense {pendingDelete?.expenseNumber} for {formatCurrency(pendingDelete?.total ?? 0)} will be deleted. Its journal entry is reversed and the
-              matching bank transaction on {pendingDelete?.paidThroughName} is removed, so the account balance goes back up.
+              {t('expenses.confirm.body', {
+                number: pendingDelete?.expenseNumber ?? '',
+                amount: formatCurrency(pendingDelete?.total ?? 0),
+                account: pendingDelete?.paidThroughName ?? '',
+              })}
             </p>
             <FormError message={remove.error} />
           </>
@@ -447,9 +450,9 @@ export function ExpensesPage() {
 
       <ConfirmDialog
         open={bulkDeleteConfirmOpen}
-        title="Delete selected expenses"
-        message={<p>{selectedIds.size} selected expense(s) will be permanently removed. This cannot be undone.</p>}
-        confirmLabel="Delete"
+        title={t('expenses.bulkConfirm.title')}
+        message={<p>{t('expenses.bulkConfirm.body', { count: selectedIds.size })}</p>}
+        confirmLabel={t('expenses.bulkConfirm.button')}
         busy={bulkDeleting}
         onCancel={() => setBulkDeleteConfirmOpen(false)}
         onConfirm={() => void confirmBulkDelete()}
@@ -476,8 +479,16 @@ interface SendExpenseModalProps {
 }
 
 function SendExpenseModal({ expense, onClose, onSent }: SendExpenseModalProps) {
+  const { t } = useAppContent();
   const [email, setEmail] = useState('');
-  const [notes, setNotes] = useState(`Expense record #${expense.expenseNumber} for ${formatCurrency(expense.total)} on ${formatDate(expense.date)} (${expense.accountName}).`);
+  const [notes, setNotes] = useState(() =>
+    t('expenses.send.defaultNotes', {
+      number: expense.expenseNumber,
+      amount: formatCurrency(expense.total),
+      date: formatDate(expense.date),
+      account: expense.accountName,
+    }),
+  );
   const [attachPdf, setAttachPdf] = useState(false);
   const { submitting, error, run } = useSubmit();
 
@@ -499,16 +510,16 @@ function SendExpenseModal({ expense, onClose, onSent }: SendExpenseModalProps) {
     <Modal
       open
       size="md"
-      title="Send Expense Details via Gmail"
-      subtitle={`Expense #${expense.expenseNumber} • ${expense.accountName} (${formatCurrency(expense.total)})`}
+      title={t('expenses.send.title')}
+      subtitle={t('expenses.send.subtitle', { number: expense.expenseNumber, account: expense.accountName, amount: formatCurrency(expense.total) })}
       onClose={onClose}
       footer={
         <>
           <Button onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('expenses.send.cancel')}
           </Button>
           <Button variant="primary" loading={submitting} icon={<Mail size={15} />} onClick={handleSend}>
-            Send via Gmail
+            {t('expenses.send.submit')}
           </Button>
         </>
       }
@@ -516,24 +527,24 @@ function SendExpenseModal({ expense, onClose, onSent }: SendExpenseModalProps) {
       <FormError message={error} />
       <div className="form-grid">
         <TextField
-          label="Recipient Email"
+          label={t('expenses.send.email')}
           type="email"
           required
-          placeholder="accountant@example.com"
+          placeholder={t('expenses.send.emailPlaceholder')}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
       </div>
       <div style={{ marginTop: '12px' }}>
         <CheckboxField
-          label="Attach PDF Report"
+          label={t('expenses.send.attachPdf')}
           checked={attachPdf}
           onChange={(e) => setAttachPdf(e.target.checked)}
         />
       </div>
       <div style={{ marginTop: '12px' }}>
         <TextAreaField
-          label="Custom Notes"
+          label={t('expenses.send.notes')}
           rows={3}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}

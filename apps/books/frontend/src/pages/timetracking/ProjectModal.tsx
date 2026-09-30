@@ -2,6 +2,7 @@ import { useEffect, useId, useState, type FormEvent } from 'react';
 
 import { contactsApi, projectsApi } from '@/api/endpoints';
 import type { Project } from '@/api/types';
+import { useAppContent } from '@/app/AppContentContext';
 import { Button } from '@/components/ui/Button';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { FormError } from '@/components/ui/Feedback';
@@ -10,15 +11,16 @@ import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { parseNumber } from '@/utils/format';
 
+/** `label` values are content keys; resolve them with `t()` at render. */
 const BILLING_METHODS = [
-  { value: 'hourly', label: 'Hourly rate' },
-  { value: 'fixed', label: 'Fixed price' },
+  { value: 'hourly', label: 'timeTracking.projectModal.billing.hourly' },
+  { value: 'fixed', label: 'timeTracking.projectModal.billing.fixed' },
 ];
 
 const PROJECT_STATUSES = [
-  { value: 'active', label: 'Active' },
-  { value: 'on_hold', label: 'On hold' },
-  { value: 'completed', label: 'Completed' },
+  { value: 'active', label: 'timeTracking.projectStatus.active' },
+  { value: 'on_hold', label: 'timeTracking.projectStatus.onHold' },
+  { value: 'completed', label: 'timeTracking.projectStatus.completed' },
 ];
 
 interface FormState {
@@ -42,6 +44,7 @@ interface ProjectModalProps {
 }
 
 export function ProjectModal({ open, project, onClose, onSaved }: ProjectModalProps) {
+  const { t } = useAppContent();
   const formId = useId();
   const { submitting, error, fieldErrors, run, reset } = useSubmit();
   const [form, setForm] = useState<FormState>(BLANK);
@@ -81,22 +84,22 @@ export function ProjectModal({ open, project, onClose, onSaved }: ProjectModalPr
     const saved = await run(() =>
       project ? projectsApi.update(project.id, { ...payload, status: form.status }) : projectsApi.create(payload),
     );
-    if (saved) onSaved(project ? 'Project updated.' : 'Project created.');
+    if (saved) onSaved(project ? t('timeTracking.projectModal.toast.updated') : t('timeTracking.projectModal.toast.created'));
   };
 
   return (
     <Modal
       open={open}
-      title={project ? 'Edit project' : 'New project'}
-      subtitle={project ? project.name : 'Track time against a customer project.'}
+      title={project ? t('timeTracking.projectModal.editTitle') : t('timeTracking.projectModal.newTitle')}
+      subtitle={project ? project.name : t('timeTracking.projectModal.newSubtitle')}
       onClose={onClose}
       footer={
         <>
           <Button onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('timeTracking.projectModal.cancel')}
           </Button>
           <Button variant="primary" type="submit" form={formId} loading={submitting}>
-            {project ? 'Save changes' : 'Create project'}
+            {project ? t('timeTracking.projectModal.saveChanges') : t('timeTracking.projectModal.create')}
           </Button>
         </>
       }
@@ -105,26 +108,26 @@ export function ProjectModal({ open, project, onClose, onSaved }: ProjectModalPr
         <FormError message={error} />
         {customers.error ? <FormError message={customers.error} /> : null}
         <div className="form-grid">
-          <TextField label="Project name" required value={form.name} error={fieldErrors.name} onChange={(event) => set('name', event.target.value)} />
+          <TextField label={t('timeTracking.projectModal.name')} required value={form.name} error={fieldErrors.name} onChange={(event) => set('name', event.target.value)} />
           <SelectField
-            label="Customer"
-            placeholder={customers.loading ? 'Loading customers…' : 'No customer'}
+            label={t('timeTracking.projectModal.customer')}
+            placeholder={customers.loading ? t('timeTracking.projectModal.loadingCustomers') : t('timeTracking.projectModal.noCustomer')}
             options={(customers.data?.items ?? []).map((customer) => ({ value: customer.id, label: customer.displayName }))}
             value={form.customerId}
             error={fieldErrors.customerId}
-            hint="A customer is required before time can be invoiced."
+            hint={t('timeTracking.projectModal.customerHint')}
             onChange={(event) => set('customerId', event.target.value)}
           />
           <SelectField
-            label="Billing method"
+            label={t('timeTracking.projectModal.billingMethod')}
             required
-            options={BILLING_METHODS}
+            options={BILLING_METHODS.map((option) => ({ ...option, label: t(option.label) }))}
             value={form.billingMethod}
             error={fieldErrors.billingMethod}
             onChange={(event) => set('billingMethod', event.target.value as 'hourly' | 'fixed')}
           />
           <TextField
-            label="Hourly rate"
+            label={t('timeTracking.projectModal.hourlyRate')}
             type="number"
             step="0.01"
             min="0"
@@ -134,7 +137,7 @@ export function ProjectModal({ open, project, onClose, onSaved }: ProjectModalPr
             onChange={(event) => set('hourlyRate', event.target.value)}
           />
           <TextField
-            label="Budget hours"
+            label={t('timeTracking.projectModal.budgetHours')}
             type="number"
             step="0.25"
             min="0"
@@ -144,8 +147,8 @@ export function ProjectModal({ open, project, onClose, onSaved }: ProjectModalPr
           />
           {project ? (
             <SelectField
-              label="Status"
-              options={PROJECT_STATUSES}
+              label={t('timeTracking.projectModal.status')}
+              options={PROJECT_STATUSES.map((option) => ({ ...option, label: t(option.label) }))}
               value={form.status}
               error={fieldErrors.status}
               onChange={(event) => set('status', event.target.value as Project['status'])}
@@ -153,7 +156,7 @@ export function ProjectModal({ open, project, onClose, onSaved }: ProjectModalPr
           ) : null}
         </div>
         <TextAreaField
-          label="Description"
+          label={t('timeTracking.projectModal.description')}
           rows={2}
           value={form.description}
           error={fieldErrors.description}

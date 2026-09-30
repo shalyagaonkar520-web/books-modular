@@ -16,10 +16,6 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { parseNumber } from '@/utils/format';
 import { taxRatesWith, UNITS } from '@/utils/status';
 
-const TYPE_OPTIONS = [
-  { value: 'goods', label: 'Goods' },
-  { value: 'service', label: 'Service' },
-];
 const UNIT_OPTIONS = UNITS.map((unit) => ({ value: unit, label: unit }));
 
 interface SelectOptions {
@@ -80,6 +76,7 @@ function initialForm(item: Item | null, defaultTaxRate?: number): FormState {
 export function ItemFormPage() {
   const { itemId } = useParams<{ itemId: string }>();
   const navigate = useNavigate();
+  const { t } = useAppContent();
   const isEdit = Boolean(itemId);
 
   // Reading the chart of accounts is Admin/Viewer only, while Staff may create
@@ -104,7 +101,7 @@ export function ItemFormPage() {
     };
   }, [canChooseAccounts]);
 
-  if ((isEdit && existing.loading) || refs.loading) return <LoadingBlock label="Loading item…" />;
+  if ((isEdit && existing.loading) || refs.loading) return <LoadingBlock label={t('items.form.loading')} />;
   if (isEdit && existing.error) return <ErrorBlock message={existing.error} onRetry={existing.reload} />;
 
   return (
@@ -132,6 +129,10 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
   const [form, setForm] = useState<FormState>(() => initialForm(item, organization?.defaultTaxRate));
   const taxOptions = taxRatesWith(organization?.defaultTaxRate, item?.taxRate).map((rate) => ({ value: String(rate), label: `${rate}%` }));
   const { submitting, error, fieldErrors, run } = useSubmit();
+  const typeOptions = [
+    { value: 'goods', label: t('items.type.goods') },
+    { value: 'service', label: t('items.type.service') },
+  ];
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((current) => ({ ...current, [key]: value }));
   const tracks = form.type === 'goods' && form.trackInventory;
@@ -160,7 +161,7 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
     };
     const result = await run(() => (item ? itemsApi.update(item.id, payload) : itemsApi.create(payload)));
     if (result) {
-      toast.success(item ? `${result.name} updated` : `${result.name} created`);
+      toast.success(item ? t('items.form.updated', { name: result.name }) : t('items.form.created', { name: result.name }));
       onDone();
     }
   }
@@ -168,11 +169,11 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
   return (
     <>
       <PageHeader
-        title={item ? `Edit ${item.name}` : t('items.form.newTitle')}
+        title={item ? t('items.form.editTitle', { name: item.name }) : t('items.form.newTitle')}
         subtitle={item ? item.sku : t('items.form.subtitle')}
         actions={
           <Button variant="secondary" onClick={onDone} disabled={submitting}>
-            Cancel
+            {t('items.form.cancel')}
           </Button>
         }
       />
@@ -181,23 +182,23 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
       <FormError message={error ?? optionsError} />
 
       <section className="form-page-section">
-          <h3 className="form-section-title">Basics</h3>
+          <h3 className="form-section-title">{t('items.form.section.basics')}</h3>
         <div className="form-grid">
-          <TextField label="Name" required value={form.name} error={fieldErrors.name} onChange={(event) => set('name', event.target.value)} />
-          <TextField label="SKU" required value={form.sku} error={fieldErrors.sku} hint="Unique code for this item" onChange={(event) => set('sku', event.target.value)} />
-          <SelectField label="Type" value={form.type} options={TYPE_OPTIONS} error={fieldErrors.type} onChange={(event) => set('type', event.target.value as ItemType)} />
-          <SelectField label="Unit" value={form.unit} options={UNIT_OPTIONS} error={fieldErrors.unit} onChange={(event) => set('unit', event.target.value)} />
-          <TextField label="HSN / SAC" value={form.hsnSac} error={fieldErrors.hsnSac} onChange={(event) => set('hsnSac', event.target.value)} />
-          <SelectField label="Tax rate" value={form.taxRate} options={taxOptions} error={fieldErrors.taxRate} onChange={(event) => set('taxRate', event.target.value)} />
+          <TextField label={t('items.form.name')} required value={form.name} error={fieldErrors.name} onChange={(event) => set('name', event.target.value)} />
+          <TextField label={t('items.form.sku')} required value={form.sku} error={fieldErrors.sku} hint={t('items.form.skuHint')} onChange={(event) => set('sku', event.target.value)} />
+          <SelectField label={t('items.form.type')} value={form.type} options={typeOptions} error={fieldErrors.type} onChange={(event) => set('type', event.target.value as ItemType)} />
+          <SelectField label={t('items.form.unit')} value={form.unit} options={UNIT_OPTIONS} error={fieldErrors.unit} onChange={(event) => set('unit', event.target.value)} />
+          <TextField label={t('items.form.hsnSac')} value={form.hsnSac} error={fieldErrors.hsnSac} onChange={(event) => set('hsnSac', event.target.value)} />
+          <SelectField label={t('items.form.taxRate')} value={form.taxRate} options={taxOptions} error={fieldErrors.taxRate} onChange={(event) => set('taxRate', event.target.value)} />
         </div>
-        <TextAreaField label="Description" value={form.description} error={fieldErrors.description} onChange={(event) => set('description', event.target.value)} />
+        <TextAreaField label={t('items.form.description')} value={form.description} error={fieldErrors.description} onChange={(event) => set('description', event.target.value)} />
       </section>
 
       <section className="form-page-section">
-          <h3 className="form-section-title">Sales information</h3>
+          <h3 className="form-section-title">{t('items.form.section.sales')}</h3>
         <div className="form-grid">
           <TextField
-            label="Selling price"
+            label={t('items.form.sellingPrice')}
             type="number"
             min="0"
             step="0.01"
@@ -207,29 +208,29 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
             onChange={(event) => set('sellingPrice', event.target.value)}
           />
           <SelectField
-            label="Sales account"
+            label={t('items.form.salesAccount')}
             value={form.salesAccountId}
-            placeholder="Use the default income account"
+            placeholder={t('items.form.salesAccountPlaceholder')}
             options={options?.salesAccounts ?? []}
             error={fieldErrors.salesAccountId}
             onChange={(event) => set('salesAccountId', event.target.value)}
           />
         </div>
         <TextAreaField
-          label="Sales description"
+          label={t('items.form.salesDescription')}
           rows={2}
           value={form.salesDescription}
           error={fieldErrors.salesDescription}
-          hint="Shown on invoices when this item is added"
+          hint={t('items.form.salesDescriptionHint')}
           onChange={(event) => set('salesDescription', event.target.value)}
         />
       </section>
 
       <section className="form-page-section">
-          <h3 className="form-section-title">Purchase information</h3>
+          <h3 className="form-section-title">{t('items.form.section.purchase')}</h3>
         <div className="form-grid-3">
           <TextField
-            label="Cost price"
+            label={t('items.form.costPrice')}
             type="number"
             min="0"
             step="0.01"
@@ -239,45 +240,45 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
             onChange={(event) => set('costPrice', event.target.value)}
           />
           <SelectField
-            label="Purchase account"
+            label={t('items.form.purchaseAccount')}
             value={form.purchaseAccountId}
-            placeholder="Use the default expense account"
+            placeholder={t('items.form.purchaseAccountPlaceholder')}
             options={options?.purchaseAccounts ?? []}
             error={fieldErrors.purchaseAccountId}
             onChange={(event) => set('purchaseAccountId', event.target.value)}
           />
           <SelectField
-            label="Preferred vendor"
+            label={t('items.form.preferredVendor')}
             value={form.preferredVendorId}
-            placeholder="No preferred vendor"
+            placeholder={t('items.form.preferredVendorPlaceholder')}
             options={options?.vendors ?? []}
             error={fieldErrors.preferredVendorId}
             onChange={(event) => set('preferredVendorId', event.target.value)}
           />
         </div>
         <TextAreaField
-          label="Purchase description"
+          label={t('items.form.purchaseDescription')}
           rows={2}
           value={form.purchaseDescription}
           error={fieldErrors.purchaseDescription}
-          hint="Shown on bills when this item is added"
+          hint={t('items.form.purchaseDescriptionHint')}
           onChange={(event) => set('purchaseDescription', event.target.value)}
         />
       </section>
 
       {form.type === 'goods' ? (
         <section className="form-page-section">
-          <h3 className="form-section-title">Inventory</h3>
+          <h3 className="form-section-title">{t('items.form.section.inventory')}</h3>
           <CheckboxField
-            label="Track inventory for this item"
-            hint="Records stock on hand and posts opening stock to the ledger"
+            label={t('items.form.trackInventory')}
+            hint={t('items.form.trackInventoryHint')}
             checked={form.trackInventory}
             onChange={(event) => set('trackInventory', event.target.checked)}
           />
           {form.trackInventory ? (
             <div className="form-grid-3">
               <TextField
-                label="Opening stock"
+                label={t('items.form.openingStock')}
                 type="number"
                 min="0"
                 step="0.001"
@@ -286,7 +287,7 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
                 onChange={(event) => set('openingStock', event.target.value)}
               />
               <TextField
-                label="Opening stock rate"
+                label={t('items.form.openingStockRate')}
                 type="number"
                 min="0"
                 step="0.01"
@@ -296,17 +297,17 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
                 onChange={(event) => set('openingStockRate', event.target.value)}
               />
               <TextField
-                label="Low stock threshold"
+                label={t('items.form.reorderLevel')}
                 type="number"
                 min="0"
                 step="0.001"
                 value={form.reorderLevel}
                 error={fieldErrors.reorderLevel}
                 onChange={(event) => set('reorderLevel', event.target.value)}
-                hint="Stock at or below this triggers the low-stock warning and filter"
+                hint={t('items.form.reorderLevelHint')}
               />
               <TextField
-                label="Warehouse location"
+                label={t('items.form.warehouseLocation')}
                 value={form.warehouseLocation}
                 error={fieldErrors.warehouseLocation}
                 onChange={(event) => set('warehouseLocation', event.target.value)}
@@ -319,13 +320,13 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
 
       <div className="form-actions-bar">
         <div className="row-between">
-          <span className="text-subtle small">{item ? 'Editing an existing item' : 'A new item will be created'}</span>
+          <span className="text-subtle small">{item ? t('items.form.editingExisting') : t('items.form.creatingNew')}</span>
           <div className="row">
             <Button variant="secondary" onClick={onDone} disabled={submitting}>
-              Cancel
+              {t('items.form.cancel')}
             </Button>
             <Button variant="primary" loading={submitting} onClick={save}>
-              {item ? 'Save changes' : 'Create item'}
+              {item ? t('items.form.saveChanges') : t('items.form.create')}
             </Button>
           </div>
         </div>

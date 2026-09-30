@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { FormError } from '@/components/ui/Feedback';
 import { TextField } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
+import { useAppContent } from '@/app/AppContentContext';
 import { useToast } from '@/components/ui/Toast';
 import { formatCurrency, parseNumber, round2 } from '@/utils/format';
 
@@ -39,6 +40,7 @@ function loadRazorpayScript(): Promise<boolean> {
 }
 
 export function PayOnlineModal({ open, onClose, invoice, onPaymentSuccess }: PayOnlineModalProps) {
+  const { t } = useAppContent();
   const toast = useToast();
   const { organization } = useAuth();
   const [amount, setAmount] = useState<string>('');
@@ -57,11 +59,11 @@ export function PayOnlineModal({ open, onClose, invoice, onPaymentSuccess }: Pay
     setErrorMessage(null);
     const numAmount = round2(parseNumber(amount));
     if (isNaN(numAmount) || numAmount <= 0) {
-      setErrorMessage('Please enter a valid payment amount greater than zero.');
+      setErrorMessage(t('invoices.payOnline.invalidAmount'));
       return;
     }
     if (numAmount > invoice.balanceDue) {
-      setErrorMessage(`Amount cannot exceed the remaining balance due (${formatCurrency(invoice.balanceDue)}).`);
+      setErrorMessage(t('invoices.payOnline.exceedsBalance', { amount: formatCurrency(invoice.balanceDue) }));
       return;
     }
 
@@ -71,7 +73,7 @@ export function PayOnlineModal({ open, onClose, invoice, onPaymentSuccess }: Pay
       // 1. Ensure Razorpay checkout.js is available
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded) {
-        throw new Error('Failed to load Razorpay checkout SDK. Please check your internet connection.');
+        throw new Error(t('invoices.payOnline.sdkFailed'));
       }
 
       // 2. Create Razorpay order via backend
@@ -82,8 +84,8 @@ export function PayOnlineModal({ open, onClose, invoice, onPaymentSuccess }: Pay
         key: order.key_id,
         amount: order.amount,
         currency: order.currency,
-        name: organization?.name ?? 'Rooman Books',
-        description: `Payment for Invoice ${invoice.invoiceNumber}`,
+        name: organization?.name ?? t('invoices.payOnline.merchantFallback'),
+        description: t('invoices.payOnline.checkoutDescription', { number: invoice.invoiceNumber }),
         order_id: order.order_id,
         prefill: {
           name: order.customer_name,
@@ -99,7 +101,7 @@ export function PayOnlineModal({ open, onClose, invoice, onPaymentSuccess }: Pay
           razorpay_signature: string;
         }) => {
           try {
-            toast.notify('Verifying payment signature with server...');
+            toast.notify(t('invoices.payOnline.verifying'));
             const verification = await razorpayApi.verifyPayment({
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
@@ -109,15 +111,15 @@ export function PayOnlineModal({ open, onClose, invoice, onPaymentSuccess }: Pay
             });
 
             if (verification.success) {
-              toast.success(`Payment of ${formatCurrency(numAmount)} received successfully!`);
+              toast.success(t('invoices.payOnline.success', { amount: formatCurrency(numAmount) }));
               onPaymentSuccess();
               onClose();
             } else {
-              toast.error(verification.message || 'Payment verification failed.');
+              toast.error(verification.message || t('invoices.payOnline.verifyFailed'));
             }
           } catch (err: unknown) {
-            const msg = (err as Error)?.message ?? 'Verification error occurred';
-            toast.error(`Verification error: ${msg}`);
+            const msg = (err as Error)?.message ?? t('invoices.payOnline.verifyErrorFallback');
+            toast.error(t('invoices.payOnline.verifyError', { message: msg }));
           } finally {
             setSubmitting(false);
           }
@@ -125,7 +127,7 @@ export function PayOnlineModal({ open, onClose, invoice, onPaymentSuccess }: Pay
         modal: {
           ondismiss: () => {
             setSubmitting(false);
-            toast.notify('Payment checkout dismissed');
+            toast.notify(t('invoices.payOnline.dismissed'));
           },
         },
       };
@@ -140,13 +142,13 @@ export function PayOnlineModal({ open, onClose, invoice, onPaymentSuccess }: Pay
       razorpayInstance.on('payment.failed', (resp: unknown) => {
         setSubmitting(false);
         const description = (resp as { error?: { description?: string } })?.error?.description;
-        toast.error(`Payment failed: ${description || 'Transaction declined.'}`);
+        toast.error(t('invoices.payOnline.paymentFailed', { reason: description || t('invoices.payOnline.declined') }));
       });
 
       razorpayInstance.open();
     } catch (err: unknown) {
       setSubmitting(false);
-      setErrorMessage((err as Error)?.message ?? 'Failed to initiate payment.');
+      setErrorMessage((err as Error)?.message ?? t('invoices.payOnline.initiateFailed'));
     }
   };
 
@@ -154,16 +156,16 @@ export function PayOnlineModal({ open, onClose, invoice, onPaymentSuccess }: Pay
     <Modal
       open={open}
       onClose={submitting ? () => {} : onClose}
-      title="Pay Online via Razorpay"
-      subtitle={`Secure online payment gateway for Invoice ${invoice.invoiceNumber}`}
+      title={t('invoices.payOnline.title')}
+      subtitle={t('invoices.payOnline.subtitle', { number: invoice.invoiceNumber })}
       size="md"
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('invoices.payOnline.cancel')}
           </Button>
           <Button variant="primary" icon={<Lock size={14} />} onClick={handlePay} disabled={submitting}>
-            {submitting ? 'Connecting...' : `Pay ${amount ? formatCurrency(parseNumber(amount) || 0) : ''}`}
+            {submitting ? t('invoices.payOnline.connecting') : t('invoices.payOnline.pay', { amount: amount ? formatCurrency(parseNumber(amount) || 0) : '' })}
           </Button>
         </>
       }
@@ -184,7 +186,7 @@ export function PayOnlineModal({ open, onClose, invoice, onPaymentSuccess }: Pay
         >
           <div>
             <span className="text-muted small" style={{ display: 'block' }}>
-              Invoice Total
+              {t('invoices.payOnline.invoiceTotal')}
             </span>
             <span className="strong" style={{ fontSize: '1.1rem' }}>
               {formatCurrency(invoice.total)}
@@ -192,7 +194,7 @@ export function PayOnlineModal({ open, onClose, invoice, onPaymentSuccess }: Pay
           </div>
           <div>
             <span className="text-muted small" style={{ display: 'block' }}>
-              Balance Due
+              {t('invoices.payOnline.balanceDue')}
             </span>
             <span className="strong" style={{ fontSize: '1.1rem', color: '#dc2626' }}>
               {formatCurrency(invoice.balanceDue)}
@@ -200,27 +202,27 @@ export function PayOnlineModal({ open, onClose, invoice, onPaymentSuccess }: Pay
           </div>
           <div>
             <span className="text-muted small" style={{ display: 'block' }}>
-              Customer
+              {t('invoices.payOnline.customer')}
             </span>
             <span>{invoice.customerName}</span>
           </div>
           <div>
             <span className="text-muted small" style={{ display: 'block' }}>
-              Accepted Methods
+              {t('invoices.payOnline.acceptedMethods')}
             </span>
-            <span className="small text-muted">UPI, Cards, NetBanking, Wallets</span>
+            <span className="small text-muted">{t('invoices.payOnline.methods')}</span>
           </div>
         </div>
 
         <TextField
-          label="Payment Amount (INR)"
+          label={t('invoices.payOnline.amount')}
           type="number"
           step="0.01"
           min="1"
           max={invoice.balanceDue}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          hint={`Defaults to remaining balance (${formatCurrency(invoice.balanceDue)}). Partial payments supported.`}
+          hint={t('invoices.payOnline.amountHint', { amount: formatCurrency(invoice.balanceDue) })}
           required
         />
 
@@ -238,7 +240,7 @@ export function PayOnlineModal({ open, onClose, invoice, onPaymentSuccess }: Pay
           }}
         >
           <ShieldCheck size={18} style={{ color: '#2563eb', flexShrink: 0 }} />
-          <span>Protected by 256-bit SSL encryption. All transactions verified via HMAC-SHA256 signature.</span>
+          <span>{t('invoices.payOnline.security')}</span>
         </div>
       </div>
     </Modal>

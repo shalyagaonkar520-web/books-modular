@@ -1,4 +1,5 @@
 import type { BankAccount } from '@/api/types';
+import { useAppContent } from '@/app/AppContentContext';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency, titleCase } from '@/utils/format';
 
@@ -10,6 +11,7 @@ interface BankAccountCardsProps {
 
 /** One selectable card per bank/cash/credit-card account. */
 export function BankAccountCards({ accounts, selectedAccountId, onSelect }: BankAccountCardsProps) {
+  const { t } = useAppContent();
   return (
     <div className="grid-3">
       {accounts.map((account) => {
@@ -39,13 +41,13 @@ export function BankAccountCards({ accounts, selectedAccountId, onSelect }: Bank
                   </small>
                 </div>
                 <div className="row">
-                  {account.isPrimary ? <Badge tone="info">Primary</Badge> : null}
-                  {isSelected ? <Badge tone="success">Viewing</Badge> : null}
+                  {account.isPrimary ? <Badge tone="info">{t('banking.cards.primary')}</Badge> : null}
+                  {isSelected ? <Badge tone="success">{t('banking.cards.viewing')}</Badge> : null}
                 </div>
               </div>
               <div className="stat-value num">{formatCurrency(account.currentBalance, account.currency)}</div>
-              <div className="small text-subtle mono">{account.accountNumberMasked ?? 'No account number on file'}</div>
-              <div className="small text-muted">{account.unreconciledCount} unreconciled transaction(s)</div>
+              <div className="small text-subtle mono">{account.accountNumberMasked ?? t('banking.cards.noAccountNumber')}</div>
+              <div className="small text-muted">{t('banking.cards.unreconciled', { count: account.unreconciledCount })}</div>
             </div>
           </div>
         );

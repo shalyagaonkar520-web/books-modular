@@ -5,6 +5,7 @@ import { billsApi, vendorPaymentsApi } from '@/api/endpoints';
 import type { VendorPayment } from '@/api/types';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { useAppContent } from '@/app/AppContentContext';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
@@ -30,6 +31,7 @@ interface BillDetailModalProps {
 }
 
 export function BillDetailModal({ billId, canWrite, onClose, onChanged, onRecordPayment }: BillDetailModalProps) {
+  const { t } = useAppContent();
   const toast = useToast();
   const remove = useSubmit();
   const [pendingPayment, setPendingPayment] = useState<VendorPayment | null>(null);
@@ -44,7 +46,7 @@ export function BillDetailModal({ billId, canWrite, onClose, onChanged, onRecord
   const deletePayment = async (payment: VendorPayment) => {
     const result = await remove.run(() => vendorPaymentsApi.remove(payment.id));
     if (result) {
-      toast.success(`Payment ${payment.paymentNumber} deleted`);
+      toast.success(t('bills.detail.paymentDeleted', { number: payment.paymentNumber }));
       setPendingPayment(null);
       detail.reload();
       onChanged();
@@ -54,14 +56,14 @@ export function BillDetailModal({ billId, canWrite, onClose, onChanged, onRecord
   return (
     <Modal
       open
-      title={bill ? `Bill ${bill.billNumber}` : 'Bill'}
-      subtitle={bill ? `${bill.vendorName} · ${statusLabel(bill.status)}` : undefined}
+      title={bill ? t('bills.detail.title', { number: bill.billNumber }) : t('bills.detail.titleFallback')}
+      subtitle={bill ? `${bill.vendorName} · ${statusLabel(bill.status, t)}` : undefined}
       size="lg"
       onClose={onClose}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
-            Close
+            {t('bills.detail.close')}
           </Button>
           {canWrite && bill && bill.balanceDue > 0 && ['open', 'partially_paid', 'overdue'].includes(bill.status) ? (
             <Button
@@ -69,57 +71,57 @@ export function BillDetailModal({ billId, canWrite, onClose, onChanged, onRecord
               icon={<Wallet size={15} />}
               onClick={() => onRecordPayment({ id: bill.id, billNumber: bill.billNumber, vendorId: bill.vendorId, vendorName: bill.vendorName, balanceDue: bill.balanceDue })}
             >
-              Record payment
+              {t('bills.detail.recordPayment')}
             </Button>
           ) : null}
         </>
       }
     >
       {detail.loading ? (
-        <LoadingBlock label="Loading bill…" />
+        <LoadingBlock label={t('bills.detail.loading')} />
       ) : detail.error || !bill ? (
-        <ErrorBlock message={detail.error ?? 'This bill could not be loaded.'} onRetry={detail.reload} />
+        <ErrorBlock message={detail.error ?? t('bills.detail.loadError')} onRetry={detail.reload} />
       ) : (
         <div className="stack">
           <div className="form-section">
-            <h3 className="form-section-title">Vendor</h3>
+            <h3 className="form-section-title">{t('bills.detail.vendor')}</h3>
             <div className="detail-value strong">{bill.vendorName}</div>
             <div className="detail-grid">
               <div className="detail-item">
-                <span className="detail-label">Vendor bill number</span>
+                <span className="detail-label">{t('bills.detail.vendorBillNumber')}</span>
                 <span className="detail-value">{bill.vendorBillNumber || '—'}</span>
               </div>
               <div className="detail-item">
-                <span className="detail-label">Bill date</span>
+                <span className="detail-label">{t('bills.detail.billDate')}</span>
                 <span className="detail-value">{formatDate(bill.date)}</span>
               </div>
               <div className="detail-item">
-                <span className="detail-label">Due date</span>
+                <span className="detail-label">{t('bills.detail.dueDate')}</span>
                 <span className="detail-value">
                   {formatDate(bill.dueDate)}
-                  {overdueDays(bill) > 0 ? <span className="text-danger"> · {overdueDays(bill)} days overdue</span> : null}
+                  {overdueDays(bill) > 0 ? <span className="text-danger"> · {t('bills.detail.daysOverdue', { days: overdueDays(bill) })}</span> : null}
                 </span>
               </div>
               <div className="detail-item">
-                <span className="detail-label">Status</span>
+                <span className="detail-label">{t('bills.detail.status')}</span>
                 <span className="detail-value">
-                  <Badge tone={statusTone(bill.status)}>{statusLabel(bill.status)}</Badge>
+                  <Badge tone={statusTone(bill.status)}>{statusLabel(bill.status, t)}</Badge>
                 </span>
               </div>
             </div>
           </div>
 
           <div className="form-section">
-            <h3 className="form-section-title">Line items</h3>
+            <h3 className="form-section-title">{t('bills.detail.lineItems')}</h3>
             <table className="line-items-table">
               <thead>
                 <tr>
-                  <th>Description</th>
-                  <th>Account / item</th>
-                  <th className="align-right">Qty</th>
-                  <th className="align-right">Rate</th>
-                  <th className="align-right">Tax</th>
-                  <th className="align-right">Amount</th>
+                  <th>{t('bills.detail.col.description')}</th>
+                  <th>{t('bills.detail.col.accountItem')}</th>
+                  <th className="align-right">{t('bills.detail.col.qty')}</th>
+                  <th className="align-right">{t('bills.detail.col.rate')}</th>
+                  <th className="align-right">{t('bills.detail.col.tax')}</th>
+                  <th className="align-right">{t('bills.detail.col.amount')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -139,54 +141,54 @@ export function BillDetailModal({ billId, canWrite, onClose, onChanged, onRecord
 
           <div className="totals-list">
             <div>
-              <span>Subtotal</span>
+              <span>{t('bills.detail.subtotal')}</span>
               <span>{formatCurrency(bill.subtotal)}</span>
             </div>
             <div>
-              <span>Discount</span>
+              <span>{t('bills.detail.discount')}</span>
               <span>-{formatCurrency(bill.discountAmount)}</span>
             </div>
             <div>
-              <span>Tax total</span>
+              <span>{t('bills.detail.taxTotal')}</span>
               <span>{formatCurrency(bill.taxTotal)}</span>
             </div>
             <div className="grand">
-              <span>Total</span>
+              <span>{t('bills.detail.total')}</span>
               <span>{formatCurrency(bill.total)}</span>
             </div>
             <div>
-              <span>Amount paid</span>
+              <span>{t('bills.detail.amountPaid')}</span>
               <span>{formatCurrency(bill.amountPaid)}</span>
             </div>
             <div>
-              <span className="strong">Balance due</span>
+              <span className="strong">{t('bills.detail.balanceDue')}</span>
               <span className="strong">{formatCurrency(bill.balanceDue)}</span>
             </div>
           </div>
 
           {bill.notes ? (
             <div className="form-section">
-              <h3 className="form-section-title">Notes</h3>
+              <h3 className="form-section-title">{t('bills.detail.notes')}</h3>
               <p className="text-muted">{bill.notes}</p>
             </div>
           ) : null}
 
           <div className="form-section">
-            <h3 className="form-section-title">Payment history</h3>
+            <h3 className="form-section-title">{t('bills.detail.paymentHistory')}</h3>
             <FormError message={remove.error} />
             {detail.data && detail.data.payments.length === 0 ? (
-              <p className="text-subtle small">No payments recorded against this bill yet.</p>
+              <p className="text-subtle small">{t('bills.detail.noPayments')}</p>
             ) : (
               <table className="line-items-table">
                 <thead>
                   <tr>
-                    <th>Payment #</th>
-                    <th>Date</th>
-                    <th>Paid through</th>
-                    <th>Mode</th>
-                    <th>Reference</th>
-                    <th className="align-right">Amount</th>
-                    {canWrite ? <th className="align-right">Actions</th> : null}
+                    <th>{t('bills.detail.col.paymentNumber')}</th>
+                    <th>{t('bills.detail.col.date')}</th>
+                    <th>{t('bills.detail.col.paidThrough')}</th>
+                    <th>{t('bills.detail.col.mode')}</th>
+                    <th>{t('bills.detail.col.reference')}</th>
+                    <th className="align-right">{t('bills.detail.col.amount')}</th>
+                    {canWrite ? <th className="align-right">{t('bills.detail.col.actions')}</th> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -197,7 +199,7 @@ export function BillDetailModal({ billId, canWrite, onClose, onChanged, onRecord
                       </td>
                       <td>{formatDate(payment.date)}</td>
                       <td>{payment.bankAccountName}</td>
-                      <td>{PAYMENT_MODES.find((option) => option.value === payment.mode)?.label ?? titleCase(payment.mode)}</td>
+                      <td>{(() => { const option = PAYMENT_MODES.find((o) => o.value === payment.mode); return option ? t(option.labelKey) : titleCase(payment.mode); })()}</td>
                       <td className="text-muted">{payment.reference || '—'}</td>
                       <td className="align-right num">{formatCurrency(payment.amount)}</td>
                       {canWrite ? (
@@ -205,7 +207,7 @@ export function BillDetailModal({ billId, canWrite, onClose, onChanged, onRecord
                           <button
                             type="button"
                             className="action-btn is-danger"
-                            aria-label={`Delete payment ${payment.paymentNumber}`}
+                            aria-label={t('bills.detail.deletePaymentAria', { number: payment.paymentNumber })}
                             onClick={() => setPendingPayment(payment)}
                           >
                             <Trash2 size={15} />
@@ -221,14 +223,16 @@ export function BillDetailModal({ billId, canWrite, onClose, onChanged, onRecord
 
           <ConfirmDialog
             open={pendingPayment !== null}
-            title="Delete this payment?"
-            confirmLabel="Delete payment"
+            title={t('bills.detail.confirmTitle')}
+            confirmLabel={t('bills.detail.confirmButton')}
             busy={remove.submitting}
             message={
               <>
                 <p>
-                  Payment {pendingPayment?.paymentNumber} of {formatCurrency(pendingPayment?.amount ?? 0)} will be deleted, the bank transaction removed and
-                  the bill balance restored.
+                  {t('bills.detail.confirmBody', {
+                    number: pendingPayment?.paymentNumber ?? '',
+                    amount: formatCurrency(pendingPayment?.amount ?? 0),
+                  })}
                 </p>
                 <FormError message={remove.error} />
               </>

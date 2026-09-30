@@ -21,7 +21,6 @@ import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { GST_TREATMENTS } from '@/utils/status';
 
-const GST_OPTIONS = GST_TREATMENTS.map((treatment) => ({ value: treatment.value, label: treatment.label }));
 const SALUTATIONS = ['Mr.', 'Ms.', 'Mrs.', 'Dr.', 'Prof.'];
 const LANGUAGES = ['English', 'Hindi', 'Kannada', 'Tamil', 'Telugu', 'Malayalam', 'Marathi', 'Gujarati', 'Bengali'];
 
@@ -95,20 +94,19 @@ function initialForm(contact: Contact | null, type: ContactType, defaultPaymentT
 export function ContactFormPage({ type }: { type: ContactType }) {
   const { contactId } = useParams<{ contactId: string }>();
   const navigate = useNavigate();
+  const { t } = useAppContent();
   const isEdit = Boolean(contactId);
-  const singular = type === 'customer' ? 'customer' : 'vendor';
   const listPath = type === 'customer' ? '/customers' : '/vendors';
 
   const existing = useAsync(() => (contactId ? contactsApi.get(contactId) : Promise.resolve(null)), [contactId]);
 
-  if (isEdit && existing.loading) return <LoadingBlock label={`Loading ${singular}…`} />;
+  if (isEdit && existing.loading) return <LoadingBlock label={t(type === 'customer' ? 'customers.form.loading' : 'vendors.form.loading')} />;
   if (isEdit && existing.error) return <ErrorBlock message={existing.error} onRetry={existing.reload} />;
 
   return (
     <ContactForm
       key={existing.data?.id ?? 'new'}
       type={type}
-      singular={singular}
       contact={existing.data ?? null}
       onDone={() => navigate(listPath)}
     />
@@ -117,13 +115,13 @@ export function ContactFormPage({ type }: { type: ContactType }) {
 
 interface ContactFormProps {
   type: ContactType;
-  singular: string;
   contact: Contact | null;
   onDone: () => void;
 }
 
-function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
+function ContactForm({ type, contact, onDone }: ContactFormProps) {
   const { t } = useAppContent();
+  const isCustomer = type === 'customer';
   const toast = useToast();
   // Reading the chart of accounts is Admin/Viewer only, but Staff may create
   // contacts - so only ask for the accounts when the signed-in role is allowed
@@ -161,34 +159,34 @@ function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
 
   async function save() {
     if (type === 'customer' && !form.email.trim()) {
-      toast.error('Customer email is required for invoices and payment notifications');
+      toast.error(t('customers.form.emailRequired'));
       return;
     }
     // Names are people, not codes. Company name is deliberately exempt so
     // businesses like "3M" can still be recorded.
     if (/\d/.test(form.displayName)) {
-      toast.error('Display name cannot contain numbers');
+      toast.error(t('customers.form.displayNameDigits'));
       return;
     }
     if (/\d/.test(form.contactPerson)) {
-      toast.error('Contact person name cannot contain numbers');
+      toast.error(t('customers.form.contactPersonDigits'));
       return;
     }
-    for (const [value, label] of [
-      [form.firstName, 'First name'],
-      [form.lastName, 'Last name'],
+    for (const [value, message] of [
+      [form.firstName, t('customers.form.firstNameDigits')],
+      [form.lastName, t('customers.form.lastNameDigits')],
     ] as const) {
       if (/\d/.test(value)) {
-        toast.error(`${label} cannot contain numbers`);
+        toast.error(message);
         return;
       }
     }
     if (form.phone.trim() && form.phone.trim().length !== 10) {
-      setPhoneError('Phone number must be exactly 10 digits');
+      setPhoneError(t('customers.form.phoneLength'));
       return;
     }
     if (type === 'vendor' && form.bankAccountNumber.trim() !== form.bankAccountNumberConfirm.trim()) {
-      toast.error('Account numbers do not match');
+      toast.error(t('vendors.form.accountMismatch'));
       return;
     }
     const displayName = formatVendorMaskedName(form.displayName.trim(), type === 'vendor');
@@ -221,7 +219,7 @@ function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
     };
     const result = await run(() => (contact ? contactsApi.update(contact.id, payload) : contactsApi.create(payload)));
     if (result) {
-      toast.success(contact ? `${result.displayName} updated` : `${result.displayName} added`);
+      toast.success(contact ? t('customers.form.updated', { name: result.displayName }) : t('customers.form.added', { name: result.displayName }));
       onDone();
     }
   }
@@ -229,11 +227,11 @@ function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
   return (
     <>
       <PageHeader
-        title={contact ? `Edit ${contact.displayName}` : t(type === 'customer' ? 'customers.form.newTitle' : 'vendors.form.newTitle')}
-        subtitle={`Details used on ${type === 'customer' ? 'invoices' : 'bills'} and statements`}
+        title={contact ? t('customers.form.editTitle', { name: contact.displayName }) : t(type === 'customer' ? 'customers.form.newTitle' : 'vendors.form.newTitle')}
+        subtitle={t(isCustomer ? 'customers.form.subtitle' : 'vendors.form.subtitle')}
         actions={
           <Button variant="secondary" onClick={onDone} disabled={submitting}>
-            Cancel
+            {t('customers.form.cancel')}
           </Button>
         }
       />
@@ -242,64 +240,64 @@ function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
       <FormError message={error} />
 
       <section className="form-page-section">
-          <h3 className="form-section-title">Identity</h3>
+          <h3 className="form-section-title">{t('customers.form.section.identity')}</h3>
         <div className="form-grid">
           <SelectField
-            label={`${type === 'customer' ? 'Customer' : 'Vendor'} type`}
+            label={t(isCustomer ? 'customers.form.contactType' : 'vendors.form.contactType')}
             value={form.contactType}
             options={[
-              { value: 'business', label: 'Business' },
-              { value: 'individual', label: 'Individual' },
+              { value: 'business', label: t('customers.form.business') },
+              { value: 'individual', label: t('customers.form.individual') },
             ]}
             error={fieldErrors.contactType}
-            hint="A business is billed under its company name"
+            hint={t('customers.form.contactTypeHint')}
             onChange={(event) => set('contactType', event.target.value as ContactKind)}
           />
-          <TextField label="Display name" required value={form.displayName} error={fieldErrors.displayName} onChange={(event) => setDisplayName(event.target.value)} />
+          <TextField label={t('customers.form.displayName')} required value={form.displayName} error={fieldErrors.displayName} onChange={(event) => setDisplayName(event.target.value)} />
           <TextField
-            label="Company name"
+            label={t('customers.form.companyName')}
             value={form.companyName}
             error={fieldErrors.companyName}
-            hint="Letters and numbers, e.g. 3M India"
+            hint={t('customers.form.companyNameHint')}
             onChange={(event) => set('companyName', event.target.value)}
           />
-          <TextField label="Email" type="email" required={type === 'customer'} value={form.email} error={fieldErrors.email} onChange={(event) => set('email', event.target.value)} />
+          <TextField label={t('customers.form.email')} type="email" required={type === 'customer'} value={form.email} error={fieldErrors.email} onChange={(event) => set('email', event.target.value)} />
         </div>
       </section>
 
       <section className="form-page-section">
-          <h3 className="form-section-title">Primary contact</h3>
+          <h3 className="form-section-title">{t('customers.form.section.primaryContact')}</h3>
         <div className="form-grid-3">
           <SelectField
-            label="Salutation"
+            label={t('customers.form.salutation')}
             value={form.salutation}
             placeholder="—"
             options={SALUTATIONS.map((title) => ({ value: title, label: title }))}
             error={fieldErrors.salutation}
             onChange={(event) => set('salutation', event.target.value)}
           />
-          <TextField label="First name" value={form.firstName} error={fieldErrors.firstName} onChange={(event) => set('firstName', event.target.value)} />
-          <TextField label="Last name" value={form.lastName} error={fieldErrors.lastName} onChange={(event) => set('lastName', event.target.value)} />
+          <TextField label={t('customers.form.firstName')} value={form.firstName} error={fieldErrors.firstName} onChange={(event) => set('firstName', event.target.value)} />
+          <TextField label={t('customers.form.lastName')} value={form.lastName} error={fieldErrors.lastName} onChange={(event) => set('lastName', event.target.value)} />
         </div>
         <div className="form-grid">
           <TextField
-            label="Work phone"
+            label={t('customers.form.workPhone')}
             type="tel"
             inputMode="numeric"
             maxLength={10}
             value={form.phone}
             error={phoneError ?? fieldErrors.phone}
-            hint="10 digits"
+            hint={t('customers.form.phoneHint')}
             onChange={(event) => setPhone(event.target.value)}
           />
           <TextField
-            label="Mobile"
+            label={t('customers.form.mobile')}
             type="tel"
             inputMode="numeric"
             maxLength={10}
             value={form.mobile}
             error={fieldErrors.mobile}
-            hint="10 digits"
+            hint={t('customers.form.phoneHint')}
             onChange={(event) => set('mobile', event.target.value.replace(/\D/g, '').slice(0, 10))}
           />
         </div>
@@ -308,40 +306,40 @@ function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
       {/* Money goes out to vendors, so only they need bank details. */}
       {type === 'vendor' ? (
         <section className="form-page-section">
-          <h3 className="form-section-title">Bank details</h3>
-          <p className="form-section-note">Where this vendor gets paid — saved so a payment run does not need it re-keyed.</p>
+          <h3 className="form-section-title">{t('vendors.form.section.bank')}</h3>
+          <p className="form-section-note">{t('vendors.form.bankNote')}</p>
           <div className="form-grid">
             <TextField
-              label="Account holder name"
+              label={t('vendors.form.accountHolder')}
               value={form.bankAccountHolder}
               error={fieldErrors.bankAccountHolder}
               onChange={(event) => set('bankAccountHolder', event.target.value)}
             />
-            <TextField label="Bank name" value={form.bankName} error={fieldErrors.bankName} onChange={(event) => set('bankName', event.target.value)} />
+            <TextField label={t('vendors.form.bankName')} value={form.bankName} error={fieldErrors.bankName} onChange={(event) => set('bankName', event.target.value)} />
             <TextField
-              label="Account number"
+              label={t('vendors.form.accountNumber')}
               inputMode="numeric"
               maxLength={18}
               value={form.bankAccountNumber}
               error={fieldErrors.bankAccountNumber}
-              hint="9 to 18 digits"
+              hint={t('vendors.form.accountNumberHint')}
               onChange={(event) => set('bankAccountNumber', event.target.value)}
             />
             <TextField
-              label="Re-enter account number"
+              label={t('vendors.form.accountNumberConfirm')}
               inputMode="numeric"
               maxLength={18}
               value={form.bankAccountNumberConfirm}
-              error={accountNumberMismatch ? 'Account numbers do not match' : undefined}
-              hint="Typed twice so a wrong digit cannot send a payment astray"
+              error={accountNumberMismatch ? t('vendors.form.accountMismatch') : undefined}
+              hint={t('vendors.form.accountNumberConfirmHint')}
               onChange={(event) => set('bankAccountNumberConfirm', event.target.value)}
             />
             <TextField
-              label="IFSC"
+              label={t('vendors.form.ifsc')}
               maxLength={11}
               value={form.bankIfsc}
               error={fieldErrors.bankIfsc}
-              hint="11 characters, e.g. HDFC0001234"
+              hint={t('vendors.form.ifscHint')}
               onChange={(event) => set('bankIfsc', event.target.value.toUpperCase())}
             />
           </div>
@@ -349,33 +347,33 @@ function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
       ) : null}
 
       <section className="form-page-section">
-          <h3 className="form-section-title">Tax and terms</h3>
+          <h3 className="form-section-title">{t('customers.form.section.taxTerms')}</h3>
         <div className="form-grid">
           <TextField
-            label="GSTIN"
+            label={t('customers.form.gstin')}
             value={form.gstin}
             error={fieldErrors.gstin}
             maxLength={15}
-            hint="15 characters, e.g. 29AABCR1234F1Z5"
+            hint={t('customers.form.gstinHint')}
             onChange={(event) => set('gstin', event.target.value.toUpperCase())}
           />
           <TextField
-            label="PAN"
+            label={t('customers.form.pan')}
             value={form.pan}
             error={fieldErrors.pan}
             maxLength={10}
-            hint="10 characters, e.g. AABCR1234F"
+            hint={t('customers.form.panHint')}
             onChange={(event) => set('pan', event.target.value.toUpperCase())}
           />
           <SelectField
-            label="GST treatment"
+            label={t('customers.form.gstTreatment')}
             value={form.gstTreatment}
-            options={GST_OPTIONS}
+            options={GST_TREATMENTS.map((treatment) => ({ value: treatment.value, label: t(treatment.labelKey) }))}
             error={fieldErrors.gstTreatment}
             onChange={(event) => set('gstTreatment', event.target.value as GstTreatment)}
           />
           <TextField
-            label="Payment terms (days)"
+            label={t('customers.form.paymentTerms')}
             type="number"
             min="0"
             max="365"
@@ -385,19 +383,19 @@ function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
           />
           {canChooseAccount ? (
           <SelectField
-            label={type === 'customer' ? 'Accounts receivable' : 'Accounts payable'}
+            label={t(isCustomer ? 'customers.form.ledgerAccount' : 'vendors.form.ledgerAccount')}
             value={form.ledgerAccountId}
-            placeholder="Default account"
+            placeholder={t('customers.form.ledgerPlaceholder')}
             options={(ledgerAccounts.data ?? []).map((account) => ({ value: account.id, label: `${account.code} · ${account.name}` }))}
             error={fieldErrors.ledgerAccountId}
-            hint={`Leave as default unless this ${singular} posts to its own account`}
+            hint={t(isCustomer ? 'customers.form.ledgerHint' : 'vendors.form.ledgerHint')}
             onChange={(event) => set('ledgerAccountId', event.target.value)}
           />
           ) : null}
           <SelectField
-            label="Language"
+            label={t('customers.form.language')}
             value={form.language}
-            placeholder="English"
+            placeholder={t('customers.form.languagePlaceholder')}
             options={LANGUAGES.map((language) => ({ value: language, label: language }))}
             error={fieldErrors.language}
             onChange={(event) => set('language', event.target.value)}
@@ -406,24 +404,24 @@ function ContactForm({ type, singular, contact, onDone }: ContactFormProps) {
       </section>
 
       <section className="form-page-section">
-          <h3 className="form-section-title">Addresses</h3>
+          <h3 className="form-section-title">{t('customers.form.section.addresses')}</h3>
         <div className="form-grid">
-          <TextAreaField label="Billing address" value={form.billingAddress} error={fieldErrors.billingAddress} onChange={(event) => set('billingAddress', event.target.value)} />
-          <TextAreaField label="Shipping address" value={form.shippingAddress} error={fieldErrors.shippingAddress} onChange={(event) => set('shippingAddress', event.target.value)} />
+          <TextAreaField label={t('customers.form.billingAddress')} value={form.billingAddress} error={fieldErrors.billingAddress} onChange={(event) => set('billingAddress', event.target.value)} />
+          <TextAreaField label={t('customers.form.shippingAddress')} value={form.shippingAddress} error={fieldErrors.shippingAddress} onChange={(event) => set('shippingAddress', event.target.value)} />
         </div>
-        <TextAreaField label="Notes" rows={2} value={form.notes} error={fieldErrors.notes} onChange={(event) => set('notes', event.target.value)} />
+        <TextAreaField label={t('customers.form.notes')} rows={2} value={form.notes} error={fieldErrors.notes} onChange={(event) => set('notes', event.target.value)} />
       </section>
       </div>
 
       <div className="form-actions-bar">
         <div className="row-between">
-          <span className="text-subtle small">{contact ? 'Editing an existing record' : `A new ${singular} will be created`}</span>
+          <span className="text-subtle small">{contact ? t('customers.form.editingExisting') : t(isCustomer ? 'customers.form.creatingNew' : 'vendors.form.creatingNew')}</span>
           <div className="row">
             <Button variant="secondary" onClick={onDone} disabled={submitting}>
-              Cancel
+              {t('customers.form.cancel')}
             </Button>
             <Button variant="primary" loading={submitting} onClick={save}>
-              {contact ? 'Save changes' : `Create ${singular}`}
+              {contact ? t('customers.form.saveChanges') : t(isCustomer ? 'customers.form.create' : 'vendors.form.create')}
             </Button>
           </div>
         </div>

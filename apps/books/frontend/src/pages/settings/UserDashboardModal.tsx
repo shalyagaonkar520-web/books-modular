@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 
 import { orgApi } from '@/api/endpoints';
+import { useAppContent } from '@/app/AppContentContext';
 import type { AuditLog, Payslip, TimeEntry, User } from '@/api/types';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -29,6 +30,7 @@ interface UserDashboardModalProps {
 type TabKey = 'activity' | 'profile' | 'payslips' | 'time';
 
 export function UserDashboardModal({ user, onClose }: UserDashboardModalProps) {
+  const { t } = useAppContent();
   const toast = useToast();
   const [downloading, setDownloading] = useState(false);
   const [tab, setTab] = useState<TabKey>('activity');
@@ -42,9 +44,9 @@ export function UserDashboardModal({ user, onClose }: UserDashboardModalProps) {
     try {
       setDownloading(true);
       await orgApi.downloadUserDashboardPdf(user.id, user.name);
-      toast.success(`Dashboard PDF for ${user.name} downloaded successfully.`);
+      toast.success(t('settings.userDashboard.pdfDownloaded', { name: user.name }));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to download PDF');
+      toast.error(err instanceof Error ? err.message : t('settings.userDashboard.pdfFailed'));
     } finally {
       setDownloading(false);
     }
@@ -53,61 +55,61 @@ export function UserDashboardModal({ user, onClose }: UserDashboardModalProps) {
   const auditColumns: Array<Column<AuditLog>> = [
     {
       key: 'timestamp',
-      header: 'Date & Time',
+      header: t('settings.userDashboard.col.dateTime'),
       width: '180px',
       render: (log) => formatDateTime(log.createdAt),
     },
     {
       key: 'action',
-      header: 'Action',
+      header: t('settings.userDashboard.col.action'),
       width: '110px',
       render: (log) => <Badge tone="neutral">{log.action.toUpperCase()}</Badge>,
     },
     {
       key: 'entityType',
-      header: 'Entity',
+      header: t('settings.userDashboard.col.entity'),
       width: '130px',
       render: (log) => <span className="strong">{log.entityType}</span>,
     },
     {
       key: 'summary',
-      header: 'Summary / Details',
+      header: t('settings.userDashboard.col.summary'),
       render: (log) => log.summary || '—',
     },
   ];
 
   const payslipColumns: Array<Column<Payslip>> = [
-    { key: 'period', header: 'Period', render: (p) => p.periodLabel ?? '—' },
-    { key: 'gross', header: 'Gross', align: 'right', render: (p) => formatCurrency(p.gross) },
-    { key: 'deductions', header: 'Deductions', align: 'right', render: (p) => formatCurrency(p.totalDeductions) },
-    { key: 'net', header: 'Net pay', align: 'right', render: (p) => <strong>{formatCurrency(p.netPay)}</strong> },
+    { key: 'period', header: t('settings.userDashboard.col.period'), render: (p) => p.periodLabel ?? '—' },
+    { key: 'gross', header: t('settings.userDashboard.col.gross'), align: 'right', render: (p) => formatCurrency(p.gross) },
+    { key: 'deductions', header: t('settings.userDashboard.col.deductions'), align: 'right', render: (p) => formatCurrency(p.totalDeductions) },
+    { key: 'net', header: t('settings.userDashboard.col.netPay'), align: 'right', render: (p) => <strong>{formatCurrency(p.netPay)}</strong> },
     {
       key: 'status',
-      header: 'Status',
+      header: t('settings.userDashboard.col.status'),
       render: (p) =>
         p.payRunStatus === 'paid'
-          ? `Paid${p.payDate ? ` · ${formatDate(p.payDate)}` : ''}`
-          : 'Approved',
+          ? `${t('settings.userDashboard.payslip.paid')}${p.payDate ? ` · ${formatDate(p.payDate)}` : ''}`
+          : t('settings.userDashboard.payslip.approved'),
     },
   ];
 
   const timeColumns: Array<Column<TimeEntry>> = [
-    { key: 'date', header: 'Date', render: (t) => formatDate(t.date) },
-    { key: 'project', header: 'Project', render: (t) => t.projectName || '—' },
-    { key: 'hours', header: 'Hours', align: 'right', render: (t) => t.hours },
-    { key: 'description', header: 'Notes', render: (t) => t.description ?? '—' },
-    { key: 'billable', header: 'Billable', render: (t) => (t.isBillable ? 'Yes' : 'No') },
+    { key: 'date', header: t('settings.userDashboard.col.date'), render: (entry) => formatDate(entry.date) },
+    { key: 'project', header: t('settings.userDashboard.col.project'), render: (entry) => entry.projectName || '—' },
+    { key: 'hours', header: t('settings.userDashboard.col.hours'), align: 'right', render: (entry) => entry.hours },
+    { key: 'description', header: t('settings.userDashboard.col.notes'), render: (entry) => entry.description ?? '—' },
+    { key: 'billable', header: t('settings.userDashboard.col.billable'), render: (entry) => (entry.isBillable ? t('settings.userDashboard.yes') : t('settings.userDashboard.no')) },
   ];
 
   const hasEmployee = Boolean(data?.employee);
 
   const availableTabs = [
-    { id: 'activity', label: 'Activity & Audit Trail' },
+    { id: 'activity', label: t('settings.userDashboard.tab.activity') },
     ...(hasEmployee
       ? [
-          { id: 'profile', label: 'Employee Profile' },
-          { id: 'payslips', label: `Payslips (${data?.payslips?.length ?? 0})` },
-          { id: 'time', label: `Time Entries (${data?.timeEntries?.length ?? 0})` },
+          { id: 'profile', label: t('settings.userDashboard.tab.profile') },
+          { id: 'payslips', label: t('settings.userDashboard.tab.payslips', { count: data?.payslips?.length ?? 0 }) },
+          { id: 'time', label: t('settings.userDashboard.tab.time', { count: data?.timeEntries?.length ?? 0 }) },
         ]
       : []),
   ];
@@ -115,7 +117,7 @@ export function UserDashboardModal({ user, onClose }: UserDashboardModalProps) {
   return (
     <Modal
       open
-      title={`User Dashboard · ${user.name}`}
+      title={t('settings.userDashboard.title', { name: user.name })}
       subtitle={`${user.email} · ${user.role.toUpperCase()}`}
       size="xl"
       onClose={onClose}
@@ -127,10 +129,10 @@ export function UserDashboardModal({ user, onClose }: UserDashboardModalProps) {
             loading={downloading}
             onClick={handleDownloadPdf}
           >
-            Download PDF Report
+            {t('settings.userDashboard.downloadPdf')}
           </Button>
           <Button variant="secondary" onClick={onClose}>
-            Close
+            {t('settings.userDashboard.close')}
           </Button>
         </div>
       }
@@ -146,55 +148,55 @@ export function UserDashboardModal({ user, onClose }: UserDashboardModalProps) {
           {/* Top Quick Stats Grid */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
             <StatTile
-              label="Role & Access"
+              label={t('settings.userDashboard.stat.role')}
               value={user.role.toUpperCase()}
               icon={<Shield size={16} />}
             />
             <StatTile
-              label="Account Status"
-              value={!user.isActive ? 'Deactivated' : user.pendingInvite ? 'Invite Sent' : 'Active'}
+              label={t('settings.userDashboard.stat.status')}
+              value={!user.isActive ? t('settings.userDashboard.status.deactivated') : user.pendingInvite ? t('settings.userDashboard.status.inviteSent') : t('settings.userDashboard.status.active')}
               icon={<UserIcon size={16} />}
             />
             <StatTile
-              label="Total Activities"
+              label={t('settings.userDashboard.stat.activities')}
               value={String(data.stats.totalActions)}
               icon={<Activity size={16} />}
             />
             {hasEmployee && data.employee ? (
               <>
                 <StatTile
-                  label="Monthly Gross"
+                  label={t('settings.userDashboard.stat.monthlyGross')}
                   value={formatCurrency(data.employee.grossSalary)}
                   icon={<Wallet size={16} />}
                 />
                 <StatTile
-                  label="Logged Hours"
-                  value={`${data.stats.totalHoursLogged} hrs`}
+                  label={t('settings.userDashboard.stat.loggedHours')}
+                  value={t('settings.userDashboard.stat.hours', { hours: data.stats.totalHoursLogged })}
                   icon={<Clock size={16} />}
                 />
               </>
             ) : (
               <StatTile
-                label="Last Login"
-                value={user.lastLoginAt ? formatDate(user.lastLoginAt) : 'Never'}
+                label={t('settings.userDashboard.stat.lastLogin')}
+                value={user.lastLoginAt ? formatDate(user.lastLoginAt) : t('settings.userDashboard.never')}
                 icon={<Clock size={16} />}
               />
             )}
           </div>
 
           {/* Account Overview Card */}
-          <Card title="Account Overview" subtitle="System credentials and access profile">
+          <Card title={t('settings.userDashboard.overview.title')} subtitle={t('settings.userDashboard.overview.subtitle')}>
             <dl className="detail-grid">
               <div>
-                <dt>Name</dt>
+                <dt>{t('settings.userDashboard.dt.name')}</dt>
                 <dd>{user.name}</dd>
               </div>
               <div>
-                <dt>Email</dt>
+                <dt>{t('settings.userDashboard.dt.email')}</dt>
                 <dd>{user.email}</dd>
               </div>
               <div>
-                <dt>Role</dt>
+                <dt>{t('settings.userDashboard.dt.role')}</dt>
                 <dd>
                   <Badge tone={user.role === 'admin' ? 'info' : 'neutral'}>
                     {user.role}
@@ -202,24 +204,24 @@ export function UserDashboardModal({ user, onClose }: UserDashboardModalProps) {
                 </dd>
               </div>
               <div>
-                <dt>Status</dt>
+                <dt>{t('settings.userDashboard.dt.status')}</dt>
                 <dd>
                   {!user.isActive ? (
-                    <Badge tone="neutral">Deactivated</Badge>
+                    <Badge tone="neutral">{t('settings.userDashboard.status.deactivated')}</Badge>
                   ) : user.pendingInvite ? (
-                    <Badge tone="warning">Invite Sent</Badge>
+                    <Badge tone="warning">{t('settings.userDashboard.status.inviteSent')}</Badge>
                   ) : (
-                    <Badge tone="success">Active</Badge>
+                    <Badge tone="success">{t('settings.userDashboard.status.active')}</Badge>
                   )}
                 </dd>
               </div>
               <div>
-                <dt>Member Since</dt>
+                <dt>{t('settings.userDashboard.dt.memberSince')}</dt>
                 <dd>{formatDate(user.createdAt)}</dd>
               </div>
               <div>
-                <dt>Last Sign In</dt>
-                <dd>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never'}</dd>
+                <dt>{t('settings.userDashboard.dt.lastSignIn')}</dt>
+                <dd>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : t('settings.userDashboard.never')}</dd>
               </div>
             </dl>
           </Card>
@@ -236,20 +238,20 @@ export function UserDashboardModal({ user, onClose }: UserDashboardModalProps) {
           {/* Activity Tab */}
           {tab === 'activity' && (
             <Card
-              title="Recent Activity & Audit Trail"
-              subtitle="Actions recorded in the system for this user account"
+              title={t('settings.userDashboard.activity.title')}
+              subtitle={t('settings.userDashboard.activity.subtitle')}
             >
               {data.auditLogs.length === 0 ? (
                 <EmptyState
-                  title="No activity recorded"
-                  description="This user has not performed any auditable actions yet."
+                  title={t('settings.userDashboard.activity.empty.title')}
+                  description={t('settings.userDashboard.activity.empty.description')}
                 />
               ) : (
                 <DataTable
                   columns={auditColumns}
                   rows={data.auditLogs}
                   rowKey={(row) => row.id}
-                  caption="User audit log entries"
+                  caption={t('settings.userDashboard.activity.caption')}
                 />
               )}
             </Card>
@@ -257,50 +259,50 @@ export function UserDashboardModal({ user, onClose }: UserDashboardModalProps) {
 
           {/* Employee Profile Tab */}
           {tab === 'profile' && data.employee && (
-            <Card title="Employee & Compensation Profile" subtitle="Employment records linked from Payroll">
+            <Card title={t('settings.userDashboard.profile.title')} subtitle={t('settings.userDashboard.profile.subtitle')}>
               <dl className="detail-grid">
                 <div>
-                  <dt>Employee Code</dt>
+                  <dt>{t('settings.userDashboard.dt.employeeCode')}</dt>
                   <dd>{data.employee.employeeCode}</dd>
                 </div>
                 <div>
-                  <dt>Department</dt>
+                  <dt>{t('settings.userDashboard.dt.department')}</dt>
                   <dd>{data.employee.department || '—'}</dd>
                 </div>
                 <div>
-                  <dt>Designation</dt>
+                  <dt>{t('settings.userDashboard.dt.designation')}</dt>
                   <dd>{data.employee.designation || '—'}</dd>
                 </div>
                 <div>
-                  <dt>Date of Joining</dt>
+                  <dt>{t('settings.userDashboard.dt.dateOfJoining')}</dt>
                   <dd>{formatDate(data.employee.dateOfJoining)}</dd>
                 </div>
                 <div>
-                  <dt>PAN</dt>
+                  <dt>{t('settings.userDashboard.dt.pan')}</dt>
                   <dd>{data.employee.pan || '—'}</dd>
                 </div>
                 <div>
-                  <dt>Bank Account</dt>
+                  <dt>{t('settings.userDashboard.dt.bankAccount')}</dt>
                   <dd>{data.employee.bankAccountNumberMasked || '—'}</dd>
                 </div>
                 <div>
-                  <dt>IFSC Code</dt>
+                  <dt>{t('settings.userDashboard.dt.ifsc')}</dt>
                   <dd>{data.employee.bankIfsc || '—'}</dd>
                 </div>
                 <div>
-                  <dt>Basic Salary</dt>
+                  <dt>{t('settings.userDashboard.dt.basicSalary')}</dt>
                   <dd>{formatCurrency(data.employee.basicSalary)}</dd>
                 </div>
                 <div>
-                  <dt>HRA</dt>
+                  <dt>{t('settings.userDashboard.dt.hra')}</dt>
                   <dd>{formatCurrency(data.employee.hra)}</dd>
                 </div>
                 <div>
-                  <dt>Other Allowances</dt>
+                  <dt>{t('settings.userDashboard.dt.otherAllowances')}</dt>
                   <dd>{formatCurrency(data.employee.otherAllowances)}</dd>
                 </div>
                 <div>
-                  <dt>Net Salary</dt>
+                  <dt>{t('settings.userDashboard.dt.netSalary')}</dt>
                   <dd className="strong">{formatCurrency(data.employee.netSalary)}</dd>
                 </div>
               </dl>
@@ -309,18 +311,18 @@ export function UserDashboardModal({ user, onClose }: UserDashboardModalProps) {
 
           {/* Payslips Tab */}
           {tab === 'payslips' && (
-            <Card title="Payslips" subtitle="Compensation runs including this user">
+            <Card title={t('settings.userDashboard.payslips.title')} subtitle={t('settings.userDashboard.payslips.subtitle')}>
               {data.payslips.length === 0 ? (
                 <EmptyState
-                  title="No payslips found"
-                  description="No approved or paid pay runs have been generated for this employee yet."
+                  title={t('settings.userDashboard.payslips.empty.title')}
+                  description={t('settings.userDashboard.payslips.empty.description')}
                 />
               ) : (
                 <DataTable
                   columns={payslipColumns}
                   rows={data.payslips}
                   rowKey={(row) => row.id}
-                  caption="Employee payslips"
+                  caption={t('settings.userDashboard.payslips.caption')}
                 />
               )}
             </Card>
@@ -328,18 +330,18 @@ export function UserDashboardModal({ user, onClose }: UserDashboardModalProps) {
 
           {/* Time Entries Tab */}
           {tab === 'time' && (
-            <Card title="Time Entries" subtitle="Hours logged against projects by or for this user">
+            <Card title={t('settings.userDashboard.time.title')} subtitle={t('settings.userDashboard.time.subtitle')}>
               {data.timeEntries.length === 0 ? (
                 <EmptyState
-                  title="No time entries logged"
-                  description="No billable or non-billable time entries recorded."
+                  title={t('settings.userDashboard.time.empty.title')}
+                  description={t('settings.userDashboard.time.empty.description')}
                 />
               ) : (
                 <DataTable
                   columns={timeColumns}
                   rows={data.timeEntries}
                   rowKey={(row) => row.id}
-                  caption="Time entries"
+                  caption={t('settings.userDashboard.time.caption')}
                 />
               )}
             </Card>

@@ -1,3 +1,4 @@
+import { useAppContent } from '@/app/AppContentContext';
 import { Card } from '@/components/ui/Card';
 import { DonutChart } from '@/components/ui/Charts';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
@@ -14,6 +15,7 @@ interface ProfitAndLossReportProps {
 }
 
 export function ProfitAndLossReport({ startDate, endDate }: ProfitAndLossReportProps) {
+  const { t } = useAppContent();
   const { organization } = useAuth();
   const currency = organization?.currency ?? 'INR';
   const { data, loading, error, reload } = useAsync(
@@ -21,28 +23,23 @@ export function ProfitAndLossReport({ startDate, endDate }: ProfitAndLossReportP
     [startDate, endDate],
   );
 
-  if (loading) return <LoadingBlock label="Preparing the profit and loss statement…" />;
+  if (loading) return <LoadingBlock label={t('reports.profitAndLoss.loading')} />;
   if (error) return <ErrorBlock message={error} onRetry={reload} />;
   if (!data) return null;
 
   const sections = [data.income, data.costOfGoodsSold, data.operatingExpenses, data.otherIncome];
   if (!sections.some((section) => section.lines.length)) {
-    return (
-      <EmptyState
-        title="No ledger activity in this period"
-        description="Send an invoice, open a bill or record an expense and the profit and loss statement will fill in."
-      />
-    );
+    return <EmptyState title={t('reports.profitAndLoss.empty.title')} description={t('reports.profitAndLoss.empty.body')} />;
   }
 
   const rows: StatementRow[] = [
-    ...sectionRows('income', data.income),
-    ...sectionRows('cogs', data.costOfGoodsSold),
-    profitRow('gross-profit', 'Gross profit', data.grossProfit),
-    ...sectionRows('opex', data.operatingExpenses),
-    profitRow('operating-profit', 'Operating profit', data.operatingProfit),
-    ...sectionRows('other-income', data.otherIncome),
-    profitRow('net-profit', 'Net profit', data.netProfit),
+    ...sectionRows('income', data.income, t),
+    ...sectionRows('cogs', data.costOfGoodsSold, t),
+    profitRow('gross-profit', t('reports.profitAndLoss.row.grossProfit'), data.grossProfit),
+    ...sectionRows('opex', data.operatingExpenses, t),
+    profitRow('operating-profit', t('reports.profitAndLoss.row.operatingProfit'), data.operatingProfit),
+    ...sectionRows('other-income', data.otherIncome, t),
+    profitRow('net-profit', t('reports.profitAndLoss.row.netProfit'), data.netProfit),
   ];
 
   const expenseSlices = [...data.operatingExpenses.lines, ...data.costOfGoodsSold.lines]
@@ -53,37 +50,37 @@ export function ProfitAndLossReport({ startDate, endDate }: ProfitAndLossReportP
 
   return (
     <div className="grid-2">
-      <Card title="Profit and loss" subtitle={`${formatDate(startDate)} to ${formatDate(endDate)}`}>
-        <StatementTable rows={rows} currency={currency} caption="Profit and loss statement" />
+      <Card title={t('reports.profitAndLoss.cardTitle')} subtitle={t('reports.dateRange', { start: formatDate(startDate), end: formatDate(endDate) })}>
+        <StatementTable rows={rows} currency={currency} caption={t('reports.profitAndLoss.tableCaption')} />
       </Card>
       <div className="stack">
-        <Card title="Where the money went" subtitle="Largest expense accounts in this period">
+        <Card title={t('reports.profitAndLoss.spendTitle')} subtitle={t('reports.profitAndLoss.spendSubtitle')}>
           <DonutChart slices={expenseSlices} currency={currency} />
         </Card>
-        <Card title="Summary">
+        <Card title={t('reports.profitAndLoss.summaryTitle')}>
           <div className="totals-list">
             <div>
-              <span>Income</span>
+              <span>{t('reports.profitAndLoss.summary.income')}</span>
               <span className="num">{formatCurrency(data.income.total, currency)}</span>
             </div>
             <div>
-              <span>Cost of goods sold</span>
+              <span>{t('reports.profitAndLoss.summary.cogs')}</span>
               <span className="num">{formatCurrency(data.costOfGoodsSold.total, currency)}</span>
             </div>
             <div>
-              <span>Gross profit</span>
+              <span>{t('reports.profitAndLoss.summary.grossProfit')}</span>
               <span className="num">{formatCurrency(data.grossProfit, currency)}</span>
             </div>
             <div>
-              <span>Operating expenses</span>
+              <span>{t('reports.profitAndLoss.summary.operatingExpenses')}</span>
               <span className="num">{formatCurrency(data.operatingExpenses.total, currency)}</span>
             </div>
             <div>
-              <span>Other income</span>
+              <span>{t('reports.profitAndLoss.summary.otherIncome')}</span>
               <span className="num">{formatCurrency(data.otherIncome.total, currency)}</span>
             </div>
             <div className="grand">
-              <span>Net profit</span>
+              <span>{t('reports.profitAndLoss.summary.netProfit')}</span>
               <span className={data.netProfit < 0 ? 'num text-danger' : 'num text-success'}>{formatCurrency(data.netProfit, currency)}</span>
             </div>
           </div>

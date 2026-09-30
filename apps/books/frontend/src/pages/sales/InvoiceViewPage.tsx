@@ -13,21 +13,23 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, LoadingBlock, SkeletonRows } from '@/components/ui/Feedback';
 import { TextAreaField, TextField } from '@/components/ui/Field';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
+import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatDate, formatPercent, formatQuantity } from '@/utils/format';
-import { PAYMENT_MODES, statusLabel, statusTone } from '@/utils/status';
+import { paymentModeLabel, type Translate, statusLabel, statusTone } from '@/utils/status';
 
 import { PayOnlineModal } from './PayOnlineModal';
 import { RecordPaymentModal, type PaymentInvoiceContext } from './RecordPaymentModal';
 
 type Pending = { kind: 'send' | 'void' } | { kind: 'deletePayment'; payment: CustomerPayment };
 
-const modeLabel = (mode: string): string => PAYMENT_MODES.find((option) => option.value === mode)?.label ?? mode;
+const modeLabel = (mode: string, t: Translate): string => paymentModeLabel(mode, t);
 
 export function InvoiceViewPage() {
+  const { t } = useAppContent();
   const { invoiceId = '' } = useParams<{ invoiceId: string }>();
   const navigate = useNavigate();
   const toast = useToast();
@@ -66,30 +68,34 @@ export function InvoiceViewPage() {
     }
     const result = await run(() => invoicesApi.setStatus(data.id, pending.kind === 'send' ? 'sent' : 'void'));
     if (result) {
-      toast.success(pending.kind === 'send' ? `Invoice ${data.invoiceNumber} marked as sent` : `Invoice ${data.invoiceNumber} voided`);
+      toast.success(
+        pending.kind === 'send'
+          ? t('invoices.toast.markedSent', { number: data.invoiceNumber })
+          : t('invoices.toast.voided', { number: data.invoiceNumber }),
+      );
       setPending(null);
       refresh();
     }
   };
 
   const paymentColumns: Array<Column<CustomerPayment>> = [
-    { key: 'paymentNumber', header: 'Payment #', render: (row) => <span className="mono">{row.paymentNumber}</span> },
-    { key: 'date', header: 'Date', render: (row) => formatDate(row.date) },
+    { key: 'paymentNumber', header: t('invoices.view.payments.col.number'), render: (row) => <span className="mono">{row.paymentNumber}</span> },
+    { key: 'date', header: t('invoices.view.payments.col.date'), render: (row) => formatDate(row.date) },
     {
       key: 'mode',
-      header: 'Mode',
+      header: t('invoices.view.payments.col.mode'),
       render: (row) => (
         <span className="cell-stack">
-          <span>{modeLabel(row.mode)}</span>
+          <span>{modeLabel(row.mode, t)}</span>
           <small>{row.bankAccountName}</small>
         </span>
       ),
     },
-    { key: 'reference', header: 'Reference', render: (row) => row.reference ?? '—' },
-    { key: 'amount', header: 'Amount', align: 'right', render: (row) => <span className="num strong">{formatCurrency(row.amount)}</span> },
+    { key: 'reference', header: t('invoices.view.payments.col.reference'), render: (row) => row.reference ?? '—' },
+    { key: 'amount', header: t('invoices.view.payments.col.amount'), align: 'right', render: (row) => <span className="num strong">{formatCurrency(row.amount)}</span> },
     {
       key: 'actions',
-      header: 'Actions',
+      header: t('invoices.view.payments.col.actions'),
       align: 'right',
       render: (row) => (
         <IfCanWrite>
@@ -97,7 +103,7 @@ export function InvoiceViewPage() {
             <button
               type="button"
               className="action-btn is-danger"
-              aria-label={`Delete payment ${row.paymentNumber}`}
+              aria-label={t('invoices.view.payments.deleteAria', { number: row.paymentNumber })}
               onClick={() => {
                 reset();
                 setPending({ kind: 'deletePayment', payment: row });
@@ -111,12 +117,12 @@ export function InvoiceViewPage() {
     },
   ];
 
-  if (invoice.loading) return <LoadingBlock label="Loading invoice…" />;
+  if (invoice.loading) return <LoadingBlock label={t('invoices.view.loading')} />;
   if (invoice.error || !data) {
     return (
       <>
-        <PageHeader title="Invoice" actions={<Button icon={<ArrowLeft size={15} />} onClick={() => navigate('/invoices')}>Back to invoices</Button>} />
-        <ErrorBlock message={invoice.error ?? 'This invoice could not be loaded.'} onRetry={invoice.reload} />
+        <PageHeader title={t('invoices.view.errorTitle')} actions={<Button icon={<ArrowLeft size={15} />} onClick={() => navigate('/invoices')}>{t('invoices.view.back')}</Button>} />
+        <ErrorBlock message={invoice.error ?? t('invoices.view.loadError')} onRetry={invoice.reload} />
       </>
     );
   }
@@ -128,43 +134,43 @@ export function InvoiceViewPage() {
   return (
     <>
       <PageHeader
-        title={`Invoice ${data.invoiceNumber}`}
-        subtitle={`${data.customerName} · ${formatCurrency(data.total)}`}
-        breadcrumb={['Sales', 'Invoices']}
+        title={t('invoices.view.title', { number: data.invoiceNumber })}
+        subtitle={t('invoices.view.subtitle', { customer: data.customerName, total: formatCurrency(data.total) })}
+        breadcrumb={[t('invoices.view.breadcrumb.sales'), t('invoices.view.breadcrumb.invoices')]}
         actions={
           <>
             <Button icon={<ArrowLeft size={15} />} onClick={() => navigate('/invoices')}>
-              Back to invoices
+              {t('invoices.view.back')}
             </Button>
             <Button icon={<Printer size={15} />} onClick={() => window.print()}>
-              Print
+              {t('invoices.view.print')}
             </Button>
             <Button
               variant="secondary"
               icon={<FileDown size={15} style={{ color: '#dc2626' }} />}
               onClick={() => invoicesApi.downloadPdf(data.id, data.invoiceNumber)}
             >
-              Download PDF
+              {t('invoices.view.downloadPdf')}
             </Button>
             <Button
               variant="secondary"
               icon={<FileSpreadsheet size={15} style={{ color: '#15803d' }} />}
               onClick={() => invoicesApi.downloadExcel(data.id, data.invoiceNumber)}
             >
-              Download Excel
+              {t('invoices.view.downloadExcel')}
             </Button>
             <Button
               variant="secondary"
               icon={<Mail size={15} style={{ color: '#ea4335' }} />}
               onClick={() => setMailModalOpen(true)}
             >
-              Send via Gmail
+              {t('invoices.view.sendGmail')}
             </Button>
             <IfCanWrite>
               <>
                 {canEdit ? (
                   <Button icon={<Pencil size={15} />} onClick={() => navigate(`/invoices/${data.id}/edit`)}>
-                    Edit
+                    {t('invoices.view.edit')}
                   </Button>
                 ) : null}
                 {data.status === 'draft' ? (
@@ -175,7 +181,7 @@ export function InvoiceViewPage() {
                       setPending({ kind: 'send' });
                     }}
                   >
-                    Mark as sent
+                    {t('invoices.view.markSent')}
                   </Button>
                 ) : null}
                 {canPay ? (
@@ -186,10 +192,10 @@ export function InvoiceViewPage() {
                       onClick={() => setPayOnlineOpen(true)}
                       style={{ backgroundColor: '#16a34a', borderColor: '#16a34a', color: '#ffffff' }}
                     >
-                      Pay Online
+                      {t('invoices.view.payOnline')}
                     </Button>
                     <Button variant="secondary" icon={<IndianRupee size={15} />} onClick={() => setPayingOpen(true)}>
-                      Record payment
+                      {t('invoices.view.recordPayment')}
                     </Button>
                   </>
                 ) : null}
@@ -202,7 +208,7 @@ export function InvoiceViewPage() {
                       setPending({ kind: 'void' });
                     }}
                   >
-                    Void
+                    {t('invoices.view.void')}
                   </Button>
                 ) : null}
               </>
@@ -221,65 +227,65 @@ export function InvoiceViewPage() {
                 <p className="text-muted small">
                   {[organization?.city, organization?.state, organization?.postalCode].filter(Boolean).join(', ')}
                 </p>
-                {organization?.gstin ? <p className="text-muted small">GSTIN {organization.gstin}</p> : null}
+                {organization?.gstin ? <p className="text-muted small">{t('invoices.view.gstin', { gstin: organization.gstin })}</p> : null}
               </div>
               <div>
-                <span className="detail-label">Billed to</span>
+                <span className="detail-label">{t('invoices.view.billedTo')}</span>
                 <p className="strong">{data.customerName}</p>
                 {data.customerBillingAddress ? <p className="text-muted small">{data.customerBillingAddress}</p> : null}
-                {data.customerGstin ? <p className="text-muted small">GSTIN {data.customerGstin}</p> : null}
+                {data.customerGstin ? <p className="text-muted small">{t('invoices.view.gstin', { gstin: data.customerGstin })}</p> : null}
                 {data.customerEmail ? <p className="text-muted small">{data.customerEmail}</p> : null}
               </div>
             </div>
             <dl className="detail-grid">
               <div className="detail-item">
-                <dt>Invoice number</dt>
+                <dt>{t('invoices.view.invoiceNumber')}</dt>
                 <dd className="strong">{data.invoiceNumber}</dd>
               </div>
               <div className="detail-item">
-                <dt>Status</dt>
+                <dt>{t('invoices.view.status')}</dt>
                 <dd>
-                  <Badge tone={statusTone(data.status)}>{statusLabel(data.status)}</Badge>
+                  <Badge tone={statusTone(data.status)}>{statusLabel(data.status, t)}</Badge>
                 </dd>
               </div>
               <div className="detail-item">
-                <dt>Invoice date</dt>
+                <dt>{t('invoices.view.invoiceDate')}</dt>
                 <dd>{formatDate(data.date)}</dd>
               </div>
               <div className="detail-item">
-                <dt>Due date</dt>
+                <dt>{t('invoices.view.dueDate')}</dt>
                 <dd>{formatDate(data.dueDate)}</dd>
               </div>
               <div className="detail-item">
-                <dt>Reference</dt>
+                <dt>{t('invoices.view.reference')}</dt>
                 <dd>{data.reference ?? '—'}</dd>
               </div>
               <div className="detail-item">
-                <dt>Balance due</dt>
+                <dt>{t('invoices.view.balanceDue')}</dt>
                 <dd className="num strong">{formatCurrency(data.balanceDue)}</dd>
               </div>
             </dl>
           </div>
         </Card>
 
-        <Card title="Line items">
+        <Card title={t('invoices.view.section.lines')}>
           <div className="table-wrap">
             <table className="line-items-table">
               <thead>
                 <tr>
                   <th scope="col">#</th>
-                  <th scope="col">Description</th>
+                  <th scope="col">{t('invoices.view.lines.col.description')}</th>
                   <th scope="col" className="align-right">
-                    Qty
+                    {t('invoices.view.lines.col.qty')}
                   </th>
                   <th scope="col" className="align-right">
-                    Rate
+                    {t('invoices.view.lines.col.rate')}
                   </th>
                   <th scope="col" className="align-right">
-                    Tax
+                    {t('invoices.view.lines.col.tax')}
                   </th>
                   <th scope="col" className="align-right">
-                    Amount
+                    {t('invoices.view.lines.col.amount')}
                   </th>
                 </tr>
               </thead>
@@ -308,27 +314,27 @@ export function InvoiceViewPage() {
           <div className="form-section">
             <div className="totals-list">
               <div>
-                <span>Subtotal</span>
+                <span>{t('invoices.view.totals.subtotal')}</span>
                 <span>{formatCurrency(data.subtotal)}</span>
               </div>
               <div>
-                <span>Discount</span>
+                <span>{t('invoices.view.totals.discount')}</span>
                 <span>{data.discountAmount > 0 ? `- ${formatCurrency(data.discountAmount)}` : formatCurrency(0)}</span>
               </div>
               <div>
-                <span>Tax total</span>
+                <span>{t('invoices.view.totals.tax')}</span>
                 <span>{formatCurrency(data.taxTotal)}</span>
               </div>
               <div className="grand">
-                <span>Total</span>
+                <span>{t('invoices.view.totals.total')}</span>
                 <span>{formatCurrency(data.total)}</span>
               </div>
               <div>
-                <span>Amount paid</span>
+                <span>{t('invoices.view.totals.paid')}</span>
                 <span className="text-success">{formatCurrency(data.amountPaid)}</span>
               </div>
               <div className="grand">
-                <span>Balance due</span>
+                <span>{t('invoices.view.totals.balanceDue')}</span>
                 <span>{formatCurrency(data.balanceDue)}</span>
               </div>
             </div>
@@ -336,17 +342,17 @@ export function InvoiceViewPage() {
         </Card>
 
         {data.notes || data.terms ? (
-          <Card title="Notes and terms">
+          <Card title={t('invoices.view.section.notes')}>
             <dl className="detail-grid">
               {data.notes ? (
                 <div className="detail-item">
-                  <dt>Notes</dt>
+                  <dt>{t('invoices.view.notes')}</dt>
                   <dd>{data.notes}</dd>
                 </div>
               ) : null}
               {data.terms ? (
                 <div className="detail-item">
-                  <dt>Terms</dt>
+                  <dt>{t('invoices.view.terms')}</dt>
                   <dd>{data.terms}</dd>
                 </div>
               ) : null}
@@ -356,15 +362,15 @@ export function InvoiceViewPage() {
       </div>
 
       <div className="no-print">
-        <Card title="Payment history" subtitle={`${formatCurrency(data.amountPaid)} received against this invoice`}>
+        <Card title={t('invoices.view.section.payments')} subtitle={t('invoices.view.paymentsSubtitle', { amount: formatCurrency(data.amountPaid) })}>
           {payments.loading ? (
             <SkeletonRows rows={3} columns={6} />
           ) : payments.error ? (
             <ErrorBlock message={payments.error} onRetry={payments.reload} />
           ) : !paymentRows.length ? (
-            <EmptyState title="No payments recorded" description="Payments you record against this invoice will appear here." />
+            <EmptyState title={t('invoices.view.payments.emptyTitle')} description={t('invoices.view.payments.emptyBody')} />
           ) : (
-            <DataTable columns={paymentColumns} rows={paymentRows} rowKey={(row) => row.id} caption="Payments received for this invoice" />
+            <DataTable columns={paymentColumns} rows={paymentRows} rowKey={(row) => row.id} caption={t('invoices.view.payments.caption')} />
           )}
         </Card>
       </div>
@@ -394,8 +400,8 @@ export function InvoiceViewPage() {
 
       <ConfirmDialog
         open={!!pending}
-        title={pending?.kind === 'send' ? 'Mark invoice as sent' : pending?.kind === 'void' ? 'Void invoice' : 'Delete payment'}
-        confirmLabel={pending?.kind === 'send' ? 'Mark as sent' : pending?.kind === 'void' ? 'Void invoice' : 'Delete payment'}
+        title={pending?.kind === 'send' ? t('invoices.confirm.sendTitle') : pending?.kind === 'void' ? t('invoices.confirm.voidTitle') : t('invoices.view.deletePayment.title')}
+        confirmLabel={pending?.kind === 'send' ? t('invoices.confirm.sendConfirm') : pending?.kind === 'void' ? t('invoices.confirm.voidConfirm') : t('invoices.view.deletePayment.confirm')}
         tone={pending?.kind === 'send' ? 'primary' : 'danger'}
         busy={submitting}
         onCancel={() => setPending(null)}
@@ -404,12 +410,12 @@ export function InvoiceViewPage() {
           <>
             <FormError message={actionError} />
             {pending?.kind === 'send' ? (
-              <p>Invoice {data.invoiceNumber} will be posted to your books and can no longer be deleted.</p>
+              <p>{t('invoices.confirm.sendBody', { number: data.invoiceNumber })}</p>
             ) : pending?.kind === 'void' ? (
-              <p>Voiding invoice {data.invoiceNumber} reverses its ledger entries. Recorded payments must be deleted first.</p>
+              <p>{t('invoices.confirm.voidBody', { number: data.invoiceNumber })}</p>
             ) : pending?.kind === 'deletePayment' ? (
               <p>
-                Payment {pending.payment.paymentNumber} of {formatCurrency(pending.payment.amount)} will be deleted and its ledger entries reversed.
+                {t('invoices.view.deletePayment.body', { number: pending.payment.paymentNumber, amount: formatCurrency(pending.payment.amount) })}
               </p>
             ) : null}
           </>
@@ -426,6 +432,7 @@ interface SendInvoiceDetailGmailModalProps {
 }
 
 function SendInvoiceDetailGmailModal({ invoice, onClose, onSent }: SendInvoiceDetailGmailModalProps) {
+  const { t } = useAppContent();
   const [email, setEmail] = useState(invoice.customerEmail ?? '');
   const [sendAsOverdue, setSendAsOverdue] = useState(invoice.status === 'overdue');
   const [attachPdf, setAttachPdf] = useState(true);
@@ -445,8 +452,8 @@ function SendInvoiceDetailGmailModal({ invoice, onClose, onSent }: SendInvoiceDe
     if (result) {
       onSent(
         sendAsOverdue
-          ? `Overdue Payment Reminder for ${invoice.invoiceNumber} emailed to ${email.trim()} via Gmail SMTP`
-          : `Tax Invoice ${invoice.invoiceNumber} emailed to ${email.trim()} via Gmail SMTP`
+          ? t('invoices.gmail.emailedOverdue', { number: invoice.invoiceNumber, email: email.trim() })
+          : t('invoices.gmail.emailedTax', { number: invoice.invoiceNumber, email: email.trim() })
       );
     }
   }
@@ -456,13 +463,13 @@ function SendInvoiceDetailGmailModal({ invoice, onClose, onSent }: SendInvoiceDe
     <Modal
       open
       size="md"
-      title={`Gmail Send Options: ${invoice.invoiceNumber}`}
-      subtitle={`Customer: ${invoice.customerName} · Total: ${formatCurrency(invoice.total)}`}
+      title={t('invoices.gmail.title', { number: invoice.invoiceNumber })}
+      subtitle={t('invoices.gmail.subtitle', { customer: invoice.customerName, total: formatCurrency(invoice.total) })}
       onClose={onClose}
       footer={
         <>
           <Button onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('invoices.gmail.cancel')}
           </Button>
           <Button
             variant="primary"
@@ -472,7 +479,7 @@ function SendInvoiceDetailGmailModal({ invoice, onClose, onSent }: SendInvoiceDe
             style={sendAsOverdue ? { backgroundColor: '#dc2626', borderColor: '#dc2626', color: '#ffffff' } : undefined}
             onClick={handleSend}
           >
-            {sendAsOverdue ? 'Send Overdue Reminder' : 'Send Tax Invoice'}
+            {sendAsOverdue ? t('invoices.gmail.sendOverdue') : t('invoices.gmail.sendTax')}
           </Button>
         </>
       }
@@ -481,7 +488,7 @@ function SendInvoiceDetailGmailModal({ invoice, onClose, onSent }: SendInvoiceDe
       <div className="stack" style={{ gap: '14px' }}>
         <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
           <label style={{ fontSize: '13px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '8px' }}>
-            Email Mode:
+            {t('invoices.gmail.mode')}
           </label>
           <div style={{ display: 'flex', gap: '16px' }}>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13.5px', cursor: 'pointer' }}>
@@ -491,7 +498,7 @@ function SendInvoiceDetailGmailModal({ invoice, onClose, onSent }: SendInvoiceDe
                 checked={!sendAsOverdue}
                 onChange={() => setSendAsOverdue(false)}
               />
-              <span>Standard Tax Invoice Dispatch</span>
+              <span>{t('invoices.gmail.modeStandard')}</span>
             </label>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13.5px', cursor: 'pointer', color: '#b91c1c', fontWeight: 600 }}>
               <input
@@ -500,32 +507,32 @@ function SendInvoiceDetailGmailModal({ invoice, onClose, onSent }: SendInvoiceDe
                 checked={sendAsOverdue}
                 onChange={() => setSendAsOverdue(true)}
               />
-              <span>Overdue Payment Reminder</span>
+              <span>{t('invoices.gmail.modeOverdue')}</span>
             </label>
           </div>
         </div>
 
         <div className="form-grid">
           <TextField
-            label="Customer"
+            label={t('invoices.gmail.customer')}
             value={invoice.customerName}
             disabled
           />
           <TextField
-            label="Recipient Email (Gmail)"
+            label={t('invoices.gmail.email')}
             type="email"
             required
-            placeholder="e.g. customer@example.com"
+            placeholder={t('invoices.gmail.emailPlaceholder')}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
           <TextField
-            label="Invoice Total"
+            label={t('invoices.gmail.total')}
             value={formatCurrency(invoice.total)}
             disabled
           />
           <TextField
-            label={sendAsOverdue ? 'Balance Due (Overdue)' : 'Due Date'}
+            label={sendAsOverdue ? t('invoices.gmail.balanceOverdue') : t('invoices.gmail.dueDate')}
             value={sendAsOverdue ? formatCurrency(invoice.balanceDue) : formatDate(invoice.dueDate)}
             disabled
           />
@@ -537,19 +544,19 @@ function SendInvoiceDetailGmailModal({ invoice, onClose, onSent }: SendInvoiceDe
             checked={attachPdf}
             onChange={(e) => setAttachPdf(e.target.checked)}
           />
-          <span style={{ fontWeight: 500 }}>Attach generated official GST Tax Invoice PDF to email</span>
+          <span style={{ fontWeight: 500 }}>{t('invoices.gmail.attachPdf')}</span>
         </label>
 
         <TextAreaField
-          label="Custom Note / Remittance Instructions (Optional)"
+          label={t('invoices.gmail.notes')}
           value={customNotes}
-          placeholder="e.g. Kindly share transaction UTR once processed..."
+          placeholder={t('invoices.gmail.notesPlaceholder')}
           rows={2}
           onChange={(e) => setCustomNotes(e.target.value)}
         />
       </div>
       <p className="small text-muted" style={{ marginTop: '12px' }}>
-        Dispatched automatically via authenticated Gmail SMTP server (shalya@rooman.com).
+        {t('invoices.gmail.footer')}
       </p>
     </Modal>
   );

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 
+import { useAppContent } from '@/app/AppContentContext';
+
 interface ModalProps {
   open: boolean;
   title: string;
@@ -12,6 +14,7 @@ interface ModalProps {
 }
 
 export function Modal({ open, title, subtitle, size = 'md', onClose, footer, children }: ModalProps) {
+  const { t } = useAppContent();
   const cardRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   const wasOpenRef = useRef(false);
@@ -51,7 +54,7 @@ export function Modal({ open, title, subtitle, size = 'md', onClose, footer, chi
             <h2 className="modal-title">{title}</h2>
             {subtitle ? <p className="modal-subtitle">{subtitle}</p> : null}
           </div>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close dialog">
+          <button type="button" className="icon-btn" onClick={onClose} aria-label={t('common.closeDialog')}>
             <X size={18} />
           </button>
         </header>
@@ -73,7 +76,8 @@ interface ConfirmProps {
   onCancel: () => void;
 }
 
-export function ConfirmDialog({ open, title, message, confirmLabel = 'Confirm', tone = 'danger', busy, onConfirm, onCancel }: ConfirmProps) {
+export function ConfirmDialog({ open, title, message, confirmLabel, tone = 'danger', busy, onConfirm, onCancel }: ConfirmProps) {
+  const { t } = useAppContent();
   return (
     <Modal
       open={open}
@@ -83,11 +87,11 @@ export function ConfirmDialog({ open, title, message, confirmLabel = 'Confirm', 
       footer={
         <>
           <button type="button" className="btn btn-secondary btn-md" onClick={onCancel} disabled={busy}>
-            <span>Cancel</span>
+            <span>{t('common.cancel')}</span>
           </button>
           <button type="button" className={`btn btn-${tone} btn-md ${busy ? 'is-loading' : ''}`} onClick={onConfirm} disabled={busy}>
             {busy ? <span className="btn-spinner" aria-hidden="true" /> : null}
-            <span>{confirmLabel}</span>
+            <span>{confirmLabel ?? t('common.confirm')}</span>
           </button>
         </>
       }

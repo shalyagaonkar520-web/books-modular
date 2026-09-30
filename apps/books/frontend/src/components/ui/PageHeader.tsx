@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 
+import { useAppContent } from '@/app/AppContentContext';
+
 interface PageHeaderProps {
   title: string;
   subtitle?: string;
@@ -8,11 +10,12 @@ interface PageHeaderProps {
 }
 
 export function PageHeader({ title, subtitle, actions, breadcrumb }: PageHeaderProps) {
+  const { t } = useAppContent();
   return (
     <header className="page-header">
       <div>
         {breadcrumb?.length ? (
-          <nav className="breadcrumb" aria-label="Breadcrumb">
+          <nav className="breadcrumb" aria-label={t('common.breadcrumb')}>
             {breadcrumb.map((crumb, index) => (
               <span key={crumb}>
                 {crumb}

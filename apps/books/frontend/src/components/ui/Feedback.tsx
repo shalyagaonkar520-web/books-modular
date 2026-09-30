@@ -1,19 +1,23 @@
 import type { ReactNode } from 'react';
 import { AlertCircle, Inbox, Loader2, RefreshCw } from 'lucide-react';
 
-export function Spinner({ label = 'Loading' }: { label?: string }) {
+import { useAppContent } from '@/app/AppContentContext';
+
+export function Spinner({ label }: { label?: string }) {
+  const { t } = useAppContent();
   return (
-    <span className="spinner" role="status" aria-label={label}>
+    <span className="spinner" role="status" aria-label={label ?? t('common.spinner')}>
       <Loader2 size={18} className="spin" aria-hidden="true" />
     </span>
   );
 }
 
-export function LoadingBlock({ label = 'Loading…' }: { label?: string }) {
+export function LoadingBlock({ label }: { label?: string }) {
+  const { t } = useAppContent();
   return (
     <div className="state-block" role="status">
       <Loader2 size={24} className="spin" aria-hidden="true" />
-      <p>{label}</p>
+      <p>{label ?? t('common.loading')}</p>
     </div>
   );
 }
@@ -33,6 +37,7 @@ export function SkeletonRows({ rows = 5, columns = 4 }: { rows?: number; columns
 }
 
 export function ErrorBlock({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  const { t } = useAppContent();
   return (
     <div className="state-block state-error" role="alert">
       <AlertCircle size={24} aria-hidden="true" />
@@ -40,7 +45,7 @@ export function ErrorBlock({ message, onRetry }: { message: string; onRetry?: ()
       {onRetry ? (
         <button type="button" className="btn btn-secondary btn-sm" onClick={onRetry}>
           <RefreshCw size={14} />
-          <span>Try again</span>
+          <span>{t('common.tryAgain')}</span>
         </button>
       ) : null}
     </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { MailCheck, Send } from 'lucide-react';
 
 import { orgApi } from '@/api/endpoints';
+import { useAppContent } from '@/app/AppContentContext';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -22,6 +23,7 @@ interface FormState {
 const EMPTY: FormState = { host: '', port: '587', username: '', password: '', senderName: '' };
 
 export function EmailSettings() {
+  const { t } = useAppContent();
   const toast = useToast();
   const settings = useAsync(() => orgApi.smtpSettings(), []);
   const { submitting, error, fieldErrors, run, setError } = useSubmit();
@@ -48,7 +50,7 @@ export function EmailSettings() {
   const save = async () => {
     const port = Number.parseInt(form.port, 10);
     if (!Number.isFinite(port) || port < 1 || port > 65535) {
-      setError('Port must be a number between 1 and 65535.');
+      setError(t('settings.email.portInvalid'));
       return;
     }
     const saved = await run(() =>
@@ -61,7 +63,7 @@ export function EmailSettings() {
       }),
     );
     if (saved) {
-      toast.success('Sender account saved and verified.');
+      toast.success(t('settings.email.saved'));
       setForm((current) => ({ ...current, password: '' }));
       settings.reload();
     }
@@ -69,26 +71,26 @@ export function EmailSettings() {
 
   const sendTest = async () => {
     if (!testTo.trim()) {
-      toast.error('Enter an address to send the test to.');
+      toast.error(t('settings.email.testToRequired'));
       return;
     }
     const result = await testSubmit.run(() => orgApi.sendSmtpTest(testTo.trim()));
     if (result) toast.success(result.message);
   };
 
-  if (settings.loading) return <LoadingBlock label="Loading email settings…" />;
+  if (settings.loading) return <LoadingBlock label={t('settings.email.loading')} />;
   if (settings.error) return <ErrorBlock message={settings.error} onRetry={settings.reload} />;
 
   return (
     <div className="stack">
       <Card
-        title="Outbound email (SMTP)"
-        subtitle="The account invites, invoices and payment reminders are sent from"
+        title={t('settings.email.title')}
+        subtitle={t('settings.email.subtitle')}
         actions={
           settings.data?.configured ? (
-            <Badge tone="success">Configured</Badge>
+            <Badge tone="success">{t('settings.email.configured')}</Badge>
           ) : (
-            <Badge tone="warning">Not configured</Badge>
+            <Badge tone="warning">{t('settings.email.notConfigured')}</Badge>
           )
         }
       >
@@ -96,66 +98,63 @@ export function EmailSettings() {
           <FormError message={error} />
           <div className="form-grid">
             <TextField
-              label="Sender email"
+              label={t('settings.email.senderEmail')}
               type="email"
               required
               value={form.username}
               error={fieldErrors.username}
-              hint="Emails are sent from this address"
+              hint={t('settings.email.senderEmailHint')}
               onChange={(event) => set('username', event.target.value)}
             />
             <TextField
-              label="Sender name"
+              label={t('settings.email.senderName')}
               required
               value={form.senderName}
               error={fieldErrors.senderName}
-              hint="Shown as the From name in the inbox"
+              hint={t('settings.email.senderNameHint')}
               onChange={(event) => set('senderName', event.target.value)}
             />
             <TextField
-              label="App password"
+              label={t('settings.email.appPassword')}
               type="password"
               autoComplete="new-password"
               value={form.password}
               error={fieldErrors.password}
-              hint={settings.data?.configured ? 'Leave blank to keep the saved password' : 'Gmail requires an app password, not your normal one'}
+              hint={settings.data?.configured ? t('settings.email.appPasswordKeep') : t('settings.email.appPasswordHint')}
               onChange={(event) => set('password', event.target.value)}
             />
             <TextField
-              label="SMTP host"
+              label={t('settings.email.host')}
               required
               value={form.host}
               error={fieldErrors.host}
               onChange={(event) => set('host', event.target.value)}
             />
             <TextField
-              label="SMTP port"
+              label={t('settings.email.port')}
               inputMode="numeric"
               required
               value={form.port}
               error={fieldErrors.port}
-              hint="587 for TLS"
+              hint={t('settings.email.portHint')}
               onChange={(event) => set('port', event.target.value)}
             />
           </div>
-          <p className="small text-muted">
-            The details are checked against the mail server before they are saved, so a wrong password is caught here rather
-            than silently breaking every outbound email.
-          </p>
+          <p className="small text-muted">{t('settings.email.verifyNote')}</p>
           <div>
             <Button variant="primary" loading={submitting} icon={<MailCheck size={15} />} onClick={() => void save()}>
-              Save and verify
+              {t('settings.email.save')}
             </Button>
           </div>
         </div>
       </Card>
 
-      <Card title="Send a test email" subtitle="Confirm delivery actually reaches an inbox">
+      <Card title={t('settings.email.test.title')} subtitle={t('settings.email.test.subtitle')}>
         <div className="stack">
           <FormError message={testSubmit.error} />
           <div className="form-grid">
             <TextField
-              label="Send to"
+              label={t('settings.email.test.to')}
               type="email"
               value={testTo}
               onChange={(event) => setTestTo(event.target.value)}
@@ -169,7 +168,7 @@ export function EmailSettings() {
               icon={<Send size={15} />}
               onClick={() => void sendTest()}
             >
-              Send test email
+              {t('settings.email.test.submit')}
             </Button>
           </div>
         </div>

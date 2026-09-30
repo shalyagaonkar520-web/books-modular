@@ -116,6 +116,7 @@ export const TEXT_GROUP_LABELS: Record<string, string> = {
   payroll: 'Payroll',
   settings: 'Settings',
   auth: 'Sign in & create organization',
+  portal: 'Employee portal',
 };
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;

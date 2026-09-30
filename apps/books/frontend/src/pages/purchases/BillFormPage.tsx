@@ -151,13 +151,13 @@ export function BillFormPage() {
   };
 
   const validate = (): string | null => {
-    if (!vendorId) return 'Choose the vendor this bill is from.';
-    if (lines.length === 0) return 'Add at least one line item.';
+    if (!vendorId) return t('bills.form.validate.vendor');
+    if (lines.length === 0) return t('bills.form.validate.noLines');
     for (const [index, line] of lines.entries()) {
-      if (!line.description.trim()) return `Line ${index + 1}: enter a description.`;
-      if (parseNumber(line.quantity, 0) <= 0) return `Line ${index + 1}: quantity must be greater than zero.`;
+      if (!line.description.trim()) return t('bills.form.validate.description', { line: index + 1 });
+      if (parseNumber(line.quantity, 0) <= 0) return t('bills.form.validate.quantity', { line: index + 1 });
     }
-    if (discount > subtotal) return 'Discount cannot exceed the subtotal.';
+    if (discount > subtotal) return t('bills.form.validate.discount');
     return null;
   };
 
@@ -188,32 +188,36 @@ export function BillFormPage() {
     };
     const result = await run(() => (billId ? billsApi.update(billId, body) : billsApi.create(body)));
     if (result) {
-      toast.success(isEdit ? `Bill ${result.billNumber} updated` : `Bill ${result.billNumber} saved as ${result.status}`);
+      toast.success(
+        isEdit
+          ? t('bills.form.toast.updated', { number: result.billNumber })
+          : t('bills.form.toast.saved', { number: result.billNumber, status: result.status }),
+      );
       navigate('/bills');
     }
   };
 
-  if (refs.loading || (isEdit && existing.loading)) return <LoadingBlock label="Loading bill form…" />;
+  if (refs.loading || (isEdit && existing.loading)) return <LoadingBlock label={t('bills.form.loading')} />;
   if (refs.error) return <ErrorBlock message={refs.error} onRetry={refs.reload} />;
   if (isEdit && existing.error) return <ErrorBlock message={existing.error} onRetry={existing.reload} />;
   if (isEdit && editBlocked) {
     return (
       <>
         <PageHeader
-          title={`Bill ${bill?.billNumber ?? ''}`.trim()}
-          subtitle="This bill can no longer be edited."
-          breadcrumb={['Purchases', 'Bills']}
+          title={t('bills.form.blockedTitle', { number: bill?.billNumber ?? '' }).trim()}
+          subtitle={t('bills.form.blockedSubtitle')}
+          breadcrumb={[t('bills.form.breadcrumbPurchases'), t('bills.form.breadcrumbBills')]}
           actions={
             <Button variant="secondary" onClick={() => navigate('/bills')}>
-              Back to bills
+              {t('bills.form.backToBills')}
             </Button>
           }
         />
         <ErrorBlock
           message={
             bill?.status === 'void'
-              ? 'This bill has been voided, so it can no longer be edited. Create a new bill instead.'
-              : 'This bill already has payments recorded against it. Delete the payments first, or create a new bill.'
+              ? t('bills.form.blockedVoid')
+              : t('bills.form.blockedPaid')
           }
         />
       </>
@@ -225,12 +229,12 @@ export function BillFormPage() {
   return (
     <>
       <PageHeader
-        title={isEdit ? `Edit bill ${bill?.billNumber ?? ''}`.trim() : t('bills.form.newTitle')}
+        title={isEdit ? t('bills.form.editTitle', { number: bill?.billNumber ?? '' }).trim() : t('bills.form.newTitle')}
         subtitle={t('bills.form.subtitle')}
-        breadcrumb={['Purchases', 'Bills']}
+        breadcrumb={[t('bills.form.breadcrumbPurchases'), t('bills.form.breadcrumbBills')]}
         actions={
           <Button variant="secondary" onClick={() => navigate('/bills')} disabled={submitting}>
-            Cancel
+            {t('bills.form.cancel')}
           </Button>
         }
       />
@@ -241,40 +245,40 @@ export function BillFormPage() {
         <div className="form-section">
           <div className="form-grid">
             <SelectField
-              label="Vendor"
+              label={t('bills.form.vendor')}
               required
               value={vendorId}
-              placeholder="Select a vendor"
+              placeholder={t('bills.form.vendorPlaceholder')}
               error={fieldErrors.vendorId}
               options={(refs.data?.vendors ?? []).map((option) => ({ value: option.id, label: option.displayName }))}
               onChange={(event) => setVendorId(event.target.value)}
             />
             <TextField
-              label="Vendor bill number"
+              label={t('bills.form.vendorBillNumber')}
               value={vendorBillNumber}
               error={fieldErrors.vendorBillNumber}
-              hint="The number printed on the vendor's invoice."
+              hint={t('bills.form.vendorBillNumberHint')}
               onChange={(event) => setVendorBillNumber(event.target.value)}
             />
             <TextField
-              label="Order number"
+              label={t('bills.form.orderNumber')}
               value={orderNumber}
-              placeholder="Our purchase order number"
+              placeholder={t('bills.form.orderNumberPlaceholder')}
               error={fieldErrors.orderNumber}
               onChange={(event) => setOrderNumber(event.target.value)}
             />
             <TextField
-              label="Subject"
+              label={t('bills.form.subject')}
               value={subject}
               maxLength={250}
-              placeholder="What this bill is for"
+              placeholder={t('bills.form.subjectPlaceholder')}
               error={fieldErrors.subject}
               onChange={(event) => setSubject(event.target.value)}
             />
           </div>
           <div className="form-grid">
             <TextField
-              label="Bill date"
+              label={t('bills.form.billDate')}
               type="date"
               required
               value={date}
@@ -282,11 +286,15 @@ export function BillFormPage() {
               onChange={(event) => setDate(event.target.value)}
             />
             <TextField
-              label="Due date"
+              label={t('bills.form.dueDate')}
               type="date"
               value={dueDate}
               error={fieldErrors.dueDate}
-              hint={vendor ? `${vendor.displayName} terms: ${vendor.paymentTermsDays} days` : 'Defaults from the vendor payment terms.'}
+              hint={
+                vendor
+                  ? t('bills.form.dueDateTermsHint', { vendor: vendor.displayName, days: vendor.paymentTermsDays })
+                  : t('bills.form.dueDateHint')
+              }
               onChange={(event) => {
                 setDueDateTouched(true);
                 setDueDate(event.target.value);
@@ -296,19 +304,19 @@ export function BillFormPage() {
         </div>
 
         <div className="form-section">
-          <h2 className="form-section-title">Line items</h2>
+          <h2 className="form-section-title">{t('bills.form.lineItems')}</h2>
           <table className="line-items-table">
             <thead>
               <tr>
-                <th>Item</th>
-                <th>Account</th>
-                <th>Description</th>
-                <th>Qty</th>
-                <th>Rate</th>
-                <th>Tax</th>
-                <th>Amount</th>
+                <th>{t('bills.form.col.item')}</th>
+                <th>{t('bills.form.col.account')}</th>
+                <th>{t('bills.form.col.description')}</th>
+                <th>{t('bills.form.col.qty')}</th>
+                <th>{t('bills.form.col.rate')}</th>
+                <th>{t('bills.form.col.tax')}</th>
+                <th>{t('bills.form.col.amount')}</th>
                 <th>
-                  <span className="sr-only">Remove</span>
+                  <span className="sr-only">{t('bills.form.col.remove')}</span>
                 </th>
               </tr>
             </thead>
@@ -321,26 +329,26 @@ export function BillFormPage() {
                       <select
                         className="select"
                         value={line.itemId}
-                        aria-label={`Line ${index + 1} item`}
+                        aria-label={t('bills.form.line.itemAria', { line: index + 1 })}
                         onChange={(event) => pickItem(line.key, event.target.value)}
                       >
-                        <option value="">No item</option>
+                        <option value="">{t('bills.form.line.noItem')}</option>
                         {(refs.data?.items ?? []).map((option) => (
                           <option key={option.id} value={option.id}>
                             {option.name}
                           </option>
                         ))}
                       </select>
-                      {item?.trackInventory ? <small className="text-muted">Stock will increase when this bill is opened.</small> : null}
+                      {item?.trackInventory ? <small className="text-muted">{t('bills.form.line.stockHint')}</small> : null}
                     </td>
                     <td>
                       <select
                         className="select"
                         value={line.accountId}
-                        aria-label={`Line ${index + 1} account`}
+                        aria-label={t('bills.form.line.accountAria', { line: index + 1 })}
                         onChange={(event) => updateLine(line.key, { accountId: event.target.value })}
                       >
-                        <option value="">Default expense account</option>
+                        <option value="">{t('bills.form.line.defaultAccount')}</option>
                         {(refs.data?.accounts ?? []).map((account) => (
                           <option key={account.id} value={account.id}>
                             {account.code} · {account.name}
@@ -353,7 +361,7 @@ export function BillFormPage() {
                         className="input"
                         value={line.description}
                         required
-                        aria-label={`Line ${index + 1} description`}
+                        aria-label={t('bills.form.line.descriptionAria', { line: index + 1 })}
                         onChange={(event) => updateLine(line.key, { description: event.target.value })}
                       />
                     </td>
@@ -364,7 +372,7 @@ export function BillFormPage() {
                         min="0"
                         step="0.001"
                         value={line.quantity}
-                        aria-label={`Line ${index + 1} quantity`}
+                        aria-label={t('bills.form.line.quantityAria', { line: index + 1 })}
                         onChange={(event) => updateLine(line.key, { quantity: event.target.value })}
                       />
                     </td>
@@ -375,7 +383,7 @@ export function BillFormPage() {
                         min="0"
                         step="0.01"
                         value={line.rate}
-                        aria-label={`Line ${index + 1} rate`}
+                        aria-label={t('bills.form.line.rateAria', { line: index + 1 })}
                         onChange={(event) => updateLine(line.key, { rate: event.target.value })}
                       />
                     </td>
@@ -383,7 +391,7 @@ export function BillFormPage() {
                       <select
                         className="select"
                         value={line.taxRate}
-                        aria-label={`Line ${index + 1} tax rate`}
+                        aria-label={t('bills.form.line.taxAria', { line: index + 1 })}
                         onChange={(event) => updateLine(line.key, { taxRate: event.target.value })}
                       >
                         {taxRatesWith(organization?.defaultTaxRate, parseNumber(line.taxRate, 0)).map((rate) => (
@@ -398,7 +406,7 @@ export function BillFormPage() {
                       <button
                         type="button"
                         className="action-btn is-danger"
-                        aria-label={`Remove line ${index + 1}`}
+                        aria-label={t('bills.form.line.removeAria', { line: index + 1 })}
                         disabled={lines.length === 1}
                         onClick={() => setLines((current) => current.filter((candidate) => candidate.key !== line.key))}
                       >
@@ -412,7 +420,7 @@ export function BillFormPage() {
           </table>
           <div className="row">
             <Button variant="secondary" size="sm" icon={<Plus size={14} />} onClick={() => setLines((current) => [...current, emptyLine(defaultLineTaxRate)])}>
-              Add line
+              {t('bills.form.addLine')}
             </Button>
           </div>
         </div>
@@ -420,32 +428,32 @@ export function BillFormPage() {
         <div className="form-section">
           <div className="form-grid">
             <TextField
-              label="Discount amount"
+              label={t('bills.form.discountAmount')}
               type="number"
               min="0"
               step="0.01"
               value={discountAmount}
               error={fieldErrors.discountAmount}
-              hint={`Cannot exceed the subtotal of ${formatCurrency(subtotal)}.`}
+              hint={t('bills.form.discountHint', { amount: formatCurrency(subtotal) })}
               onChange={(event) => setDiscountAmount(event.target.value)}
             />
-            <TextAreaField label="Notes" value={notes} error={fieldErrors.notes} onChange={(event) => setNotes(event.target.value)} />
+            <TextAreaField label={t('bills.form.notes')} value={notes} error={fieldErrors.notes} onChange={(event) => setNotes(event.target.value)} />
           </div>
           <div className="totals-list">
             <div>
-              <span>Subtotal</span>
+              <span>{t('bills.form.subtotal')}</span>
               <span>{formatCurrency(subtotal)}</span>
             </div>
             <div>
-              <span>Discount</span>
+              <span>{t('bills.form.discount')}</span>
               <span>-{formatCurrency(discount)}</span>
             </div>
             <div>
-              <span>Tax total</span>
+              <span>{t('bills.form.taxTotal')}</span>
               <span>{formatCurrency(taxTotal)}</span>
             </div>
             <div className="grand">
-              <span>Grand total</span>
+              <span>{t('bills.form.grandTotal')}</span>
               <span>{formatCurrency(grandTotal)}</span>
             </div>
           </div>
@@ -453,20 +461,20 @@ export function BillFormPage() {
 
         <div className="row-between">
           <span className="text-subtle small">
-            {isEdit ? 'Saving re-posts the ledger entries for this bill.' : 'Drafts stay out of the ledger until you open them.'}
+            {isEdit ? t('bills.form.footerEdit') : t('bills.form.footerNew')}
           </span>
           <div className="row">
             {isEdit && isOpenBill ? (
               <Button variant="primary" loading={submitting} onClick={() => void save('open')}>
-                Save changes
+                {t('bills.form.saveChanges')}
               </Button>
             ) : (
               <>
                 <Button variant="secondary" loading={submitting} onClick={() => void save('draft')}>
-                  Save as draft
+                  {t('bills.form.saveDraft')}
                 </Button>
                 <Button variant="primary" loading={submitting} onClick={() => void save('open')}>
-                  Save and open
+                  {t('bills.form.saveOpen')}
                 </Button>
               </>
             )}

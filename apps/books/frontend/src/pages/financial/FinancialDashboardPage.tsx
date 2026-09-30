@@ -30,14 +30,15 @@ import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { formatCurrency, formatDate } from '@/utils/format';
 
+// Labels are app-content keys, resolved with t() at render.
 const PERIOD_OPTIONS = [
-  { value: 'today', label: 'Today' },
-  { value: 'this_week', label: 'This week' },
-  { value: 'this_month', label: 'This month' },
-  { value: 'last_month', label: 'Last month' },
-  { value: 'this_quarter', label: 'This quarter' },
-  { value: 'this_year', label: 'This fiscal year' },
-  { value: 'custom', label: 'Custom range' },
+  { value: 'today', labelKey: 'financialHub.period.today' },
+  { value: 'this_week', labelKey: 'financialHub.period.thisWeek' },
+  { value: 'this_month', labelKey: 'financialHub.period.thisMonth' },
+  { value: 'last_month', labelKey: 'financialHub.period.lastMonth' },
+  { value: 'this_quarter', labelKey: 'financialHub.period.thisQuarter' },
+  { value: 'this_year', labelKey: 'financialHub.period.thisYear' },
+  { value: 'custom', labelKey: 'financialHub.period.custom' },
 ];
 
 export function FinancialDashboardPage() {
@@ -59,7 +60,7 @@ export function FinancialDashboardPage() {
   const [refundModalOpen, setRefundModalOpen] = useState(false);
   const [selectedPaymentForRefund, setSelectedPaymentForRefund] = useState<PaymentRecordItem | null>(null);
   const [refundAmount, setRefundAmount] = useState<string>('');
-  const [refundReason, setRefundReason] = useState<string>('Customer return / refund');
+  const [refundReason, setRefundReason] = useState<string>(() => t('financialHub.refund.defaultReason'));
   const [refundSpeed, setRefundSpeed] = useState<string>('normal');
   const [refundSubmitting, setRefundSubmitting] = useState(false);
   const [refundError, setRefundError] = useState<string | null>(null);
@@ -128,12 +129,12 @@ export function FinancialDashboardPage() {
     setReconciling(true);
     try {
       const res = await razorpayApi.reconcile();
-      toast.success(`${res.message}: ${res.total_evaluated} records evaluated (${res.discrepancies} discrepancies).`);
+      toast.success(t('financialHub.toast.reconciled', { message: res.message, count: res.total_evaluated, discrepancies: res.discrepancies }));
       reconciliations.reload();
       settlements.reload();
       dashboard.reload();
     } catch (err: unknown) {
-      toast.error((err as Error)?.message ?? 'Reconciliation failed');
+      toast.error((err as Error)?.message ?? t('financialHub.toast.reconcileFailed'));
     } finally {
       setReconciling(false);
     }
@@ -144,7 +145,7 @@ export function FinancialDashboardPage() {
     setSelectedPaymentForRefund(payment);
     const maxRefundable = Math.max(0, payment.amount - payment.refund_amount);
     setRefundAmount(String(maxRefundable));
-    setRefundReason('Customer return / refund');
+    setRefundReason(t('financialHub.refund.defaultReason'));
     setRefundSpeed('normal');
     setRefundError(null);
     setRefundModalOpen(true);
@@ -156,7 +157,7 @@ export function FinancialDashboardPage() {
     const num = parseFloat(refundAmount);
     const maxRefundable = selectedPaymentForRefund.amount - selectedPaymentForRefund.refund_amount;
     if (isNaN(num) || num <= 0 || num > maxRefundable) {
-      setRefundError(`Enter a valid refund amount between ₹1 and ₹${maxRefundable.toFixed(2)}.`);
+      setRefundError(t('financialHub.refund.error.invalidAmount', { max: maxRefundable.toFixed(2) }));
       return;
     }
 
@@ -169,11 +170,11 @@ export function FinancialDashboardPage() {
         reason: refundReason,
         speed: refundSpeed,
       });
-      toast.success(`Refund of ${formatCurrency(res.refund_amount)} issued successfully!`);
+      toast.success(t('financialHub.toast.refundIssued', { amount: formatCurrency(res.refund_amount) }));
       setRefundModalOpen(false);
       reloadAll();
     } catch (err: unknown) {
-      setRefundError((err as Error)?.message ?? 'Refund request failed.');
+      setRefundError((err as Error)?.message ?? t('financialHub.refund.error.failed'));
     } finally {
       setRefundSubmitting(false);
     }
@@ -183,9 +184,9 @@ export function FinancialDashboardPage() {
   const handleExport = (type: string) => {
     try {
       razorpayApi.exportReport(type, startDate || undefined, endDate || undefined);
-      toast.success(`Downloading ${type} report CSV...`);
+      toast.success(t('financialHub.toast.downloading', { type }));
     } catch {
-      toast.error('Failed to export report');
+      toast.error(t('financialHub.toast.exportFailed'));
     }
   };
 
@@ -210,7 +211,7 @@ export function FinancialDashboardPage() {
       <PageHeader
         title={t('financialHub.title')}
         subtitle={t('financialHub.subtitle')}
-        breadcrumb={['Finance', 'Financial Hub']}
+        breadcrumb={[t('financialHub.breadcrumb.finance'), t('financialHub.breadcrumb.hub')]}
         actions={
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <div
@@ -250,7 +251,7 @@ export function FinancialDashboardPage() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
               <span className="detail-label" style={{ margin: 0 }}>
-                Period:
+                {t('financialHub.period.label')}
               </span>
               <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
                 {PERIOD_OPTIONS.map((opt) => (
@@ -261,7 +262,7 @@ export function FinancialDashboardPage() {
                     style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
                     onClick={() => setPeriod(opt.value)}
                   >
-                    {opt.label}
+                    {t(opt.labelKey)}
                   </button>
                 ))}
               </div>
@@ -269,15 +270,15 @@ export function FinancialDashboardPage() {
 
             {period === 'custom' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <TextField label="Start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-                <TextField label="End" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                <TextField label={t('financialHub.period.start')} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                <TextField label={t('financialHub.period.end')} type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
               </div>
             )}
           </div>
         </Card>
 
         {dashboard.loading && !dashboard.data ? (
-          <LoadingBlock label="Loading financial data..." />
+          <LoadingBlock label={t('financialHub.loading')} />
         ) : dashboard.error ? (
           <ErrorBlock message={dashboard.error} onRetry={dashboard.reload} />
         ) : cards && cashFlow ? (
@@ -286,63 +287,63 @@ export function FinancialDashboardPage() {
             <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
               <div className="stat-tile">
                 <div className="stat-tile-header">
-                  <span className="stat-tile-label">Gross Revenue</span>
+                  <span className="stat-tile-label">{t('financialHub.kpi.revenue')}</span>
                   <ArrowUpRight size={18} style={{ color: '#16a34a' }} />
                 </div>
                 <div className="stat-tile-value">{formatCurrency(cards.total_revenue)}</div>
-                <div className="stat-tile-footer">Invoices billed in period</div>
+                <div className="stat-tile-footer">{t('financialHub.kpi.revenueSub')}</div>
               </div>
 
               <div className="stat-tile">
                 <div className="stat-tile-header">
-                  <span className="stat-tile-label">Total Expenses</span>
+                  <span className="stat-tile-label">{t('financialHub.kpi.expenses')}</span>
                   <ArrowDownRight size={18} style={{ color: '#d97706' }} />
                 </div>
                 <div className="stat-tile-value">{formatCurrency(cards.total_expenses)}</div>
-                <div className="stat-tile-footer">Operating & gateway costs</div>
+                <div className="stat-tile-footer">{t('financialHub.kpi.expensesSub')}</div>
               </div>
 
               <div className="stat-tile" style={{ borderLeft: `3px solid ${cards.net_profit >= 0 ? '#16a34a' : '#dc2626'}` }}>
                 <div className="stat-tile-header">
-                  <span className="stat-tile-label">Net Profit</span>
+                  <span className="stat-tile-label">{t('financialHub.kpi.profit')}</span>
                   {cards.net_profit >= 0 ? <TrendingUp size={18} style={{ color: '#16a34a' }} /> : <TrendingDown size={18} style={{ color: '#dc2626' }} />}
                 </div>
                 <div className="stat-tile-value" style={{ color: cards.net_profit >= 0 ? '#16a34a' : '#dc2626' }}>
                   {formatCurrency(cards.net_profit)}
                 </div>
-                <div className="stat-tile-footer">Revenue - Refunds - Expenses</div>
+                <div className="stat-tile-footer">{t('financialHub.kpi.profitSub')}</div>
               </div>
 
               <div className="stat-tile">
                 <div className="stat-tile-header">
-                  <span className="stat-tile-label">Gateway Fees</span>
+                  <span className="stat-tile-label">{t('financialHub.kpi.fees')}</span>
                   <CreditCard size={18} style={{ color: '#6366f1' }} />
                 </div>
                 <div className="stat-tile-value">{formatCurrency(cards.payment_gateway_fees)}</div>
-                <div className="stat-tile-footer">Tracked under Bank Fees (6100)</div>
+                <div className="stat-tile-footer">{t('financialHub.kpi.feesSub')}</div>
               </div>
 
               <div className="stat-tile">
                 <div className="stat-tile-header">
-                  <span className="stat-tile-label">Total Refunds</span>
+                  <span className="stat-tile-label">{t('financialHub.kpi.refunds')}</span>
                   <RotateCcw size={18} style={{ color: '#9333ea' }} />
                 </div>
                 <div className="stat-tile-value">{formatCurrency(cards.total_refunds)}</div>
-                <div className="stat-tile-footer">Returns & reversals</div>
+                <div className="stat-tile-footer">{t('financialHub.kpi.refundsSub')}</div>
               </div>
 
               <div className="stat-tile">
                 <div className="stat-tile-header">
-                  <span className="stat-tile-label">Net Settlements</span>
+                  <span className="stat-tile-label">{t('financialHub.kpi.settlements')}</span>
                   <Landmark size={18} style={{ color: '#0284c7' }} />
                 </div>
                 <div className="stat-tile-value">{formatCurrency(cards.total_settlements)}</div>
-                <div className="stat-tile-footer">Disbursed to Bank Account</div>
+                <div className="stat-tile-footer">{t('financialHub.kpi.settlementsSub')}</div>
               </div>
             </div>
 
             {/* Cash Flow Analysis Bar */}
-            <Card title="Cash Flow Tracker" subtitle="Actual liquidity movement into and out of operating bank accounts">
+            <Card title={t('financialHub.cashFlow.title')} subtitle={t('financialHub.cashFlow.subtitle')}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', marginBottom: '1rem' }}>
                 <div
                   style={{
@@ -353,10 +354,10 @@ export function FinancialDashboardPage() {
                   }}
                 >
                   <span className="detail-label" style={{ color: '#16a34a' }}>
-                    Money In (Collections)
+                    {t('financialHub.cashFlow.in')}
                   </span>
                   <div style={{ fontSize: '1.35rem', fontWeight: 700, color: '#16a34a' }}>{formatCurrency(cashFlow.money_in)}</div>
-                  <span className="small text-muted">Customer payments received</span>
+                  <span className="small text-muted">{t('financialHub.cashFlow.inSub')}</span>
                 </div>
 
                 <div
@@ -368,10 +369,10 @@ export function FinancialDashboardPage() {
                   }}
                 >
                   <span className="detail-label" style={{ color: '#dc2626' }}>
-                    Money Out (Disbursements)
+                    {t('financialHub.cashFlow.out')}
                   </span>
                   <div style={{ fontSize: '1.35rem', fontWeight: 700, color: '#dc2626' }}>{formatCurrency(cashFlow.money_out)}</div>
-                  <span className="small text-muted">Expenses + Refunds paid</span>
+                  <span className="small text-muted">{t('financialHub.cashFlow.outSub')}</span>
                 </div>
 
                 <div
@@ -383,7 +384,7 @@ export function FinancialDashboardPage() {
                   }}
                 >
                   <span className="detail-label" style={{ color: cashFlow.net_cash_flow >= 0 ? '#2563eb' : '#dc2626' }}>
-                    Net Cash Flow
+                    {t('financialHub.cashFlow.net')}
                   </span>
                   <div
                     style={{
@@ -394,23 +395,23 @@ export function FinancialDashboardPage() {
                   >
                     {formatCurrency(cashFlow.net_cash_flow)}
                   </div>
-                  <span className="small text-muted">Money In minus Money Out</span>
+                  <span className="small text-muted">{t('financialHub.cashFlow.netSub')}</span>
                 </div>
               </div>
 
               {/* Visual Performance Progression */}
               {dashboard.data?.chart_data && dashboard.data.chart_data.length > 0 && (
                 <div style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border-color, #e2e8f0)', paddingTop: '1.25rem' }}>
-                  <span className="detail-label">Period Timeline Breakdown</span>
+                  <span className="detail-label">{t('financialHub.timeline.title')}</span>
                   <div style={{ overflowX: 'auto', paddingBottom: '0.5rem' }}>
                     <table className="table" style={{ width: '100%', fontSize: '0.85rem' }}>
                       <thead>
                         <tr>
-                          <th>Interval</th>
-                          <th style={{ textAlign: 'right' }}>Revenue</th>
-                          <th style={{ textAlign: 'right' }}>Expenses</th>
-                          <th style={{ textAlign: 'right' }}>Refunds</th>
-                          <th style={{ textAlign: 'right' }}>Net Margin</th>
+                          <th>{t('financialHub.timeline.col.interval')}</th>
+                          <th style={{ textAlign: 'right' }}>{t('financialHub.timeline.col.revenue')}</th>
+                          <th style={{ textAlign: 'right' }}>{t('financialHub.timeline.col.expenses')}</th>
+                          <th style={{ textAlign: 'right' }}>{t('financialHub.timeline.col.refunds')}</th>
+                          <th style={{ textAlign: 'right' }}>{t('financialHub.timeline.col.margin')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -459,7 +460,7 @@ export function FinancialDashboardPage() {
               cursor: 'pointer',
             }}
           >
-            Analytics & Methods
+            {t('financialHub.tab.overview')}
           </button>
           <button
             type="button"
@@ -478,7 +479,7 @@ export function FinancialDashboardPage() {
               cursor: 'pointer',
             }}
           >
-            Payments Hub ({payments.data?.total ?? 0})
+            {t('financialHub.tab.payments', { count: payments.data?.total ?? 0 })}
           </button>
           <button
             type="button"
@@ -497,7 +498,7 @@ export function FinancialDashboardPage() {
               cursor: 'pointer',
             }}
           >
-            Refund Management ({refunds.data?.total ?? 0})
+            {t('financialHub.tab.refunds', { count: refunds.data?.total ?? 0 })}
           </button>
           <button
             type="button"
@@ -516,7 +517,7 @@ export function FinancialDashboardPage() {
               cursor: 'pointer',
             }}
           >
-            Reconciliation & Settlements
+            {t('financialHub.tab.reconciliation')}
           </button>
           <button
             type="button"
@@ -535,48 +536,48 @@ export function FinancialDashboardPage() {
               cursor: 'pointer',
             }}
           >
-            Financial Audit Ledger
+            {t('financialHub.tab.ledger')}
           </button>
         </div>
 
         {/* TAB 1: Analytics & Methods */}
         {activeTab === 'overview' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
-            <Card title="Gateway Performance Rates">
+            <Card title={t('financialHub.analytics.title')}>
               {analytics.loading && !analytics.data ? (
                 <LoadingBlock />
               ) : analytics.data ? (
                 <div className="stack" style={{ gap: '1.25rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
                     <div style={{ padding: '1rem', background: 'rgba(22, 163, 74, 0.08)', borderRadius: '8px', textAlign: 'center' }}>
-                      <span className="small text-muted">Success Rate</span>
+                      <span className="small text-muted">{t('financialHub.analytics.successRate')}</span>
                       <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#16a34a' }}>{analytics.data.success_rate}%</div>
-                      <span className="small">{analytics.data.successful_count} payments captured</span>
+                      <span className="small">{t('financialHub.analytics.captured', { count: analytics.data.successful_count })}</span>
                     </div>
                     <div style={{ padding: '1rem', background: 'rgba(220, 38, 38, 0.08)', borderRadius: '8px', textAlign: 'center' }}>
-                      <span className="small text-muted">Failure Rate</span>
+                      <span className="small text-muted">{t('financialHub.analytics.failureRate')}</span>
                       <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#dc2626' }}>{analytics.data.failure_rate}%</div>
-                      <span className="small">{analytics.data.failed_count} payments declined</span>
+                      <span className="small">{t('financialHub.analytics.declined', { count: analytics.data.failed_count })}</span>
                     </div>
                   </div>
 
                   <div>
-                    <span className="detail-label">Payment Volume Summary</span>
+                    <span className="detail-label">{t('financialHub.analytics.volume')}</span>
                     <div className="detail-grid" style={{ marginTop: '0.5rem' }}>
                       <div className="detail-item">
-                        <dt>Total Captured</dt>
+                        <dt>{t('financialHub.analytics.totalCaptured')}</dt>
                         <dd className="strong" style={{ color: '#16a34a' }}>
                           {formatCurrency(analytics.data.total_captured_value)}
                         </dd>
                       </div>
                       <div className="detail-item">
-                        <dt>Total Refunded</dt>
+                        <dt>{t('financialHub.analytics.totalRefunded')}</dt>
                         <dd className="strong" style={{ color: '#9333ea' }}>
                           {formatCurrency(analytics.data.total_refunded_value)}
                         </dd>
                       </div>
                       <div className="detail-item">
-                        <dt>Total Gateway Fees</dt>
+                        <dt>{t('financialHub.analytics.totalFees')}</dt>
                         <dd className="strong" style={{ color: '#6366f1' }}>
                           {formatCurrency(analytics.data.total_fees_paid)}
                         </dd>
@@ -587,7 +588,7 @@ export function FinancialDashboardPage() {
               ) : null}
             </Card>
 
-            <Card title="Payment Methods Breakdown">
+            <Card title={t('financialHub.methods.title')}>
               {analytics.data?.methods_breakdown && analytics.data.methods_breakdown.length > 0 ? (
                 <div className="stack" style={{ gap: '1rem' }}>
                   {analytics.data.methods_breakdown.map((m) => (
@@ -597,7 +598,7 @@ export function FinancialDashboardPage() {
                           {m.method}
                         </span>
                         <span>
-                          {formatCurrency(m.value)} ({m.count} txns · {m.percentage}%)
+                          {t('financialHub.methods.row', { value: formatCurrency(m.value), count: m.count, percent: m.percentage })}
                         </span>
                       </div>
                       <div style={{ height: '8px', background: 'var(--bg-subtle, #e2e8f0)', borderRadius: '4px', overflow: 'hidden' }}>
@@ -614,7 +615,7 @@ export function FinancialDashboardPage() {
                   ))}
                 </div>
               ) : (
-                <EmptyState title="No transactions yet" description="Payment methods will populate as transactions are processed." />
+                <EmptyState title={t('financialHub.methods.empty.title')} description={t('financialHub.methods.empty.body')} />
               )}
             </Card>
           </div>
@@ -623,13 +624,13 @@ export function FinancialDashboardPage() {
         {/* TAB 2: Payments Hub */}
         {activeTab === 'payments' && (
           <Card
-            title="Razorpay Payment Transactions"
-            subtitle="Live status, fees, and customer invoices"
+            title={t('financialHub.payments.title')}
+            subtitle={t('financialHub.payments.subtitle')}
             actions={
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <input
                   type="text"
-                  placeholder="Search payment ID, invoice..."
+                  placeholder={t('financialHub.payments.search')}
                   value={searchPayment}
                   onChange={(e) => setSearchPayment(e.target.value)}
                   style={{
@@ -650,11 +651,11 @@ export function FinancialDashboardPage() {
                     background: 'var(--bg-card, #fff)',
                   }}
                 >
-                  <option value="">All Statuses</option>
-                  <option value="captured">Captured</option>
-                  <option value="partially_refunded">Partially Refunded</option>
-                  <option value="refunded">Refunded</option>
-                  <option value="failed">Failed</option>
+                  <option value="">{t('financialHub.payments.filter.all')}</option>
+                  <option value="captured">{t('financialHub.payments.filter.captured')}</option>
+                  <option value="partially_refunded">{t('financialHub.payments.filter.partiallyRefunded')}</option>
+                  <option value="refunded">{t('financialHub.payments.filter.refunded')}</option>
+                  <option value="failed">{t('financialHub.payments.filter.failed')}</option>
                 </select>
               </div>
             }
@@ -662,21 +663,21 @@ export function FinancialDashboardPage() {
             {payments.loading && !payments.data ? (
               <LoadingBlock />
             ) : !filteredPayments.length ? (
-              <EmptyState title="No payments found" description="Payments processed through Razorpay will appear here." />
+              <EmptyState title={t('financialHub.payments.empty.title')} description={t('financialHub.payments.empty.body')} />
             ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table className="table" style={{ width: '100%', fontSize: '0.85rem' }}>
                   <thead>
                     <tr>
-                      <th>Payment ID</th>
-                      <th>Date</th>
-                      <th>Customer & Invoice</th>
-                      <th>Method</th>
-                      <th style={{ textAlign: 'right' }}>Gross Amount</th>
-                      <th style={{ textAlign: 'right' }}>Fee + GST</th>
-                      <th style={{ textAlign: 'right' }}>Net Payout</th>
-                      <th>Status</th>
-                      <th style={{ textAlign: 'right' }}>Actions</th>
+                      <th>{t('financialHub.col.paymentId')}</th>
+                      <th>{t('financialHub.col.date')}</th>
+                      <th>{t('financialHub.payments.col.customerInvoice')}</th>
+                      <th>{t('financialHub.payments.col.method')}</th>
+                      <th style={{ textAlign: 'right' }}>{t('financialHub.payments.col.gross')}</th>
+                      <th style={{ textAlign: 'right' }}>{t('financialHub.payments.col.fee')}</th>
+                      <th style={{ textAlign: 'right' }}>{t('financialHub.payments.col.net')}</th>
+                      <th>{t('financialHub.col.status')}</th>
+                      <th style={{ textAlign: 'right' }}>{t('financialHub.payments.col.actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -693,12 +694,12 @@ export function FinancialDashboardPage() {
                           <td>{formatDate(p.created_at)}</td>
                           <td>
                             <span className="cell-stack">
-                              <span>{p.customer_name || 'Customer'}</span>
+                              <span>{p.customer_name || t('financialHub.payments.customerFallback')}</span>
                               <small className="mono">{p.invoice_number || '—'}</small>
                             </span>
                           </td>
                           <td>
-                            <Badge tone="neutral">{p.payment_method?.toUpperCase() || 'CARD'}</Badge>
+                            <Badge tone="neutral">{p.payment_method?.toUpperCase() || t('financialHub.payments.methodFallback')}</Badge>
                           </td>
                           <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(p.amount)}</td>
                           <td style={{ textAlign: 'right', color: '#6366f1' }}>
@@ -728,7 +729,7 @@ export function FinancialDashboardPage() {
                                 onClick={() => openRefund(p)}
                                 style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
                               >
-                                Refund
+                                {t('financialHub.payments.refund')}
                               </Button>
                             ) : (
                               <span className="text-muted small">—</span>
@@ -747,30 +748,30 @@ export function FinancialDashboardPage() {
         {/* TAB 3: Refund Management */}
         {activeTab === 'refunds' && (
           <Card
-            title="Refund Operations & History"
-            subtitle="Track partial and full returns with automatic general ledger revenue adjustment"
+            title={t('financialHub.refunds.title')}
+            subtitle={t('financialHub.refunds.subtitle')}
             actions={
               <Button icon={<Download size={14} />} variant="secondary" onClick={() => handleExport('refunds')}>
-                Export Refunds CSV
+                {t('financialHub.refunds.export')}
               </Button>
             }
           >
             {refunds.loading && !refunds.data ? (
               <LoadingBlock />
             ) : !refunds.data?.items.length ? (
-              <EmptyState title="No refunds recorded" description="When refunds are issued, they will be listed here with audit timestamps." />
+              <EmptyState title={t('financialHub.refunds.empty.title')} description={t('financialHub.refunds.empty.body')} />
             ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table className="table" style={{ width: '100%', fontSize: '0.85rem' }}>
                   <thead>
                     <tr>
-                      <th>Refund ID</th>
-                      <th>Payment ID</th>
-                      <th>Refund Date</th>
-                      <th style={{ textAlign: 'right' }}>Amount</th>
-                      <th>Reason</th>
-                      <th>Speed</th>
-                      <th>Status</th>
+                      <th>{t('financialHub.refunds.col.id')}</th>
+                      <th>{t('financialHub.col.paymentId')}</th>
+                      <th>{t('financialHub.refunds.col.date')}</th>
+                      <th style={{ textAlign: 'right' }}>{t('financialHub.refunds.col.amount')}</th>
+                      <th>{t('financialHub.refunds.col.reason')}</th>
+                      <th>{t('financialHub.refunds.col.speed')}</th>
+                      <th>{t('financialHub.col.status')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -800,8 +801,8 @@ export function FinancialDashboardPage() {
         {activeTab === 'reconciliation' && (
           <div className="stack" style={{ gap: '1.25rem' }}>
             <Card
-              title="Three-Way Reconciliation Engine"
-              subtitle="Compares internal Customer Payments, Razorpay Gateway records, and Bank Settlements"
+              title={t('financialHub.recon.title')}
+              subtitle={t('financialHub.recon.subtitle')}
               actions={
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                   <select
@@ -815,11 +816,11 @@ export function FinancialDashboardPage() {
                       fontSize: '0.85rem',
                     }}
                   >
-                    <option value="">All Reconciliations</option>
-                    <option value="matched">Matched Only</option>
-                    <option value="mismatch">Mismatches</option>
-                    <option value="missing_settlement">Missing Settlement</option>
-                    <option value="duplicate">Duplicates</option>
+                    <option value="">{t('financialHub.recon.filter.all')}</option>
+                    <option value="matched">{t('financialHub.recon.filter.matched')}</option>
+                    <option value="mismatch">{t('financialHub.recon.filter.mismatch')}</option>
+                    <option value="missing_settlement">{t('financialHub.recon.filter.missing')}</option>
+                    <option value="duplicate">{t('financialHub.recon.filter.duplicate')}</option>
                   </select>
                   <Button
                     variant="primary"
@@ -827,25 +828,25 @@ export function FinancialDashboardPage() {
                     onClick={handleRunReconciliation}
                     disabled={reconciling}
                   >
-                    {reconciling ? 'Reconciling...' : 'Run Reconciliation'}
+                    {reconciling ? t('financialHub.recon.running') : t('financialHub.recon.run')}
                   </Button>
                 </div>
               }
             >
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
                 <div style={{ padding: '0.875rem', background: 'rgba(22, 163, 74, 0.08)', borderRadius: '6px' }}>
-                  <span className="small text-muted">Matched Transactions</span>
+                  <span className="small text-muted">{t('financialHub.recon.matched')}</span>
                   <div style={{ fontSize: '1.35rem', fontWeight: 700, color: '#16a34a' }}>
                     {reconciliations.data?.items.filter((r) => r.status === 'matched').length ?? 0}
                   </div>
-                  <span className="small text-muted">100% matched with books</span>
+                  <span className="small text-muted">{t('financialHub.recon.matchedSub')}</span>
                 </div>
                 <div style={{ padding: '0.875rem', background: 'rgba(220, 38, 38, 0.08)', borderRadius: '6px' }}>
-                  <span className="small text-muted">Discrepancies / Pending</span>
+                  <span className="small text-muted">{t('financialHub.recon.discrepancies')}</span>
                   <div style={{ fontSize: '1.35rem', fontWeight: 700, color: '#dc2626' }}>
                     {reconciliations.data?.items.filter((r) => r.status !== 'matched').length ?? 0}
                   </div>
-                  <span className="small text-muted">Needs review or pending T+2</span>
+                  <span className="small text-muted">{t('financialHub.recon.discrepanciesSub')}</span>
                 </div>
               </div>
 
@@ -853,21 +854,21 @@ export function FinancialDashboardPage() {
                 <LoadingBlock />
               ) : !reconciliations.data?.items.length ? (
                 <EmptyState
-                  title="No reconciliation data"
-                  description="Click 'Run Reconciliation' to match internal payments against gateway logs."
+                  title={t('financialHub.recon.empty.title')}
+                  description={t('financialHub.recon.empty.body')}
                 />
               ) : (
                 <div style={{ overflowX: 'auto' }}>
                   <table className="table" style={{ width: '100%', fontSize: '0.85rem' }}>
                     <thead>
                       <tr>
-                        <th>Date</th>
-                        <th>Payment ID</th>
-                        <th>Status</th>
-                        <th style={{ textAlign: 'right' }}>Expected</th>
-                        <th style={{ textAlign: 'right' }}>Actual</th>
-                        <th style={{ textAlign: 'right' }}>Diff</th>
-                        <th>Reconciliation Details</th>
+                        <th>{t('financialHub.col.date')}</th>
+                        <th>{t('financialHub.col.paymentId')}</th>
+                        <th>{t('financialHub.col.status')}</th>
+                        <th style={{ textAlign: 'right' }}>{t('financialHub.recon.col.expected')}</th>
+                        <th style={{ textAlign: 'right' }}>{t('financialHub.recon.col.actual')}</th>
+                        <th style={{ textAlign: 'right' }}>{t('financialHub.recon.col.diff')}</th>
+                        <th>{t('financialHub.recon.col.details')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -895,30 +896,30 @@ export function FinancialDashboardPage() {
             </Card>
 
             <Card
-              title="Bank Settlements Log"
-              subtitle="Payout batches received into organization bank accounts from Razorpay"
+              title={t('financialHub.settlements.title')}
+              subtitle={t('financialHub.settlements.subtitle')}
               actions={
                 <Button icon={<Download size={14} />} variant="secondary" onClick={() => handleExport('settlements')}>
-                  Export Settlements CSV
+                  {t('financialHub.settlements.export')}
                 </Button>
               }
             >
               {settlements.loading && !settlements.data ? (
                 <LoadingBlock />
               ) : !settlements.data?.items.length ? (
-                <EmptyState title="No settlements recorded" description="Settlement batches from Razorpay will appear here." />
+                <EmptyState title={t('financialHub.settlements.empty.title')} description={t('financialHub.settlements.empty.body')} />
               ) : (
                 <div style={{ overflowX: 'auto' }}>
                   <table className="table" style={{ width: '100%', fontSize: '0.85rem' }}>
                     <thead>
                       <tr>
-                        <th>Settlement ID</th>
-                        <th>Date</th>
-                        <th style={{ textAlign: 'right' }}>Gross</th>
-                        <th style={{ textAlign: 'right' }}>Fee + Tax</th>
-                        <th style={{ textAlign: 'right' }}>Net Disbursed</th>
-                        <th>Bank UTR Reference</th>
-                        <th>Status</th>
+                        <th>{t('financialHub.settlements.col.id')}</th>
+                        <th>{t('financialHub.col.date')}</th>
+                        <th style={{ textAlign: 'right' }}>{t('financialHub.settlements.col.gross')}</th>
+                        <th style={{ textAlign: 'right' }}>{t('financialHub.settlements.col.fee')}</th>
+                        <th style={{ textAlign: 'right' }}>{t('financialHub.settlements.col.net')}</th>
+                        <th>{t('financialHub.settlements.col.utr')}</th>
+                        <th>{t('financialHub.col.status')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -946,49 +947,49 @@ export function FinancialDashboardPage() {
         {/* TAB 5: Financial Audit Ledger */}
         {activeTab === 'ledger' && (
           <Card
-            title="Granular Financial Transaction Audit Trail"
-            subtitle="Searchable and filterable ledger of double-entry postings"
+            title={t('financialHub.ledger.title')}
+            subtitle={t('financialHub.ledger.subtitle')}
             actions={
               <Button icon={<Download size={14} />} variant="secondary" onClick={() => handleExport('ledger')}>
-                Export Ledger CSV
+                {t('financialHub.ledger.export')}
               </Button>
             }
           >
             {transactions.loading && !transactions.data ? (
               <LoadingBlock />
             ) : !transactions.data?.items.length ? (
-              <EmptyState title="No transactions recorded" description="Financial transactions will show here as entries are posted." />
+              <EmptyState title={t('financialHub.ledger.empty.title')} description={t('financialHub.ledger.empty.body')} />
             ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table className="table" style={{ width: '100%', fontSize: '0.85rem' }}>
                   <thead>
                     <tr>
-                      <th>TXN ID</th>
-                      <th>Date</th>
-                      <th>Type</th>
-                      <th>Account</th>
-                      <th style={{ textAlign: 'right' }}>Debit</th>
-                      <th style={{ textAlign: 'right' }}>Credit</th>
-                      <th style={{ textAlign: 'right' }}>Net Amount</th>
-                      <th>Description</th>
-                      <th>Status</th>
+                      <th>{t('financialHub.ledger.col.id')}</th>
+                      <th>{t('financialHub.col.date')}</th>
+                      <th>{t('financialHub.ledger.col.type')}</th>
+                      <th>{t('financialHub.ledger.col.account')}</th>
+                      <th style={{ textAlign: 'right' }}>{t('financialHub.ledger.col.debit')}</th>
+                      <th style={{ textAlign: 'right' }}>{t('financialHub.ledger.col.credit')}</th>
+                      <th style={{ textAlign: 'right' }}>{t('financialHub.ledger.col.net')}</th>
+                      <th>{t('financialHub.ledger.col.description')}</th>
+                      <th>{t('financialHub.col.status')}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {transactions.data.items.map((t) => (
-                      <tr key={t.id}>
-                        <td className="mono strong">{t.transaction_id}</td>
-                        <td>{formatDate(t.date)}</td>
+                    {transactions.data.items.map((txn) => (
+                      <tr key={txn.id}>
+                        <td className="mono strong">{txn.transaction_id}</td>
+                        <td>{formatDate(txn.date)}</td>
                         <td>
-                          <Badge tone="neutral">{t.transaction_type.toUpperCase()}</Badge>
+                          <Badge tone="neutral">{txn.transaction_type.toUpperCase()}</Badge>
                         </td>
-                        <td>{t.account}</td>
-                        <td style={{ textAlign: 'right' }}>{t.debit > 0 ? formatCurrency(t.debit) : '—'}</td>
-                        <td style={{ textAlign: 'right' }}>{t.credit > 0 ? formatCurrency(t.credit) : '—'}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(t.amount)}</td>
-                        <td className="small text-muted">{t.description}</td>
+                        <td>{txn.account}</td>
+                        <td style={{ textAlign: 'right' }}>{txn.debit > 0 ? formatCurrency(txn.debit) : '—'}</td>
+                        <td style={{ textAlign: 'right' }}>{txn.credit > 0 ? formatCurrency(txn.credit) : '—'}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(txn.amount)}</td>
+                        <td className="small text-muted">{txn.description}</td>
                         <td>
-                          <Badge tone="success">{t.status.toUpperCase()}</Badge>
+                          <Badge tone="success">{txn.status.toUpperCase()}</Badge>
                         </td>
                       </tr>
                     ))}
@@ -1005,16 +1006,18 @@ export function FinancialDashboardPage() {
         <Modal
           open={refundModalOpen}
           onClose={refundSubmitting ? () => {} : () => setRefundModalOpen(false)}
-          title="Initiate Razorpay Refund"
-          subtitle={`Process partial or full return for Payment ${selectedPaymentForRefund.razorpay_payment_id}`}
+          title={t('financialHub.refund.title')}
+          subtitle={t('financialHub.refund.subtitle', { id: selectedPaymentForRefund.razorpay_payment_id })}
           size="md"
           footer={
             <>
               <Button variant="secondary" onClick={() => setRefundModalOpen(false)} disabled={refundSubmitting}>
-                Cancel
+                {t('financialHub.refund.cancel')}
               </Button>
               <Button variant="danger" icon={<RotateCcw size={14} />} onClick={handleProcessRefund} disabled={refundSubmitting}>
-                {refundSubmitting ? 'Submitting Refund...' : `Confirm Refund of ${refundAmount ? formatCurrency(parseFloat(refundAmount) || 0) : ''}`}
+                {refundSubmitting
+                  ? t('financialHub.refund.submitting')
+                  : t('financialHub.refund.confirm', { amount: refundAmount ? formatCurrency(parseFloat(refundAmount) || 0) : '' })}
               </Button>
             </>
           }
@@ -1035,13 +1038,13 @@ export function FinancialDashboardPage() {
             >
               <div>
                 <span className="small text-muted" style={{ display: 'block' }}>
-                  Original Paid
+                  {t('financialHub.refund.originalPaid')}
                 </span>
                 <span className="strong">{formatCurrency(selectedPaymentForRefund.amount)}</span>
               </div>
               <div>
                 <span className="small text-muted" style={{ display: 'block' }}>
-                  Remaining Refundable
+                  {t('financialHub.refund.remaining')}
                 </span>
                 <span className="strong" style={{ color: '#16a34a' }}>
                   {formatCurrency(selectedPaymentForRefund.amount - selectedPaymentForRefund.refund_amount)}
@@ -1049,45 +1052,45 @@ export function FinancialDashboardPage() {
               </div>
               <div>
                 <span className="small text-muted" style={{ display: 'block' }}>
-                  Customer
+                  {t('financialHub.refund.customer')}
                 </span>
                 <span>{selectedPaymentForRefund.customer_name || '—'}</span>
               </div>
               <div>
                 <span className="small text-muted" style={{ display: 'block' }}>
-                  Invoice
+                  {t('financialHub.refund.invoice')}
                 </span>
                 <span className="mono">{selectedPaymentForRefund.invoice_number || '—'}</span>
               </div>
             </div>
 
             <TextField
-              label="Refund Amount (INR)"
+              label={t('financialHub.refund.amount')}
               type="number"
               step="0.01"
               min="1"
               max={selectedPaymentForRefund.amount - selectedPaymentForRefund.refund_amount}
               value={refundAmount}
               onChange={(e) => setRefundAmount(e.target.value)}
-              hint="You can enter a partial amount or the entire remaining balance."
+              hint={t('financialHub.refund.amountHint')}
               required
             />
 
             <TextField
-              label="Reason for Refund"
+              label={t('financialHub.refund.reason')}
               value={refundReason}
               onChange={(e) => setRefundReason(e.target.value)}
-              placeholder="e.g. Order cancelled, defective item return"
+              placeholder={t('financialHub.refund.reasonPlaceholder')}
               required
             />
 
             <SelectField
-              label="Refund Processing Speed"
+              label={t('financialHub.refund.speed')}
               value={refundSpeed}
               onChange={(e) => setRefundSpeed(e.target.value)}
               options={[
-                { value: 'normal', label: 'Normal (Standard banking window 5-7 business days)' },
-                { value: 'optimum', label: 'Optimum (Instant refund via Razorpay when supported)' },
+                { value: 'normal', label: t('financialHub.refund.speed.normal') },
+                { value: 'optimum', label: t('financialHub.refund.speed.optimum') },
               ]}
             />
 
@@ -1103,8 +1106,7 @@ export function FinancialDashboardPage() {
             >
               <AlertCircle size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'text-bottom' }} />
               <span>
-                Processing this refund will automatically adjust the customer invoice balance and post a revenue adjustment entry in your
-                General Ledger.
+                {t('financialHub.refund.notice')}
               </span>
             </div>
           </div>

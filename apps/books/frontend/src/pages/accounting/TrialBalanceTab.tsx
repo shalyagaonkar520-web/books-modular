@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { accountingApi } from '@/api/endpoints';
 import type { TrialBalance } from '@/api/types';
+import { useAppContent } from '@/app/AppContentContext';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -13,6 +14,7 @@ import { formatCurrency, formatDate, titleCase, todayIso } from '@/utils/format'
 type TrialBalanceRow = TrialBalance['rows'][number];
 
 export function TrialBalanceTab() {
+  const { t } = useAppContent();
   const [asOf, setAsOf] = useState(todayIso());
   const trialBalance = useAsync(() => accountingApi.trialBalance({ as_of: asOf }), [asOf]);
 
@@ -20,36 +22,41 @@ export function TrialBalanceTab() {
   const balanced = !!report && report.totalDebit === report.totalCredit;
 
   const columns: Array<Column<TrialBalanceRow>> = [
-    { key: 'code', header: 'Code', width: '90px', render: (row) => <span className="code-tag">{row.code}</span> },
-    { key: 'name', header: 'Account', render: (row) => row.name },
-    { key: 'type', header: 'Type', render: (row) => titleCase(row.type) },
-    { key: 'debit', header: 'Debit', align: 'right', render: (row) => <span className="num">{row.debit ? formatCurrency(row.debit) : '—'}</span> },
-    { key: 'credit', header: 'Credit', align: 'right', render: (row) => <span className="num">{row.credit ? formatCurrency(row.credit) : '—'}</span> },
+    { key: 'code', header: t('accounting.trialBalance.col.code'), width: '90px', render: (row) => <span className="code-tag">{row.code}</span> },
+    { key: 'name', header: t('accounting.trialBalance.col.account'), render: (row) => row.name },
+    { key: 'type', header: t('accounting.trialBalance.col.type'), render: (row) => titleCase(row.type) },
+    { key: 'debit', header: t('accounting.trialBalance.col.debit'), align: 'right', render: (row) => <span className="num">{row.debit ? formatCurrency(row.debit) : '—'}</span> },
+    { key: 'credit', header: t('accounting.trialBalance.col.credit'), align: 'right', render: (row) => <span className="num">{row.credit ? formatCurrency(row.credit) : '—'}</span> },
   ];
 
   return (
     <>
       <Toolbar>
         <label className="filter-select">
-          <span>As of</span>
+          <span>{t('accounting.trialBalance.asOf')}</span>
           <input type="date" className="select select-sm" value={asOf} onChange={(event) => setAsOf(event.target.value)} />
         </label>
         {report ? (
-          <Badge tone={balanced ? 'success' : 'danger'}>{balanced ? 'Balanced' : 'Out of balance'}</Badge>
+          <Badge tone={balanced ? 'success' : 'danger'}>{balanced ? t('accounting.trialBalance.balanced') : t('accounting.trialBalance.outOfBalance')}</Badge>
         ) : null}
       </Toolbar>
 
       <Card
-        title="Trial balance"
-        subtitle={report ? `As at ${formatDate(report.asOf)}` : undefined}
+        title={t('accounting.trialBalance.cardTitle')}
+        subtitle={report ? t('accounting.trialBalance.asAt', { date: formatDate(report.asOf) }) : undefined}
         footer={
           report ? (
             <div className="row-between">
               <span className="text-muted">
-                Total debit {formatCurrency(report.totalDebit)} · Total credit {formatCurrency(report.totalCredit)}
+                {t('accounting.trialBalance.footerTotals', {
+                  debit: formatCurrency(report.totalDebit),
+                  credit: formatCurrency(report.totalCredit),
+                })}
               </span>
               <Badge tone={balanced ? 'success' : 'danger'}>
-                {balanced ? 'Debits equal credits' : `Difference of ${formatCurrency(report.totalDebit - report.totalCredit)}`}
+                {balanced
+                  ? t('accounting.trialBalance.debitsEqualCredits')
+                  : t('accounting.trialBalance.differenceOf', { amount: formatCurrency(report.totalDebit - report.totalCredit) })}
               </Badge>
             </div>
           ) : null
@@ -60,17 +67,17 @@ export function TrialBalanceTab() {
         ) : trialBalance.error ? (
           <ErrorBlock message={trialBalance.error} onRetry={trialBalance.reload} />
         ) : !report?.rows.length ? (
-          <EmptyState title="Nothing posted yet" description="Once transactions hit the ledger they will show up here." />
+          <EmptyState title={t('accounting.trialBalance.empty.title')} description={t('accounting.trialBalance.empty.body')} />
         ) : (
           <DataTable
             columns={columns}
             rows={report.rows}
             rowKey={(row) => row.accountId}
-            caption="Trial balance"
+            caption={t('accounting.trialBalance.tableCaption')}
             footer={
               <tr>
                 <td colSpan={3} className="strong">
-                  Totals
+                  {t('accounting.trialBalance.totals')}
                 </td>
                 <td className="align-right num strong">{formatCurrency(report.totalDebit)}</td>
                 <td className="align-right num strong">{formatCurrency(report.totalCredit)}</td>

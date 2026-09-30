@@ -19,15 +19,16 @@ import { useAsync } from '@/hooks/useAsync';
 import { useDownload } from '@/hooks/useDownload';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatDate, round2, titleCase, todayIso } from '@/utils/format';
-import { PAYMENT_MODES } from '@/utils/status';
+import { PAYMENT_MODES, type Translate } from '@/utils/status';
 
 import { RecordVendorPaymentModal } from './RecordVendorPaymentModal';
 
 const PAGE_SIZE = 25;
 const MAX_SUMMARY_PAGES = 50;
 
-function modeLabel(mode: string): string {
-  return PAYMENT_MODES.find((option) => option.value === mode)?.label ?? titleCase(mode);
+function modeLabel(mode: string, t: Translate): string {
+  const option = PAYMENT_MODES.find((o) => o.value === mode);
+  return option ? t(option.labelKey) : titleCase(mode);
 }
 
 function monthStart(): string {
@@ -91,18 +92,18 @@ export function PaymentsMadePage() {
   const deletePayment = async (payment: VendorPayment) => {
     const result = await remove.run(() => vendorPaymentsApi.remove(payment.id));
     if (result) {
-      toast.success(`Payment ${payment.paymentNumber} deleted`);
+      toast.success(t('paymentsMade.toast.deleted', { number: payment.paymentNumber }));
       setPendingDelete(null);
       refreshAll();
     }
   };
 
   const columns: Array<Column<VendorPayment>> = [
-    { key: 'paymentNumber', header: 'Payment #', render: (payment) => <span className="code-tag">{payment.paymentNumber}</span> },
-    { key: 'date', header: 'Date', render: (payment) => formatDate(payment.date) },
+    { key: 'paymentNumber', header: t('paymentsMade.col.paymentNumber'), render: (payment) => <span className="code-tag">{payment.paymentNumber}</span> },
+    { key: 'date', header: t('paymentsMade.col.date'), render: (payment) => formatDate(payment.date) },
     {
       key: 'vendorName',
-      header: 'Vendor',
+      header: t('paymentsMade.col.vendor'),
       render: (payment) => (
         <div className="cell-stack">
           <span>{payment.vendorName}</span>
@@ -112,16 +113,16 @@ export function PaymentsMadePage() {
     },
     {
       key: 'billNumber',
-      header: 'Bill',
+      header: t('paymentsMade.col.bill'),
       render: (payment) =>
-        payment.billNumber ? <span className="code-tag">{payment.billNumber}</span> : <span className="text-subtle">Advance to vendor</span>,
+        payment.billNumber ? <span className="code-tag">{payment.billNumber}</span> : <span className="text-subtle">{t('paymentsMade.advanceToVendor')}</span>,
     },
-    { key: 'mode', header: 'Mode', render: (payment) => modeLabel(payment.mode) },
-    { key: 'reference', header: 'Reference', render: (payment) => payment.reference || <span className="text-subtle">—</span> },
-    { key: 'amount', header: 'Amount', align: 'right', render: (payment) => <span className="num strong">{formatCurrency(payment.amount)}</span> },
+    { key: 'mode', header: t('paymentsMade.col.mode'), render: (payment) => modeLabel(payment.mode, t) },
+    { key: 'reference', header: t('paymentsMade.col.reference'), render: (payment) => payment.reference || <span className="text-subtle">—</span> },
+    { key: 'amount', header: t('paymentsMade.col.amount'), align: 'right', render: (payment) => <span className="num strong">{formatCurrency(payment.amount)}</span> },
     {
       key: 'actions',
-      header: 'Actions',
+      header: t('paymentsMade.col.actions'),
       align: 'right',
       render: (payment) => (
         <div className="row-actions">
@@ -129,8 +130,8 @@ export function PaymentsMadePage() {
             type="button"
             className="action-btn"
             style={{ color: '#ea4335' }}
-            aria-label={`Send remittance advice for ${payment.paymentNumber} via Gmail`}
-            title="Send remittance advice via Gmail"
+            aria-label={t('paymentsMade.aria.sendGmail', { number: payment.paymentNumber })}
+            title={t('paymentsMade.tip.sendGmail')}
             onClick={() => setMailPayment(payment)}
           >
             <Mail size={15} />
@@ -139,8 +140,8 @@ export function PaymentsMadePage() {
             type="button"
             className="action-btn"
             style={{ color: '#dc2626' }}
-            aria-label={`Download remittance advice PDF for ${payment.paymentNumber}`}
-            title="Download remittance advice PDF"
+            aria-label={t('paymentsMade.aria.downloadPdf', { number: payment.paymentNumber })}
+            title={t('paymentsMade.tip.downloadPdf')}
             onClick={() => vendorPaymentsApi.downloadPdf(payment.id, payment.paymentNumber)}
           >
             <FileDown size={15} />
@@ -149,7 +150,7 @@ export function PaymentsMadePage() {
             <button
               type="button"
               className="action-btn is-danger"
-              aria-label={`Delete payment ${payment.paymentNumber}`}
+              aria-label={t('paymentsMade.aria.delete', { number: payment.paymentNumber })}
               onClick={() => setPendingDelete(payment)}
             >
               <Trash2 size={15} />
@@ -207,44 +208,44 @@ export function PaymentsMadePage() {
       ) : (
         <div className="stat-grid">
           <StatTile
-            label="Total paid"
+            label={t('paymentsMade.stat.totalPaid')}
             value={summary.data ? formatCurrency(summary.data.paid) : '—'}
             sublabel={`${formatDate(startDate)} – ${formatDate(endDate)}`}
           />
-          <StatTile label="Payments" value={summary.data ? String(summary.data.count) : '—'} />
+          <StatTile label={t('paymentsMade.stat.payments')} value={summary.data ? String(summary.data.count) : '—'} />
           <StatTile
-            label="Advances"
+            label={t('paymentsMade.stat.advances')}
             value={summary.data ? formatCurrency(summary.data.advances) : '—'}
             tone="warning"
-            sublabel="Not yet applied to a bill"
+            sublabel={t('paymentsMade.stat.advancesSub')}
           />
         </div>
       )}
 
       <Toolbar>
         <FilterSelect
-          label="Vendor"
+          label={t('paymentsMade.filter.vendor')}
           value={vendorId}
           onChange={changeFilter(setVendorId)}
-          options={[{ value: '', label: 'All vendors' }, ...(vendors.data?.items ?? []).map((vendor) => ({ value: vendor.id, label: vendor.displayName }))]}
+          options={[{ value: '', label: t('paymentsMade.filter.allVendors') }, ...(vendors.data?.items ?? []).map((vendor) => ({ value: vendor.id, label: vendor.displayName }))]}
         />
         <label className="filter-select">
-          <span>From</span>
+          <span>{t('paymentsMade.filter.from')}</span>
           <input
             type="date"
             className="input select-sm"
             value={startDate}
-            aria-label="Payments from date"
+            aria-label={t('paymentsMade.filter.fromAria')}
             onChange={(event) => changeFilter(setStartDate)(event.target.value)}
           />
         </label>
         <label className="filter-select">
-          <span>To</span>
+          <span>{t('paymentsMade.filter.to')}</span>
           <input
             type="date"
             className="input select-sm"
             value={endDate}
-            aria-label="Payments to date"
+            aria-label={t('paymentsMade.filter.toAria')}
             onChange={(event) => changeFilter(setEndDate)(event.target.value)}
           />
         </label>
@@ -272,7 +273,7 @@ export function PaymentsMadePage() {
           />
         ) : (
           <>
-            <DataTable columns={columns} rows={list.data.items} rowKey={(payment) => payment.id} caption="Payments made" />
+            <DataTable columns={columns} rows={list.data.items} rowKey={(payment) => payment.id} caption={t('paymentsMade.table.caption')} />
             <Pagination page={list.data.page} pageSize={list.data.pageSize} total={list.data.total} onPageChange={setPage} />
           </>
         )}
@@ -290,14 +291,17 @@ export function PaymentsMadePage() {
 
       <ConfirmDialog
         open={pendingDelete !== null}
-        title="Delete this payment?"
-        confirmLabel="Delete payment"
+        title={t('paymentsMade.confirm.title')}
+        confirmLabel={t('paymentsMade.confirm.button')}
         busy={remove.submitting}
         message={
           <>
             <p>
-              Payment {pendingDelete?.paymentNumber} of {formatCurrency(pendingDelete?.amount ?? 0)} to {pendingDelete?.vendorName} will be deleted. The
-              journal entry is reversed, the bank transaction removed and any bill balance restored.
+              {t('paymentsMade.confirm.body', {
+                number: pendingDelete?.paymentNumber ?? '',
+                amount: formatCurrency(pendingDelete?.amount ?? 0),
+                vendor: pendingDelete?.vendorName ?? '',
+              })}
             </p>
             <FormError message={remove.error} />
           </>
@@ -332,8 +336,11 @@ interface SendRemittanceModalProps {
 }
 
 function SendRemittanceModal({ payment, onClose, onSent }: SendRemittanceModalProps) {
+  const { t } = useAppContent();
   const [email, setEmail] = useState('');
-  const [notes, setNotes] = useState(`Please find attached remittance advice for payment #${payment.paymentNumber} of ${formatCurrency(payment.amount)} to ${payment.vendorName}.`);
+  const [notes, setNotes] = useState(() =>
+    t('paymentsMade.send.defaultNotes', { number: payment.paymentNumber, amount: formatCurrency(payment.amount), vendor: payment.vendorName }),
+  );
   const [attachPdf, setAttachPdf] = useState(true);
   const { submitting, error, run } = useSubmit();
 
@@ -355,16 +362,16 @@ function SendRemittanceModal({ payment, onClose, onSent }: SendRemittanceModalPr
     <Modal
       open
       size="md"
-      title="Send Remittance Advice via Gmail"
-      subtitle={`Payment #${payment.paymentNumber} • ${payment.vendorName} (${formatCurrency(payment.amount)})`}
+      title={t('paymentsMade.send.title')}
+      subtitle={t('paymentsMade.send.subtitle', { number: payment.paymentNumber, vendor: payment.vendorName, amount: formatCurrency(payment.amount) })}
       onClose={onClose}
       footer={
         <>
           <Button onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('paymentsMade.send.cancel')}
           </Button>
           <Button variant="primary" loading={submitting} icon={<Mail size={15} />} onClick={handleSend}>
-            Send Remittance Advice
+            {t('paymentsMade.send.submit')}
           </Button>
         </>
       }
@@ -372,24 +379,24 @@ function SendRemittanceModal({ payment, onClose, onSent }: SendRemittanceModalPr
       <FormError message={error} />
       <div className="form-grid">
         <TextField
-          label="Recipient Email"
+          label={t('paymentsMade.send.email')}
           type="email"
           required
-          placeholder="vendor@example.com"
+          placeholder={t('paymentsMade.send.emailPlaceholder')}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
       </div>
       <div style={{ marginTop: '12px' }}>
         <CheckboxField
-          label="Attach PDF Remittance Advice"
+          label={t('paymentsMade.send.attachPdf')}
           checked={attachPdf}
           onChange={(e) => setAttachPdf(e.target.checked)}
         />
       </div>
       <div style={{ marginTop: '12px' }}>
         <TextAreaField
-          label="Custom Notes"
+          label={t('paymentsMade.send.notes')}
           rows={3}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
