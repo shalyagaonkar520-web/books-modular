@@ -149,6 +149,7 @@ def create_app() -> FastAPI:
     from backend.routers import platform_site, public_site
 
     app.include_router(public_site.router)
+    app.include_router(public_site.tenant_router)
     app.include_router(platform_site.router, dependencies=[Depends(require_superuser)])
 
     @app.get("/api/health", tags=["Health"])

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
-import { Briefcase, ChevronRight, RotateCcw, Save, Undo2 } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Briefcase, Building2, ChevronRight, RotateCcw, Save, Undo2 } from 'lucide-react';
 
 import {
   APP_CONTENT_LIMITS as LIMITS,
@@ -21,7 +21,7 @@ import { useAppContent } from '@/app/AppContentContext';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
-import { CheckboxField, TextField } from '@/components/ui/Field';
+import { CheckboxField, SelectField, TextField } from '@/components/ui/Field';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchInput } from '@/components/ui/Toolbar';
@@ -59,9 +59,9 @@ const TEXT_GROUPS: Array<{ id: string; label: string; keys: string[] }> = (() =>
   return Array.from(groups, ([id, keys]) => ({ id, label: TEXT_GROUP_LABELS[id] ?? words(id), keys }));
 })();
 
-/** A text differs from the built-in one (an empty value means "use the default"). */
-function isChanged(key: string, value: string): boolean {
-  return value !== '' && value !== DEFAULT_TEXTS[key];
+/** A text differs from the baseline it sits on (an empty value means "use the baseline"). */
+function isChanged(key: string, value: string, baseline: Record<string, string>): boolean {
+  return value !== '' && value !== baseline[key];
 }
 
 /** Which editor card owns an error path: `branding`, `modules` or `texts:<group>`. */
@@ -79,7 +79,22 @@ function sectionOfPath(path: string): string | null {
 export function AppContentPage() {
   const toast = useToast();
   const { reload: reloadAppContent } = useAppContent();
-  const remote = useAsync(async (signal) => normalizeAppContent(await platformApi.appContent.get(signal)), []);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // '' edits the shared content every organization sees; an org id edits only that organization's copy.
+  const scope = searchParams.get('org') ?? '';
+  const orgs = useAsync((signal) => platformApi.organizations.list({ page: 1, page_size: 200 }, signal), []);
+  const remote = useAsync(
+    async (signal) => {
+      if (!scope) {
+        return { content: normalizeAppContent(await platformApi.appContent.get(signal)), shared: DEFAULT_APP_CONTENT, orgName: null };
+      }
+      const org = await platformApi.appContent.org.get(scope, signal);
+      return { content: normalizeAppContent(org.content), shared: normalizeAppContent(org.shared), orgName: org.organizationName };
+    },
+    [scope],
+  );
+  const baseline = remote.data?.shared ?? DEFAULT_APP_CONTENT;
+  const orgName = remote.data?.orgName ?? null;
   const [saved, setSaved] = useState<AppContent | null>(null);
   const [draft, setDraft] = useState<AppContent | null>(null);
   const [openSections, setOpenSections] = useState<Set<string>>(() => new Set<string>());
@@ -91,10 +106,21 @@ export function AppContentPage() {
 
   useEffect(() => {
     if (remote.data) {
-      setSaved(remote.data);
-      setDraft(remote.data);
+      setSaved(remote.data.content);
+      setDraft(remote.data.content);
+      setServerErrors({});
+    } else {
+      setSaved(null);
+      setDraft(null);
     }
   }, [remote.data]);
+
+  const changeScope = (next: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (next) params.set('org', next);
+    else params.delete('org');
+    setSearchParams(params, { replace: true });
+  };
 
   const dirty = useMemo(() => Boolean(draft && saved && JSON.stringify(draft) !== JSON.stringify(saved)), [draft, saved]);
   const localErrors = useMemo(() => (draft ? validateAppContent(draft) : {}), [draft]);
@@ -108,6 +134,14 @@ export function AppContentPage() {
     });
     return counts;
   }, [errors]);
+
+  const customizedCount = useMemo(() => {
+    if (!draft || !scope) return 0;
+    const branding = (['appName', 'logoUrl', 'primaryColor'] as const).filter((k) => draft.branding[k] !== baseline.branding[k]).length;
+    const modules = APP_MODULES.filter((m) => draft.modules[m.key] !== baseline.modules[m.key]).length;
+    const texts = Object.keys(draft.texts).filter((k) => isChanged(k, draft.texts[k] ?? '', baseline.texts)).length;
+    return branding + modules + texts;
+  }, [draft, scope, baseline]);
 
   const query = search.trim().toLowerCase();
   const visibleGroups = useMemo(() => {
@@ -166,6 +200,7 @@ export function AppContentPage() {
     setServerErrors({});
     const updated = await saveSubmit.run(async () => {
       try {
+        if (scope) return normalizeAppContent((await platformApi.appContent.org.update(scope, draft)).content);
         return await platformApi.appContent.update(draft);
       } catch (error) {
         if (error instanceof PlatformApiError && Object.keys(error.pathErrors).length) {
@@ -178,19 +213,25 @@ export function AppContentPage() {
     if (updated) {
       applyServerContent(updated);
       void reloadAppContent();
-      toast.success('App content saved. Every organization now sees these changes.');
+      toast.success(
+        scope
+          ? `Saved for ${orgName ?? 'this organization'}. Only its users see these changes.`
+          : 'App content saved. Every organization without its own customization now sees these changes.',
+      );
     } else if (saveSubmit.errorRef.current) {
       toast.error('The app content could not be saved. See the highlighted fields.');
     }
   };
 
   const reset = async () => {
-    const defaults = await resetSubmit.run(() => platformApi.appContent.reset());
+    const defaults = await resetSubmit.run(async () =>
+      scope ? normalizeAppContent((await platformApi.appContent.org.reset(scope)).content) : platformApi.appContent.reset(),
+    );
     if (defaults) {
       applyServerContent(defaults);
       void reloadAppContent();
       setConfirmingReset(false);
-      toast.success('App content was reset to the defaults.');
+      toast.success(scope ? `${orgName ?? 'The organization'} now uses the shared content again.` : 'App content was reset to the defaults.');
     }
   };
 
@@ -200,11 +241,50 @@ export function AppContentPage() {
     saveSubmit.reset();
   };
 
+  const orgOptions = [
+    { value: '', label: 'All organizations (shared content)' },
+    ...(orgs.data?.items ?? []).map((org) => ({ value: org.id, label: org.name })),
+  ];
+  if (scope && !orgOptions.some((option) => option.value === scope)) {
+    orgOptions.push({ value: scope, label: orgName ?? 'Selected organization' });
+  }
+
   const header = (
-    <PageHeader
-      title="App content"
-      subtitle="Edit what organizations see after signing in: branding, which modules are on, and every label and message."
-    />
+    <>
+      <PageHeader
+        title="App content"
+        subtitle="Edit what organizations see after signing in: branding, which modules are on, and every label and message."
+      />
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div className="card-body">
+          <div className="form-grid-2">
+            <SelectField
+              label="Apply changes to"
+              value={scope}
+              options={orgOptions}
+              disabled={dirty}
+              hint={
+                dirty
+                  ? 'Save or discard your changes before switching.'
+                  : scope
+                    ? 'Only this organization sees what you change here. Anything you leave as it is keeps following the shared content.'
+                    : 'The shared content every organization sees, unless an organization has its own customization.'
+              }
+              onChange={(e) => changeScope(e.target.value)}
+            />
+          </div>
+          {scope ? (
+            <div className="row" style={{ gap: 8, alignItems: 'center', marginTop: 4 }}>
+              <Building2 size={15} aria-hidden="true" />
+              <span className="small">
+                Editing <strong>{orgName ?? 'this organization'}</strong> only · {customizedCount} customized{' '}
+                {customizedCount === 1 ? 'field' : 'fields'}
+              </span>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </>
   );
 
   if (!draft) {
@@ -332,7 +412,7 @@ export function AppContentPage() {
         {visibleGroups.length === 0 ? <p className="text-muted small">No texts match “{search}”.</p> : null}
 
         {visibleGroups.map((group) => {
-          const changedCount = group.keys.filter((key) => isChanged(key, texts[key] ?? '')).length;
+          const changedCount = group.keys.filter((key) => isChanged(key, texts[key] ?? '', baseline.texts)).length;
           return (
             <EditorSection
               key={group.id}
@@ -342,28 +422,28 @@ export function AppContentPage() {
             >
               {group.keys.map((key) => {
                 const value = texts[key] ?? '';
-                const changed = isChanged(key, value);
+                const changed = isChanged(key, value, baseline.texts);
                 return (
                   <div className="site-editor-string-row" key={key}>
                     <TextField
                       label={textLabel(key)}
-                      hint={changed ? `${key} · changed` : key}
-                      placeholder={DEFAULT_TEXTS[key]}
+                      hint={changed ? `${key} · ${scope ? 'customized' : 'changed'}` : key}
+                      placeholder={baseline.texts[key] ?? DEFAULT_TEXTS[key]}
                       maxLength={LIMITS.text + 50}
                       value={value}
                       error={errors[`texts.${key}`]}
                       onChange={(e) => setText(key, e.target.value)}
                     />
                     <span className="site-editor-row-controls">
-                      {changed ? <Badge tone="info">Changed</Badge> : null}
+                      {changed ? <Badge tone="info">{scope ? 'Customized' : 'Changed'}</Badge> : null}
                       <Button
                         variant="ghost"
                         size="sm"
                         icon={<Undo2 size={14} />}
                         disabled={!changed}
-                        aria-label={`Reset ${key} to default`}
-                        title="Reset to default"
-                        onClick={() => setText(key, DEFAULT_TEXTS[key])}
+                        aria-label={`Reset ${key} to ${scope ? 'shared text' : 'default'}`}
+                        title={scope ? 'Use the shared text' : 'Reset to default'}
+                        onClick={() => setText(key, baseline.texts[key] ?? DEFAULT_TEXTS[key])}
                       />
                     </span>
                   </div>
@@ -389,7 +469,7 @@ export function AppContentPage() {
                 setConfirmingReset(true);
               }}
             >
-              Reset all to defaults
+              {scope ? 'Remove customizations' : 'Reset all to defaults'}
             </Button>
             <Button variant="secondary" icon={<Undo2 size={15} />} disabled={!dirty || saveSubmit.submitting} onClick={discard}>
               Discard changes
@@ -403,17 +483,24 @@ export function AppContentPage() {
 
       <ConfirmDialog
         open={confirmingReset}
-        title="Reset app content to defaults"
+        title={scope ? `Remove customizations for ${orgName ?? 'this organization'}` : 'Reset app content to defaults'}
         message={
           <>
             <FormError message={resetSubmit.error} />
-            <p>
-              Restore the built-in branding, turn every module back on and reset every text? This applies to all organizations immediately
-              and cannot be undone{dirty ? ' — your unsaved changes will also be lost' : ''}.
-            </p>
+            {scope ? (
+              <p>
+                Drop every customization for {orgName ?? 'this organization'} so it shows the shared content again? This cannot be undone
+                {dirty ? ' — your unsaved changes will also be lost' : ''}.
+              </p>
+            ) : (
+              <p>
+                Restore the built-in branding, turn every module back on and reset every shared text? Organizations with their own
+                customizations keep them. This cannot be undone{dirty ? ' — your unsaved changes will also be lost' : ''}.
+              </p>
+            )}
           </>
         }
-        confirmLabel="Reset all to defaults"
+        confirmLabel={scope ? 'Remove customizations' : 'Reset all to defaults'}
         busy={resetSubmit.submitting}
         onConfirm={() => void reset()}
         onCancel={() => {

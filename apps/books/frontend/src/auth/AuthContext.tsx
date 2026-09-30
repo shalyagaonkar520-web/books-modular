@@ -178,3 +178,8 @@ export function useAuth(): AuthContextValue {
   if (!context) throw new Error('useAuth must be used inside an AuthProvider');
   return context;
 }
+
+/** Like useAuth, but returns null outside an AuthProvider instead of throwing. */
+export function useOptionalAuth(): AuthContextValue | null {
+  return useContext(AuthContext);
+}

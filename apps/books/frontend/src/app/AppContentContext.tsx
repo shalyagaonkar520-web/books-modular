@@ -3,7 +3,10 @@
  * component: `t(key, vars)` for texts, `branding`, and `isModuleEnabled(key)`.
  *
  * The bundled defaults render immediately (no flash of empty labels); the
- * published document is fetched once on mount and swapped in when it arrives.
+ * published document is fetched on mount and swapped in when it arrives.
+ * Signed out, that is the shared (all-organizations) copy; signed in, it is the
+ * user's own organization's copy (shared content + that org's customizations),
+ * re-fetched whenever the signed-in organization changes.
  * Without a provider (e.g. isolated component tests) the defaults are served.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -11,12 +14,14 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import {
   DEFAULT_APP_CONTENT,
   brandPalette,
+  fetchMyAppContent,
   fetchPublicAppContent,
   interpolate,
   type AppBranding,
   type AppContent,
   type AppModuleKey,
 } from '@/api/appContent';
+import { useOptionalAuth } from '@/auth/AuthContext';
 
 type TextVars = Record<string, string | number | null | undefined>;
 
@@ -67,11 +72,14 @@ export function AppContentProvider({ children, initialContent }: { children: Rea
   const [content, setContent] = useState<AppContent>(initialContent ?? DEFAULT_APP_CONTENT);
   const latestRequest = useRef(0);
 
+  const auth = useOptionalAuth();
+  const orgId = auth?.user ? (auth.organization?.id ?? null) : null;
+
   const reload = useCallback(async () => {
     const request = ++latestRequest.current;
-    const next = await fetchPublicAppContent();
+    const next = orgId ? await fetchMyAppContent() : await fetchPublicAppContent();
     if (request === latestRequest.current) setContent(next);
-  }, []);
+  }, [orgId]);
 
   useEffect(() => {
     void reload();

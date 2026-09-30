@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, Any, Dict
+from typing import Annotated, Any, Dict, List
 
 from pydantic import Field, field_validator
 
@@ -60,3 +60,21 @@ class AppContent(APIModel):
         if unknown:
             raise ValueError(f"Unknown text key(s): {', '.join(unknown[:10])}")
         return value
+
+
+class AppContentOverrides(APIModel):
+    """Which fields an organization has customized (everything else follows the shared content)."""
+
+    branding: List[str]
+    modules: List[str]
+    texts: List[str]
+
+
+class OrgAppContentOut(APIModel):
+    organization_id: str
+    organization_name: str
+    # What the organization's users see (shared content + overrides).
+    content: AppContent
+    # The all-organizations content the overrides sit on.
+    shared: AppContent
+    overridden: AppContentOverrides

@@ -12,7 +12,7 @@ from backend.models import PlatformAdmin
 from backend.security import hash_password
 from backend.services import platform_settings
 from backend.services.app_content import APP_CONTENT_KEY
-from tests.conftest import auth
+from tests.conftest import auth, register_org
 
 ROOT = Path(__file__).resolve().parent.parent
 BACKEND_DEFAULT = json.loads((ROOT / "backend" / "content" / "app_content_default.json").read_text(encoding="utf-8"))
@@ -116,3 +116,103 @@ def test_reset_and_corrupt_fallback(client, admin_h):
         platform_settings.set_value(db, APP_CONTENT_KEY, "{not json")
         db.commit()
     assert client.get("/api/public/app-content").json() == BACKEND_DEFAULT
+
+
+# --------------------------------------------------------------------------- #
+# Per-organization customization
+# --------------------------------------------------------------------------- #
+SECOND_TEXT = list(BACKEND_DEFAULT["texts"])[1]
+
+
+@pytest.fixture
+def two_orgs(client):
+    a, b = register_org(client, "BrandA"), register_org(client, "BrandB")
+    return {"a": {**a, "h": auth(a["token"])}, "b": {**b, "h": auth(b["token"])}}
+
+
+def _org_url(org_id: str) -> str:
+    return f"/api/platform/organizations/{org_id}/app-content"
+
+
+def test_org_customization_only_reaches_that_org(client, admin_h, two_orgs):
+    a, b = two_orgs["a"], two_orgs["b"]
+    body = copy.deepcopy(BACKEND_DEFAULT)
+    body["branding"]["appName"] = "Brand A Books"
+    body["branding"]["primaryColor"] = "#dc2626"
+    body["modules"][FIRST_MODULE] = False
+    body["texts"][FIRST_TEXT] = "A only"
+    res = client.put(_org_url(a["org"]["id"]), json=body, headers=admin_h)
+    assert res.status_code == 200, res.text
+    out = res.json()
+    assert out["organizationName"] == a["org"]["name"]
+    assert out["overridden"] == {"branding": ["appName", "primaryColor"], "modules": [FIRST_MODULE], "texts": [FIRST_TEXT]}
+    assert out["content"]["texts"][FIRST_TEXT] == "A only" and out["shared"] == BACKEND_DEFAULT
+
+    mine = client.get("/api/app-content", headers=a["h"]).json()
+    assert mine["branding"]["appName"] == "Brand A Books" and mine["modules"][FIRST_MODULE] is False
+    assert mine["texts"][FIRST_TEXT] == "A only"
+    # Another organization, and the public (pre-login) copy, keep the shared content.
+    assert client.get("/api/app-content", headers=b["h"]).json() == BACKEND_DEFAULT
+    assert client.get("/api/public/app-content").json() == BACKEND_DEFAULT
+
+
+def test_org_inherits_later_shared_edits_for_fields_it_did_not_customize(client, admin_h, two_orgs):
+    a = two_orgs["a"]
+    body = copy.deepcopy(BACKEND_DEFAULT)
+    body["texts"][FIRST_TEXT] = "A only"
+    assert client.put(_org_url(a["org"]["id"]), json=body, headers=admin_h).status_code == 200
+    shared = copy.deepcopy(BACKEND_DEFAULT)
+    shared["texts"][FIRST_TEXT] = "Shared first"
+    shared["texts"][SECOND_TEXT] = "Shared second"
+    assert client.put("/api/platform/app-content", json=shared, headers=admin_h).status_code == 200
+    mine = client.get("/api/app-content", headers=a["h"]).json()
+    assert mine["texts"][FIRST_TEXT] == "A only"  # its own override wins
+    assert mine["texts"][SECOND_TEXT] == "Shared second"  # the rest follows the shared copy
+
+
+def test_org_blank_or_unchanged_fields_are_not_stored(client, admin_h, two_orgs):
+    a = two_orgs["a"]
+    body = copy.deepcopy(BACKEND_DEFAULT)
+    body["texts"][FIRST_TEXT] = "  "  # blank means "use the shared text"
+    out = client.put(_org_url(a["org"]["id"]), json=body, headers=admin_h).json()
+    assert out["overridden"] == {"branding": [], "modules": [], "texts": []}
+    with SessionLocal() as db:
+        assert platform_settings.get_value(db, f"{APP_CONTENT_KEY}:org:{a['org']['id']}") is None
+
+
+def test_org_reset_and_permanent_delete_drop_overrides(client, admin_h, two_orgs):
+    a = two_orgs["a"]
+    key = f"{APP_CONTENT_KEY}:org:{a['org']['id']}"
+    body = copy.deepcopy(BACKEND_DEFAULT)
+    body["texts"][FIRST_TEXT] = "A only"
+    client.put(_org_url(a["org"]["id"]), json=body, headers=admin_h)
+    res = client.post(_org_url(a["org"]["id"]) + "/reset", headers=admin_h)
+    assert res.status_code == 200 and res.json()["overridden"]["texts"] == []
+    assert client.get("/api/app-content", headers=a["h"]).json() == BACKEND_DEFAULT
+
+    client.put(_org_url(a["org"]["id"]), json=body, headers=admin_h)
+    assert client.delete(f"/api/platform/organizations/{a['org']['id']}", headers=admin_h).status_code == 200
+    with SessionLocal() as db:
+        assert platform_settings.get_value(db, key) is None
+
+
+def test_org_app_content_access_rules(client, admin_h, two_orgs):
+    a = two_orgs["a"]
+    body = copy.deepcopy(BACKEND_DEFAULT)
+    assert client.get("/api/app-content").status_code == 401
+    assert client.put(_org_url(a["org"]["id"]), json=body, headers=a["h"]).status_code == 401  # tenant token
+    assert client.get(_org_url("0" * 32), headers=admin_h).status_code == 404
+    body["texts"]["no.such.key"] = "x"
+    assert client.put(_org_url(a["org"]["id"]), json=body, headers=admin_h).status_code == 422
+
+
+def test_corrupt_org_overrides_fall_back_to_shared(client, admin_h, two_orgs):
+    a = two_orgs["a"]
+    with SessionLocal() as db:
+        platform_settings.set_value(db, f"{APP_CONTENT_KEY}:org:{a['org']['id']}", "{not json")
+        db.commit()
+    assert client.get("/api/app-content", headers=a["h"]).json() == BACKEND_DEFAULT
+    with SessionLocal() as db:
+        platform_settings.set_value(db, f"{APP_CONTENT_KEY}:org:{a['org']['id']}", json.dumps({"branding": {"primaryColor": "red"}}))
+        db.commit()
+    assert client.get("/api/app-content", headers=a["h"]).json() == BACKEND_DEFAULT

@@ -74,6 +74,7 @@ from backend.security import (
     verify_password,
 )
 from backend.services import audit, platform_settings
+from backend.services.app_content import delete_org_app_content
 from backend.services.chart_of_accounts import bootstrap_accounts
 from backend.services.email_service import send_custom_message_email, smtp_configured
 from backend.services.ratelimit import RateLimiter, client_ip
@@ -954,6 +955,8 @@ def delete_organization(org_id: str, db: Session = Depends(get_db), admin: Platf
     # intentionally left (they carry no FK) as an immutable trail.
     db.expunge(org)
     db.execute(sa_delete(Organization).where(Organization.id == org_id))
+    # Its app-content customizations live in platform_settings (no FK), so drop them explicitly.
+    delete_org_app_content(db, org_id)
     db.commit()
     return {"message": f"Organization '{name}' and all its data were permanently deleted"}
 

@@ -45,6 +45,15 @@ export interface ChartPoint {
 /** Self-registered organizations may need a platform admin's approval first. */
 export type OrgApprovalStatus = 'approved' | 'pending' | 'rejected';
 
+/** An organization's app content: what its users see, the shared copy beneath it, and what it customizes. */
+export interface OrgAppContent {
+  organizationId: string;
+  organizationName: string;
+  content: AppContent;
+  shared: AppContent;
+  overridden: { branding: string[]; modules: string[]; texts: string[] };
+}
+
 export interface OrgSummary {
   id: string;
   name: string;
@@ -413,6 +422,14 @@ export const platformApi = {
     get: (signal?: AbortSignal) => platformClient.get<AppContent>('/platform/app-content', undefined, signal),
     update: (body: AppContent) => platformClient.put<AppContent>('/platform/app-content', body),
     reset: () => platformClient.post<AppContent>('/platform/app-content/reset'),
+    /** One organization's customized copy: only fields that differ from the shared content are stored. */
+    org: {
+      get: (orgId: string, signal?: AbortSignal) =>
+        platformClient.get<OrgAppContent>(`/platform/organizations/${encodeURIComponent(orgId)}/app-content`, undefined, signal),
+      update: (orgId: string, body: AppContent) =>
+        platformClient.put<OrgAppContent>(`/platform/organizations/${encodeURIComponent(orgId)}/app-content`, body),
+      reset: (orgId: string) => platformClient.post<OrgAppContent>(`/platform/organizations/${encodeURIComponent(orgId)}/app-content/reset`),
+    },
   },
 
   auditLogs: (

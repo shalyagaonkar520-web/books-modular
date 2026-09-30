@@ -44,6 +44,12 @@ def set_value(db: Session, key: str, value: str) -> PlatformSetting:
     return row
 
 
+def delete_value(db: Session, key: str) -> None:
+    row = db.execute(select(PlatformSetting).where(PlatformSetting.key == key)).scalar_one_or_none()
+    if row is not None:
+        db.delete(row)
+
+
 def set_bool(db: Session, key: str, value: bool) -> PlatformSetting:
     return set_value(db, key, "true" if value else "false")
 

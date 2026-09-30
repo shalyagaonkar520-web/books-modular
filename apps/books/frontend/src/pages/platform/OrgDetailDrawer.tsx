@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Archive, ArchiveRestore, Ban, CheckCircle2, Clock, KeyRound, Pencil, Plus, Trash2, UserCheck, UserX } from 'lucide-react';
+import { Archive, ArchiveRestore, Ban, CheckCircle2, Clock, KeyRound, Paintbrush, Pencil, Plus, Trash2, UserCheck, UserX } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 import {
   platformApi,
@@ -83,6 +84,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
 ];
 
 export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerProps) {
+  const navigate = useNavigate();
   const toast = useToast();
   const { data, loading, error, reload, setData } = useAsync((signal) => platformApi.organizations.get(orgId, signal), [orgId]);
   const suspendSubmit = useSubmit();
@@ -166,7 +168,18 @@ export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerPr
                 </span>
               ) : null}
             </div>
-            <OpenInAppMenu org={data} detail={data} size="sm" />
+            <div className="row" style={{ gap: 8 }}>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<Paintbrush size={14} />}
+                title="Edit branding, modules and texts for this organization only"
+                onClick={() => navigate(`/platform/app-content?org=${encodeURIComponent(data.id)}`)}
+              >
+                Customize app
+              </Button>
+              <OpenInAppMenu org={data} detail={data} size="sm" />
+            </div>
           </div>
 
           <ApprovalBanner data={data} approval={approval} />

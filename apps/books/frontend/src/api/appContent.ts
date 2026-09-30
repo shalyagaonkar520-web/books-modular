@@ -9,6 +9,7 @@
 import defaultContentJson from '@/content/appContentDefault.json';
 
 import { isSafeLogoUrl } from './siteContent';
+import { api } from './client';
 
 export type AppModuleKey =
   | 'items'
@@ -176,6 +177,18 @@ export async function fetchPublicAppContent(signal?: AbortSignal): Promise<AppCo
     return normalizeAppContent(await response.json());
   } catch {
     return DEFAULT_APP_CONTENT;
+  }
+}
+
+/**
+ * The signed-in tenant user's content: the shared copy with their organization's
+ * customizations on top. Falls back to the public copy if the call fails.
+ */
+export async function fetchMyAppContent(signal?: AbortSignal): Promise<AppContent> {
+  try {
+    return normalizeAppContent(await api.get<unknown>('/app-content', undefined, signal));
+  } catch {
+    return fetchPublicAppContent(signal);
   }
 }
 
