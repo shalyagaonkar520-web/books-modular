@@ -1,16 +1,36 @@
 import { useState } from 'react';
-import { Archive, ArchiveRestore, Ban, CheckCircle2, Clock, KeyRound, Paintbrush, Pencil, Plus, Trash2, UserCheck, UserX } from 'lucide-react';
+import {
+  Archive,
+  ArchiveRestore,
+  BadgeCheck,
+  Ban,
+  CalendarPlus,
+  CheckCircle2,
+  Clock,
+  Hourglass,
+  KeyRound,
+  Paintbrush,
+  Pencil,
+  Plus,
+  Trash2,
+  UserCheck,
+  UserX,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import {
   platformApi,
   type OrgDetail,
+  type OrgPanelAdminItem,
   type OrgSummary,
   type PlatformAudit,
   type PlatformInvoice,
   type PlatformUser,
   type UpdateOrganizationBody,
 } from '@/api/platform';
+import { type ModulePricing } from '@/api/modulePricing';
+import { daysUntil, trialRemaining } from '@/api/subscription';
+import { ModuleBadges } from '@/components/modules/ModulePicker';
 import { ActionMenu } from '@/components/ui/ActionMenu';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -22,22 +42,32 @@ import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { Tabs } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
+import { useModulePricing } from '@/hooks/useModulePricing';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatDate, formatDateTime, formatPercent, titleCase } from '@/utils/format';
 import { statusLabel, statusTone } from '@/utils/status';
 
 import { ImpersonateButton } from './ImpersonateButton';
 import {
+  CreatePanelAdminModal,
+  PanelCredentialsModal,
+  PanelLoginUrl,
+  SetPanelPasswordModal,
+  type PanelCredentials,
+} from './PanelAdminForms';
+import {
   OpenInAppMenu,
   OrgApprovalButtons,
   OrgStatusBadge,
   approvalBlocker,
+  initialModules,
   isOrgArchived,
   isOrgPending,
   isOrgRejected,
   useOrgApproval,
   useOrgLifecycle,
 } from './orgActions';
+import { SubscriptionStatusBadge, planPriceLabel, usePlanDecisions } from './subscriptionActions';
 import {
   CreatePlatformUserModal,
   EditPlatformUserModal,
@@ -73,12 +103,13 @@ interface OrgDetailDrawerProps {
   onChanged: () => void;
 }
 
-type TabId = 'overview' | 'settings' | 'users' | 'invoices' | 'activity';
+type TabId = 'overview' | 'settings' | 'users' | 'panel' | 'invoices' | 'activity';
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'settings', label: 'Settings' },
   { id: 'users', label: 'Users' },
+  { id: 'panel', label: 'Admin panel logins' },
   { id: 'invoices', label: 'Invoices' },
   { id: 'activity', label: 'Activity' },
 ];
@@ -90,6 +121,7 @@ export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerPr
   const suspendSubmit = useSubmit();
   const [confirmingSuspend, setConfirmingSuspend] = useState(false);
   const [tab, setTab] = useState<TabId>('overview');
+  const catalog = useModulePricing();
 
   const lifecycle = useOrgLifecycle({
     onArchived: (updated) => {
@@ -113,6 +145,14 @@ export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerPr
     },
     onRejected: (updated) => {
       setData(updated);
+      onChanged();
+    },
+  });
+
+  const decisions = usePlanDecisions({
+    onChanged: () => {
+      // Decision endpoints may answer with less than a full OrgDetail: re-read it.
+      void platformApi.organizations.get(orgId).then(setData, () => undefined);
       onChanged();
     },
   });
@@ -188,6 +228,12 @@ export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerPr
 
           {tab === 'overview' ? (
             <>
+              <SubscriptionSection
+                data={data}
+                catalog={catalog}
+                manageable={!isOrgPending(data) && !isOrgRejected(data) && !archived}
+                decisions={decisions}
+              />
               <OverviewTab data={data} viewAsBlocker={approvalBlocker(data)} />
               <DangerZone
                 data={data}
@@ -220,6 +266,7 @@ export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerPr
               }}
             />
           ) : null}
+          {tab === 'panel' ? <PanelAdminsTab orgId={orgId} orgName={data.name} adminEmail={data.adminEmail} admins={data.admins} /> : null}
           {tab === 'invoices' ? <OrgInvoicesTab orgId={orgId} currency={data.currency} /> : null}
           {tab === 'activity' ? <OrgActivityTab orgId={orgId} /> : null}
 
@@ -240,6 +287,7 @@ export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerPr
             onConfirm={() => void toggleSuspend(data)}
             onCancel={() => setConfirmingSuspend(false)}
           />
+          {decisions.dialogs}
           {lifecycle.dialogs}
           {approval.dialogs}
         </div>
@@ -275,6 +323,125 @@ function ApprovalBanner({ data, approval }: { data: OrgDetail; approval: ReturnT
       </div>
       <OrgApprovalButtons org={data} approval={approval} />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Subscription (trial, plan, plan request)
+// ---------------------------------------------------------------------------
+
+interface SubscriptionSectionProps {
+  data: OrgDetail;
+  catalog: ModulePricing;
+  /** False while the organization awaits approval, was rejected, or is archived. */
+  manageable: boolean;
+  decisions: ReturnType<typeof usePlanDecisions>;
+}
+
+function SubscriptionSection({ data, catalog, manageable, decisions }: SubscriptionSectionProps) {
+  const status = data.subscriptionStatus ?? null;
+  const plan = data.plan ?? null;
+  const request = data.pendingRequest ?? null;
+  const target = { id: data.id, name: data.name, trialEndsAt: data.trialEndsAt };
+  // Legacy payloads: the modules the organization has, else every module.
+  const current = plan?.modules ?? data.requestedModules ?? null;
+  const daysLeft = daysUntil(data.trialEndsAt);
+
+  let summary: string;
+  if (isOrgPending(data) || isOrgRejected(data)) {
+    summary = 'The free trial with every module starts when you approve this organization.';
+  } else if (status === 'trial') {
+    summary = `Free trial with every module · ${trialRemaining(daysLeft)}${data.trialEndsAt ? ` · ends ${formatDate(data.trialEndsAt)}` : ''}`;
+  } else if (status === 'expired') {
+    summary = `No active plan, so the app is locked for its users${data.trialEndsAt ? ` · trial ended ${formatDate(data.trialEndsAt)}` : ''}`;
+  } else if (status === 'active' && plan) {
+    summary = `${plan.modules.length} module${plan.modules.length === 1 ? '' : 's'} · ${planPriceLabel(plan, catalog)}`;
+  } else if (status === 'active') {
+    summary = 'Active plan';
+  } else {
+    summary = current ? `${current.length} module${current.length === 1 ? '' : 's'}` : 'All modules';
+  }
+
+  return (
+    <section className="card" style={{ padding: '12px 14px' }} aria-labelledby="org-subscription-title">
+      <div className="stack" style={{ gap: 10 }}>
+        <div className="row-between">
+          <div className="stack" style={{ gap: 2, minWidth: 0 }}>
+            <span className="row" style={{ gap: 8 }}>
+              <h3 className="card-subtitle" id="org-subscription-title" style={{ margin: 0 }}>
+                Subscription
+              </h3>
+              <SubscriptionStatusBadge status={status} />
+            </span>
+            <span className="text-muted small" data-testid="org-subscription-summary">
+              {summary}
+            </span>
+          </div>
+          {manageable ? (
+            <div className="row" style={{ gap: 8 }}>
+              {status !== 'active' ? (
+                <Button variant="secondary" size="sm" icon={<CalendarPlus size={14} />} onClick={() => decisions.requestExtendTrial(target)}>
+                  Extend trial
+                </Button>
+              ) : null}
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<Pencil size={14} />}
+                onClick={() =>
+                  decisions.requestChangePlan(target, {
+                    modules: initialModules(current, catalog),
+                    billingCycle: plan?.billingCycle ?? 'monthly',
+                  })
+                }
+              >
+                Change plan
+              </Button>
+            </div>
+          ) : null}
+        </div>
+
+        {status === 'active' && plan?.modules.length ? <ModuleBadges catalog={catalog} value={plan.modules} /> : null}
+        {!status && current?.length ? <ModuleBadges catalog={catalog} value={current} /> : null}
+        {data.subscriptionNote ? (
+          <p className="text-muted small" style={{ margin: 0 }}>
+            {data.subscriptionNote}
+          </p>
+        ) : null}
+
+        {request ? (
+          <div className="subscription-note is-pending" role="group" aria-label="Plan request">
+            <Hourglass size={16} aria-hidden="true" />
+            <div className="stack" style={{ gap: 8, minWidth: 0, flex: 1 }}>
+              <div className="row-between">
+                <span>
+                  <strong>Plan request</strong>
+                  <span className="text-muted small">
+                    {request.requestedAt ? ` · ${formatDateTime(request.requestedAt)}` : ''} · {planPriceLabel(request, catalog)}
+                  </span>
+                </span>
+                {manageable ? (
+                  <span className="row" style={{ gap: 6 }}>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      icon={<BadgeCheck size={14} />}
+                      onClick={() => decisions.requestAccept(target, { modules: request.modules, billingCycle: request.billingCycle })}
+                    >
+                      Accept
+                    </Button>
+                    <Button variant="secondary" size="sm" icon={<Ban size={14} />} onClick={() => decisions.requestReject(target)}>
+                      Reject
+                    </Button>
+                  </span>
+                ) : null}
+              </div>
+              <ModuleBadges catalog={catalog} value={request.modules} />
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -834,6 +1001,195 @@ function OrgUsersTab({ orgId, orgName, onChanged }: { orgId: string; orgName: st
           )
         }
         confirmLabel="Delete user"
+        busy={deleteSubmit.submitting}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setDeleting(null)}
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Admin panel logins tab
+// ---------------------------------------------------------------------------
+
+interface PanelAdminsTabProps {
+  orgId: string;
+  orgName: string;
+  adminEmail?: string | null;
+  admins: PlatformUser[];
+}
+
+function PanelAdminsTab({ orgId, orgName, adminEmail, admins }: PanelAdminsTabProps) {
+  const toast = useToast();
+  const list = useAsync((signal) => platformApi.organizations.panelAdmins.list(orgId, signal), [orgId]);
+  const [adding, setAdding] = useState(false);
+  const [settingPassword, setSettingPassword] = useState<OrgPanelAdminItem | null>(null);
+  const [deleting, setDeleting] = useState<OrgPanelAdminItem | null>(null);
+  const [credentials, setCredentials] = useState<PanelCredentials | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const toggleSubmit = useSubmit();
+  const deleteSubmit = useSubmit();
+
+  const rows = list.data ?? [];
+  // Prefill the first login from the organization's registrant; later ones start blank.
+  const registrant = admins.find((user) => user.email.toLowerCase() === adminEmail?.toLowerCase()) ?? admins[0];
+  const initial = rows.length === 0 ? { name: registrant?.name ?? '', email: adminEmail ?? registrant?.email ?? '' } : undefined;
+
+  const toggleActive = async (admin: OrgPanelAdminItem) => {
+    setTogglingId(admin.id);
+    const updated = await toggleSubmit.run(() => platformApi.organizations.panelAdmins.update(admin.id, { isActive: !admin.isActive }));
+    setTogglingId(null);
+    if (updated) {
+      toast.success(updated.isActive ? `${updated.email} can sign in to the admin panel again.` : `${updated.email} was disabled.`);
+      list.reload();
+    } else if (toggleSubmit.errorRef.current) {
+      toast.error(toggleSubmit.errorRef.current);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    const result = await deleteSubmit.run(() => platformApi.organizations.panelAdmins.remove(deleting.id));
+    if (result !== null) {
+      toast.success(result?.message || `${deleting.email} was deleted.`);
+      setDeleting(null);
+      list.reload();
+    }
+  };
+
+  const columns: Array<Column<OrgPanelAdminItem>> = [
+    {
+      key: 'name',
+      header: 'Login',
+      render: (row) => (
+        <div className="cell-stack">
+          <span className="strong">{row.name}</span>
+          <small style={{ wordBreak: 'break-all' }}>{row.email}</small>
+        </div>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (row) => (row.isActive ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Disabled</Badge>),
+    },
+    {
+      key: 'lastLogin',
+      header: 'Last login',
+      render: (row) => (row.lastLoginAt ? formatDateTime(row.lastLoginAt) : <span className="text-muted">Never</span>),
+    },
+    {
+      key: 'created',
+      header: 'Created',
+      render: (row) => (
+        <div className="cell-stack">
+          <span>{formatDate(row.createdAt)}</span>
+          {row.createdBy ? <small>by {row.createdBy}</small> : null}
+        </div>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      render: (row) => (
+        <ActionMenu
+          label={`More actions for ${row.email}`}
+          iconOnly
+          disabled={togglingId === row.id}
+          items={[
+            { key: 'password', label: 'Set new password', icon: <KeyRound size={14} />, onSelect: () => setSettingPassword(row) },
+            row.isActive
+              ? { key: 'disable', label: 'Disable', icon: <UserX size={14} />, onSelect: () => void toggleActive(row) }
+              : { key: 'enable', label: 'Enable', icon: <UserCheck size={14} />, onSelect: () => void toggleActive(row) },
+            {
+              key: 'delete',
+              label: 'Delete login',
+              icon: <Trash2 size={14} />,
+              danger: true,
+              onSelect: () => {
+                deleteSubmit.reset();
+                setDeleting(row);
+              },
+            },
+          ]}
+        />
+      ),
+    },
+  ];
+
+  let body;
+  if (list.loading && !list.data) body = <SkeletonRows rows={3} columns={5} />;
+  else if (list.error && !list.data) body = <ErrorBlock message={list.error} onRetry={list.reload} />;
+  else if (!rows.length)
+    body = (
+      <EmptyState
+        title="No admin panel logins"
+        description={`Add a login so ${orgName} can manage its users, settings and app content in its admin panel.`}
+      />
+    );
+  else body = <DataTable columns={columns} rows={rows} rowKey={(row) => row.id} caption={`Admin panel logins of ${orgName}`} />;
+
+  return (
+    <div className="stack" aria-busy={list.loading}>
+      <div className="row-between">
+        <PanelLoginUrl />
+        <Button variant="secondary" size="sm" icon={<Plus size={14} />} onClick={() => setAdding(true)}>
+          Add login
+        </Button>
+      </div>
+      <p className="text-muted small" style={{ margin: 0 }}>
+        These logins open only the organization admin panel. They are separate from the organization's app users.
+      </p>
+
+      {body}
+
+      {adding ? (
+        <CreatePanelAdminModal
+          orgId={orgId}
+          orgName={orgName}
+          initial={initial}
+          onClose={() => setAdding(false)}
+          onCreated={(_created, created) => {
+            setAdding(false);
+            setCredentials(created);
+            list.reload();
+          }}
+        />
+      ) : null}
+
+      {settingPassword ? (
+        <SetPanelPasswordModal
+          admin={settingPassword}
+          orgName={orgName}
+          onClose={() => setSettingPassword(null)}
+          onSaved={(saved) => {
+            setSettingPassword(null);
+            setCredentials(saved);
+          }}
+        />
+      ) : null}
+
+      {credentials ? <PanelCredentialsModal credentials={credentials} onClose={() => setCredentials(null)} /> : null}
+
+      <ConfirmDialog
+        open={!!deleting}
+        title="Delete admin panel login"
+        message={
+          deleting ? (
+            <>
+              <FormError message={deleteSubmit.error} />
+              <p>
+                Delete the admin panel login <strong>{deleting.email}</strong> ({deleting.name})? They can no longer sign in to
+                {` ${orgName}`}'s admin panel. This cannot be undone.
+              </p>
+            </>
+          ) : (
+            ''
+          )
+        }
+        confirmLabel="Delete login"
         busy={deleteSubmit.submitting}
         onConfirm={() => void confirmDelete()}
         onCancel={() => setDeleting(null)}

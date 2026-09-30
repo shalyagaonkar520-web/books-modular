@@ -38,6 +38,7 @@ import { ReportsPage } from '@/pages/reports/ReportsPage';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
 import { TimeTrackingPage } from '@/pages/timetracking/TimeTrackingPage';
 import { OrgAdminApp } from '@/pages/orgadmin/OrgAdminApp';
+import { SubscriptionPage } from '@/pages/subscription/SubscriptionPage';
 
 export function App() {
   return (
@@ -56,6 +57,11 @@ export function App() {
             </PlatformAuthProvider>
           }
         />
+
+        {/* The organization admin panel: separate logins created by the platform
+            administrator, with its own session provider inside OrgAdminApp.
+            Needs no tenant session. */}
+        <Route path="/org-admin/*" element={<OrgAdminApp />} />
 
         {/* Aliases for admin panel */}
         <Route path="/admin" element={<Navigate to="/platform" replace />} />
@@ -86,11 +92,9 @@ export function App() {
           </Route>
 
           <Route element={<RequireMainApp />}>
-            {/* The organization's own admin panel: its own layout, outside AppLayout and
-                ModuleGuard, on the normal tenant session. Admin-only (guarded inside). */}
-            <Route path="/org-admin/*" element={<OrgAdminApp />} />
-
             <Route element={<AppLayout />}>
+            {/* Trial and plan: never module-guarded (admins manage, everyone else reads). */}
+            <Route path="/subscription" element={<SubscriptionPage />} />
             <Route element={<ModuleGuard />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/items" element={<ItemsPage />} />

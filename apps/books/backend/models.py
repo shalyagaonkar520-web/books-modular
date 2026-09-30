@@ -89,6 +89,35 @@ class Organization(TimestampMixin, Base):
     approval_status: Mapped[str] = mapped_column(String(20), default="approved", server_default="approved", nullable=False)
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
+    # Subscription (see services/subscription). A new organization gets a free
+    # trial of every module, starting when it becomes usable (at approval, or at
+    # sign-up without the approval gate); while it waits for approval
+    # trial_ends_at is NULL. Its admin then requests a plan (modules + billing
+    # cycle), which a super-admin accepts or rejects.
+    #   * subscription_status: "trial" | "active". "expired" is derived at read
+    #     time, never stored: not active and the trial is over. Such an org is
+    #     locked out of the app (HTTP 402) until a plan is accepted.
+    #   * pending_request: JSON {modules, billingCycle, monthlyPrice, planPrice,
+    #     requestedAt} of a request waiting for a super-admin (NULL = none),
+    #     both for a first plan and for a change to an active one;
+    #     subscription_requested_at mirrors its time (for sorting).
+    #   * requested_modules (JSON list of module keys), billing_cycle
+    #     ("monthly" | "yearly"), monthly_price and plan_price (price per
+    #     cycle): the ACTIVE plan, NULL while on trial.
+    #   * subscription_decided_at / subscription_note: when the last request
+    #     was accepted or rejected, and the last rejection reason.
+    # Organizations from before subscriptions are "active" with no plan: every
+    # module, no price.
+    trial_ends_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    subscription_status: Mapped[str] = mapped_column(String(20), default="active", server_default="active", nullable=False)
+    pending_request: Mapped[Optional[str]] = mapped_column(Text)
+    subscription_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    subscription_decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    subscription_note: Mapped[Optional[str]] = mapped_column(Text)
+    requested_modules: Mapped[Optional[str]] = mapped_column(Text)
+    billing_cycle: Mapped[Optional[str]] = mapped_column(String(10))
+    monthly_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
+    plan_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
 
     @property
     def is_archived(self) -> bool:
@@ -157,6 +186,48 @@ class PlatformRefreshToken(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     admin_id: Mapped[str] = mapped_column(String(32), ForeignKey("platform_admins.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(255))
+    ip_address: Mapped[Optional[str]] = mapped_column(String(64))
+
+
+class OrgPanelAdmin(TimestampMixin, OrgScopedMixin, Base):
+    """A login for one organization's admin panel (``/api/org-admin``).
+
+    Created only by a platform admin (typically while approving the org's
+    sign-up). Deliberately NOT a tenant ``User``: it has its own auth and token
+    type, can only use the org admin panel, and only for its own organization.
+    Its email is a separate namespace, so the same address may also belong to
+    a tenant user or a platform admin.
+    """
+
+    __tablename__ = "org_panel_admins"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # Email of the platform admin who created this login.
+    created_by: Mapped[Optional[str]] = mapped_column(String(255))
+
+    organization: Mapped[Organization] = relationship()
+
+    @property
+    def audit_name(self) -> str:
+        """How this admin's changes are attributed in the org's audit log."""
+        return f"{self.name} (org admin panel)"
+
+
+class OrgPanelRefreshToken(Base):
+    __tablename__ = "org_panel_refresh_tokens"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    admin_id: Mapped[str] = mapped_column(String(32), ForeignKey("org_panel_admins.id", ondelete="CASCADE"), index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))

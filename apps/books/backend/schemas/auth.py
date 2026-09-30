@@ -8,6 +8,8 @@ from pydantic import EmailStr, Field, field_validator
 
 from backend.schemas import validators
 from backend.schemas.common import APIModel
+from backend.schemas.subscription import SubscriptionOut
+from backend.services import module_pricing
 
 # bcrypt only considers the first 72 bytes of a password, so a longer one would
 # silently authenticate from its prefix. Reject those instead of truncating.
@@ -87,6 +89,9 @@ class RegisterRequest(APIModel):
     password: str
     organization_name: str = Field(min_length=2, max_length=200)
     gstin: Optional[str] = Field(default=None, max_length=20)
+    # No module choice here: a new organization starts on a free trial of every
+    # module and its admin chooses a plan later (/api/subscription). Unknown
+    # fields, such as an old client's "modules", are ignored.
 
     @field_validator("password")
     @classmethod
@@ -146,6 +151,18 @@ class OrganizationOut(APIModel):
     default_payment_terms_days: int
     invoice_terms: Optional[str] = None
     invoice_notes: Optional[str] = None
+    # The active plan's app modules (null = every module: on trial, or an
+    # organization from before plans) and its monthly price.
+    requested_modules: Optional[List[str]] = None
+    monthly_price: Optional[float] = None
+    # Trial / plan state (the GET /api/subscription shape). Filled in by the
+    # auth responses (login, register, /me); null elsewhere.
+    subscription: Optional[SubscriptionOut] = None
+
+    @field_validator("requested_modules", mode="before")
+    @classmethod
+    def _requested_modules(cls, value):
+        return module_pricing.parse_stored(value)
 
 
 class OrganizationUpdate(APIModel):

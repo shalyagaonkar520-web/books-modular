@@ -31,6 +31,8 @@ from backend.models import (
     CustomerPayment,
     Invoice,
     Organization,
+    OrgPanelAdmin,
+    OrgPanelRefreshToken,
     PlatformAdmin,
     PlatformRefreshToken,
     RefreshToken,
@@ -38,6 +40,12 @@ from backend.models import (
     VendorPayment,
 )
 from backend.schemas.common import Page
+from backend.schemas.org_admin import (
+    ApproveOrganizationRequest,
+    CreateOrgPanelAdminRequest,
+    OrgPanelAdminOut,
+    UpdateOrgPanelAdminRequest,
+)
 from backend.schemas.platform import (
     ChangePlatformPasswordRequest,
     CreateOrganizationRequest,
@@ -65,6 +73,12 @@ from backend.schemas.platform import (
     UpdatePlatformSettingsRequest,
     UpdatePlatformUserRequest,
 )
+from backend.schemas.subscription import (
+    ApproveSubscriptionRequest,
+    ExtendTrialRequest,
+    RejectSubscriptionRequest,
+    SubscriptionRequestRow,
+)
 from backend.security import (
     create_access_token,
     create_platform_access_token,
@@ -73,7 +87,8 @@ from backend.security import (
     hash_token,
     verify_password,
 )
-from backend.services import audit, platform_settings
+from backend.services import audit, module_pricing, platform_settings
+from backend.services import subscription as subs
 from backend.services.app_content import delete_org_app_content
 from backend.services.chart_of_accounts import bootstrap_accounts
 from backend.services.email_service import send_custom_message_email, smtp_configured
@@ -129,6 +144,7 @@ def _csv_response(header: List[str], rows: List[List], filename: str) -> Respons
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
+
 settings = get_settings()
 logger = logging.getLogger("roomanbooks.platform")
 
@@ -174,8 +190,66 @@ def _issue_platform_tokens(db: Session, admin: PlatformAdmin, response: Response
     return access
 
 
+def _panel_admins(db: Session, org_id: str) -> List[OrgPanelAdminOut]:
+    rows = (
+        db.execute(select(OrgPanelAdmin).where(OrgPanelAdmin.organization_id == org_id).order_by(OrgPanelAdmin.created_at)).scalars().all()
+    )
+    return [OrgPanelAdminOut.model_validate(a) for a in rows]
+
+
+def _add_panel_admin(db: Session, org: Organization, payload: CreateOrgPanelAdminRequest, admin: PlatformAdmin) -> OrgPanelAdmin:
+    """Create an org admin-panel login (flushed, not committed), audited in the org's log."""
+    email = payload.email.lower().strip()
+    if db.execute(select(OrgPanelAdmin.id).where(OrgPanelAdmin.email == email)).first():
+        raise HTTPException(status.HTTP_409_CONFLICT, "An organization admin-panel login with this email already exists")
+    panel_admin = OrgPanelAdmin(
+        organization_id=org.id,
+        name=payload.name,
+        email=email,
+        password_hash=hash_password(payload.password),
+        is_active=True,
+        created_by=admin.email,
+    )
+    db.add(panel_admin)
+    db.flush()
+    audit.record(
+        db,
+        None,
+        "create",
+        "org_panel_admin",
+        panel_admin.id,
+        f"Admin-panel login {email} created by platform admin {admin.email}",
+        organization_id=org.id,
+    )
+    return panel_admin
+
+
+def _revoke_panel_sessions(db: Session, panel_admin_id: str) -> None:
+    now = datetime.now(UTC)
+    stmt = select(OrgPanelRefreshToken).where(OrgPanelRefreshToken.admin_id == panel_admin_id, OrgPanelRefreshToken.revoked_at.is_(None))
+    for tok in db.execute(stmt).scalars().all():
+        tok.revoked_at = now
+
+
 def _float(value) -> float:
     return float(value or 0)
+
+
+def _optional_float(value) -> Optional[float]:
+    return None if value is None else float(value)
+
+
+def _subscription_fields(org: Organization) -> dict:
+    """OrgSummary / OrgDetail subscription fields."""
+    return {
+        "requested_modules": module_pricing.parse_stored(org.requested_modules),
+        "monthly_price": _optional_float(org.monthly_price),
+        "subscription_status": subs.effective_status(org),
+        "trial_ends_at": org.trial_ends_at,
+        "plan": subs.active_plan(org),
+        "pending_request": subs.pending_request(org),
+        "subscription_note": org.subscription_note,
+    }
 
 
 def _org_name_map(db: Session, org_ids: List[str]) -> dict:
@@ -227,9 +301,7 @@ def _admin_email_map(db: Session, org_ids: List[str]) -> dict:
     if not org_ids:
         return {}
     rows = db.execute(
-        select(User.organization_id, User.email)
-        .where(User.organization_id.in_(org_ids), User.role == "admin")
-        .order_by(User.created_at)
+        select(User.organization_id, User.email).where(User.organization_id.in_(org_ids), User.role == "admin").order_by(User.created_at)
     ).all()
     out: dict = {}
     for org_id, email in rows:
@@ -248,30 +320,46 @@ def _last_login_map(db: Session, org_ids: List[str]) -> dict:
 
 def _org_summaries(db: Session, orgs: List[Organization]) -> List[OrgSummary]:
     ids = [o.id for o in orgs]
-    users_by_org = dict(
-        db.execute(select(User.organization_id, func.count()).where(User.organization_id.in_(ids)).group_by(User.organization_id)).all()
-    ) if ids else {}
-    inv_by_org = dict(
-        db.execute(
-            select(Invoice.organization_id, func.count())
-            .where(Invoice.organization_id.in_(ids), Invoice.status.in_(_LIVE_INVOICE_STATUSES))
-            .group_by(Invoice.organization_id)
-        ).all()
-    ) if ids else {}
-    invoiced_by_org = dict(
-        db.execute(
-            select(Invoice.organization_id, func.coalesce(func.sum(Invoice.total), 0))
-            .where(Invoice.organization_id.in_(ids), Invoice.status.in_(_LIVE_INVOICE_STATUSES))
-            .group_by(Invoice.organization_id)
-        ).all()
-    ) if ids else {}
-    collected_by_org = dict(
-        db.execute(
-            select(CustomerPayment.organization_id, func.coalesce(func.sum(CustomerPayment.amount), 0))
-            .where(CustomerPayment.organization_id.in_(ids))
-            .group_by(CustomerPayment.organization_id)
-        ).all()
-    ) if ids else {}
+    users_by_org = (
+        dict(
+            db.execute(select(User.organization_id, func.count()).where(User.organization_id.in_(ids)).group_by(User.organization_id)).all()
+        )
+        if ids
+        else {}
+    )
+    inv_by_org = (
+        dict(
+            db.execute(
+                select(Invoice.organization_id, func.count())
+                .where(Invoice.organization_id.in_(ids), Invoice.status.in_(_LIVE_INVOICE_STATUSES))
+                .group_by(Invoice.organization_id)
+            ).all()
+        )
+        if ids
+        else {}
+    )
+    invoiced_by_org = (
+        dict(
+            db.execute(
+                select(Invoice.organization_id, func.coalesce(func.sum(Invoice.total), 0))
+                .where(Invoice.organization_id.in_(ids), Invoice.status.in_(_LIVE_INVOICE_STATUSES))
+                .group_by(Invoice.organization_id)
+            ).all()
+        )
+        if ids
+        else {}
+    )
+    collected_by_org = (
+        dict(
+            db.execute(
+                select(CustomerPayment.organization_id, func.coalesce(func.sum(CustomerPayment.amount), 0))
+                .where(CustomerPayment.organization_id.in_(ids))
+                .group_by(CustomerPayment.organization_id)
+            ).all()
+        )
+        if ids
+        else {}
+    )
     last_login = _last_login_map(db, ids)
     admin_emails = _admin_email_map(db, ids)
     return [
@@ -284,6 +372,7 @@ def _org_summaries(db: Session, orgs: List[Organization]) -> List[OrgSummary]:
             approval_status=o.approval_status,
             approved_at=o.approved_at,
             rejection_reason=o.rejection_reason,
+            **_subscription_fields(o),
             admin_email=admin_emails.get(o.id),
             last_login_at=last_login.get(o.id),
             user_count=int(users_by_org.get(o.id, 0)),
@@ -298,9 +387,12 @@ def _org_summaries(db: Session, orgs: List[Organization]) -> List[OrgSummary]:
 
 def _org_detail(db: Session, org: Organization) -> OrgDetail:
     user_count = db.scalar(select(func.count()).select_from(User).where(User.organization_id == org.id)) or 0
-    invoice_count = db.scalar(
-        select(func.count()).select_from(Invoice).where(Invoice.organization_id == org.id, Invoice.status.in_(_LIVE_INVOICE_STATUSES))
-    ) or 0
+    invoice_count = (
+        db.scalar(
+            select(func.count()).select_from(Invoice).where(Invoice.organization_id == org.id, Invoice.status.in_(_LIVE_INVOICE_STATUSES))
+        )
+        or 0
+    )
     bill_count = db.scalar(select(func.count()).select_from(Bill).where(Bill.organization_id == org.id)) or 0
     contact_count = db.scalar(select(func.count()).select_from(Contact).where(Contact.organization_id == org.id)) or 0
     invoiced = db.scalar(
@@ -314,9 +406,7 @@ def _org_detail(db: Session, org: Organization) -> OrgDetail:
             Invoice.organization_id == org.id, Invoice.status.in_(_LIVE_INVOICE_STATUSES)
         )
     )
-    admins = db.execute(
-        select(User).where(User.organization_id == org.id, User.role == "admin").order_by(User.created_at)
-    ).scalars().all()
+    admins = db.execute(select(User).where(User.organization_id == org.id, User.role == "admin").order_by(User.created_at)).scalars().all()
     return OrgDetail(
         id=org.id,
         name=org.name,
@@ -344,6 +434,7 @@ def _org_detail(db: Session, org: Organization) -> OrgDetail:
         approval_status=org.approval_status,
         approved_at=org.approved_at,
         rejection_reason=org.rejection_reason,
+        **_subscription_fields(org),
         last_login_at=_last_login_map(db, [org.id]).get(org.id),
         created_at=org.created_at,
         user_count=user_count,
@@ -354,6 +445,7 @@ def _org_detail(db: Session, org: Organization) -> OrgDetail:
         collected_amount=_float(collected),
         outstanding_receivables=_float(outstanding),
         admins=[_user_out(a, org.name) for a in admins],
+        panel_admins=_panel_admins(db, org.id),
     )
 
 
@@ -427,9 +519,7 @@ def platform_change_password(
     raw = request.cookies.get(PLATFORM_REFRESH_COOKIE)
     if raw:
         keep_hash = hash_token(raw)
-    stmt = select(PlatformRefreshToken).where(
-        PlatformRefreshToken.admin_id == admin.id, PlatformRefreshToken.revoked_at.is_(None)
-    )
+    stmt = select(PlatformRefreshToken).where(PlatformRefreshToken.admin_id == admin.id, PlatformRefreshToken.revoked_at.is_(None))
     now = datetime.now(UTC)
     for tok in db.execute(stmt).scalars().all():
         if keep_hash and tok.token_hash == keep_hash:
@@ -478,7 +568,9 @@ def create_admin(payload: CreatePlatformAdminRequest, db: Session = Depends(get_
 
 
 @router.patch("/admins/{admin_id}", response_model=PlatformAdminOut)
-def update_admin(admin_id: str, payload: UpdatePlatformAdminRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+def update_admin(
+    admin_id: str, payload: UpdatePlatformAdminRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
+):
     target = db.get(PlatformAdmin, admin_id)
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Platform admin not found")
@@ -524,27 +616,44 @@ def delete_admin(admin_id: str, db: Session = Depends(get_db), admin: PlatformAd
 def platform_dashboard(db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
     total_orgs = db.scalar(select(func.count()).select_from(Organization)) or 0
     archived = db.scalar(select(func.count()).select_from(Organization).where(Organization.deleted_at.is_not(None))) or 0
-    suspended = db.scalar(
-        select(func.count()).select_from(Organization).where(Organization.is_suspended.is_(True), Organization.deleted_at.is_(None))
-    ) or 0
-    active_orgs = db.scalar(
-        select(func.count())
-        .select_from(Organization)
-        .where(Organization.is_suspended.is_(False), Organization.deleted_at.is_(None), Organization.approval_status == "approved")
-    ) or 0
+    suspended = (
+        db.scalar(
+            select(func.count()).select_from(Organization).where(Organization.is_suspended.is_(True), Organization.deleted_at.is_(None))
+        )
+        or 0
+    )
+    active_orgs = (
+        db.scalar(
+            select(func.count())
+            .select_from(Organization)
+            .where(Organization.is_suspended.is_(False), Organization.deleted_at.is_(None), Organization.approval_status == "approved")
+        )
+        or 0
+    )
     pending_filter = (Organization.approval_status == "pending", Organization.deleted_at.is_(None))
     pending_count = db.scalar(select(func.count()).select_from(Organization).where(*pending_filter)) or 0
-    rejected_count = db.scalar(
-        select(func.count()).select_from(Organization).where(Organization.approval_status == "rejected", Organization.deleted_at.is_(None))
-    ) or 0
-    pending_orgs = db.execute(
-        select(Organization).where(*pending_filter).order_by(Organization.created_at.desc()).limit(10)
-    ).scalars().all()
+    rejected_count = (
+        db.scalar(
+            select(func.count())
+            .select_from(Organization)
+            .where(Organization.approval_status == "rejected", Organization.deleted_at.is_(None))
+        )
+        or 0
+    )
+    pending_subscriptions = (
+        db.scalar(
+            select(func.count())
+            .select_from(Organization)
+            .where(Organization.pending_request.is_not(None), Organization.deleted_at.is_(None))
+        )
+        or 0
+    )
+    pending_orgs = (
+        db.execute(select(Organization).where(*pending_filter).order_by(Organization.created_at.desc()).limit(10)).scalars().all()
+    )
     total_users = db.scalar(select(func.count()).select_from(User)) or 0
     active_users = db.scalar(select(func.count()).select_from(User).where(User.is_active.is_(True))) or 0
-    total_invoices = db.scalar(
-        select(func.count()).select_from(Invoice).where(Invoice.status.in_(_LIVE_INVOICE_STATUSES))
-    ) or 0
+    total_invoices = db.scalar(select(func.count()).select_from(Invoice).where(Invoice.status.in_(_LIVE_INVOICE_STATUSES))) or 0
     invoiced = db.scalar(select(func.coalesce(func.sum(Invoice.total), 0)).where(Invoice.status.in_(_LIVE_INVOICE_STATUSES)))
     collected = db.scalar(select(func.coalesce(func.sum(CustomerPayment.amount), 0)))
     total_bills = db.scalar(select(func.count()).select_from(Bill)) or 0
@@ -552,9 +661,14 @@ def platform_dashboard(db: Session = Depends(get_db), admin: PlatformAdmin = Dep
 
     today = date.today()
     month_start = today.replace(day=1)
-    new_this_month = db.scalar(
-        select(func.count()).select_from(Organization).where(Organization.created_at >= datetime(month_start.year, month_start.month, 1, tzinfo=UTC))
-    ) or 0
+    new_this_month = (
+        db.scalar(
+            select(func.count())
+            .select_from(Organization)
+            .where(Organization.created_at >= datetime(month_start.year, month_start.month, 1, tzinfo=UTC))
+        )
+        or 0
+    )
 
     # Last 6 months of org sign-ups and collected revenue.
     growth: List[TimePoint] = []
@@ -568,9 +682,10 @@ def platform_dashboard(db: Session = Depends(get_db), admin: PlatformAdmin = Dep
         start = datetime(y, m, 1, tzinfo=UTC)
         end = datetime(y + (m // 12), (m % 12) + 1, 1, tzinfo=UTC)
         label = start.strftime("%b %Y")
-        oc = db.scalar(
-            select(func.count()).select_from(Organization).where(Organization.created_at >= start, Organization.created_at < end)
-        ) or 0
+        oc = (
+            db.scalar(select(func.count()).select_from(Organization).where(Organization.created_at >= start, Organization.created_at < end))
+            or 0
+        )
         rv = db.scalar(
             select(func.coalesce(func.sum(CustomerPayment.amount), 0)).where(
                 CustomerPayment.created_at >= start, CustomerPayment.created_at < end
@@ -596,11 +711,18 @@ def platform_dashboard(db: Session = Depends(get_db), admin: PlatformAdmin = Dep
             if not org:
                 continue
             uc = db.scalar(select(func.count()).select_from(User).where(User.organization_id == org_id)) or 0
-            ic = db.scalar(
-                select(func.count()).select_from(Invoice).where(Invoice.organization_id == org_id, Invoice.status.in_(_LIVE_INVOICE_STATUSES))
-            ) or 0
+            ic = (
+                db.scalar(
+                    select(func.count())
+                    .select_from(Invoice)
+                    .where(Invoice.organization_id == org_id, Invoice.status.in_(_LIVE_INVOICE_STATUSES))
+                )
+                or 0
+            )
             inv = db.scalar(
-                select(func.coalesce(func.sum(Invoice.total), 0)).where(Invoice.organization_id == org_id, Invoice.status.in_(_LIVE_INVOICE_STATUSES))
+                select(func.coalesce(func.sum(Invoice.total), 0)).where(
+                    Invoice.organization_id == org_id, Invoice.status.in_(_LIVE_INVOICE_STATUSES)
+                )
             )
             top_orgs.append(
                 OrgSummary(
@@ -612,6 +734,7 @@ def platform_dashboard(db: Session = Depends(get_db), admin: PlatformAdmin = Dep
                     approval_status=org.approval_status,
                     approved_at=org.approved_at,
                     rejection_reason=org.rejection_reason,
+                    **_subscription_fields(org),
                     last_login_at=last_login.get(org_id),
                     user_count=uc,
                     invoice_count=ic,
@@ -654,6 +777,7 @@ def platform_dashboard(db: Session = Depends(get_db), admin: PlatformAdmin = Dep
         pending_organizations=pending_count,
         rejected_organizations=rejected_count,
         pending_approvals=_org_summaries(db, pending_orgs),
+        pending_subscription_requests=pending_subscriptions,
         organization_growth=growth,
         revenue_by_month=revenue,
         top_organizations=top_orgs,
@@ -677,9 +801,7 @@ def list_organizations(
         stmt = stmt.where(Organization.name.ilike(f"%{search.strip()}%"))
     stmt = _apply_org_status(stmt, status_filter)
     total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
-    orgs = db.execute(
-        stmt.order_by(Organization.created_at.desc()).offset(pagination.offset).limit(pagination.page_size)
-    ).scalars().all()
+    orgs = db.execute(stmt.order_by(Organization.created_at.desc()).offset(pagination.offset).limit(pagination.page_size)).scalars().all()
     return Page(items=_org_summaries(db, orgs), total=total, page=pagination.page, page_size=pagination.page_size)
 
 
@@ -748,7 +870,11 @@ def organization_invoices(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
     stmt = select(Invoice).where(Invoice.organization_id == org_id)
     total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
-    invoices = db.execute(stmt.order_by(Invoice.date.desc(), Invoice.created_at.desc()).offset(pagination.offset).limit(pagination.page_size)).scalars().all()
+    invoices = (
+        db.execute(stmt.order_by(Invoice.date.desc(), Invoice.created_at.desc()).offset(pagination.offset).limit(pagination.page_size))
+        .scalars()
+        .all()
+    )
     items = [
         PlatformInvoiceOut(
             id=inv.id,
@@ -767,7 +893,9 @@ def organization_invoices(
 
 
 @router.post("/organizations", response_model=CreateOrgResponse, status_code=status.HTTP_201_CREATED)
-def create_organization(payload: CreateOrganizationRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+def create_organization(
+    payload: CreateOrganizationRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
+):
     admin_email = payload.admin_email.lower().strip()
     if db.execute(select(User.id).where(User.email == admin_email)).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "A user with this admin email already exists")
@@ -780,10 +908,13 @@ def create_organization(payload: CreateOrganizationRequest, db: Session = Depend
         country=payload.country,
         default_tax_rate=defaults.tax_rate,
         default_payment_terms_days=defaults.payment_terms_days,
-        # Created by a platform admin, so there is nothing to approve.
+        # Created by a platform admin, so there is nothing to approve; its free
+        # trial starts right away.
         approval_status="approved",
         approved_at=datetime.now(UTC),
+        subscription_status=subs.STATUS_TRIAL,
     )
+    subs.start_trial(db, org)
     db.add(org)
     db.flush()
 
@@ -808,14 +939,24 @@ def create_organization(payload: CreateOrganizationRequest, db: Session = Depend
     )
     db.add(user)
     db.flush()
-    audit.record(db, None, "create", "organization", org.id, f"Organization '{org.name}' created by platform admin {admin.email}", organization_id=org.id)
+    audit.record(
+        db,
+        None,
+        "create",
+        "organization",
+        org.id,
+        f"Organization '{org.name}' created by platform admin {admin.email}",
+        organization_id=org.id,
+    )
     db.commit()
     db.refresh(org)
     return CreateOrgResponse(organization=_org_detail(db, org), admin=_user_out(user, org.name))
 
 
 @router.patch("/organizations/{org_id}", response_model=OrgDetail)
-def update_organization(org_id: str, payload: UpdateOrganizationRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+def update_organization(
+    org_id: str, payload: UpdateOrganizationRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
+):
     org = db.get(Organization, org_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
@@ -850,9 +991,7 @@ def _notify_org_admins(db: Session, org: Organization, subject: str, message: st
     """Best-effort email to the org's admin users; never fails the request."""
     if not smtp_configured():
         return
-    admins = db.execute(
-        select(User).where(User.organization_id == org.id, User.role == "admin", User.is_active.is_(True))
-    ).scalars().all()
+    admins = db.execute(select(User).where(User.organization_id == org.id, User.role == "admin", User.is_active.is_(True))).scalars().all()
     for user in admins:
         try:
             res = send_custom_message_email(user.email, subject, message, recipient_name=user.name)
@@ -863,15 +1002,36 @@ def _notify_org_admins(db: Session, org: Organization, subject: str, message: st
 
 
 @router.post("/organizations/{org_id}/approve", response_model=OrgDetail)
-def approve_organization(org_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
-    """Let a pending (or previously rejected) sign-up's users sign in."""
+def approve_organization(
+    org_id: str,
+    payload: Optional[ApproveOrganizationRequest] = None,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(get_current_superuser),
+):
+    """Let a pending (or previously rejected) sign-up's users sign in.
+
+    Starts the organization's free trial (if it has not started yet).
+    Optionally creates the organization's first admin-panel login in the same
+    transaction; if that login cannot be created the org is not approved.
+    """
     org = db.get(Organization, org_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    if payload is not None and payload.panel_admin is not None:
+        _add_panel_admin(db, org, payload.panel_admin, admin)
     org.approval_status = "approved"
     org.approved_at = datetime.now(UTC)
     org.rejection_reason = None
-    audit.record(db, None, "approve", "organization", org.id, f"Organization '{org.name}' approved by platform admin {admin.email}", organization_id=org.id)
+    subs.start_trial(db, org)
+    audit.record(
+        db,
+        None,
+        "approve",
+        "organization",
+        org.id,
+        f"Organization '{org.name}' approved by platform admin {admin.email}",
+        organization_id=org.id,
+    )
     db.commit()
     db.refresh(org)
     _notify_org_admins(
@@ -909,6 +1069,162 @@ def reject_organization(
     return _org_detail(db, org)
 
 
+# --------------------------------------------------------------------------- #
+# Subscriptions: plan requests, trials
+# --------------------------------------------------------------------------- #
+def _get_org(db: Session, org_id: str) -> Organization:
+    org = db.get(Organization, org_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    return org
+
+
+@router.get("/subscription-requests", response_model=List[SubscriptionRequestRow])
+def list_subscription_requests(db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    """Organizations with a plan request waiting for review, newest first."""
+    orgs = (
+        db.execute(
+            select(Organization)
+            .where(Organization.pending_request.is_not(None), Organization.deleted_at.is_(None))
+            .order_by(Organization.subscription_requested_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    rows = []
+    for org in orgs:
+        pending = subs.pending_request(org)
+        if pending is None:
+            continue
+        rows.append(
+            SubscriptionRequestRow(
+                organization_id=org.id,
+                organization_name=org.name,
+                requested_at=org.subscription_requested_at,
+                modules=pending["modules"],
+                billing_cycle=pending["billingCycle"],
+                monthly_price=pending["monthlyPrice"],
+                plan_price=pending["planPrice"],
+                subscription_status=subs.effective_status(org),
+                trial_ends_at=org.trial_ends_at,
+            )
+        )
+    return rows
+
+
+@router.post("/organizations/{org_id}/subscription/approve", response_model=OrgDetail)
+def approve_subscription(
+    org_id: str,
+    payload: Optional[ApproveSubscriptionRequest] = None,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(get_current_superuser),
+):
+    """Activate the pending plan request, optionally with other modules / billing cycle."""
+    org = _get_org(db, org_id)
+    try:
+        priced = subs.approve(db, org, payload.modules if payload else None, payload.billing_cycle if payload else None)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    plan = module_pricing.describe(priced)
+    audit.record(
+        db,
+        None,
+        "approve",
+        "subscription",
+        org.id,
+        f"Subscription for '{org.name}' activated by platform admin {admin.email}: {plan}",
+        organization_id=org.id,
+    )
+    db.commit()
+    db.refresh(org)
+    _notify_org_admins(
+        db,
+        org,
+        f"{org.name} subscription is active",
+        f"Your subscription for {org.name} is now active ({plan}). Sign in at {settings.frontend_url}/login",
+    )
+    return _org_detail(db, org)
+
+
+@router.post("/organizations/{org_id}/subscription/reject", response_model=OrgDetail)
+def reject_subscription(
+    org_id: str,
+    payload: RejectSubscriptionRequest,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(get_current_superuser),
+):
+    """Decline the pending plan request; the organization keeps its trial or current plan."""
+    org = _get_org(db, org_id)
+    if subs.pending_request(org) is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "There is no pending subscription request")
+    subs.reject(org, payload.reason)
+    audit.record(
+        db,
+        None,
+        "reject",
+        "subscription",
+        org.id,
+        f"Subscription request for '{org.name}' rejected by platform admin {admin.email}: {payload.reason}",
+        organization_id=org.id,
+    )
+    db.commit()
+    db.refresh(org)
+    _notify_org_admins(
+        db,
+        org,
+        f"{org.name} subscription request update",
+        f"Your subscription request for {org.name} was declined.\n\nReason: {payload.reason}",
+    )
+    return _org_detail(db, org)
+
+
+@router.post("/organizations/{org_id}/trial", response_model=OrgDetail)
+def extend_trial(
+    org_id: str,
+    payload: ExtendTrialRequest,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(get_current_superuser),
+):
+    """Extend (or restart) the free trial by ``days`` from its end or from now, whichever is later."""
+    org = _get_org(db, org_id)
+    if not org.is_approved:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Approve the organization first; its trial starts at approval.")
+    subs.extend_trial(org, payload.days)
+    audit.record(
+        db,
+        None,
+        "update",
+        "subscription",
+        org.id,
+        f"Trial for '{org.name}' extended by {payload.days} day(s) by platform admin {admin.email}",
+        organization_id=org.id,
+    )
+    db.commit()
+    db.refresh(org)
+    return _org_detail(db, org)
+
+
+@router.post("/organizations/{org_id}/subscription/cancel", response_model=OrgDetail)
+def cancel_subscription(org_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    """End an active plan: the organization is locked until a new plan is accepted or its trial extended."""
+    org = _get_org(db, org_id)
+    if org.subscription_status != subs.STATUS_ACTIVE:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This organization has no active subscription")
+    subs.cancel_plan(db, org)
+    audit.record(
+        db,
+        None,
+        "cancel",
+        "subscription",
+        org.id,
+        f"Subscription for '{org.name}' cancelled by platform admin {admin.email}",
+        organization_id=org.id,
+    )
+    db.commit()
+    db.refresh(org)
+    return _org_detail(db, org)
+
+
 @router.post("/organizations/{org_id}/archive", response_model=OrgDetail)
 def archive_organization(org_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
     """Soft delete: hide the org and lock its users out, keeping every row."""
@@ -921,7 +1237,15 @@ def archive_organization(org_id: str, db: Session = Depends(get_db), admin: Plat
     org.is_suspended = True
     org.suspended_at = org.suspended_at or now
     org.suspended_reason = ARCHIVED_REASON
-    audit.record(db, None, "archive", "organization", org.id, f"Organization '{org.name}' archived by platform admin {admin.email}", organization_id=org.id)
+    audit.record(
+        db,
+        None,
+        "archive",
+        "organization",
+        org.id,
+        f"Organization '{org.name}' archived by platform admin {admin.email}",
+        organization_id=org.id,
+    )
     db.commit()
     db.refresh(org)
     return _org_detail(db, org)
@@ -937,7 +1261,15 @@ def restore_organization(org_id: str, db: Session = Depends(get_db), admin: Plat
     org.is_suspended = False
     org.suspended_at = None
     org.suspended_reason = None
-    audit.record(db, None, "restore", "organization", org.id, f"Organization '{org.name}' restored by platform admin {admin.email}", organization_id=org.id)
+    audit.record(
+        db,
+        None,
+        "restore",
+        "organization",
+        org.id,
+        f"Organization '{org.name}' restored by platform admin {admin.email}",
+        organization_id=org.id,
+    )
     db.commit()
     db.refresh(org)
     return _org_detail(db, org)
@@ -959,6 +1291,99 @@ def delete_organization(org_id: str, db: Session = Depends(get_db), admin: Platf
     delete_org_app_content(db, org_id)
     db.commit()
     return {"message": f"Organization '{name}' and all its data were permanently deleted"}
+
+
+# --------------------------------------------------------------------------- #
+# Organization admin-panel logins
+# --------------------------------------------------------------------------- #
+@router.get("/organizations/{org_id}/panel-admins", response_model=List[OrgPanelAdminOut])
+def list_panel_admins(org_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    if db.get(Organization, org_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    return _panel_admins(db, org_id)
+
+
+@router.post("/organizations/{org_id}/panel-admins", response_model=OrgPanelAdminOut, status_code=status.HTTP_201_CREATED)
+def create_panel_admin(
+    org_id: str, payload: CreateOrgPanelAdminRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
+):
+    org = db.get(Organization, org_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    panel_admin = _add_panel_admin(db, org, payload, admin)
+    db.commit()
+    db.refresh(panel_admin)
+    return OrgPanelAdminOut.model_validate(panel_admin)
+
+
+@router.patch("/panel-admins/{panel_admin_id}", response_model=OrgPanelAdminOut)
+def update_panel_admin(
+    panel_admin_id: str,
+    payload: UpdateOrgPanelAdminRequest,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(get_current_superuser),
+):
+    target = db.get(OrgPanelAdmin, panel_admin_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Admin-panel login not found")
+    data = payload.model_dump(exclude_unset=True)
+    changes: List[str] = []
+    if "email" in data:
+        email = data["email"].lower().strip()
+        if email != target.email:
+            if db.execute(select(OrgPanelAdmin.id).where(OrgPanelAdmin.email == email, OrgPanelAdmin.id != target.id)).first():
+                raise HTTPException(status.HTTP_409_CONFLICT, "An organization admin-panel login with this email already exists")
+            changes.append(f"email {target.email} -> {email}")
+            target.email = email
+    if "name" in data and data["name"] != target.name:
+        target.name = data["name"]
+        changes.append("name")
+    revoke = False
+    if "is_active" in data and data["is_active"] != target.is_active:
+        target.is_active = data["is_active"]
+        changes.append("activated" if target.is_active else "deactivated")
+        revoke = not target.is_active
+    if "password" in data:
+        target.password_hash = hash_password(data["password"])
+        changes.append("password reset")
+        revoke = True
+    if revoke:
+        # A new password or a deactivation ends every session this login holds.
+        _revoke_panel_sessions(db, target.id)
+    detail = f" ({', '.join(changes)})" if changes else ""
+    audit.record(
+        db,
+        None,
+        "update",
+        "org_panel_admin",
+        target.id,
+        f"Admin-panel login {target.email} updated by platform admin {admin.email}{detail}",
+        organization_id=target.organization_id,
+    )
+    db.commit()
+    db.refresh(target)
+    return OrgPanelAdminOut.model_validate(target)
+
+
+@router.delete("/panel-admins/{panel_admin_id}")
+def delete_panel_admin(panel_admin_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    target = db.get(OrgPanelAdmin, panel_admin_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Admin-panel login not found")
+    email, org_id = target.email, target.organization_id
+    db.execute(sa_delete(OrgPanelRefreshToken).where(OrgPanelRefreshToken.admin_id == target.id))
+    db.delete(target)
+    audit.record(
+        db,
+        None,
+        "delete",
+        "org_panel_admin",
+        panel_admin_id,
+        f"Admin-panel login {email} deleted by platform admin {admin.email}",
+        organization_id=org_id,
+    )
+    db.commit()
+    return {"message": f"Admin-panel login {email} deleted"}
 
 
 # --------------------------------------------------------------------------- #
@@ -1025,7 +1450,9 @@ _ORPHAN_MSG = "This is the organization's only active admin. Add another admin b
 
 
 @router.patch("/users/{user_id}", response_model=PlatformUserOut)
-def update_user(user_id: str, payload: UpdatePlatformUserRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+def update_user(
+    user_id: str, payload: UpdatePlatformUserRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
+):
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
@@ -1041,7 +1468,9 @@ def update_user(user_id: str, payload: UpdatePlatformUserRequest, db: Session = 
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Target organization not found")
         if user.role == "employee":
             # An employee login is tied to an Employee record in its own org.
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Employee portal users can't be moved. Invite them from the new organization instead.")
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Employee portal users can't be moved. Invite them from the new organization instead."
+            )
     new_role = data.get("role") or user.role
     new_active = data["is_active"] if data.get("is_active") is not None else user.is_active
     still_admin_here = new_role == "admin" and new_active and not moving
@@ -1078,12 +1507,16 @@ def update_user(user_id: str, payload: UpdatePlatformUserRequest, db: Session = 
 
 
 @router.post("/users/{user_id}/reset-password")
-def reset_user_password(user_id: str, payload: ResetUserPasswordRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+def reset_user_password(
+    user_id: str, payload: ResetUserPasswordRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
+):
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     user.password_hash = hash_password(payload.new_password)
-    audit.record(db, None, "update", "user", user.id, f"Password reset by platform admin {admin.email}", organization_id=user.organization_id)
+    audit.record(
+        db, None, "update", "user", user.id, f"Password reset by platform admin {admin.email}", organization_id=user.organization_id
+    )
     db.commit()
     return {"message": "Password reset"}
 
@@ -1184,15 +1617,19 @@ def platform_search(
         return PlatformSearchResults(organizations=[], users=[])
     like = f"%{term}%"
 
-    orgs = db.execute(
-        select(Organization).where(Organization.name.ilike(like)).order_by(Organization.created_at.desc()).limit(10)
-    ).scalars().all()
+    orgs = (
+        db.execute(select(Organization).where(Organization.name.ilike(like)).order_by(Organization.created_at.desc()).limit(10))
+        .scalars()
+        .all()
+    )
     # Archived orgs are included here (flagged isArchived) so they stay findable.
     org_out = _org_summaries(db, orgs)
 
-    users = db.execute(
-        select(User).where(User.name.ilike(like) | User.email.ilike(like)).order_by(User.created_at.desc()).limit(10)
-    ).scalars().all()
+    users = (
+        db.execute(select(User).where(User.name.ilike(like) | User.email.ilike(like)).order_by(User.created_at.desc()).limit(10))
+        .scalars()
+        .all()
+    )
     names = _org_name_map(db, [u.organization_id for u in users])
     user_out = [_user_out(u, names.get(u.organization_id)) for u in users]
 
@@ -1213,6 +1650,7 @@ def _settings_out(db: Session) -> PlatformSettingsOut:
         default_tax_rate=_float(defaults.tax_rate),
         default_payment_terms_days=defaults.payment_terms_days,
         default_currency=defaults.currency,
+        trial_days=platform_settings.trial_days(db),
     )
 
 
@@ -1252,6 +1690,7 @@ def update_platform_settings(
         "default_tax_rate": (platform_settings.DEFAULT_TAX_RATE_KEY, "Default tax rate"),
         "default_payment_terms_days": (platform_settings.DEFAULT_PAYMENT_TERMS_DAYS_KEY, "Default payment terms (days)"),
         "default_currency": (platform_settings.DEFAULT_CURRENCY_KEY, "Default currency"),
+        "trial_days": (platform_settings.TRIAL_DAYS_KEY, "Free trial length (days)"),
     }
     for field, (key, label) in defaults.items():
         if field in data:

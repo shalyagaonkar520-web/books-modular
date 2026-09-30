@@ -1,0 +1,155 @@
+{
+  "currency": "INR",
+  "period": "month",
+  "basePrice": 499,
+  "yearlyMultiplier": 10,
+  "baseIncludes": [
+    "Dashboard",
+    "Settings"
+  ],
+  "modules": [
+    {
+      "key": "items",
+      "label": "Items",
+      "description": "Products and services catalogue with stock",
+      "price": 199,
+      "requires": []
+    },
+    {
+      "key": "customers",
+      "label": "Customers",
+      "description": "Customer records, contacts and balances",
+      "price": 99,
+      "requires": []
+    },
+    {
+      "key": "invoices",
+      "label": "Invoices",
+      "description": "GST invoices, quotes and payment reminders",
+      "price": 299,
+      "requires": [
+        "customers"
+      ]
+    },
+    {
+      "key": "paymentsReceived",
+      "label": "Payments received",
+      "description": "Record and apply customer payments",
+      "price": 149,
+      "requires": [
+        "invoices",
+        "customers"
+      ]
+    },
+    {
+      "key": "expenseDashboard",
+      "label": "Expense dashboard",
+      "description": "Spending overview and expense trends",
+      "price": 99,
+      "requires": [
+        "expenses"
+      ]
+    },
+    {
+      "key": "vendors",
+      "label": "Vendors",
+      "description": "Supplier records, contacts and balances",
+      "price": 99,
+      "requires": []
+    },
+    {
+      "key": "bills",
+      "label": "Bills",
+      "description": "Vendor bills and purchase tracking",
+      "price": 249,
+      "requires": [
+        "vendors"
+      ]
+    },
+    {
+      "key": "expenses",
+      "label": "Expenses",
+      "description": "Record and categorise business expenses",
+      "price": 149,
+      "requires": []
+    },
+    {
+      "key": "paymentsMade",
+      "label": "Payments made",
+      "description": "Record payments made to vendors",
+      "price": 149,
+      "requires": [
+        "bills",
+        "vendors"
+      ]
+    },
+    {
+      "key": "financialHub",
+      "label": "Financial Hub",
+      "description": "Key financial metrics at a glance",
+      "price": 199,
+      "requires": []
+    },
+    {
+      "key": "receivablesPayables",
+      "label": "Receivables & Payables",
+      "description": "Ageing of what you are owed and what you owe",
+      "price": 149,
+      "requires": [
+        "invoices",
+        "bills"
+      ]
+    },
+    {
+      "key": "banking",
+      "label": "Banking",
+      "description": "Bank accounts, statements and reconciliation",
+      "price": 249,
+      "requires": []
+    },
+    {
+      "key": "razorpay",
+      "label": "Razorpay payments",
+      "description": "Sync and match Razorpay payments",
+      "price": 199,
+      "requires": [
+        "invoices"
+      ]
+    },
+    {
+      "key": "timeTracking",
+      "label": "Time tracking",
+      "description": "Projects, timesheets and billable hours",
+      "price": 199,
+      "requires": []
+    },
+    {
+      "key": "accounting",
+      "label": "Accountant",
+      "description": "Chart of accounts, journals and ledgers",
+      "price": 299,
+      "requires": []
+    },
+    {
+      "key": "reports",
+      "label": "Reports",
+      "description": "Profit and loss, balance sheet, GST and more",
+      "price": 199,
+      "requires": []
+    },
+    {
+      "key": "documents",
+      "label": "Documents",
+      "description": "Store and organise business documents",
+      "price": 99,
+      "requires": []
+    },
+    {
+      "key": "payroll",
+      "label": "Payroll",
+      "description": "Employees, salary runs and payslips",
+      "price": 399,
+      "requires": []
+    }
+  ]
+}

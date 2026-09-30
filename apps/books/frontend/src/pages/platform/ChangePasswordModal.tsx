@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { platformApi } from '@/api/platform';
+import type { Message } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { FormError } from '@/components/ui/Feedback';
 import { TextField } from '@/components/ui/Field';
@@ -12,9 +13,16 @@ import { PASSWORD_HINT } from '@/pages/settings/passwordRules';
 
 interface ChangePasswordModalProps {
   onClose: () => void;
+  /** Defaults to the platform operator's own change-password call (the org admin panel passes its own). */
+  onSubmit?: (body: { currentPassword: string; newPassword: string }) => Promise<Message>;
+  subtitle?: string;
 }
 
-export function ChangePasswordModal({ onClose }: ChangePasswordModalProps) {
+export function ChangePasswordModal({
+  onClose,
+  onSubmit = platformApi.auth.changePassword,
+  subtitle = 'Update the password for your operator account.',
+}: ChangePasswordModalProps) {
   const toast = useToast();
   const { submitting, error, fieldErrors, run } = useSubmit();
   const [currentPassword, setCurrentPassword] = useState('');
@@ -28,7 +36,7 @@ export function ChangePasswordModal({ onClose }: ChangePasswordModalProps) {
       return;
     }
     setLocalError(null);
-    const result = await run(() => platformApi.auth.changePassword({ currentPassword, newPassword }));
+    const result = await run(() => onSubmit({ currentPassword, newPassword }));
     if (result) {
       toast.success(result.message || 'Your password has been changed.');
       onClose();
@@ -41,7 +49,7 @@ export function ChangePasswordModal({ onClose }: ChangePasswordModalProps) {
     <Modal
       open
       title="Change password"
-      subtitle="Update the password for your operator account."
+      subtitle={subtitle}
       size="sm"
       onClose={onClose}
       footer={

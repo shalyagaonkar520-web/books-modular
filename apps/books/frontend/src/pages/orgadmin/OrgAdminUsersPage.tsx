@@ -1,9 +1,9 @@
-import { useAuth } from '@/auth/AuthContext';
+import { useOrgPanelAuth } from '@/auth/OrgPanelAuthContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { UsersSettings } from '@/pages/settings/UsersSettings';
 
 export function OrgAdminUsersPage() {
-  const { organization } = useAuth();
+  const { organization } = useOrgPanelAuth();
   return (
     <div className="stack">
       <PageHeader

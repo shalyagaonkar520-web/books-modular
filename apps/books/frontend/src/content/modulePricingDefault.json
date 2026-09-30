@@ -1,0 +1,28 @@
+{
+  "currency": "INR",
+  "period": "month",
+  "basePrice": 499,
+  "baseIncludes": ["Dashboard", "Settings"],
+  "yearlyMultiplier": 10,
+  "trialDays": 3,
+  "modules": [
+    { "key": "items", "label": "Items", "description": "Products and services catalog with prices and tax rates.", "price": 199, "requires": [] },
+    { "key": "customers", "label": "Customers", "description": "Customer contacts, balances and statements.", "price": 99, "requires": [] },
+    { "key": "invoices", "label": "Invoices", "description": "GST invoices, credit notes and reminders.", "price": 299, "requires": ["customers"] },
+    { "key": "paymentsReceived", "label": "Payments received", "description": "Record customer payments against invoices.", "price": 149, "requires": ["invoices", "customers"] },
+    { "key": "expenseDashboard", "label": "Expense dashboard", "description": "Spending trends and category breakdowns.", "price": 99, "requires": ["expenses"] },
+    { "key": "vendors", "label": "Vendors", "description": "Supplier contacts and payables per vendor.", "price": 99, "requires": [] },
+    { "key": "bills", "label": "Bills", "description": "Track vendor bills and due dates.", "price": 249, "requires": ["vendors"] },
+    { "key": "expenses", "label": "Expenses", "description": "Log business expenses with receipts.", "price": 149, "requires": [] },
+    { "key": "paymentsMade", "label": "Payments made", "description": "Record payments to vendors against bills.", "price": 149, "requires": ["bills", "vendors"] },
+    { "key": "financialHub", "label": "Financial Hub", "description": "One view of cash flow, income and spend.", "price": 199, "requires": [] },
+    { "key": "receivablesPayables", "label": "Receivables & Payables", "description": "Ageing of what you are owed and what you owe.", "price": 149, "requires": ["invoices", "bills"] },
+    { "key": "banking", "label": "Banking", "description": "Bank accounts, transactions and reconciliation.", "price": 249, "requires": [] },
+    { "key": "razorpay", "label": "Razorpay payments", "description": "Collect invoice payments online via Razorpay.", "price": 199, "requires": ["invoices"] },
+    { "key": "timeTracking", "label": "Time tracking", "description": "Timesheets and billable hours.", "price": 199, "requires": [] },
+    { "key": "accounting", "label": "Accountant", "description": "Chart of accounts, journals and ledgers.", "price": 299, "requires": [] },
+    { "key": "reports", "label": "Reports", "description": "P&L, balance sheet, GST and more.", "price": 199, "requires": [] },
+    { "key": "documents", "label": "Documents", "description": "Store and share business documents.", "price": 99, "requires": [] },
+    { "key": "payroll", "label": "Payroll", "description": "Employees, salary runs and payslips.", "price": 399, "requires": [] }
+  ]
+}

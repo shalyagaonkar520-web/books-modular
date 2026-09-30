@@ -122,6 +122,42 @@ def invite_and_accept(client: TestClient, h: dict, name: str, email: str, role: 
     return res.json()
 
 
+PANEL_PASSWORD = "Pan3lPass!"
+
+
+def platform_admin_headers(client: TestClient) -> dict:
+    """A fresh platform (super) admin, signed in; returns its auth headers."""
+    import uuid
+
+    from backend.db import SessionLocal
+    from backend.models import PlatformAdmin
+    from backend.security import hash_password
+
+    email = f"root-{uuid.uuid4().hex[:8]}@platform.example.com"
+    with SessionLocal() as db:
+        db.add(PlatformAdmin(name="Platform Root", email=email, password_hash=hash_password("Sup3rPass!"), is_active=True))
+        db.commit()
+    res = client.post("/api/platform/auth/login", json={"email": email, "password": "Sup3rPass!"})
+    assert res.status_code == 200, res.text
+    return auth(res.json()["accessToken"])
+
+
+def create_panel_admin(client: TestClient, platform_h: dict, org_id: str, email: str | None = None, password: str = PANEL_PASSWORD) -> dict:
+    """Create an org admin-panel login through the platform API and sign it in."""
+    import uuid
+
+    email = email or f"panel-{uuid.uuid4().hex[:8]}@panel.example.com"
+    res = client.post(
+        f"/api/platform/organizations/{org_id}/panel-admins",
+        headers=platform_h,
+        json={"name": "Pat Panel", "email": email, "password": password},
+    )
+    assert res.status_code == 201, res.text
+    login = client.post("/api/org-admin/auth/login", json={"email": email, "password": password})
+    assert login.status_code == 200, login.text
+    return {"admin": res.json(), "email": email, "password": password, "h": auth(login.json()["accessToken"]), "login": login.json()}
+
+
 @pytest.fixture(scope="session")
 def org(client):
     """A fully set up organization with a bank account, customer, vendor and tracked item."""

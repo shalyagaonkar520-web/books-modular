@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Iterable
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -131,3 +131,22 @@ def save_org_app_content(db: Session, org_id: str, content: AppContent) -> Dict[
 
 def delete_org_app_content(db: Session, org_id: str) -> None:
     platform_settings.delete_value(db, org_key(org_id))
+
+
+def set_org_modules(db: Session, org_id: str, enabled: Iterable[str]) -> Dict[str, Any]:
+    """Switch an organization's modules to exactly its paid-for selection.
+
+    Only the modules part of the overrides changes; branding and text overrides
+    are kept. An unselected module is stored as an explicit ``False`` so the
+    organization never gets it, even if the shared content later turns it on; a
+    selected one follows the shared content (so a platform-wide switch-off still
+    applies).
+    """
+    wanted = set(enabled)
+    overrides = get_org_overrides(db, org_id)
+    overrides["modules"] = {key: False for key in default_document()["modules"] if key not in wanted}
+    if any(overrides.values()):
+        platform_settings.set_value(db, org_key(org_id), json.dumps(overrides, ensure_ascii=False))
+    else:
+        delete_org_app_content(db, org_id)
+    return overrides

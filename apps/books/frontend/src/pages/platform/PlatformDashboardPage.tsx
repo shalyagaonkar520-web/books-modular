@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Archive, Building2, Clock, ExternalLink, FileText, Globe, IndianRupee, LogIn, ShieldAlert, Users, Wallet } from 'lucide-react';
+import { Archive, Building2, Clock, ExternalLink, FileText, Globe, IndianRupee, LogIn, ShieldAlert, Sparkles, Users, Wallet } from 'lucide-react';
 
 import { platformApi, type OrgSummary, type PlatformAudit } from '@/api/platform';
 import { Button } from '@/components/ui/Button';
@@ -45,6 +45,7 @@ export function PlatformDashboardPage() {
   const archivedOrganizations = data.archivedOrganizations ?? 0;
   const pendingOrganizations = data.pendingOrganizations ?? 0;
   const pendingApprovals = data.pendingApprovals ?? [];
+  const pendingPlanRequests = data.pendingSubscriptionRequests;
 
   const pendingColumns: Array<Column<OrgSummary>> = [
     {
@@ -131,6 +132,15 @@ export function PlatformDashboardPage() {
           tone={pendingOrganizations > 0 ? 'warning' : 'neutral'}
           icon={<Clock size={16} />}
         />
+        {typeof pendingPlanRequests === 'number' ? (
+          <StatTile
+            label="Plan requests"
+            value={formatNumber(pendingPlanRequests, 0)}
+            sublabel={pendingPlanRequests > 0 ? 'Review in Subscriptions & Pricing' : 'Nothing to review'}
+            tone={pendingPlanRequests > 0 ? 'warning' : 'neutral'}
+            icon={<Sparkles size={16} />}
+          />
+        ) : null}
         <StatTile
           label="Organizations"
           value={formatNumber(data.totalOrganizations, 0)}

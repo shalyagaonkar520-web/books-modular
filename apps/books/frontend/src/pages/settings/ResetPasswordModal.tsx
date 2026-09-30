@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { FormError } from '@/components/ui/Feedback';
 import { Modal } from '@/components/ui/Modal';
 import { TextField } from '@/components/ui/Field';
-import { orgApi } from '@/api/endpoints';
+import { useScopedOrgApi } from '@/api/ApiScope';
 import type { User } from '@/api/types';
 import { useSubmit } from '@/hooks/useSubmit';
 import { useToast } from '@/components/ui/Toast';
@@ -20,6 +20,7 @@ interface ResetPasswordModalProps {
 export function ResetPasswordModal({ user, onClose }: ResetPasswordModalProps) {
   const { t } = useAppContent();
   const toast = useToast();
+  const orgApi = useScopedOrgApi();
   const { submitting, error, fieldErrors, run } = useSubmit();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');

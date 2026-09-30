@@ -54,8 +54,21 @@ function notifyUnauthorized(): void {
   unauthorizedListeners.forEach((listener) => listener());
 }
 
+/** A FastAPI error body as a message plus per-field messages (last segment and full dotted path). */
+export interface ParsedApiError {
+  message: string;
+  fieldErrors: Record<string, string>;
+  pathErrors: Record<string, string>;
+}
+
 /** Turn a FastAPI error body into a message plus per-field messages. */
 function parseError(status: number, body: unknown): PlatformApiError {
+  const { message, fieldErrors, pathErrors } = parseApiErrorBody(status, body);
+  return new PlatformApiError(message, status, fieldErrors, pathErrors);
+}
+
+/** Shared with the org panel client (orgPanelClient.ts), which reads error bodies the same way. */
+export function parseApiErrorBody(status: number, body: unknown): ParsedApiError {
   const fieldErrors: Record<string, string> = {};
   const pathErrors: Record<string, string> = {};
   let message = `Request failed (${status})`;
@@ -78,7 +91,7 @@ function parseError(status: number, body: unknown): PlatformApiError {
       message = messages.join('\n');
     }
   }
-  return new PlatformApiError(message, status, fieldErrors, pathErrors);
+  return { message, fieldErrors, pathErrors };
 }
 
 function humanize(field: string): string {

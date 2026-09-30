@@ -83,6 +83,32 @@ def decode_platform_token(token: str) -> Optional[Dict[str, Any]]:
     return payload
 
 
+def create_org_panel_access_token(admin_id: str, organization_id: str, expires_minutes: Optional[int] = None) -> str:
+    """Access token for an organization admin-panel login. Its own ``type``
+    keeps it out of the tenant app and the platform API (and theirs out of the
+    panel)."""
+    now = datetime.now(UTC)
+    payload: Dict[str, Any] = {
+        "sub": admin_id,
+        "org": organization_id,
+        "type": "org_panel_access",
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=expires_minutes or settings.access_token_expire_minutes)).timestamp()),
+        "jti": secrets.token_hex(8),
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
+
+
+def decode_org_panel_token(token: str) -> Optional[Dict[str, Any]]:
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+    except jwt.PyJWTError:
+        return None
+    if payload.get("type") != "org_panel_access":
+        return None
+    return payload
+
+
 def generate_refresh_token() -> str:
     return secrets.token_urlsafe(48)
 

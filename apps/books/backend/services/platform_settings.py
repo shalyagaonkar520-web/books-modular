@@ -115,3 +115,16 @@ def get_org_defaults(db: Session) -> OrgDefaults:
         payment_terms_days=get_int(db, DEFAULT_PAYMENT_TERMS_DAYS_KEY, DEFAULT_PAYMENT_TERMS_DAYS),
         currency=currency,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Free trial for new organizations
+# --------------------------------------------------------------------------- #
+TRIAL_DAYS_KEY = "trial_days"
+DEFAULT_TRIAL_DAYS = 3
+MAX_TRIAL_DAYS = 90
+
+
+def trial_days(db: Session) -> int:
+    """Length of the free trial a new organization gets (0..MAX_TRIAL_DAYS)."""
+    return max(0, min(MAX_TRIAL_DAYS, get_int(db, TRIAL_DAYS_KEY, DEFAULT_TRIAL_DAYS)))

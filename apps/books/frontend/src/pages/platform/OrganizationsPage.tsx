@@ -11,11 +11,13 @@ import { FilterSelect, SearchInput, Toolbar } from '@/components/ui/Toolbar';
 import { useAsync } from '@/hooks/useAsync';
 import { useDebounced } from '@/hooks/useDebounced';
 import { useDownload } from '@/hooks/useDownload';
+import { useModulePricing } from '@/hooks/useModulePricing';
 import { formatCurrency, formatDate, formatDateTime } from '@/utils/format';
 
 import { CreateOrganizationModal } from './CreateOrganizationModal';
 import { OrgDetailDrawer } from './OrgDetailDrawer';
 import { OpenInAppMenu, OrgApprovalButtons, OrgRowMenu, OrgStatusBadge, useOrgApproval, useOrgLifecycle } from './orgActions';
+import { orgPlanLabel } from './subscriptionActions';
 
 const PAGE_SIZE = 25;
 
@@ -36,6 +38,7 @@ export function OrganizationsPage() {
   const [creating, setCreating] = useState(false);
   const { download, downloading } = useDownload();
   const debouncedSearch = useDebounced(search);
+  const catalog = useModulePricing();
 
   // The status filter lives in the URL so the dashboard can deep-link to e.g. ?status=pending.
   const rawStatus = searchParams.get('status') ?? '';
@@ -109,6 +112,19 @@ export function OrganizationsPage() {
       ),
     },
     { key: 'status', header: 'Status', render: (row) => <OrgStatusBadge org={row} /> },
+    {
+      key: 'plan',
+      header: 'Plan',
+      render: (row) => {
+        const label = orgPlanLabel(row, catalog);
+        const tone = label === '—' ? 'text-muted' : label === 'Expired' ? 'text-danger' : label === 'Request pending' ? 'text-warning' : 'num';
+        return (
+          <span className={tone} style={{ whiteSpace: 'nowrap' }}>
+            {label}
+          </span>
+        );
+      },
+    },
     { key: 'users', header: 'Users', align: 'right', render: (row) => <span className="num">{row.userCount}</span> },
     { key: 'invoices', header: 'Invoices', align: 'right', render: (row) => <span className="num">{row.invoiceCount}</span> },
     { key: 'invoiced', header: 'Invoiced', align: 'right', render: (row) => <span className="num">{formatCurrency(row.invoicedAmount)}</span> },
@@ -186,7 +202,7 @@ export function OrganizationsPage() {
 
       <div className="card">
         {orgs.loading ? (
-          <SkeletonRows rows={6} columns={8} />
+          <SkeletonRows rows={6} columns={9} />
         ) : orgs.error ? (
           <ErrorBlock message={orgs.error} onRetry={orgs.reload} />
         ) : !rows.length ? (

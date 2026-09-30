@@ -17,6 +17,7 @@ import {
 } from '@/api/appContent';
 import { orgAdminApi } from '@/api/orgAdmin';
 import { platformApi } from '@/api/platform';
+import { OrgPanelApiError } from '@/api/orgPanelClient';
 import { PlatformApiError } from '@/api/platformClient';
 import { useAppContent } from '@/app/AppContentContext';
 import { Badge } from '@/components/ui/Badge';
@@ -81,7 +82,7 @@ interface AppContentPageProps {
   /**
    * 'platform' (the super-admin console) edits the shared content or, via ?org=,
    * any organization's copy. 'organization' (the org admin panel) edits only the
-   * signed-in user's own organization, through the tenant API.
+   * signed-in panel admin's organization, through the org panel API.
    */
   mode?: 'platform' | 'organization';
 }
@@ -220,12 +221,11 @@ export function AppContentPage({ mode = 'platform' }: AppContentPageProps = {}) 
     setServerErrors({});
     const updated = await saveSubmit.run(async () => {
       try {
-        // The tenant client only reports the last segment of a 422 path, so there it stays a form-level message.
         if (ownOrg) return normalizeAppContent((await orgAdminApi.appContent.update(draft)).content);
         if (scope) return normalizeAppContent((await platformApi.appContent.org.update(scope, draft)).content);
         return await platformApi.appContent.update(draft);
       } catch (error) {
-        if (error instanceof PlatformApiError && Object.keys(error.pathErrors).length) {
+        if ((error instanceof PlatformApiError || error instanceof OrgPanelApiError) && Object.keys(error.pathErrors).length) {
           setServerErrors(error.pathErrors);
           expandSectionsFor(Object.keys(error.pathErrors));
         }
@@ -241,7 +241,7 @@ export function AppContentPage({ mode = 'platform' }: AppContentPageProps = {}) 
           : 'App content saved. Every organization without its own customization now sees these changes.',
       );
     } else if (saveSubmit.errorRef.current) {
-      toast.error(ownOrg ? 'The app content could not be saved.' : 'The app content could not be saved. See the highlighted fields.');
+      toast.error('The app content could not be saved. See the highlighted fields.');
     }
   };
 

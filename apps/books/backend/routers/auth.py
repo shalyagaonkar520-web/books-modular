@@ -39,6 +39,7 @@ from backend.schemas.auth import (
     VerifyOtpRequest,
 )
 from backend.schemas.common import Message
+from backend.schemas.subscription import SubscriptionOut
 from backend.security import (
     create_access_token,
     generate_refresh_token,
@@ -46,7 +47,7 @@ from backend.security import (
     hash_token,
     verify_password,
 )
-from backend.services import audit, platform_settings
+from backend.services import audit, platform_settings, subscription
 from backend.services.chart_of_accounts import bootstrap_accounts
 from backend.services.email_service import send_password_reset_email, send_verification_email, smtp_configured
 from backend.services.ratelimit import FailureCounter, RateLimiter, client_ip
@@ -141,11 +142,14 @@ def _clear_cookie(response: Response) -> None:
 
 
 def _auth_response(access: str, user: User) -> AuthResponse:
+    organization = OrganizationOut.model_validate(user.organization)
+    # So the client can show the trial / locked banner without another call.
+    organization.subscription = SubscriptionOut.model_validate(subscription.summary(user.organization, user))
     return AuthResponse(
         access_token=access,
         expires_in=settings.access_token_expire_minutes * 60,
         user=UserOut.model_validate(user),
-        organization=OrganizationOut.model_validate(user.organization),
+        organization=organization,
     )
 
 
@@ -383,7 +387,12 @@ def register(payload: RegisterRequest, request: Request, response: Response, db:
         default_payment_terms_days=defaults.payment_terms_days,
         approval_status="pending" if needs_approval else "approved",
         approved_at=None if needs_approval else datetime.now(UTC),
+        # Free trial of every module; it starts once the org is usable (now,
+        # or when a super-admin approves it).
+        subscription_status=subscription.STATUS_TRIAL,
     )
+    if not needs_approval:
+        subscription.start_trial(db, org)
     db.add(org)
     db.flush()
 

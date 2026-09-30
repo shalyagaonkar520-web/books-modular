@@ -1,4 +1,5 @@
 /** Types mirroring the FastAPI response models (camelCase over the wire). */
+import type { Subscription } from './subscription';
 
 /**
  * "employee" is a restricted portal-only role: an invited Payroll employee
@@ -48,6 +49,8 @@ export interface Organization {
   defaultTaxRate?: number;
   /** Default payment terms (days) for new customers and vendors. */
   defaultPaymentTermsDays?: number;
+  /** Trial / plan state (same shape as GET /subscription; may be partial or absent). */
+  subscription?: Partial<Subscription> | null;
 }
 
 export interface AuthResponse {

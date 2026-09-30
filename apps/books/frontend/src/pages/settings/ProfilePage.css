@@ -935,6 +935,7 @@ input:checked + .zp-slider:before {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   border-bottom: 1px solid #f1f5f9;
 }
 

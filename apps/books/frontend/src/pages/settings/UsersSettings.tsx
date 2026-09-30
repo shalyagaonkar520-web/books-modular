@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
 import { ConfirmDialog } from '@/components/ui/Modal';
-import { orgApi } from '@/api/endpoints';
+import { useApiScope, useScopedOrgApi } from '@/api/ApiScope';
 import type { Role, User } from '@/api/types';
 import { useAsync } from '@/hooks/useAsync';
 import { useAuth } from '@/auth/AuthContext';
@@ -37,7 +37,13 @@ const ASSIGNABLE_ROLE_OPTIONS = ROLE_OPTIONS.filter((option) => option.value !==
 export function UsersSettings() {
   const { t } = useAppContent();
   const toast = useToast();
-  const { user: currentUser, isAdmin } = useAuth();
+  const auth = useAuth();
+  const { actor, capabilities } = useApiScope();
+  const orgApi = useScopedOrgApi();
+  // In the org admin panel the acting admin is not one of these users.
+  const currentUserId = actor ? actor.userId : auth.user?.id;
+  const isAdmin = actor ? actor.isAdmin : auth.isAdmin;
+  const canView = capabilities.userDashboard;
   const [viewingUser, setViewingUser] = useState<User | null>(null);
   const [inviting, setInviting] = useState(false);
   const [resetting, setResetting] = useState<User | null>(null);
@@ -81,7 +87,7 @@ export function UsersSettings() {
         <div className="cell-stack">
           <span className="strong">
             {row.name}
-            {row.id === currentUser?.id ? ` ${t('settings.users.you')}` : ''}
+            {row.id === currentUserId ? ` ${t('settings.users.you')}` : ''}
           </span>
           <small>{row.email}</small>
         </div>
@@ -155,7 +161,7 @@ export function UsersSettings() {
       width: '360px',
       render: (row) => (
         <div className="row-actions">
-          {isAdmin && (
+          {isAdmin && canView && (
             <Button
               variant="secondary"
               size="sm"
@@ -165,9 +171,11 @@ export function UsersSettings() {
               {t('settings.users.view')}
             </Button>
           )}
-          <Button variant="ghost" size="sm" icon={<Eye size={14} />} onClick={() => setViewingUser(row)}>
-            {t('settings.users.view')}
-          </Button>
+          {canView ? (
+            <Button variant="ghost" size="sm" icon={<Eye size={14} />} onClick={() => setViewingUser(row)}>
+              {t('settings.users.view')}
+            </Button>
+          ) : null}
           <Button variant="ghost" size="sm" icon={<KeyRound size={14} />} onClick={() => setResetting(row)}>
             {t('settings.users.resetPassword')}
           </Button>
@@ -185,7 +193,7 @@ export function UsersSettings() {
           >
             {row.isActive ? t('settings.users.deactivate') : t('settings.users.activate')}
           </Button>
-          {isAdmin && row.id !== currentUser?.id && (
+          {isAdmin && row.id !== currentUserId && (
             <Button
               variant="danger"
               size="sm"
@@ -220,10 +228,10 @@ export function UsersSettings() {
         ) : null}
       </Card>
 
-      {viewingUser ? <UserDashboardModal user={viewingUser} onClose={() => setViewingUser(null)} /> : null}
+      {viewingUser && canView ? <UserDashboardModal user={viewingUser} onClose={() => setViewingUser(null)} /> : null}
       {inviting ? <InviteUserModal onClose={() => setInviting(false)} onInvited={reload} /> : null}
       {resetting ? <ResetPasswordModal user={resetting} onClose={() => setResetting(null)} /> : null}
-      {viewingUser ? <UserDashboardModal user={viewingUser} onClose={() => setViewingUser(null)} /> : null}
+      {viewingUser && canView ? <UserDashboardModal user={viewingUser} onClose={() => setViewingUser(null)} /> : null}
 
       <ConfirmDialog
         open={!!deletingUser}

@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/Button';
 import { FormError } from '@/components/ui/Feedback';
 import { Modal } from '@/components/ui/Modal';
 import { SelectField, TextField } from '@/components/ui/Field';
-import { orgApi, payrollApi } from '@/api/endpoints';
+import { useApiScope, useScopedOrgApi } from '@/api/ApiScope';
+import { payrollApi } from '@/api/endpoints';
 import type { EmployeeOption } from '@/api/types';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
@@ -19,13 +20,19 @@ interface InviteUserModalProps {
 export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
   const { t } = useAppContent();
   const toast = useToast();
+  const orgApi = useScopedOrgApi();
+  // The org admin panel has no payroll, so it cannot link a portal-only employee.
+  const { employeeInvites } = useApiScope().capabilities;
   const { submitting, error, fieldErrors, run, setError } = useSubmit();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('staff');
   const [employeeId, setEmployeeId] = useState('');
 
-  const unlinkedEmployees = useAsync<EmployeeOption[]>(() => payrollApi.unlinkedEmployees(), []);
+  const unlinkedEmployees = useAsync<EmployeeOption[]>(
+    () => (employeeInvites ? payrollApi.unlinkedEmployees() : Promise.resolve([])),
+    [employeeInvites],
+  );
 
   // Picking an employee pre-fills their name and email as a convenience.
   useEffect(() => {
@@ -93,7 +100,7 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
               label: t('settings.invite.role.staff'),
             },
             { value: 'viewer', label: t('settings.invite.role.viewer') },
-            { value: 'employee', label: t('settings.invite.role.employee') },
+            ...(employeeInvites ? [{ value: 'employee', label: t('settings.invite.role.employee') }] : []),
           ]}
           onChange={(event) => {
             setRole(event.target.value);

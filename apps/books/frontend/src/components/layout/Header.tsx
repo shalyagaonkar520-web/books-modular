@@ -57,7 +57,7 @@ function getStoredDismissedIds(): Set<string> {
 }
 
 export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
-  const { user, organization, logout, canWrite, isAdmin } = useAuth();
+  const { user, organization, logout, canWrite } = useAuth();
   const { t, branding, isModuleEnabled } = useAppContent();
   const createEntries = CREATE_ENTRIES.filter((entry) => isModuleEnabled(entry.module));
   const navigate = useNavigate();
@@ -333,18 +333,16 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
                 >
                   {t('header.profile.myAccount')}
                 </button>
-                {isAdmin ? (
-                  <button
-                    type="button"
-                    className="zoho-my-account-link"
-                    onClick={() => {
-                      setOpenMenu('none');
-                      navigate('/org-admin');
-                    }}
-                  >
-                    {t('header.adminPanel')}
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  className="zoho-my-account-link"
+                  onClick={() => {
+                    setOpenMenu('none');
+                    navigate('/subscription');
+                  }}
+                >
+                  Subscription
+                </button>
                 <button
                   type="button"
                   className="zoho-sign-out-btn"

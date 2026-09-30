@@ -4,6 +4,7 @@
  */
 import { platformClient, platformDownload, platformRefresh, platformRequest } from './platformClient';
 import type { AppContent } from './appContent';
+import type { BillingCycle } from './modulePricing';
 import type { SiteContent } from './siteContent';
 
 // ---------------------------------------------------------------------------
@@ -54,7 +55,56 @@ export interface OrgAppContent {
   overridden: { branding: string[]; modules: string[]; texts: string[] };
 }
 
-export interface OrgSummary {
+/** Trial → (plan approved) active; a trial that runs out without a plan is expired. */
+export type OrgSubscriptionStatus = 'trial' | 'active' | 'expired';
+
+/** An organization's plan: chosen modules and billing cycle, priced. */
+export interface OrgPlan {
+  modules: string[];
+  billingCycle: BillingCycle;
+  monthlyPrice: number;
+  /** Price per billing cycle. */
+  planPrice: number;
+}
+
+/** A plan the organization's admin asked for, waiting for a platform admin. */
+export interface OrgPlanRequest extends OrgPlan {
+  requestedAt: string;
+}
+
+/** Subscription fields carried by OrgSummary and OrgDetail (absent on older payloads). */
+export interface OrgSubscriptionFields {
+  subscriptionStatus?: OrgSubscriptionStatus | null;
+  trialEndsAt?: string | null;
+  plan?: OrgPlan | null;
+  pendingRequest?: OrgPlanRequest | null;
+  /** Operator-facing note, e.g. who approved the plan or why a request was rejected. */
+  subscriptionNote?: string | null;
+  /** Legacy (pre-subscription) module fields; may be absent. */
+  requestedModules?: string[] | null;
+  monthlyPrice?: number | null;
+}
+
+/** A row of GET /platform/subscription-requests. */
+export interface SubscriptionRequestItem {
+  organizationId: string;
+  organizationName: string;
+  requestedAt: string;
+  modules: string[];
+  billingCycle: BillingCycle;
+  monthlyPrice: number;
+  planPrice: number;
+  subscriptionStatus: OrgSubscriptionStatus;
+  trialEndsAt: string | null;
+}
+
+export interface ApproveSubscriptionBody {
+  /** Omit to accept the request as sent. The server adds anything they require. */
+  modules?: string[];
+  billingCycle?: BillingCycle;
+}
+
+export interface OrgSummary extends OrgSubscriptionFields {
   id: string;
   name: string;
   isSuspended: boolean;
@@ -115,6 +165,8 @@ export interface PlatformDashboard {
   newOrganizationsThisMonth: number;
   /** Organizations waiting for approval. */
   pendingOrganizations?: number;
+  /** Plan requests waiting for a decision, when the server reports it. */
+  pendingSubscriptionRequests?: number;
   pendingApprovals?: OrgSummary[];
   organizationGrowth: ChartPoint[];
   revenueByMonth: ChartPoint[];
@@ -126,7 +178,7 @@ export interface PlatformDashboard {
 // Organizations
 // ---------------------------------------------------------------------------
 
-export interface OrgDetail {
+export interface OrgDetail extends OrgSubscriptionFields {
   id: string;
   name: string;
   legalName?: string | null;
@@ -164,6 +216,8 @@ export interface OrgDetail {
   collectedAmount: number;
   outstandingReceivables: number;
   admins: PlatformUser[];
+  /** Logins for the organization's admin panel. Absent on older payloads. */
+  panelAdmins?: OrgPanelAdminItem[];
 }
 
 export interface CreateOrganizationBody {
@@ -211,6 +265,36 @@ export type OrgStatusFilter = 'active' | 'suspended' | 'pending' | 'rejected' | 
 
 export interface RejectOrganizationBody {
   reason?: string;
+}
+
+/** A login for an organization's admin panel (/org-admin), created by a platform admin. */
+export interface OrgPanelAdminItem {
+  id: string;
+  name: string;
+  email: string;
+  isActive: boolean;
+  lastLoginAt?: string | null;
+  createdAt: string;
+  /** Who created it (a platform admin's name or email), when known. */
+  createdBy?: string | null;
+}
+
+export interface CreatePanelAdminBody {
+  name: string;
+  email: string;
+  password: string;
+}
+
+export interface UpdatePanelAdminBody {
+  name?: string;
+  email?: string;
+  isActive?: boolean;
+  password?: string;
+}
+
+/** Approving (which starts the free trial) can create the organization's admin panel login in the same step. */
+export interface ApproveOrganizationBody {
+  panelAdmin?: CreatePanelAdminBody;
 }
 
 // ---------------------------------------------------------------------------
@@ -278,6 +362,8 @@ export interface PlatformSettings {
   defaultTaxRate?: number;
   defaultPaymentTermsDays?: number;
   defaultCurrency?: string;
+  /** Free-trial length for newly approved organizations (0 – 90 days). */
+  trialDays?: number;
 }
 
 export interface UpdatePlatformSettingsBody {
@@ -286,6 +372,7 @@ export interface UpdatePlatformSettingsBody {
   defaultTaxRate?: number;
   defaultPaymentTermsDays?: number;
   defaultCurrency?: string;
+  trialDays?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -377,7 +464,18 @@ export const platformApi = {
     /** Soft delete: locks every user out but keeps the data. Reversible via restore. */
     archive: (id: string) => platformClient.post<OrgDetail>(`/platform/organizations/${id}/archive`),
     restore: (id: string) => platformClient.post<OrgDetail>(`/platform/organizations/${id}/restore`),
-    approve: (id: string) => platformClient.post<OrgDetail>(`/platform/organizations/${id}/approve`),
+    approve: (id: string, body?: ApproveOrganizationBody) =>
+      platformClient.post<OrgDetail>(`/platform/organizations/${id}/approve`, body),
+    /** Logins for the organization's admin panel (/org-admin). */
+    panelAdmins: {
+      list: (orgId: string, signal?: AbortSignal) =>
+        platformClient.get<OrgPanelAdminItem[]>(`/platform/organizations/${orgId}/panel-admins`, undefined, signal),
+      create: (orgId: string, body: CreatePanelAdminBody) =>
+        platformClient.post<OrgPanelAdminItem>(`/platform/organizations/${orgId}/panel-admins`, body),
+      update: (id: string, body: UpdatePanelAdminBody) =>
+        platformClient.patch<OrgPanelAdminItem>(`/platform/panel-admins/${id}`, body),
+      remove: (id: string) => platformClient.delete<Message>(`/platform/panel-admins/${id}`),
+    },
     reject: (id: string, body: RejectOrganizationBody = {}) =>
       platformClient.post<OrgDetail>(`/platform/organizations/${id}/reject`, body),
     /** PERMANENT delete — destroys the organization and all of its data. */
@@ -394,6 +492,20 @@ export const platformApi = {
     ) => platformClient.get<PlatformPage<PlatformInvoice>>(`/platform/organizations/${id}/invoices`, query, signal),
     exportCsv: (query: { search?: string; status?: string }) =>
       platformDownload('/platform/organizations/export', 'organizations.csv', query),
+  },
+
+  /** Free trials, plan requests and plans. */
+  subscriptions: {
+    requests: (signal?: AbortSignal) =>
+      platformClient.get<SubscriptionRequestItem[]>('/platform/subscription-requests', undefined, signal),
+    /** Accept the pending request (optionally adjusted), or set a plan outright. */
+    approve: (orgId: string, body: ApproveSubscriptionBody = {}) =>
+      platformClient.post<OrgDetail>(`/platform/organizations/${encodeURIComponent(orgId)}/subscription/approve`, body),
+    reject: (orgId: string, body: { reason: string }) =>
+      platformClient.post<OrgDetail>(`/platform/organizations/${encodeURIComponent(orgId)}/subscription/reject`, body),
+    /** Extend (or restart) the free trial by `days`. */
+    extendTrial: (orgId: string, body: { days: number }) =>
+      platformClient.post<OrgDetail>(`/platform/organizations/${encodeURIComponent(orgId)}/trial`, body),
   },
 
   users: {

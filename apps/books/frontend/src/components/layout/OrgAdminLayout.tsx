@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, LayoutDashboard, LayoutTemplate, LogOut, Menu, Settings, ShieldCheck, Users } from 'lucide-react';
+import { KeyRound, LayoutDashboard, LayoutTemplate, LogOut, Menu, Settings, ShieldCheck, Users } from 'lucide-react';
 
-import { useAuth } from '@/auth/AuthContext';
+import { useOrgPanelAuth } from '@/auth/OrgPanelAuthContext';
+import { ChangePasswordModal } from '@/pages/platform/ChangePasswordModal';
 import { initials } from '@/utils/format';
 
 const NAV_LINKS = [
@@ -14,8 +15,9 @@ const NAV_LINKS = [
 
 /** The organization admin panel shell: same look as the platform console, scoped to one organization. */
 export function OrgAdminLayout() {
-  const { user, organization, logout } = useAuth();
+  const { admin, organization, logout, changePassword } = useOrgPanelAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -63,34 +65,35 @@ export function OrgAdminLayout() {
         </div>
 
         <div className="header-right" style={{ gap: 12 }}>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => navigate('/dashboard')}
-            style={{ background: '#1e293b', borderColor: '#334155', color: '#e2e8f0' }}
-          >
-            <ArrowLeft size={14} />
-            <span>Back to app</span>
-          </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span
               className="avatar"
               style={{ background: '#312e81', color: '#e0e7ff' }}
               aria-hidden="true"
             >
-              {initials(user?.name ?? user?.email ?? 'OA')}
+              {initials(admin?.name ?? admin?.email ?? 'OA')}
             </span>
             <span
               style={{ fontSize: 13, color: '#cbd5e1', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-              title={user?.email}
+              title={admin?.email}
             >
-              {user?.name}
+              {admin?.name}
             </span>
           </div>
           <button
             type="button"
             className="btn btn-secondary btn-sm"
-            onClick={() => void logout()}
+            onClick={() => setChangingPassword(true)}
+            title="Change password"
+            style={{ background: '#1e293b', borderColor: '#334155', color: '#e2e8f0' }}
+          >
+            <KeyRound size={14} />
+            <span>Change password</span>
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => void logout().then(() => navigate('/org-admin/login', { replace: true }))}
             style={{ background: '#1e293b', borderColor: '#334155', color: '#e2e8f0' }}
           >
             <LogOut size={14} />
@@ -98,6 +101,14 @@ export function OrgAdminLayout() {
           </button>
         </div>
       </header>
+
+      {changingPassword ? (
+        <ChangePasswordModal
+          onClose={() => setChangingPassword(false)}
+          onSubmit={changePassword}
+          subtitle="Update the password for your admin panel login."
+        />
+      ) : null}
 
       <div className="app-body">
         {sidebarOpen ? <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} aria-hidden="true" /> : null}

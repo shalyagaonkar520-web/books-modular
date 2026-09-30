@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
 import { FilterSelect, Toolbar } from '@/components/ui/Toolbar';
-import { orgApi } from '@/api/endpoints';
+import { useScopedOrgApi } from '@/api/ApiScope';
 import type { AuditLog } from '@/api/types';
 import { useAsync } from '@/hooks/useAsync';
 import { formatDateTime, titleCase } from '@/utils/format';
@@ -41,6 +41,7 @@ const ACTION_TONES: Record<string, Tone> = { create: 'success', update: 'info', 
 
 export function ActivityLogSettings() {
   const { t } = useAppContent();
+  const orgApi = useScopedOrgApi();
   const [entityType, setEntityType] = useState('');
   const [page, setPage] = useState(1);
 

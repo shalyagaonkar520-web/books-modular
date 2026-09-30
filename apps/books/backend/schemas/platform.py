@@ -11,6 +11,8 @@ from pydantic import EmailStr, Field, field_validator
 from backend.schemas import validators
 from backend.schemas.auth import _not_null, _validate_password
 from backend.schemas.common import APIModel
+from backend.schemas.org_admin import OrgPanelAdminOut
+from backend.schemas.subscription import SubscriptionPendingOut, SubscriptionPlanOut
 
 # ISO 4217 style: exactly three upper-case letters.
 _CURRENCY_PATTERN = r"^[A-Z]{3}$"
@@ -96,6 +98,8 @@ class PlatformDashboard(APIModel):
     pending_organizations: int = 0
     rejected_organizations: int = 0
     pending_approvals: List[OrgSummary] = []
+    # Organizations with a subscription request waiting for review.
+    pending_subscription_requests: int = 0
     organization_growth: List[TimePoint]
     revenue_by_month: List[TimePoint]
     top_organizations: List[OrgSummary]
@@ -114,6 +118,17 @@ class OrgSummary(APIModel):
     approval_status: str = "approved"
     approved_at: Optional[datetime] = None
     rejection_reason: Optional[str] = None
+    # The active plan's app modules (null = every module) and monthly price.
+    requested_modules: Optional[List[str]] = None
+    monthly_price: Optional[float] = None
+    # Subscription: trial | active | expired (derived: trial over, no plan ->
+    # locked), the active plan, a request waiting for review and the last
+    # rejection reason.
+    subscription_status: str = "active"
+    trial_ends_at: Optional[datetime] = None
+    plan: Optional[SubscriptionPlanOut] = None
+    pending_request: Optional[SubscriptionPendingOut] = None
+    subscription_note: Optional[str] = None
     # Email of the org's first admin user (who signed it up).
     admin_email: Optional[str] = None
     last_login_at: Optional[datetime] = None
@@ -151,6 +166,16 @@ class OrgDetail(APIModel):
     approval_status: str = "approved"
     approved_at: Optional[datetime] = None
     rejection_reason: Optional[str] = None
+    requested_modules: Optional[List[str]] = None
+    monthly_price: Optional[float] = None
+    # Subscription: trial | active | expired (derived: trial over, no plan ->
+    # locked), the active plan, a request waiting for review and the last
+    # rejection reason.
+    subscription_status: str = "active"
+    trial_ends_at: Optional[datetime] = None
+    plan: Optional[SubscriptionPlanOut] = None
+    pending_request: Optional[SubscriptionPendingOut] = None
+    subscription_note: Optional[str] = None
     last_login_at: Optional[datetime] = None
     created_at: datetime
     user_count: int
@@ -161,6 +186,8 @@ class OrgDetail(APIModel):
     collected_amount: float
     outstanding_receivables: float
     admins: List[PlatformUserOut]
+    # The organization's admin-panel logins (see OrgPanelAdmin).
+    panel_admins: List[OrgPanelAdminOut] = []
 
 
 class CreateOrganizationRequest(APIModel):
@@ -369,6 +396,8 @@ class PlatformSettingsOut(APIModel):
     default_tax_rate: float
     default_payment_terms_days: int
     default_currency: str
+    # Length of the free trial a new organization gets.
+    trial_days: int = 3
 
 
 class UpdatePlatformSettingsRequest(APIModel):
@@ -377,8 +406,9 @@ class UpdatePlatformSettingsRequest(APIModel):
     default_tax_rate: Optional[Decimal] = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
     default_payment_terms_days: Optional[int] = Field(default=None, ge=0, le=365)
     default_currency: Optional[str] = Field(default=None, pattern=_CURRENCY_PATTERN)
+    trial_days: Optional[int] = Field(default=None, ge=0, le=90)
 
-    _required = field_validator("default_tax_rate", "default_payment_terms_days", "default_currency")(_not_null)
+    _required = field_validator("default_tax_rate", "default_payment_terms_days", "default_currency", "trial_days")(_not_null)
 
 
 PlatformDashboard.model_rebuild()

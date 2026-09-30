@@ -4,6 +4,9 @@
  * - Keeps the short-lived access token in memory (not localStorage) and relies
  *   on the httpOnly refresh cookie to restore a session.
  * - Transparently refreshes once on a 401 and replays the original request.
+ * - Announces a 402 `subscription_required` (the organization's trial ended
+ *   without an active plan) to `onSubscriptionRequired` listeners, so the app
+ *   can swap its pages for the lock screen.
  */
 import type { Page } from './types';
 
@@ -12,13 +15,40 @@ const BASE = '/api';
 export class ApiError extends Error {
   readonly status: number;
   readonly fieldErrors: Record<string, string>;
+  /** Machine-readable reason from a `{detail: {code, message}}` body, e.g. 'subscription_required'. */
+  readonly code: string | null;
 
-  constructor(message: string, status: number, fieldErrors: Record<string, string> = {}) {
+  constructor(message: string, status: number, fieldErrors: Record<string, string> = {}, code: string | null = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.fieldErrors = fieldErrors;
+    this.code = code;
   }
+}
+
+/** The `detail` of a 402 subscription_required response. */
+export interface SubscriptionRequiredDetail {
+  code: 'subscription_required';
+  status?: string;
+  message?: string;
+}
+
+type SubscriptionListener = (detail: SubscriptionRequiredDetail) => void;
+const subscriptionListeners = new Set<SubscriptionListener>();
+
+/** Called whenever a request is refused because the organization has no active subscription. */
+export function onSubscriptionRequired(listener: SubscriptionListener): () => void {
+  subscriptionListeners.add(listener);
+  return () => subscriptionListeners.delete(listener);
+}
+
+/** The subscription_required detail of an error body, or null. */
+function subscriptionRequired(status: number, body: unknown): SubscriptionRequiredDetail | null {
+  if (status !== 402 || !body || typeof body !== 'object') return null;
+  const detail = (body as { detail?: unknown }).detail;
+  if (!detail || typeof detail !== 'object' || (detail as { code?: unknown }).code !== 'subscription_required') return null;
+  return detail as SubscriptionRequiredDetail;
 }
 
 type Listener = () => void;
@@ -47,11 +77,16 @@ function notifyUnauthorized(): void {
 function parseError(status: number, body: unknown): ApiError {
   const fieldErrors: Record<string, string> = {};
   let message = `Request failed (${status})`;
+  let code: string | null = null;
 
   if (body && typeof body === 'object' && 'detail' in body) {
     const detail = (body as { detail: unknown }).detail;
     if (typeof detail === 'string') {
       message = detail;
+    } else if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
+      const record = detail as { code?: unknown; message?: unknown };
+      if (typeof record.message === 'string' && record.message) message = record.message;
+      if (typeof record.code === 'string') code = record.code;
     } else if (Array.isArray(detail)) {
       const messages: string[] = [];
       for (const raw of detail) {
@@ -65,7 +100,7 @@ function parseError(status: number, body: unknown): ApiError {
       message = messages.join('\n');
     }
   }
-  return new ApiError(message, status, fieldErrors);
+  return new ApiError(message, status, fieldErrors, code);
 }
 
 function humanize(field: string): string {
@@ -189,6 +224,8 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       accessToken = null;
       notifyUnauthorized();
     }
+    const locked = subscriptionRequired(response.status, payload);
+    if (locked) subscriptionListeners.forEach((listener) => listener(locked));
     throw parseError(response.status, payload ?? { detail: response.statusText });
   }
   return payload as T;

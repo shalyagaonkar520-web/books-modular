@@ -31,6 +31,8 @@ import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 
+import { PlanRequestsCard } from './PlanRequestsCard';
+
 const CTA_TARGET_OPTIONS: Array<{ value: PlanCtaTarget; label: string }> = [
   { value: 'register', label: 'Create organization (sign up)' },
   { value: 'login', label: 'Sign in' },
@@ -164,7 +166,7 @@ export function SubscriptionsPage() {
     <>
       <PageHeader
         title="Subscriptions & Pricing"
-        subtitle="Manage public subscription tiers, monthly and annual prices, discounts, and tier features."
+        subtitle="Review plan requests from organizations, and manage the public subscription tiers, prices and features shown on the landing page."
         actions={
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <Button
@@ -187,6 +189,10 @@ export function SubscriptionsPage() {
           </div>
         }
       />
+
+      <div style={{ marginBottom: 24 }}>
+        <PlanRequestsCard />
+      </div>
 
       {remote.loading && !draft ? (
         <div className="card">

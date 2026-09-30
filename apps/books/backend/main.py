@@ -74,7 +74,7 @@ def create_app() -> FastAPI:
         logger.exception("Unhandled error on %s %s", request.method, request.url.path)
         return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
-    from backend.deps import require_full_app_access
+    from backend.deps import require_full_app_access, require_subscription
     from backend.routers import (
         accounting,
         auth,
@@ -94,6 +94,7 @@ def create_app() -> FastAPI:
         projects,
         razorpay,
         reports,
+        subscription,
     )
 
     # auth (login, /me, change-password, sessions) and the employee portal
@@ -111,11 +112,18 @@ def create_app() -> FastAPI:
     # are individually guarded in those files instead. email is excluded
     # because every endpoint in it is already unauthenticated by design
     # (pre-existing behaviour, unrelated to this change).
+    #
+    # Every role guard (require_full_app_access, require_write, ...) also
+    # enforces the subscription lock: once an organization's free trial is over
+    # without an active plan it answers HTTP 402 subscription_required. auth,
+    # app content, the public site and the subscription router (where the
+    # organization's admin chooses a plan) stay reachable while locked; the
+    # employee portal is locked as well.
     app.include_router(auth.router)
-    app.include_router(employee_portal.router)
+    app.include_router(subscription.router)
+    app.include_router(employee_portal.router, dependencies=[Depends(require_subscription)])
     for module in (
         organization,
-        org_admin,
         items,
         contacts,
         invoices,
@@ -145,6 +153,15 @@ def create_app() -> FastAPI:
 
     app.include_router(platform_admin.auth_router)
     app.include_router(platform_admin.router, dependencies=[Depends(require_superuser)])
+
+    # Organization admin panel. Its own logins (created by a platform admin),
+    # its own token type: tenant and platform tokens are rejected, and a panel
+    # token reaches nothing but this router. Its auth endpoints are open so a
+    # panel admin can log in.
+    from backend.deps import get_current_org_panel_admin
+
+    app.include_router(org_admin.auth_router)
+    app.include_router(org_admin.router, dependencies=[Depends(get_current_org_panel_admin)])
 
     # Editable public-website content: read openly by the landing page, edited
     # only through the guarded platform router.

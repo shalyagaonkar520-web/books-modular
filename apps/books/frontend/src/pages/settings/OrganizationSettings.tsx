@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
-import { orgApi } from '@/api/endpoints';
+import { useApiScope, useScopedOrgApi } from '@/api/ApiScope';
 import type { Organization } from '@/api/types';
 import { useAsync } from '@/hooks/useAsync';
 import { useAuth } from '@/auth/AuthContext';
@@ -60,6 +60,8 @@ export function OrganizationSettings() {
   const { t } = useAppContent();
   const toast = useToast();
   const { refreshOrganization } = useAuth();
+  const { actor, onOrganizationSaved } = useApiScope();
+  const orgApi = useScopedOrgApi();
   const { submitting, error, fieldErrors, run } = useSubmit();
   const { data, loading, error: loadError, reload, setData } = useAsync(() => orgApi.get(), []);
   const [form, setForm] = useState<FormState | null>(null);
@@ -98,7 +100,9 @@ export function OrganizationSettings() {
     const saved = await run(() => orgApi.update(body));
     if (saved) {
       setData(saved);
-      await refreshOrganization();
+      // The tenant app refreshes its session copy; the panel has its own hook (and no tenant session).
+      if (onOrganizationSaved) await onOrganizationSaved();
+      else if (!actor) await refreshOrganization();
       toast.success(t('settings.org.saved'));
     }
   };

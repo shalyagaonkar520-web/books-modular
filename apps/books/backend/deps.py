@@ -9,8 +9,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from backend.db import get_db
-from backend.models import Organization, PlatformAdmin, User
-from backend.security import decode_access_token, decode_platform_token
+from backend.models import Organization, OrgPanelAdmin, PlatformAdmin, User
+from backend.security import decode_access_token, decode_org_panel_token, decode_platform_token
+from backend.services import subscription
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -100,12 +101,81 @@ def get_current_superuser(
 require_superuser = get_current_superuser
 
 
+ARCHIVED_ORG_DETAIL = "This organization has been archived. Contact support."
+SUSPENDED_ORG_DETAIL = "This organization has been suspended. Contact support."
+
+
+def org_panel_access_error(org: Organization | None) -> str | None:
+    """Why an organization's admin panel is closed (the 403 detail), else None.
+
+    The panel is open only for an approved organization that is neither
+    archived nor suspended.
+    """
+    if org is None:
+        return None
+    if org.deleted_at is not None:
+        return ARCHIVED_ORG_DETAIL
+    if org.is_suspended:
+        return SUSPENDED_ORG_DETAIL
+    return org_approval_error(org)
+
+
+def get_current_org_panel_admin(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    db: Session = Depends(get_db),
+) -> OrgPanelAdmin:
+    """Authenticate an organization admin-panel login.
+
+    Only a token minted by the panel login (type ``org_panel_access``) is
+    accepted - tenant ``access`` and ``platform_access`` tokens are not - and
+    it resolves to an ``OrgPanelAdmin`` of exactly one organization.
+    """
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    payload = decode_org_panel_token(credentials.credentials)
+    if not payload:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    admin = db.get(OrgPanelAdmin, payload.get("sub"))
+    if not admin or not admin.is_active or admin.organization_id != payload.get("org"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Administrator is inactive or does not exist")
+    org = db.get(Organization, admin.organization_id)
+    if org is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Organization does not exist")
+    error = org_panel_access_error(org)
+    if error:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=error)
+    request.state.org_panel_admin = admin
+    return admin
+
+
+def ensure_subscription_access(user: User) -> None:
+    """HTTP 402 ``subscription_required`` once the org's trial is over without an active plan.
+
+    Applied by every role guard below, so it covers every router registered
+    with require_full_app_access in main.py and the individually guarded
+    payments / Razorpay endpoints. Auth, app content, the public site and
+    /api/subscription only use get_current_user and stay reachable, so a
+    locked organization can still sign in and choose a plan.
+    """
+    org = user.organization
+    if subscription.is_locked(org):
+        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=subscription.lock_detail(org))
+
+
+def require_subscription(user: User = Depends(get_current_user)) -> User:
+    """Any signed-in role, but only while the organization's app is not locked."""
+    ensure_subscription_access(user)
+    return user
+
+
 def require_roles(*roles: str):
     allowed: Iterable[str] = roles or ALL_ROLES
 
     def _guard(user: User = Depends(get_current_user)) -> User:
         if user.role not in allowed:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+        ensure_subscription_access(user)
         return user
 
     return _guard
