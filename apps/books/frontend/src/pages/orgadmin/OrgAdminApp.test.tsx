@@ -2,43 +2,89 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Route, Routes, useLocation } from 'react-router-dom';
 
-import { DEFAULT_APP_CONTENT, type AppContent } from '@/api/appContent';
-import type { OrgAdminDashboard } from '@/api/orgAdmin';
+import { DEFAULT_APP_CONTENT } from '@/api/appContent';
+import type { OrgAdminDashboard, OrgAdminUserOverview } from '@/api/orgAdmin';
 import { setOrgPanelAccessToken } from '@/api/orgPanelClient';
 import { AppContentProvider } from '@/app/AppContentContext';
 import { Header } from '@/components/layout/Header';
-import { AppContentPage } from '@/pages/platform/AppContentPage';
 import { installMockApi, page, type MockApi } from '@/test/mockApi';
 import { renderWithProviders, testOrganization, testUser } from '@/test/renderWithProviders';
 
 import { OrgAdminApp } from './OrgAdminApp';
-import { OrgAdminDashboardPage } from './OrgAdminDashboardPage';
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
+const USERS = [
+  { ...testUser, id: 'u1', name: 'Khadar Basha' },
+  { ...testUser, id: 'u2', name: 'Priya Nair', email: 'priya@example.com', role: 'staff' as const },
+];
+
+/** The panel opens on its dashboard. */
 const DASHBOARD: OrgAdminDashboard = {
-  organization: { id: 'org1', name: 'Rooman Technologies', createdAt: '2026-04-01T04:00:00Z', approvalStatus: 'approved' },
-  users: { total: 7, active: 6, inactive: 1, pendingInvites: 2, byRole: { admin: 1, staff: 4, viewer: 2 }, signedInLast30Days: 5 },
-  recentUsers: [
-    { ...testUser, id: 'u2', name: 'Priya Nair', email: 'priya@example.com', role: 'staff', lastLoginAt: null },
-    { ...testUser, id: 'u3', name: 'Arun Rao', email: 'arun@example.com', role: 'viewer', pendingInvite: true, isActive: false },
+  organizationName: 'Rooman Technologies',
+  users: { total: 7, active: 5, suspended: 1, pendingInvites: 1, byRole: { admin: 1, staff: 4, viewer: 2 }, signedInLast30Days: 5 },
+  employees: { total: 12, active: 10, inactive: 2, withLogin: 3, joinedLast30Days: 2, byDepartment: { Sales: 6, Ops: 4 } },
+  recentUsers: [USERS[1]],
+  recentEmployees: [
+    {
+      id: 'e1',
+      employeeCode: 'EMP-001',
+      name: 'Ravi Kumar',
+      designation: 'Engineer',
+      department: 'Ops',
+      dateOfJoining: '2026-09-15',
+      isActive: true,
+      hasLogin: true,
+    },
   ],
   recentActivity: [
-    { id: 'a1', userId: 'u1', userName: 'Khadar Basha', action: 'invoice.create', entityType: 'invoice', entityId: 'i1', summary: 'Created invoice INV-00042', createdAt: '2026-09-29T10:00:00Z' },
+    {
+      id: 'a1',
+      userId: 'u1',
+      userName: 'Khadar Basha',
+      action: 'create',
+      entityType: 'invoice',
+      entityId: 'i1',
+      summary: 'Created invoice INV-00042',
+      createdAt: '2026-09-29T10:00:00Z',
+    },
   ],
   activityLast7Days: 31,
-  appContent: { customizedFields: 3, disabledModules: ['payroll', 'razorpay'] },
 };
 
-const SHARED: AppContent = { ...DEFAULT_APP_CONTENT, texts: { ...DEFAULT_APP_CONTENT.texts, 'items.title': 'Catalogue' } };
-const orgPayload = (content: AppContent) => ({
-  organizationId: 'org1',
-  organizationName: 'Rooman Technologies',
-  content,
-  shared: SHARED,
-  overridden: { branding: [], modules: [], texts: [] },
-});
+const OVERVIEW: OrgAdminUserOverview = {
+  user: USERS[1],
+  employee: null,
+  performance: {
+    invoicesRaised: 4,
+    invoicedAmount: 40000,
+    collectedAmount: 30000,
+    invoicesLast30Days: 2,
+    billsRecorded: 1,
+    billsAmount: 5000,
+    expensesRecorded: 2,
+    expensesAmount: 1500,
+    hoursLogged: 12.5,
+    hoursLast30Days: 6,
+    billableHours: 10,
+    actionsLast30Days: 9,
+    lastActive: '2026-09-30T09:00:00Z',
+  },
+  pending: {
+    invitePending: false,
+    draftInvoices: 1,
+    openInvoices: 2,
+    overdueInvoices: 1,
+    outstandingAmount: 10000,
+    draftBills: 0,
+    invoices: [
+      { id: 'i7', invoiceNumber: 'INV-00007', customerName: 'Acme', dueDate: '2026-09-01', status: 'overdue', total: 8000, balanceDue: 8000 },
+    ],
+    bills: [],
+  },
+  recentActivity: [],
+};
 
 const PANEL_SESSION = {
   admin: {
@@ -114,7 +160,7 @@ describe('Organization admin panel', () => {
     renderPanel('/org-admin/login');
     await signIn(' Meera@Rooman.example ', 'S3cret-pass');
 
-    expect(await screen.findByText('Organization overview')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
     expect(screen.getByTestId('location').textContent).toBe('/org-admin');
     expect(calls.find((call) => call.path === '/api/org-admin/auth/login')?.body).toEqual({
       email: 'meera@rooman.example',
@@ -138,11 +184,11 @@ describe('Organization admin panel', () => {
   it('opens for a panel admin inside its own layout, without a tenant session', async () => {
     installMockApi({ ...signedIn, 'GET /api/org-admin/dashboard': DASHBOARD, 'GET /api/app-content': DEFAULT_APP_CONTENT });
     renderPanel('/org-admin');
-    expect(await screen.findByText('Organization overview')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
     expect(screen.getByText('Organization Admin')).toBeInTheDocument();
     expect(screen.getByText('Meera Iyer')).toBeInTheDocument();
     const nav = screen.getByRole('complementary', { name: 'Organization admin navigation' });
-    expect(Array.from(nav.querySelectorAll('a')).map((link) => link.textContent)).toEqual(['Dashboard', 'Users', 'App content', 'Settings']);
+    expect(Array.from(nav.querySelectorAll('a')).map((link) => link.textContent)).toEqual(['Dashboard', 'Users', 'Organization', 'Integrations', 'Activity log']);
     expect(screen.queryByRole('button', { name: 'Back to app' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Change password' })).toBeInTheDocument();
   });
@@ -199,8 +245,8 @@ describe('Organization admin panel', () => {
     expect(await screen.findByText('Priya Nair')).toBeInTheDocument();
     expect(calls.some((call) => call.path === '/api/users')).toBe(false);
     expect(authHeader(fetchMock, '/api/org-admin/users')).toBe('Bearer panel-token');
-    // The per-user dashboard (and its PDF) is tenant-only.
-    expect(screen.queryByRole('button', { name: 'View' })).not.toBeInTheDocument();
+    // Each user opens the panel's own overview, not the tenant per-user dashboard.
+    expect(screen.getAllByRole('button', { name: 'View' })).toHaveLength(2);
     // A panel admin is not one of these users, so each of them can be deleted.
     expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(2);
 
@@ -227,19 +273,152 @@ describe('Organization admin panel', () => {
     );
   });
 
-  it('offers only the Organization and Activity log settings, on the panel endpoints', async () => {
+  it('edits the organization profile (GST etc.) on the panel endpoints, with no other settings', async () => {
+    const { calls } = installMockApi({ ...signedIn, 'GET /api/org-admin/organization': testOrganization });
+    renderPanel('/org-admin/organization');
+    expect(await screen.findByDisplayValue('Rooman Technologies')).toBeInTheDocument();
+    expect(screen.getByLabelText(/GSTIN/)).toBeInTheDocument();
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+    expect(calls.some((call) => call.path === '/api/organization' || call.path.startsWith('/api/settings/smtp'))).toBe(false);
+    expect(calls.some((call) => call.path.includes('audit-logs'))).toBe(false);
+  });
+
+  it.each(['/org-admin/settings', '/org-admin/app-content'])('sends the removed page %s to the dashboard', async (route) => {
+    installMockApi({ ...signedIn, 'GET /api/org-admin/dashboard': DASHBOARD });
+    renderPanel(route);
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(screen.getByTestId('location').textContent).toBe('/org-admin');
+  });
+
+  it('shows users and employees on the dashboard', async () => {
+    installMockApi({ ...signedIn, 'GET /api/org-admin/dashboard': DASHBOARD });
+    renderPanel('/org-admin');
+    const tile = (label: string) => screen.getAllByText(label, { selector: '.stat-label' })[0].closest('.stat-tile') as HTMLElement;
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(tile('Users')).toHaveTextContent('7');
+    expect(tile('Suspended')).toHaveTextContent('1');
+    expect(tile('Employees')).toHaveTextContent('12');
+    const roles = screen.getByRole('list', { name: 'Users by role' });
+    expect(Array.from(roles.querySelectorAll('li')).map((row) => row.textContent)).toEqual(['Admin1', 'Staff4', 'Viewer2', 'Employee0']);
+    const departments = screen.getByRole('list', { name: 'Employees by department' });
+    expect(Array.from(departments.querySelectorAll('li')).map((row) => row.textContent)).toEqual(['Sales6', 'Ops4']);
+    expect(screen.getByText('Ravi Kumar')).toBeInTheDocument();
+    expect(screen.getByText('Created invoice INV-00042')).toBeInTheDocument();
+  });
+
+  it('opens a user with their performance and pending work', async () => {
+    installMockApi({ ...signedIn, 'GET /api/org-admin/users': USERS, 'GET /api/org-admin/users/u2/overview': OVERVIEW });
+    renderPanel('/org-admin/users');
+    fireEvent.click(await screen.findByRole('button', { name: 'Priya Nair' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Priya Nair' });
+    expect(await within(dialog).findByText('Invoices raised')).toBeInTheDocument();
+    expect(within(dialog).getByText('75% of invoiced')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Pending (3)' }));
+    expect(within(dialog).getByText('INV-00007')).toBeInTheDocument();
+    expect(within(dialog).getByText('Overdue', { selector: '.badge' })).toBeInTheDocument();
+  });
+
+  it('sets what a staff user can edit, with modules outside the plan disabled', async () => {
     const { calls } = installMockApi({
       ...signedIn,
-      'GET /api/org-admin/organization': testOrganization,
-      'GET /api/org-admin/audit-logs': page([]),
+      'GET /api/org-admin/users': USERS,
+      'GET /api/org-admin/users/u2/overview': { ...OVERVIEW, planModules: ['customers', 'invoices', 'items'] },
+      'PUT /api/org-admin/users/u2/module-access': (_url: URL, init: RequestInit) =>
+        json({ ...USERS[1], moduleAccess: JSON.parse(String(init.body)).modules }),
     });
-    renderPanel('/org-admin/settings');
-    expect(await screen.findByDisplayValue('Rooman Technologies')).toBeInTheDocument();
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Organization', 'Activity log']);
-    expect(calls.some((call) => call.path === '/api/organization' || call.path.startsWith('/api/settings/smtp'))).toBe(false);
+    renderPanel('/org-admin/users');
+    fireEvent.click(await screen.findByRole('button', { name: 'Priya Nair' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Priya Nair' });
+    fireEvent.click(await within(dialog).findByRole('tab', { name: 'Edit access' }));
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Activity log' }));
-    await waitFor(() => expect(calls.some((call) => call.path === '/api/org-admin/audit-logs')).toBe(true));
+    const box = (name: RegExp) => within(dialog).getByRole('checkbox', { name });
+    // Every module of the plan by default; nothing can be ticked until access is limited.
+    expect(box(/^Invoices/)).toBeChecked();
+    expect(box(/^Invoices/)).toBeDisabled();
+    // Outside the plan: never grantable.
+    expect(box(/^Payroll/)).not.toBeChecked();
+    expect(box(/^Payroll/)).toBeDisabled();
+    expect(within(dialog).getAllByText('Not in plan').length).toBeGreaterThan(0);
+
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Only the modules ticked below' }));
+    expect(box(/^Payroll/)).toBeDisabled();
+    expect(box(/^Invoices/)).toBeEnabled();
+    fireEvent.click(box(/^Invoices/));
+    fireEvent.click(box(/^Customers/));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save access' }));
+    await waitFor(() =>
+      expect(calls.find((call) => call.method === 'PUT' && call.path === '/api/org-admin/users/u2/module-access')?.body).toEqual({
+        modules: ['customers', 'invoices'],
+      }),
+    );
+  });
+
+  it('shows an admin every plan module as editable and offers the role change', async () => {
+    const admin = { ...USERS[0], role: 'admin' as const };
+    const { calls } = installMockApi({
+      ...signedIn,
+      'GET /api/org-admin/users': [admin],
+      'GET /api/org-admin/users/u1/overview': { ...OVERVIEW, user: admin, planModules: ['customers', 'invoices'] },
+      'PATCH /api/org-admin/users/u1': () => json({ detail: 'The organization needs at least one administrator' }, 400),
+    });
+    renderPanel('/org-admin/users');
+    fireEvent.click(await screen.findByRole('button', { name: 'Khadar Basha' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Khadar Basha' });
+    fireEvent.click(await within(dialog).findByRole('tab', { name: 'Edit access' }));
+
+    const box = (name: RegExp) => within(dialog).getByRole('checkbox', { name });
+    expect(box(/^Invoices/)).toBeChecked();
+    expect(box(/^Invoices/)).toBeDisabled();
+    expect(box(/^Payroll/)).not.toBeChecked();
+    expect(within(dialog).getByText(/Admins edit every module in the plan/)).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Save access' })).not.toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText('Role'), { target: { value: 'staff' } });
+    expect(await within(dialog).findByText('The organization needs at least one administrator')).toBeInTheDocument();
+    expect(calls.find((call) => call.method === 'PATCH')?.body).toEqual({ role: 'staff' });
+  });
+
+  it('shows Razorpay status and syncs for the organization, without the keys form', async () => {
+    const status = {
+      configured: true,
+      connected: true,
+      reachable: false,
+      mode: 'test',
+      key_id_masked: 'rzp_test_AB...YZ',
+      webhook_configured: true,
+      auto_sync_enabled: false,
+      sync_interval_minutes: 30,
+      initial_import_days: 30,
+      webhook_path: '/api/razorpay/webhook',
+      transactions_imported: 42,
+      ever_synced: true,
+      last_successful_sync: null,
+      last_sync: null,
+    };
+    const { calls } = installMockApi({
+      ...signedIn,
+      'GET /api/org-admin/integrations/razorpay': status,
+      'POST /api/org-admin/integrations/razorpay/sync': { success: true, message: '3 transactions imported', sync: null },
+    });
+    renderPanel('/org-admin/integrations');
+    expect(await screen.findByText('rzp_test_AB...YZ')).toBeInTheDocument();
+    expect(screen.getByText('42')).toBeInTheDocument();
+    // The keys are platform-wide: no connect, edit or disconnect here.
+    expect(screen.queryByRole('button', { name: /Disconnect/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Key secret/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Sync now/i }));
+    await waitFor(() =>
+      expect(calls.find((call) => call.method === 'POST' && call.path === '/api/org-admin/integrations/razorpay/sync')?.body).toEqual({
+        full: false,
+      }),
+    );
+    expect(calls.some((call) => call.path.startsWith('/api/razorpay'))).toBe(false);
+  });
+
+  it('shows the full activity log from the panel endpoint', async () => {
+    const { calls } = installMockApi({ ...signedIn, 'GET /api/org-admin/audit-logs': page(DASHBOARD.recentActivity) });
+    renderPanel('/org-admin/activity');
+    expect(await screen.findByText('Created invoice INV-00042')).toBeInTheDocument();
     expect(calls.some((call) => call.path === '/api/audit-logs')).toBe(false);
   });
 
@@ -250,94 +429,5 @@ describe('Organization admin panel', () => {
     fireEvent.click(container.querySelector('.profile-btn') as HTMLElement);
     expect(await screen.findByText('My Account')).toBeInTheDocument();
     expect(screen.queryByText('Admin panel')).not.toBeInTheDocument();
-  });
-
-  it('renders the dashboard stats from the API', async () => {
-    installMockApi({ 'GET /api/org-admin/dashboard': DASHBOARD });
-    renderWithProviders(<OrgAdminDashboardPage />);
-
-    const tile = (label: string) => screen.getByText(label, { selector: '.stat-label' }).closest('.stat-tile') as HTMLElement;
-    expect(await screen.findByText('Organization overview')).toBeInTheDocument();
-    expect(tile('Users')).toHaveTextContent('7');
-    expect(tile('Active')).toHaveTextContent('6');
-    expect(tile('Pending invites')).toHaveTextContent('2');
-    expect(tile('Signed in last 30 days')).toHaveTextContent('5');
-    expect(tile('Activity last 7 days')).toHaveTextContent('31');
-    expect(tile('Customized app fields')).toHaveTextContent('3');
-
-    const roles = screen.getByRole('list', { name: 'Users by role' });
-    expect(Array.from(roles.querySelectorAll('li')).map((row) => row.textContent)).toEqual(['Admin1', 'Staff4', 'Viewer2', 'Employee0']);
-
-    expect(screen.getByText('Priya Nair')).toBeInTheDocument();
-    expect(screen.getByText('Invite pending')).toBeInTheDocument();
-    expect(screen.getByText('Never')).toBeInTheDocument();
-    expect(screen.getByText('Created invoice INV-00042')).toBeInTheDocument();
-    expect(screen.getByText('Payroll')).toBeInTheDocument();
-    expect(screen.getByText('Razorpay payments')).toBeInTheDocument();
-  });
-});
-
-describe('AppContentPage in organization mode', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    setOrgPanelAccessToken(null);
-  });
-
-  function renderOrgMode() {
-    return renderWithProviders(
-      <AppContentProvider>
-        <AppContentPage mode="organization" />
-      </AppContentProvider>,
-      { route: '/org-admin/app-content' },
-    );
-  }
-
-  it('loads and saves through the org-admin endpoints on the panel session, with no organization picker', async () => {
-    setOrgPanelAccessToken('panel-token');
-    const { calls, fetchMock } = installMockApi({
-      'GET /api/org-admin/app-content': orgPayload(SHARED),
-      'PUT /api/org-admin/app-content': (_url: URL, init: RequestInit) => json(orgPayload(JSON.parse(String(init.body)))),
-      'GET /api/app-content': SHARED,
-    });
-    renderOrgMode();
-
-    expect(await screen.findByLabelText('Search texts')).toBeInTheDocument();
-    expect(authHeader(fetchMock, '/api/org-admin/app-content')).toBe('Bearer panel-token');
-    expect(screen.getByText('Rooman Technologies', { selector: 'strong' })).toBeInTheDocument();
-    expect(screen.getByText(/0 customized fields/)).toBeInTheDocument();
-    expect(screen.queryByLabelText('Apply changes to')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Workspace/)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Remove customizations' })).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText('Search texts'), { target: { value: 'items.title' } });
-    const title = screen.getByLabelText('Title');
-    expect(title).toHaveAttribute('placeholder', 'Catalogue');
-    fireEvent.change(title, { target: { value: 'Our products' } });
-    expect(screen.getByText('Customized')).toBeInTheDocument();
-    expect(screen.getByText(/1 customized field/)).toBeInTheDocument();
-
-    const liveReadsBefore = calls.filter((call) => call.path === '/api/app-content').length;
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(screen.getByText('All changes saved')).toBeInTheDocument());
-
-    const body = calls.find((call) => call.method === 'PUT' && call.path === '/api/org-admin/app-content')?.body as AppContent;
-    expect(body.texts['items.title']).toBe('Our products');
-    expect(calls.some((call) => call.path.startsWith('/api/platform'))).toBe(false);
-    await waitFor(() => expect(calls.filter((call) => call.path === '/api/app-content').length).toBeGreaterThan(liveReadsBefore));
-  });
-
-  it('shows a 422 from the panel on the field it is about', async () => {
-    installMockApi({
-      'GET /api/org-admin/app-content': orgPayload(SHARED),
-      'PUT /api/org-admin/app-content': () =>
-        json({ detail: [{ loc: ['body', 'texts', 'items.title'], msg: 'Too long for a title' }] }, 422),
-    });
-    renderOrgMode();
-
-    fireEvent.change(await screen.findByLabelText('Search texts'), { target: { value: 'items.title' } });
-    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Our products' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(await screen.findByText('Too long for a title')).toBeInTheDocument();
-    expect(screen.getByText('1 issue')).toBeInTheDocument();
   });
 });

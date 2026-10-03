@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from backend.db import SessionLocal
 from backend.main import app
 from backend.models import Organization, OrgPanelAdmin, OrgPanelRefreshToken
-from tests.conftest import PANEL_PASSWORD, auth, create_panel_admin, invite_and_accept, platform_admin_headers, register_org
+from tests.conftest import PANEL_PASSWORD, auth, create_panel_admin, platform_admin_headers, register_org
 
 
 @pytest.fixture
@@ -130,7 +130,7 @@ def test_super_admin_manages_panel_admins(client, platform_h, tenant):
     assert _login(client, new_email, "Brand3NewPass").status_code == 200
 
     # The platform actions land in the org's audit log.
-    logs = client.get("/api/org-admin/audit-logs", headers=tenant["panel_h"], params={"entityType": "org_panel_admin"}).json()
+    logs = client.get("/api/audit-logs", headers=tenant["h"], params={"entityType": "org_panel_admin"}).json()
     assert any("created by platform admin" in (r["summary"] or "") for r in logs["items"])
 
     assert client.delete(f"/api/platform/panel-admins/{pid}", headers=platform_h).status_code == 200
@@ -149,7 +149,7 @@ def test_deactivated_panel_admin_is_locked_out(client, platform_h, tenant):
     assert res.status_code == 200 and res.json()["isActive"] is False
     assert session.post("/api/org-admin/auth/refresh").status_code == 401
     assert _login(client, tenant["panel"]["email"]).status_code == 401
-    assert client.get("/api/org-admin/dashboard", headers=h).status_code == 401
+    assert client.get("/api/org-admin/users", headers=h).status_code == 401
 
     client.patch(f"/api/platform/panel-admins/{pid}", headers=platform_h, json={"isActive": True})
     assert _login(client, tenant["panel"]["email"]).status_code == 200
@@ -225,7 +225,7 @@ def test_login_blocked_while_org_is_not_open(client, tenant, state):
     try:
         res = _login(client, tenant["panel"]["email"])
         assert res.status_code == 403, res.text
-        assert client.get("/api/org-admin/dashboard", headers=auth(token)).status_code == 403
+        assert client.get("/api/org-admin/users", headers=auth(token)).status_code == 403
         assert session.post("/api/org-admin/auth/refresh").status_code == 403
         if "deleted_at" in state:
             assert "archived" in res.json()["detail"]
@@ -240,7 +240,7 @@ def test_login_blocked_while_org_is_not_open(client, tenant, state):
 
 def test_tokens_do_not_cross_between_apps(client, platform_h, tenant):
     for h in (tenant["h"], platform_h):
-        assert client.get("/api/org-admin/dashboard", headers=h).status_code == 401
+        assert client.get("/api/org-admin/users", headers=h).status_code == 401
         assert client.get("/api/org-admin/me", headers=h).status_code == 401
     assert client.get("/api/users", headers=tenant["panel_h"]).status_code == 401
     assert client.get("/api/auth/me", headers=tenant["panel_h"]).status_code == 401
@@ -271,15 +271,8 @@ def test_smtp_settings_are_not_exposed(client, tenant):
 def test_panel_sees_only_its_own_organization(client, platform_h, tenant):
     other = register_org(client, "PanelOther")
     create_panel_admin(client, platform_h, other["org"]["id"])
-    dash = client.get("/api/org-admin/dashboard", headers=tenant["panel_h"]).json()
-    assert dash["organization"]["id"] == tenant["org_id"] and dash["users"]["total"] == 1
     users = client.get("/api/org-admin/users", headers=tenant["panel_h"]).json()
     assert [u["email"] for u in users] == [tenant["admin"]["email"]]
-    logs = client.get("/api/org-admin/audit-logs", headers=tenant["panel_h"]).json()
-    assert set(logs) >= {"items", "total", "page", "pageSize"} and logs["total"] >= 1
-    other_logs = client.get("/api/audit-logs", headers=auth(other["token"])).json()
-    mine = {r["id"] for r in logs["items"]}
-    assert not mine & {r["id"] for r in other_logs["items"]}
     # Another org's user is not reachable.
     assert (
         client.patch(f"/api/org-admin/users/{other['user']['id']}", headers=tenant["panel_h"], json={"name": "Hacked"}).status_code == 404
@@ -328,7 +321,7 @@ def test_panel_manages_users(client, tenant, no_smtp):
     assert [u["id"] for u in client.get("/api/org-admin/users", headers=ph).json()] == [owner_id]
 
     # Everything is attributed to the panel admin, not to a tenant user.
-    logs = client.get("/api/org-admin/audit-logs", headers=ph, params={"entityType": "user", "pageSize": 100}).json()["items"]
+    logs = client.get("/api/audit-logs", headers=tenant["h"], params={"entityType": "user", "pageSize": 100}).json()["items"]
     mine = [r for r in logs if r["userName"] == "Pat Panel (org admin panel)"]
     assert len(mine) >= 7 and all(r["userId"] is None for r in mine)
     assert {"create", "update", "delete"} <= {r["action"] for r in mine}
@@ -365,22 +358,8 @@ def test_panel_updates_organization_profile(client, tenant):
     assert client.put("/api/org-admin/organization", headers=tenant["panel_h"], json={"name": None}).status_code == 422
     assert client.get("/api/organization", headers=tenant["h"]).json()["city"] == "Bengaluru"
     assert client.get("/api/org-admin/me", headers=tenant["panel_h"]).json()["organization"]["name"] == "Renamed By Panel"
-    [entry] = client.get("/api/org-admin/audit-logs", headers=tenant["panel_h"], params={"entityType": "organization"}).json()["items"][:1]
+    [entry] = client.get("/api/audit-logs", headers=tenant["h"], params={"entityType": "organization"}).json()["items"][:1]
     assert entry["userName"] == "Pat Panel (org admin panel)" and entry["userId"] is None
-
-
-def test_app_content_via_panel_reaches_only_that_org(client, platform_h, tenant):
-    from tests.test_org_admin import DEFAULT, FIRST_TEXT
-
-    other = register_org(client, "PanelOther")
-    staff = invite_and_accept(client, tenant["h"], "Sam Staff", f"staff-{uuid.uuid4().hex[:6]}@panel.example.com", "staff", "Str0ngPass!")
-    staff_h = auth(client.post("/api/auth/login", json={"email": staff["email"], "password": "Str0ngPass!"}).json()["accessToken"])
-    body = {**DEFAULT, "texts": {**DEFAULT["texts"], FIRST_TEXT: "Panel text"}}
-    assert client.put("/api/org-admin/app-content", headers=tenant["panel_h"], json=body).status_code == 200
-    assert client.get("/api/app-content", headers=staff_h).json()["texts"][FIRST_TEXT] == "Panel text"
-    assert client.get("/api/app-content", headers=auth(other["token"])).json()["texts"][FIRST_TEXT] == DEFAULT["texts"][FIRST_TEXT]
-    assert client.post("/api/org-admin/app-content/reset", headers=tenant["panel_h"]).status_code == 200
-    assert client.get("/api/app-content", headers=staff_h).json() == DEFAULT
 
 
 def test_permanent_org_delete_removes_panel_admins(client, platform_h, tenant):
@@ -392,4 +371,4 @@ def test_permanent_org_delete_removes_panel_admins(client, platform_h, tenant):
         assert db.get(OrgPanelAdmin, pid) is None
         assert db.query(OrgPanelRefreshToken).filter(OrgPanelRefreshToken.admin_id == pid).count() == 0
     assert _login(client, tenant["panel"]["email"]).status_code == 401
-    assert client.get("/api/org-admin/dashboard", headers=tenant["panel_h"]).status_code == 401
+    assert client.get("/api/org-admin/users", headers=tenant["panel_h"]).status_code == 401

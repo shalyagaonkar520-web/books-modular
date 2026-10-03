@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { KeyRound, LayoutDashboard, LayoutTemplate, LogOut, Menu, Settings, ShieldCheck, Users } from 'lucide-react';
+import { Building2, History, KeyRound, LayoutDashboard, LogOut, Menu, Plug, ShieldCheck, Users } from 'lucide-react';
 
 import { useOrgPanelAuth } from '@/auth/OrgPanelAuthContext';
 import { ChangePasswordModal } from '@/pages/platform/ChangePasswordModal';
@@ -9,8 +9,9 @@ import { initials } from '@/utils/format';
 const NAV_LINKS = [
   { to: '/org-admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/org-admin/users', label: 'Users', icon: Users, end: false },
-  { to: '/org-admin/app-content', label: 'App content', icon: LayoutTemplate, end: false },
-  { to: '/org-admin/settings', label: 'Settings', icon: Settings, end: false },
+  { to: '/org-admin/organization', label: 'Organization', icon: Building2, end: false },
+  { to: '/org-admin/integrations', label: 'Integrations', icon: Plug, end: false },
+  { to: '/org-admin/activity', label: 'Activity log', icon: History, end: false },
 ];
 
 /** The organization admin panel shell: same look as the platform console, scoped to one organization. */

@@ -28,6 +28,7 @@ import { useSubmit } from '@/hooks/useSubmit';
 const ACCOUNT_STATE_PREFIXES = {
   PENDING_APPROVAL: 'pending',
   REGISTRATION_REJECTED: 'rejected',
+  TRIAL_ENDED: 'trialEnded',
 } as const;
 
 type AccountState = (typeof ACCOUNT_STATE_PREFIXES)[keyof typeof ACCOUNT_STATE_PREFIXES];
@@ -44,7 +45,10 @@ function parseAccountState(message: string | null): { kind: AccountState; text: 
 
 function AccountStateNotice({ kind, text }: { kind: AccountState; text: string }) {
   const { t } = useAppContent();
-  const pending = kind === 'pending';
+  // A trial that ended is a wait (amber), like a pending approval.
+  const pending = kind === 'pending' || kind === 'trialEnded';
+  const title = { pending: 'auth.login.notice.pendingTitle', rejected: 'auth.login.notice.rejectedTitle', trialEnded: 'auth.login.notice.trialEndedTitle' }[kind];
+  const body = { pending: 'auth.login.notice.pendingBody', rejected: 'auth.login.notice.rejectedBody', trialEnded: 'auth.login.notice.trialEndedBody' }[kind];
   return (
     <div
       role="alert"
@@ -70,13 +74,8 @@ function AccountStateNotice({ kind, text }: { kind: AccountState; text: string }
         <Ban size={16} style={{ flexShrink: 0, marginTop: '2px' }} aria-hidden="true" />
       )}
       <div>
-        <strong style={{ display: 'block' }}>{pending ? t('auth.login.notice.pendingTitle') : t('auth.login.notice.rejectedTitle')}</strong>
-        <span>
-          {text ||
-            (pending
-              ? t('auth.login.notice.pendingBody')
-              : t('auth.login.notice.rejectedBody'))}
-        </span>
+        <strong style={{ display: 'block' }}>{t(title)}</strong>
+        <span>{text || t(body)}</span>
       </div>
     </div>
   );

@@ -13,9 +13,8 @@ import {
   XCircle,
 } from 'lucide-react';
 
-import { razorpaySyncApi, type IntegrationStatus, type SyncLog } from '@/api/razorpay';
+import type { ConnectRazorpayPayload, ConnectRazorpayResponse, IntegrationStatus, SyncLog, SyncResponse } from '@/api/razorpay';
 import { useAppContent } from '@/app/AppContentContext';
-import { useAuth } from '@/auth/AuthContext';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -44,10 +43,23 @@ function LastSync({ log }: { log?: SyncLog | null }) {
   );
 }
 
-export function RazorpayIntegrationSettings() {
+/**
+ * Where the screen reads and writes. The Razorpay keys are platform-wide, so
+ * only the super-admin console passes `connect`/`disconnect`; the org admin
+ * panel passes `sync` (its own organization's import) and sees the keys read-only.
+ */
+export interface RazorpayIntegrationApi {
+  loadStatus: () => Promise<IntegrationStatus>;
+  sync?: (full: boolean) => Promise<SyncResponse>;
+  connect?: (payload: ConnectRazorpayPayload) => Promise<ConnectRazorpayResponse>;
+  disconnect?: () => Promise<{ message: string; status: IntegrationStatus }>;
+}
+
+export function RazorpayIntegrationSettings({ api }: { api: RazorpayIntegrationApi }) {
   const { t } = useAppContent();
   const toast = useToast();
-  const { isAdmin } = useAuth();
+  const { loadStatus, sync, connect, disconnect } = api;
+  const canManageKeys = Boolean(connect && disconnect);
   const [syncing, setSyncing] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -61,7 +73,7 @@ export function RazorpayIntegrationSettings() {
 
   const { data, loading, error, reload, setData } = useAsync<IntegrationStatus>(
     async () => {
-      const status = await razorpaySyncApi.getIntegrationStatus();
+      const status = await loadStatus();
       if (!status.configured) {
         setFormOpen(true);
       }
@@ -73,15 +85,16 @@ export function RazorpayIntegrationSettings() {
 
   const runSync = useCallback(
     async (full: boolean) => {
+      if (!sync) return;
       setSyncing(true);
       try {
-        const result = await razorpaySyncApi.sync(full);
+        const result = await sync(full);
         if (result.success) {
           toast.success(result.message);
         } else {
           toast.error(result.message);
         }
-        const refreshed = await razorpaySyncApi.getIntegrationStatus();
+        const refreshed = await loadStatus();
         setData(refreshed);
       } catch {
         toast.error(t('settings.razorpay.syncUnreachable'));
@@ -89,7 +102,7 @@ export function RazorpayIntegrationSettings() {
         setSyncing(false);
       }
     },
-    [setData, toast, t],
+    [loadStatus, setData, sync, toast, t],
   );
 
   const handleConnect = async (e: React.FormEvent) => {
@@ -98,9 +111,10 @@ export function RazorpayIntegrationSettings() {
       toast.error(t('settings.razorpay.keysRequired'));
       return;
     }
+    if (!connect) return;
     setConnecting(true);
     try {
-      const res = await razorpaySyncApi.connectIntegration({
+      const res = await connect({
         key_id: keyId.trim(),
         key_secret: keySecret.trim(),
         webhook_secret: webhookSecret.trim(),
@@ -126,9 +140,10 @@ export function RazorpayIntegrationSettings() {
     if (!window.confirm(t('settings.razorpay.disconnectConfirm'))) {
       return;
     }
+    if (!disconnect) return;
     setDisconnecting(true);
     try {
-      const res = await razorpaySyncApi.disconnectIntegration();
+      const res = await disconnect();
       toast.notify(res.message, 'info');
       setData(res.status);
       setFormOpen(true);
@@ -168,13 +183,13 @@ export function RazorpayIntegrationSettings() {
         subtitle={t('settings.razorpay.subtitle')}
         actions={
           <div className="row" style={{ gap: '8px', flexWrap: 'wrap' }}>
-            {connected && !formOpen && isAdmin ? (
+            {connected && !formOpen && canManageKeys ? (
               <Button variant="ghost" size="sm" icon={<KeyRound size={14} />} onClick={() => setFormOpen(true)}>
                 {t('settings.razorpay.editCredentials')}
               </Button>
             ) : null}
 
-            {connected && isAdmin ? (
+            {connected && canManageKeys ? (
               <Button
                 variant="ghost"
                 size="sm"
@@ -187,27 +202,31 @@ export function RazorpayIntegrationSettings() {
               </Button>
             ) : null}
 
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<RefreshCw size={14} />}
-              onClick={() => runSync(true)}
-              loading={syncing}
-              disabled={!connected}
-              title={connected ? t('settings.razorpay.fullReimportHint') : t('settings.razorpay.connectFirst')}
-            >
-              {t('settings.razorpay.fullReimport')}
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              icon={<RefreshCw size={14} />}
-              onClick={() => runSync(false)}
-              loading={syncing}
-              disabled={!connected}
-            >
-              {t('settings.razorpay.syncNow')}
-            </Button>
+            {sync ? (
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<RefreshCw size={14} />}
+                  onClick={() => runSync(true)}
+                  loading={syncing}
+                  disabled={!connected}
+                  title={connected ? t('settings.razorpay.fullReimportHint') : t('settings.razorpay.connectFirst')}
+                >
+                  {t('settings.razorpay.fullReimport')}
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={<RefreshCw size={14} />}
+                  onClick={() => runSync(false)}
+                  loading={syncing}
+                  disabled={!connected}
+                >
+                  {t('settings.razorpay.syncNow')}
+                </Button>
+              </>
+            ) : null}
           </div>
         }
       >
@@ -251,44 +270,48 @@ export function RazorpayIntegrationSettings() {
             </span>
           </div>
 
-          <div className="detail-item">
-            <span className="detail-label">{t('settings.razorpay.lastSuccessfulSync')}</span>
-            <span className="detail-value">
-              <LastSync log={data.last_successful_sync} />
-            </span>
-          </div>
+          {sync ? (
+            <>
+              <div className="detail-item">
+                <span className="detail-label">{t('settings.razorpay.lastSuccessfulSync')}</span>
+                <span className="detail-value">
+                  <LastSync log={data.last_successful_sync} />
+                </span>
+              </div>
 
-          <div className="detail-item">
-            <span className="detail-label">{t('settings.razorpay.lastExecution')}</span>
-            <span className="detail-value">
-              {data.last_sync ? (
-                <div className="cell-stack">
-                  <Badge tone={syncTone(data.last_sync.status)}>{data.last_sync.status}</Badge>
-                  {data.last_sync.error_message ? (
-                    <span className="small text-muted">{data.last_sync.error_message}</span>
-                  ) : null}
-                </div>
-              ) : (
-                <span className="small text-muted">{t('settings.razorpay.noRuns')}</span>
-              )}
-            </span>
-          </div>
+              <div className="detail-item">
+                <span className="detail-label">{t('settings.razorpay.lastExecution')}</span>
+                <span className="detail-value">
+                  {data.last_sync ? (
+                    <div className="cell-stack">
+                      <Badge tone={syncTone(data.last_sync.status)}>{data.last_sync.status}</Badge>
+                      {data.last_sync.error_message ? (
+                        <span className="small text-muted">{data.last_sync.error_message}</span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <span className="small text-muted">{t('settings.razorpay.noRuns')}</span>
+                  )}
+                </span>
+              </div>
 
-          <div className="detail-item">
-            <span className="detail-label">{t('settings.razorpay.transactionsImported')}</span>
-            <span className="detail-value num">{data.transactions_imported.toLocaleString('en-IN')}</span>
-          </div>
+              <div className="detail-item">
+                <span className="detail-label">{t('settings.razorpay.transactionsImported')}</span>
+                <span className="detail-value num">{data.transactions_imported.toLocaleString('en-IN')}</span>
+              </div>
 
-          <div className="detail-item">
-            <span className="detail-label">{t('settings.razorpay.autoSync')}</span>
-            <span className="detail-value">
-              {data.auto_sync_enabled ? (
-                <Badge tone="success">{t('settings.razorpay.autoSyncEvery', { minutes: data.sync_interval_minutes })}</Badge>
-              ) : (
-                <Badge tone="neutral">{t('settings.razorpay.autoSyncDisabled')}</Badge>
-              )}
-            </span>
-          </div>
+              <div className="detail-item">
+                <span className="detail-label">{t('settings.razorpay.autoSync')}</span>
+                <span className="detail-value">
+                  {data.auto_sync_enabled ? (
+                    <Badge tone="success">{t('settings.razorpay.autoSyncEvery', { minutes: data.sync_interval_minutes })}</Badge>
+                  ) : (
+                    <Badge tone="neutral">{t('settings.razorpay.autoSyncDisabled')}</Badge>
+                  )}
+                </span>
+              </div>
+            </>
+          ) : null}
         </div>
 
         {data.error ? (
@@ -299,7 +322,7 @@ export function RazorpayIntegrationSettings() {
         ) : null}
       </Card>
 
-      {!isAdmin ? (
+      {!canManageKeys ? (
         <div className="notification notification-info" role="status">
           <AlertTriangle size={16} aria-hidden="true" />
           <span>{t('settings.razorpay.adminOnly')}</span>
@@ -307,7 +330,7 @@ export function RazorpayIntegrationSettings() {
       ) : null}
 
       {/* Connection Credentials Form Card */}
-      {(!connected || formOpen) && isAdmin && (
+      {(!connected || formOpen) && canManageKeys && (
         <Card
           title={t('settings.razorpay.form.title')}
           subtitle={t('settings.razorpay.form.subtitle')}

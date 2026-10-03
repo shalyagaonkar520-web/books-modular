@@ -4,6 +4,7 @@
  */
 import { platformClient, platformDownload, platformRefresh, platformRequest } from './platformClient';
 import type { AppContent } from './appContent';
+import type { ConnectRazorpayPayload, ConnectRazorpayResponse, IntegrationStatus } from './razorpay';
 import type { BillingCycle } from './modulePricing';
 import type { SiteContent } from './siteContent';
 
@@ -443,6 +444,16 @@ export const platformApi = {
     create: (body: CreateAdminBody) => platformClient.post<PlatformAdmin>('/platform/admins', body),
     update: (id: string, body: UpdateAdminBody) => platformClient.patch<PlatformAdmin>(`/platform/admins/${id}`, body),
     remove: (id: string) => platformClient.delete<Message>(`/platform/admins/${id}`),
+  },
+
+  /** The platform-wide Razorpay keys (shared by every organization). */
+  razorpay: {
+    status: () => platformClient.get<IntegrationStatus>('/platform/integrations/razorpay'),
+    connect: (body: ConnectRazorpayPayload) => platformClient.post<ConnectRazorpayResponse>('/platform/integrations/razorpay/connect', body),
+    disconnect: () =>
+      platformClient.post<{ success: boolean; connected: boolean; message: string; status: IntegrationStatus }>(
+        '/platform/integrations/razorpay/disconnect',
+      ),
   },
 
   settings: {

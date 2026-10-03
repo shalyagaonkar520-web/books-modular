@@ -165,6 +165,8 @@ export function PlanBuilder({ catalog, onDone }: PlanBuilderProps) {
 
   const q = quote(modules, catalog, cycle);
   const unchanged = Boolean(plan && !pending && plan.billingCycle === cycle && sameModules(plan.modules, q.modules));
+  // Re-sending the request that is already waiting would change nothing.
+  const alreadyRequested = Boolean(pending && pending.billingCycle === cycle && sameModules(pending.modules, q.modules));
   const busy = submit.submitting || cancelSubmit.submitting;
 
   const apply = async (next: Subscription | null) => {
@@ -251,12 +253,17 @@ export function PlanBuilder({ catalog, onDone }: PlanBuilderProps) {
         />
         <FormError message={submit.error && !submit.fieldErrors.modules ? submit.error : cancelSubmit.error} />
         {unchanged ? <p className="text-muted small" style={{ margin: 0 }}>This is your current plan.</p> : null}
+        {alreadyRequested ? (
+          <p className="text-muted small" style={{ margin: 0 }}>
+            This request is waiting for the administrator. Change the modules or billing cycle to update it.
+          </p>
+        ) : null}
         <Button
           variant="primary"
           icon={<Send size={15} />}
           className="btn-block"
           loading={submit.submitting}
-          disabled={busy || unchanged}
+          disabled={busy || unchanged || alreadyRequested}
           onClick={() => void send()}
         >
           {pending ? 'Update request' : 'Send request to administrator'}

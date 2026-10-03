@@ -85,10 +85,13 @@ describe('Approving an organization', () => {
     renderDrawer();
     const dialog = await openApproveDialog();
 
-    // Prefilled from the registrant, with a generated password.
+    // Prefilled from the registrant; the password starts empty (typing onto a
+    // prefilled one used to save a password nobody knew) and Generate fills it.
     expect(within(dialog).getByLabelText(/^Name/)).toHaveValue('Ravi Kumar');
     expect(within(dialog).getByLabelText(/^Email/)).toHaveValue('ravi@acme.example');
     const password = within(dialog).getByLabelText(/^Password/) as HTMLInputElement;
+    expect(password).toHaveValue('');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Generate' }));
     expect(validatePassword(password.value)).toBeNull();
     expect(within(dialog).getByText(/At least 8 characters/)).toBeInTheDocument();
 
@@ -126,6 +129,7 @@ describe('Approving an organization', () => {
     renderDrawer();
     const dialog = await openApproveDialog();
 
+    fireEvent.change(within(dialog).getByLabelText(/^Password/), { target: { value: 'Launch-Day-2026' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Approve and create login' }));
     expect(await within(dialog).findByText('That email is already used by another admin panel login.')).toHaveClass('field-error');
 

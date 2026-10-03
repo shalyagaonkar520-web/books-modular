@@ -37,7 +37,7 @@ def read_site_content(db: Session = Depends(get_db), admin: PlatformAdmin = Depe
 @router.put("/site-content", response_model=SiteContent)
 def update_site_content(payload: SiteContent, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
     save_site_content(db, payload)
-    audit.record(db, None, "update", "site_content", None, f"Website content updated by platform admin {admin.email}")
+    audit.record(db, admin, "update", "site_content", None, f"Website content updated by platform admin {admin.email}")
     db.commit()
     return payload
 
@@ -45,7 +45,7 @@ def update_site_content(payload: SiteContent, db: Session = Depends(get_db), adm
 @router.post("/site-content/reset", response_model=SiteContent)
 def reset_to_default(db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
     content = reset_site_content(db)
-    audit.record(db, None, "update", "site_content", None, f"Website content reset to defaults by platform admin {admin.email}")
+    audit.record(db, admin, "update", "site_content", None, f"Website content reset to defaults by platform admin {admin.email}")
     db.commit()
     return content
 
@@ -58,7 +58,7 @@ def read_app_content(db: Session = Depends(get_db), admin: PlatformAdmin = Depen
 @router.put("/app-content", response_model=AppContent)
 def update_app_content(payload: AppContent, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
     saved = save_app_content(db, payload)
-    audit.record(db, None, "update", "app_content", None, f"App content updated by platform admin {admin.email}")
+    audit.record(db, admin, "update", "app_content", None, f"App content updated by platform admin {admin.email}")
     db.commit()
     return saved
 
@@ -66,7 +66,7 @@ def update_app_content(payload: AppContent, db: Session = Depends(get_db), admin
 @router.post("/app-content/reset", response_model=AppContent)
 def reset_app_to_default(db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
     content = reset_app_content(db)
-    audit.record(db, None, "update", "app_content", None, f"App content reset to defaults by platform admin {admin.email}")
+    audit.record(db, admin, "update", "app_content", None, f"App content reset to defaults by platform admin {admin.email}")
     db.commit()
     return content
 
@@ -110,7 +110,7 @@ def update_org_app_content(
     count = sum(len(v) for v in overrides.values())
     audit.record(
         db,
-        None,
+        admin,
         "update",
         "app_content",
         org.id,
@@ -128,7 +128,7 @@ def reset_org_app_content(org_id: str, db: Session = Depends(get_db), admin: Pla
     delete_org_app_content(db, org.id)
     audit.record(
         db,
-        None,
+        admin,
         "update",
         "app_content",
         org.id,

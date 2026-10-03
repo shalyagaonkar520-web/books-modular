@@ -109,7 +109,8 @@ export function GeneratedPasswordField({ value, error, label = 'Password', onCha
           required
           autoComplete="new-password"
           spellCheck={false}
-          hint={PASSWORD_HINT}
+          placeholder="Type a password or click Generate"
+          hint={`${PASSWORD_HINT}. This is the admin panel password, separate from any app login password.`}
           error={error}
           onChange={(event) => onChange(event.target.value)}
         />
@@ -251,7 +252,7 @@ export function CreatePanelAdminModal({ orgId, orgName, initial, onClose, onCrea
   const [value, setValue] = useState<PanelAdminFormValue>({
     name: initial?.name ?? '',
     email: initial?.email ?? '',
-    password: initial?.password ?? generateStrongPassword(),
+    password: initial?.password ?? '',
   });
   const [errors, setErrors] = useState<PanelAdminFormErrors>({});
 
@@ -330,7 +331,7 @@ interface SetPanelPasswordModalProps {
 export function SetPanelPasswordModal({ admin, orgName, onClose, onSaved }: SetPanelPasswordModalProps) {
   const toast = useToast();
   const submit = useSubmit();
-  const [password, setPassword] = useState(() => generateStrongPassword());
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | undefined>();
 
   const save = async () => {

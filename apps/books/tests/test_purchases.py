@@ -1,4 +1,4 @@
-from tests.conftest import trial_balance_ok
+from tests.conftest import TODAY, trial_balance_ok
 
 
 def _bill_payload(org, qty=5, rate=6800, status="open", **extra):
@@ -79,7 +79,8 @@ def test_unpaid_bill_can_be_deleted_and_reverses_the_ledger(client, org):
     bulk-select delete on the Bills page with nothing it was allowed to remove.
     """
     h = org["h"]
-    bill = client.post("/api/bills", headers=h, json=_bill_payload(org, qty=1, rate=1000)).json()
+    # Dated today so it is still within its payment terms ("open", not "overdue").
+    bill = client.post("/api/bills", headers=h, json=_bill_payload(org, qty=1, rate=1000, date=TODAY)).json()
     assert bill["status"] == "open"
 
     removed = client.delete(f"/api/bills/{bill['id']}", headers=h)

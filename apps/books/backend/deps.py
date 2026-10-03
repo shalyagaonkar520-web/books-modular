@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from backend.db import get_db
 from backend.models import Organization, OrgPanelAdmin, PlatformAdmin, User
 from backend.security import decode_access_token, decode_org_panel_token, decode_platform_token
-from backend.services import subscription
+from backend.services import module_pricing, subscription
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -149,6 +149,22 @@ def get_current_org_panel_admin(
     return admin
 
 
+TRIAL_ENDED_ADMIN_ONLY_DETAIL = (
+    "TRIAL_ENDED: Your organization's free trial has ended. Only your organization admin can sign in until a subscription plan is chosen."
+)
+
+
+def subscription_sign_in_error(user: User) -> str | None:
+    """Why ``user`` may not sign in (or refresh) because of the subscription, else None.
+
+    Once the trial is over without an active plan only admins get in - to
+    choose a plan; staff, viewers and employees wait until one is accepted.
+    """
+    if user.role != ROLE_ADMIN and subscription.is_locked(user.organization):
+        return TRIAL_ENDED_ADMIN_ONLY_DETAIL
+    return None
+
+
 def ensure_subscription_access(user: User) -> None:
     """HTTP 402 ``subscription_required`` once the org's trial is over without an active plan.
 
@@ -177,6 +193,34 @@ def require_roles(*roles: str):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
         ensure_subscription_access(user)
         return user
+
+    return _guard
+
+
+_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+MODULE_NOT_IN_PLAN_DETAIL = "This module is not part of your organization's subscription plan."
+NO_MODULE_ACCESS_DETAIL = "You don't have edit access to this module. Ask your organization admin."
+
+
+def require_module(*keys: str):
+    """Writes need one of ``keys`` in the organization's accepted plan.
+
+    Reads stay open because paid modules look up data owned by others (account
+    pickers, items on invoices, bank accounts on payments). On a trial, or
+    without a plan, every module is open. A non-admin user can further be
+    limited to some modules by the org admin panel (``User.module_access``).
+    """
+
+    def _guard(request: Request, user: User = Depends(get_current_user)) -> None:
+        if request.method in _READ_METHODS:
+            return
+        allowed = subscription.paid_modules(user.organization)
+        if allowed is not None and not allowed.intersection(keys):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=MODULE_NOT_IN_PLAN_DETAIL)
+        if user.role != ROLE_ADMIN:
+            granted = module_pricing.parse_stored(user.module_access)
+            if granted is not None and not set(granted).intersection(keys):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=NO_MODULE_ACCESS_DETAIL)
 
     return _guard
 

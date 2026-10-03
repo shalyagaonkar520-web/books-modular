@@ -453,14 +453,6 @@ export interface ConnectRazorpayResponse {
 export const razorpaySyncApi = {
   getIntegrationStatus: () => api.get<IntegrationStatus>('/razorpay/integration/status'),
 
-  connectIntegration: (payload: ConnectRazorpayPayload) =>
-    api.post<ConnectRazorpayResponse>('/razorpay/integration/connect', payload),
-
-  disconnectIntegration: () =>
-    api.post<{ success: boolean; connected: boolean; message: string; status: IntegrationStatus }>(
-      '/razorpay/integration/disconnect',
-    ),
-
   /** Import new transactions. `full` re-scans the whole initial history window. */
   sync: (full = false) => api.post<SyncResponse>('/razorpay/sync', { full }),
 

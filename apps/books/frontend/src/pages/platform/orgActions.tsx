@@ -54,7 +54,6 @@ import { useSubmit } from '@/hooks/useSubmit';
 import {
   PanelAdminFields,
   PanelCredentialsModal,
-  generateStrongPassword,
   panelAdminServerErrors,
   validatePanelAdminForm,
   type PanelAdminFormErrors,
@@ -344,7 +343,9 @@ export function useOrgApproval({ onApproved, onRejected }: ApprovalCallbacks = {
       setLogin({
         name: known?.name ?? '',
         email: org.adminEmail ?? known?.email ?? '',
-        password: generateStrongPassword(),
+        // Left empty so what the platform admin types is exactly what is saved
+        // (a prefilled value got typed onto, producing an unknown password).
+        password: '',
       });
       setApproving(org);
       // From a list row the administrator's name may not be known yet: look it up.

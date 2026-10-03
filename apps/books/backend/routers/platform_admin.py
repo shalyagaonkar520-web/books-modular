@@ -39,6 +39,7 @@ from backend.models import (
     User,
     VendorPayment,
 )
+from backend.routers import razorpay as rzp
 from backend.schemas.common import Page
 from backend.schemas.org_admin import (
     ApproveOrganizationRequest,
@@ -214,7 +215,7 @@ def _add_panel_admin(db: Session, org: Organization, payload: CreateOrgPanelAdmi
     db.flush()
     audit.record(
         db,
-        None,
+        admin,
         "create",
         "org_panel_admin",
         panel_admin.id,
@@ -561,7 +562,7 @@ def create_admin(payload: CreatePlatformAdminRequest, db: Session = Depends(get_
     new_admin = PlatformAdmin(name=payload.name, email=email, password_hash=hash_password(payload.password), is_active=True)
     db.add(new_admin)
     db.flush()
-    audit.record(db, None, "create", "platform_admin", new_admin.id, f"Platform admin {email} created by {admin.email}")
+    audit.record(db, admin, "create", "platform_admin", new_admin.id, f"Platform admin {email} created by {admin.email}")
     db.commit()
     db.refresh(new_admin)
     return _admin_out(new_admin)
@@ -585,7 +586,7 @@ def update_admin(
             if active_count <= 1:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot deactivate the last active platform admin")
         target.is_active = data["is_active"]
-    audit.record(db, None, "update", "platform_admin", target.id, f"Platform admin {target.email} updated by {admin.email}")
+    audit.record(db, admin, "update", "platform_admin", target.id, f"Platform admin {target.email} updated by {admin.email}")
     db.commit()
     db.refresh(target)
     return _admin_out(target)
@@ -604,7 +605,7 @@ def delete_admin(admin_id: str, db: Session = Depends(get_db), admin: PlatformAd
     email = target.email
     db.execute(sa_delete(PlatformRefreshToken).where(PlatformRefreshToken.admin_id == target.id))
     db.delete(target)
-    audit.record(db, None, "delete", "platform_admin", admin_id, f"Platform admin {email} deleted by {admin.email}")
+    audit.record(db, admin, "delete", "platform_admin", admin_id, f"Platform admin {email} deleted by {admin.email}")
     db.commit()
     return {"message": f"Platform admin {email} deleted"}
 
@@ -941,7 +942,7 @@ def create_organization(
     db.flush()
     audit.record(
         db,
-        None,
+        admin,
         "create",
         "organization",
         org.id,
@@ -981,7 +982,9 @@ def update_organization(
             org.suspended_at = None
             org.suspended_reason = None
     verb = "suspended" if org.is_suspended else "updated"
-    audit.record(db, None, "update", "organization", org.id, f"Organization {verb} by platform admin {admin.email}", organization_id=org.id)
+    audit.record(
+        db, admin, "update", "organization", org.id, f"Organization {verb} by platform admin {admin.email}", organization_id=org.id
+    )
     db.commit()
     db.refresh(org)
     return _org_detail(db, org)
@@ -1025,7 +1028,7 @@ def approve_organization(
     subs.start_trial(db, org)
     audit.record(
         db,
-        None,
+        admin,
         "approve",
         "organization",
         org.id,
@@ -1059,7 +1062,7 @@ def reject_organization(
     org.approved_at = None
     org.rejection_reason = reason
     summary = f"Organization '{org.name}' rejected by platform admin {admin.email}" + (f": {reason}" if reason else "")
-    audit.record(db, None, "reject", "organization", org.id, summary, organization_id=org.id)
+    audit.record(db, admin, "reject", "organization", org.id, summary, organization_id=org.id)
     db.commit()
     db.refresh(org)
     message = f"Your organization {org.name}'s registration was declined."
@@ -1128,7 +1131,7 @@ def approve_subscription(
     plan = module_pricing.describe(priced)
     audit.record(
         db,
-        None,
+        admin,
         "approve",
         "subscription",
         org.id,
@@ -1160,7 +1163,7 @@ def reject_subscription(
     subs.reject(org, payload.reason)
     audit.record(
         db,
-        None,
+        admin,
         "reject",
         "subscription",
         org.id,
@@ -1192,7 +1195,7 @@ def extend_trial(
     subs.extend_trial(org, payload.days)
     audit.record(
         db,
-        None,
+        admin,
         "update",
         "subscription",
         org.id,
@@ -1213,7 +1216,7 @@ def cancel_subscription(org_id: str, db: Session = Depends(get_db), admin: Platf
     subs.cancel_plan(db, org)
     audit.record(
         db,
-        None,
+        admin,
         "cancel",
         "subscription",
         org.id,
@@ -1239,7 +1242,7 @@ def archive_organization(org_id: str, db: Session = Depends(get_db), admin: Plat
     org.suspended_reason = ARCHIVED_REASON
     audit.record(
         db,
-        None,
+        admin,
         "archive",
         "organization",
         org.id,
@@ -1263,7 +1266,7 @@ def restore_organization(org_id: str, db: Session = Depends(get_db), admin: Plat
     org.suspended_reason = None
     audit.record(
         db,
-        None,
+        admin,
         "restore",
         "organization",
         org.id,
@@ -1353,7 +1356,7 @@ def update_panel_admin(
     detail = f" ({', '.join(changes)})" if changes else ""
     audit.record(
         db,
-        None,
+        admin,
         "update",
         "org_panel_admin",
         target.id,
@@ -1375,7 +1378,7 @@ def delete_panel_admin(panel_admin_id: str, db: Session = Depends(get_db), admin
     db.delete(target)
     audit.record(
         db,
-        None,
+        admin,
         "delete",
         "org_panel_admin",
         panel_admin_id,
@@ -1427,7 +1430,7 @@ def create_user(payload: CreatePlatformUserRequest, db: Session = Depends(get_db
     )
     db.add(user)
     db.flush()
-    audit.record(db, None, "create", "user", user.id, f"User {email} created by platform admin {admin.email}", organization_id=org.id)
+    audit.record(db, admin, "create", "user", user.id, f"User {email} created by platform admin {admin.email}", organization_id=org.id)
     db.commit()
     return _user_out(user, org.name)
 
@@ -1499,9 +1502,9 @@ def update_user(
         for tok in db.execute(select(RefreshToken).where(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None))).scalars():
             tok.revoked_at = now
         summary += f" (moved from {source.name if source else source_org_id} to {new_org.name})"
-        audit.record(db, None, "update", "user", user.id, summary, organization_id=source_org_id)
+        audit.record(db, admin, "update", "user", user.id, summary, organization_id=source_org_id)
     org = db.get(Organization, user.organization_id)
-    audit.record(db, None, "update", "user", user.id, summary, organization_id=user.organization_id)
+    audit.record(db, admin, "update", "user", user.id, summary, organization_id=user.organization_id)
     db.commit()
     return _user_out(user, org.name if org else None)
 
@@ -1531,7 +1534,7 @@ def delete_user(user_id: str, db: Session = Depends(get_db), admin: PlatformAdmi
     email = user.email
     org_id = user.organization_id
     db.delete(user)
-    audit.record(db, None, "delete", "user", user_id, f"User {email} deleted by platform admin {admin.email}", organization_id=org_id)
+    audit.record(db, admin, "delete", "user", user_id, f"User {email} deleted by platform admin {admin.email}", organization_id=org_id)
     db.commit()
     return {"message": f"User {email} deleted"}
 
@@ -1588,7 +1591,7 @@ def impersonate_user(user_id: str, db: Session = Depends(get_db), admin: Platfor
     token = create_access_token(user.id, user.organization_id, user.role, impersonator=admin.email)
     audit.record(
         db,
-        None,
+        admin,
         "impersonate",
         "user",
         user.id,
@@ -1654,6 +1657,34 @@ def _settings_out(db: Session) -> PlatformSettingsOut:
     )
 
 
+# --------------------------------------------------------------------------- #
+# Razorpay keys (platform-wide: one set shared by every organization)
+# --------------------------------------------------------------------------- #
+@router.get("/integrations/razorpay")
+def razorpay_keys_status(admin: PlatformAdmin = Depends(get_current_superuser)):
+    from backend.services.razorpay_service import get_razorpay_service
+
+    return {**get_razorpay_service().get_status(), "webhook_path": "/api/razorpay/webhook"}
+
+
+@router.post("/integrations/razorpay/connect")
+def razorpay_keys_connect(
+    payload: rzp.ConnectRazorpayRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
+):
+    result = rzp.connect_credentials(payload)
+    audit.record(db, admin, "update", "integration", "razorpay", result.pop("audit_summary"))
+    db.commit()
+    return result
+
+
+@router.post("/integrations/razorpay/disconnect")
+def razorpay_keys_disconnect(db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    result = rzp.disconnect_credentials()
+    audit.record(db, admin, "delete", "integration", "razorpay", "Disconnected Razorpay credentials")
+    db.commit()
+    return result
+
+
 @router.get("/settings", response_model=PlatformSettingsOut)
 def get_platform_settings(db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
     return _settings_out(db)
@@ -1670,7 +1701,7 @@ def update_platform_settings(
         platform_settings.set_bool(db, ALLOW_PUBLIC_SIGNUP_KEY, data["allow_public_signup"])
         audit.record(
             db,
-            None,
+            admin,
             "update",
             "platform_setting",
             ALLOW_PUBLIC_SIGNUP_KEY,
@@ -1680,7 +1711,7 @@ def update_platform_settings(
         platform_settings.set_bool(db, platform_settings.REQUIRE_ORG_APPROVAL_KEY, data["require_org_approval"])
         audit.record(
             db,
-            None,
+            admin,
             "update",
             "platform_setting",
             platform_settings.REQUIRE_ORG_APPROVAL_KEY,
@@ -1695,7 +1726,7 @@ def update_platform_settings(
     for field, (key, label) in defaults.items():
         if field in data:
             platform_settings.set_value(db, key, str(data[field]))
-            audit.record(db, None, "update", "platform_setting", key, f"{label} set to {data[field]} by platform admin {admin.email}")
+            audit.record(db, admin, "update", "platform_setting", key, f"{label} set to {data[field]} by platform admin {admin.email}")
     db.commit()
     return _settings_out(db)
 

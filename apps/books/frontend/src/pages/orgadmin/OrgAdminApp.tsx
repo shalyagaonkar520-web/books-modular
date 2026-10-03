@@ -6,11 +6,12 @@ import { orgPanelClient } from '@/api/orgPanelClient';
 import { OrgPanelAuthProvider, useOrgPanelAuth } from '@/auth/OrgPanelAuthContext';
 import { OrgAdminLayout } from '@/components/layout/OrgAdminLayout';
 import { LoadingBlock } from '@/components/ui/Feedback';
-import { AppContentPage } from '@/pages/platform/AppContentPage';
 
+import { OrgAdminActivityPage } from './OrgAdminActivityPage';
 import { OrgAdminDashboardPage } from './OrgAdminDashboardPage';
+import { OrgAdminIntegrationsPage } from './OrgAdminIntegrationsPage';
 import { OrgAdminLoginPage } from './OrgAdminLoginPage';
-import { OrgAdminSettingsPage } from './OrgAdminSettingsPage';
+import { OrgAdminOrganizationPage } from './OrgAdminOrganizationPage';
 import { OrgAdminUsersPage } from './OrgAdminUsersPage';
 
 /** Only signed-in panel admins get past this; everyone else goes to the panel's own sign-in. */
@@ -64,8 +65,9 @@ function OrgAdminRoutes() {
           <Route element={<OrgAdminLayout />}>
             <Route index element={<OrgAdminDashboardPage />} />
             <Route path="users" element={<OrgAdminUsersPage />} />
-            <Route path="app-content" element={<AppContentPage mode="organization" />} />
-            <Route path="settings" element={<OrgAdminSettingsPage />} />
+            <Route path="organization" element={<OrgAdminOrganizationPage />} />
+            <Route path="integrations" element={<OrgAdminIntegrationsPage />} />
+            <Route path="activity" element={<OrgAdminActivityPage />} />
           </Route>
         </Route>
       </Route>

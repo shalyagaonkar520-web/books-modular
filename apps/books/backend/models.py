@@ -144,6 +144,10 @@ class User(TimestampMixin, OrgScopedMixin, Base):
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     invite_token_hash: Mapped[Optional[str]] = mapped_column(String(64), unique=True, index=True)
     invite_token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # Modules (module_pricing keys) this user may edit, as a JSON list; NULL =
+    # every module of the organization's plan. Set from the org admin panel;
+    # ignored for admins. See deps.require_module.
+    module_access: Mapped[Optional[str]] = mapped_column(Text)
 
     organization: Mapped[Organization] = relationship(back_populates="users")
 

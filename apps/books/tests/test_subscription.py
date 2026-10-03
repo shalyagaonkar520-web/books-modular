@@ -429,3 +429,74 @@ def test_extend_trial_needs_approval(client, approval_on):
         org_id = db.query(User.organization_id).filter(User.email == email).scalar()
     r = client.post(f"/api/platform/organizations/{org_id}/trial", headers=approval_on, json={"days": 5})
     assert r.status_code == 400
+
+
+# --------------------------------------------------------------------------- #
+# The plan is enforced by the server, not only by the app's menus
+# --------------------------------------------------------------------------- #
+def _accept(c: TestClient, platform_h: dict, org_id: str, modules) -> None:
+    res = c.post(f"/api/platform/organizations/{org_id}/subscription/approve", headers=platform_h, json={"modules": modules})
+    assert res.status_code == 200, res.text
+
+
+def test_writes_outside_the_plan_are_refused(client, tenant, platform_h):
+    h, org_id = tenant["h"], tenant["org_id"]
+    _accept(client, platform_h, org_id, ["invoices"])  # pulls in customers
+
+    for path, body in (("/api/items", {"name": "Widget"}), ("/api/payroll/employees", {}), ("/api/documents/import-excel-commit", {})):
+        res = client.post(path, headers=h, json=body)
+        assert res.status_code == 403 and "subscription plan" in res.json()["detail"], (path, res.text)
+    # Reads stay open: paid modules look up items, accounts and bank accounts.
+    for path in ("/api/items", "/api/accounting/accounts", "/api/banking/accounts"):
+        assert client.get(path, headers=h).status_code == 200, path
+    # Modules in the plan accept writes.
+    res = client.post("/api/contacts", headers=h, json={"type": "customer", "displayName": "Plan Customer"})
+    assert res.status_code == 201, res.text
+
+
+def test_trial_keeps_every_module_writable(client, tenant):
+    res = client.post("/api/items", headers=tenant["h"], json={"name": "Trial item", "sku": f"TRIAL-{uuid.uuid4().hex[:6]}", "rate": 10})
+    assert res.status_code == 201, res.text
+
+
+def test_only_admins_sign_in_after_the_trial(client, tenant, platform_h):
+    h, org_id = tenant["h"], tenant["org_id"]
+    staff_email = f"staff-{uuid.uuid4().hex[:8]}@subs.example.com"
+    invite_and_accept(client, h, "Sam Staff", staff_email, "staff", PASSWORD)
+    staff = TestClient(client.app)
+    assert staff.post("/api/auth/login", json={"email": staff_email, "password": PASSWORD}).status_code == 200
+    _expire_trial(org_id)
+
+    # Staff are turned away, at sign-in and when their session refreshes.
+    res = client.post("/api/auth/login", json={"email": staff_email, "password": PASSWORD})
+    assert res.status_code == 403 and res.json()["detail"].startswith("TRIAL_ENDED:")
+    assert staff.post("/api/auth/refresh").status_code == 403
+    # The admin still signs in, to choose a plan.
+    res = client.post("/api/auth/login", json={"email": tenant["email"], "password": tenant["password"]})
+    assert res.status_code == 200, res.text
+    _assert_locked(client.get("/api/items", headers=auth(res.json()["accessToken"])))
+
+    _accept(client, platform_h, org_id, ["invoices"])
+    assert client.post("/api/auth/login", json={"email": staff_email, "password": PASSWORD}).status_code == 200
+
+
+def test_same_request_twice_is_recorded_once(client, tenant):
+    h = tenant["h"]
+    first = _request(client, h, ["invoices"])
+    assert first.status_code == 200, first.text
+    again = _request(client, h, ["invoices", "customers"])  # same plan once requirements are added
+    assert again.status_code == 200 and again.json()["pendingRequest"]["requestedAt"] == first.json()["pendingRequest"]["requestedAt"]
+    logs = client.get("/api/audit-logs", headers=h, params={"entity_type": "subscription"}).json()["items"]
+    assert sum(1 for r in logs if r["action"] == "request") == 1
+    # A different selection still updates the request.
+    assert _request(client, h, ["invoices"], "yearly").json()["pendingRequest"]["billingCycle"] == "yearly"
+
+
+def test_platform_admin_actions_name_the_admin(client, tenant, platform_h):
+    h, org_id = tenant["h"], tenant["org_id"]
+    assert _request(client, h, ["invoices"]).status_code == 200
+    res = client.post(f"/api/platform/organizations/{org_id}/subscription/approve", headers=platform_h, json={})
+    assert res.status_code == 200, res.text
+    logs = client.get("/api/audit-logs", headers=h, params={"entity_type": "subscription"}).json()["items"]
+    approve = next(r for r in logs if r["action"] == "approve")
+    assert approve["userName"].endswith("(platform admin)") and approve["userId"] is None

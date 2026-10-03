@@ -6,12 +6,12 @@ from typing import Optional, Union
 
 from sqlalchemy.orm import Session
 
-from backend.models import AuditLog, OrgPanelAdmin, User
+from backend.models import AuditLog, OrgPanelAdmin, PlatformAdmin, User
 
 
 def record(
     db: Session,
-    user: Optional[Union[User, OrgPanelAdmin]],
+    user: Optional[Union[User, OrgPanelAdmin, PlatformAdmin]],
     action: str,
     entity_type: str,
     entity_id: Optional[str] = None,
@@ -23,8 +23,12 @@ def record(
 
     An organization admin-panel login is not a tenant user: its rows carry no
     ``user_id`` and are attributed by name ("<name> (org admin panel)").
+    A platform (super) admin is attributed as "<name> (platform admin)".
     ``actor_name`` overrides the recorded name for any caller.
     """
+    if isinstance(user, PlatformAdmin):
+        actor_name = actor_name or f"{user.name} (platform admin)"
+        user = None
     if isinstance(user, OrgPanelAdmin):
         actor_name = actor_name or user.audit_name
         organization_id = organization_id or user.organization_id

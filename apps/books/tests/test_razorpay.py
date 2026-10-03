@@ -217,41 +217,37 @@ def test_razorpay_connect_and_disconnect(client, org, tmp_path, monkeypatch):
     # relative to the working directory. Run from a throwaway directory so the
     # suite never rewrites the repo's real .env (which it did before this).
     monkeypatch.chdir(tmp_path)
-    h = org["h"]
-    # 1. Connect
-    connect_res = client.post(
-        "/api/razorpay/integration/connect",
-        headers=h,
-        json={
-            "key_id": "rzp_test_EXAMPLE0000000000",
-            "key_secret": "example_key_secret_not_real",
-            "webhook_secret": "example_webhook_secret_not_real",
-            "mode": "test",
-        },
-    )
+    from tests.conftest import platform_admin_headers
+
+    h, ph = org["h"], platform_admin_headers(client)
+    keys = {
+        "key_id": "rzp_test_EXAMPLE0000000000",
+        "key_secret": "example_key_secret_not_real",
+        "webhook_secret": "example_webhook_secret_not_real",
+        "mode": "test",
+    }
+    # The keys are platform-wide: an organization's own admin cannot set or clear them.
+    assert client.post("/api/razorpay/integration/connect", headers=h, json=keys).status_code in (404, 405)
+    assert client.post("/api/razorpay/integration/disconnect", headers=h).status_code in (404, 405)
+
+    # 1. Connect (platform super-admin)
+    connect_res = client.post("/api/platform/integrations/razorpay/connect", headers=ph, json=keys)
     assert connect_res.status_code == 200
     data = connect_res.json()
     assert data["success"] is True
     assert data["connected"] is True
+    assert "audit_summary" not in data
+    assert client.get("/api/platform/integrations/razorpay", headers=ph).json()["configured"] is True
 
-    # 2. Check integration status
+    # 2. Check integration status (an organization's read-only view)
     status_res = client.get("/api/razorpay/integration/status", headers=h).json()
     assert status_res["configured"] is True
     assert status_res["connected"] is True
 
     # 3. Disconnect
-    disc_res = client.post("/api/razorpay/integration/disconnect", headers=h).json()
+    disc_res = client.post("/api/platform/integrations/razorpay/disconnect", headers=ph).json()
     assert disc_res["success"] is True
     assert disc_res["connected"] is False
 
     # 4. Re-connect so credentials remain set
-    client.post(
-        "/api/razorpay/integration/connect",
-        headers=h,
-        json={
-            "key_id": "rzp_test_EXAMPLE0000000000",
-            "key_secret": "example_key_secret_not_real",
-            "webhook_secret": "example_webhook_secret_not_real",
-            "mode": "test",
-        },
-    )
+    client.post("/api/platform/integrations/razorpay/connect", headers=ph, json=keys)

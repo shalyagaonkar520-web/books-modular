@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from backend.config import get_settings
 from backend.db import get_db
-from backend.deps import get_current_user, org_approval_error
+from backend.deps import get_current_user, org_approval_error, subscription_sign_in_error
 from backend.models import BankAccount, EmailVerification, Organization, RefreshToken, User
 from backend.schemas.auth import (
     AcceptInviteRequest,
@@ -493,7 +493,7 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
     # Archived orgs are suspended too, so this covers both.
     if user.organization is not None and user.organization.is_suspended:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This organization has been suspended. Contact support.")
-    approval_error = org_approval_error(user.organization)
+    approval_error = org_approval_error(user.organization) or subscription_sign_in_error(user)
     if approval_error:
         raise HTTPException(status.HTTP_403_FORBIDDEN, approval_error)
     user.last_login_at = datetime.now(UTC)
@@ -641,7 +641,7 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
     if user is None or not user.is_active:
         _clear_cookie(response)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User is inactive")
-    approval_error = org_approval_error(user.organization)
+    approval_error = org_approval_error(user.organization) or subscription_sign_in_error(user)
     if approval_error:
         _clear_cookie(response)
         raise HTTPException(status.HTTP_403_FORBIDDEN, approval_error)

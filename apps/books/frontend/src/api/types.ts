@@ -19,6 +19,8 @@ export interface User {
   createdAt: string;
   /** True while an emailed invite is still waiting to be accepted. */
   pendingInvite?: boolean;
+  /** Modules this user may edit (set in the org admin panel); null/absent = every module of the plan. */
+  moduleAccess?: string[] | null;
 }
 
 /** What the accept-invite page shows before asking the invitee to set a password. */

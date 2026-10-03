@@ -42,6 +42,11 @@ def request_subscription(payload: SubscriptionRequestIn, user: User = Depends(ge
     """Ask a super-admin for a plan (replaces a pending request)."""
     _require_admin(user)
     org = _org(db, user)
+    pending = subs.pending_request(org)
+    wanted = module_pricing.quote(payload.modules, payload.billing_cycle)
+    if pending and pending["billingCycle"] == wanted["billingCycle"] and set(pending["modules"]) == set(wanted["modules"]):
+        # The same request again (e.g. a double click): nothing to change or log.
+        return subs.summary(org, user)
     priced = subs.request_plan(org, payload.modules, payload.billing_cycle)
     audit.record(db, user, "request", "subscription", org.id, f"Subscription requested: {module_pricing.describe(priced)}")
     db.commit()

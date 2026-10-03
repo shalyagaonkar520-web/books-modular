@@ -26,6 +26,13 @@ export function OrgAdminLoginPage() {
     if (result) navigate('/org-admin', { replace: true });
   };
 
+  // The panel password is set by the platform admin and is not the app password,
+  // even when the email is the same - say so instead of a bare "invalid".
+  const message =
+    error === 'Invalid email or password'
+      ? 'Invalid email or password. Use the admin panel password the platform administrator gave you, not your app password.'
+      : error;
+
   return (
     <div
       style={{
@@ -73,7 +80,7 @@ export function OrgAdminLoginPage() {
         </p>
 
         <form onSubmit={onSubmit} noValidate>
-          <FormError message={error} />
+          <FormError message={message} />
 
           <TextField
             label="Email"

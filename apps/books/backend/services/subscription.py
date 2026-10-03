@@ -113,6 +113,12 @@ def active_plan(org: Organization) -> Optional[Dict[str, Any]]:
     }
 
 
+def paid_modules(org: Optional[Organization]) -> Optional[set]:
+    """Module keys of the accepted plan, or None when every module is open (trial, or an org from before plans)."""
+    plan = active_plan(org) if org is not None else None
+    return set(plan["modules"]) if plan else None
+
+
 def pending_request(org: Organization) -> Optional[Dict[str, Any]]:
     if not org.pending_request:
         return None

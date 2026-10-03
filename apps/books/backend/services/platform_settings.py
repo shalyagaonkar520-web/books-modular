@@ -48,6 +48,9 @@ def delete_value(db: Session, key: str) -> None:
     row = db.execute(select(PlatformSetting).where(PlatformSetting.key == key)).scalar_one_or_none()
     if row is not None:
         db.delete(row)
+        # Flush now: a set_value for the same key later in this session must
+        # see the row gone, not revive the pending-delete one (lost at commit).
+        db.flush()
 
 
 def set_bool(db: Session, key: str, value: bool) -> PlatformSetting:

@@ -74,7 +74,7 @@ def create_app() -> FastAPI:
         logger.exception("Unhandled error on %s %s", request.method, request.url.path)
         return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
-    from backend.deps import require_full_app_access, require_subscription
+    from backend.deps import require_full_app_access, require_module, require_subscription
     from backend.routers import (
         accounting,
         auth,
@@ -122,6 +122,20 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(subscription.router)
     app.include_router(employee_portal.router, dependencies=[Depends(require_subscription)])
+    # Writes to a module outside the organization's accepted plan answer 403
+    # (deps.require_module); the module keys are those of module_pricing.json.
+    plan_modules = {
+        items: ("items",),
+        contacts: ("customers", "vendors"),
+        invoices: ("invoices",),
+        bills: ("bills",),
+        expenses: ("expenses",),
+        banking: ("banking",),
+        accounting: ("accounting",),
+        projects: ("timeTracking",),
+        documents: ("documents",),
+        payroll: ("payroll",),
+    }
     for module in (
         organization,
         items,
@@ -137,13 +151,16 @@ def create_app() -> FastAPI:
         reports,
         dashboard,
     ):
-        app.include_router(module.router, dependencies=[Depends(require_full_app_access)])
+        guards = [Depends(require_full_app_access)]
+        if module in plan_modules:
+            guards.append(Depends(require_module(*plan_modules[module])))
+        app.include_router(module.router, dependencies=guards)
     app.include_router(payments.router)
     app.include_router(razorpay.router)
     from backend.routes import email
 
     app.include_router(email.router)
-    app.include_router(items.adjustments_router, dependencies=[Depends(require_full_app_access)])
+    app.include_router(items.adjustments_router, dependencies=[Depends(require_full_app_access), Depends(require_module("items"))])
 
     # Super-admin (platform operator) console. Its auth endpoints are open so an
     # admin can log in; every other platform route is cross-tenant and guarded

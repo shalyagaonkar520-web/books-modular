@@ -15,9 +15,7 @@ import {
   type AppContent,
   type AppModuleKey,
 } from '@/api/appContent';
-import { orgAdminApi } from '@/api/orgAdmin';
 import { platformApi } from '@/api/platform';
-import { OrgPanelApiError } from '@/api/orgPanelClient';
 import { PlatformApiError } from '@/api/platformClient';
 import { useAppContent } from '@/app/AppContentContext';
 import { Badge } from '@/components/ui/Badge';
@@ -78,41 +76,25 @@ function sectionOfPath(path: string): string | null {
 // Page
 // ---------------------------------------------------------------------------
 
-interface AppContentPageProps {
-  /**
-   * 'platform' (the super-admin console) edits the shared content or, via ?org=,
-   * any organization's copy. 'organization' (the org admin panel) edits only the
-   * signed-in panel admin's organization, through the org panel API.
-   */
-  mode?: 'platform' | 'organization';
-}
-
-export function AppContentPage({ mode = 'platform' }: AppContentPageProps = {}) {
+/** The super-admin editor: the shared content or, via ?org=, any organization's copy. */
+export function AppContentPage() {
   const toast = useToast();
   const { reload: reloadAppContent } = useAppContent();
   const [searchParams, setSearchParams] = useSearchParams();
-  const ownOrg = mode === 'organization';
   // '' edits the shared content every organization sees; an org id edits only that organization's copy.
-  const scope = ownOrg ? '' : (searchParams.get('org') ?? '');
+  const scope = searchParams.get('org') ?? '';
   // Editing one organization's copy (compared against the shared content) rather than the shared content itself.
-  const perOrg = ownOrg || Boolean(scope);
-  const orgs = useAsync(
-    (signal) => (ownOrg ? Promise.resolve(null) : platformApi.organizations.list({ page: 1, page_size: 200 }, signal)),
-    [ownOrg],
-  );
+  const perOrg = Boolean(scope);
+  const orgs = useAsync((signal) => platformApi.organizations.list({ page: 1, page_size: 200 }, signal), []);
   const remote = useAsync(
     async (signal) => {
-      if (ownOrg) {
-        const org = await orgAdminApi.appContent.get(signal);
-        return { content: normalizeAppContent(org.content), shared: normalizeAppContent(org.shared), orgName: org.organizationName };
-      }
       if (!scope) {
         return { content: normalizeAppContent(await platformApi.appContent.get(signal)), shared: DEFAULT_APP_CONTENT, orgName: null };
       }
       const org = await platformApi.appContent.org.get(scope, signal);
       return { content: normalizeAppContent(org.content), shared: normalizeAppContent(org.shared), orgName: org.organizationName };
     },
-    [scope, ownOrg],
+    [scope],
   );
   const baseline = remote.data?.shared ?? DEFAULT_APP_CONTENT;
   const orgName = remote.data?.orgName ?? null;
@@ -221,11 +203,10 @@ export function AppContentPage({ mode = 'platform' }: AppContentPageProps = {}) 
     setServerErrors({});
     const updated = await saveSubmit.run(async () => {
       try {
-        if (ownOrg) return normalizeAppContent((await orgAdminApi.appContent.update(draft)).content);
         if (scope) return normalizeAppContent((await platformApi.appContent.org.update(scope, draft)).content);
         return await platformApi.appContent.update(draft);
       } catch (error) {
-        if ((error instanceof PlatformApiError || error instanceof OrgPanelApiError) && Object.keys(error.pathErrors).length) {
+        if (error instanceof PlatformApiError && Object.keys(error.pathErrors).length) {
           setServerErrors(error.pathErrors);
           expandSectionsFor(Object.keys(error.pathErrors));
         }
@@ -247,7 +228,6 @@ export function AppContentPage({ mode = 'platform' }: AppContentPageProps = {}) 
 
   const reset = async () => {
     const defaults = await resetSubmit.run(async () => {
-      if (ownOrg) return normalizeAppContent((await orgAdminApi.appContent.reset()).content);
       return scope ? normalizeAppContent((await platformApi.appContent.org.reset(scope)).content) : platformApi.appContent.reset();
     });
     if (defaults) {
@@ -276,34 +256,28 @@ export function AppContentPage({ mode = 'platform' }: AppContentPageProps = {}) 
     <>
       <PageHeader
         title="App content"
-        subtitle={
-          ownOrg
-            ? `Edit what ${orgName ?? 'your organization'}'s users see after signing in: branding, which modules are on, and every label and message.`
-            : 'Edit what organizations see after signing in: branding, which modules are on, and every label and message.'
-        }
+        subtitle="Edit what organizations see after signing in: branding, which modules are on, and every label and message."
       />
       <div className="card" style={{ marginBottom: 12 }}>
         <div className="card-body">
-          {ownOrg ? null : (
-            <div className="form-grid-2">
-              <SelectField
-                label="Apply changes to"
-                value={scope}
-                options={orgOptions}
-                disabled={dirty}
-                hint={
-                  dirty
-                    ? 'Save or discard your changes before switching.'
-                    : scope
-                      ? 'Only this organization sees what you change here. Anything you leave as it is keeps following the shared content.'
-                      : 'The shared content every organization sees, unless an organization has its own customization.'
-                }
-                onChange={(e) => changeScope(e.target.value)}
-              />
-            </div>
-          )}
+          <div className="form-grid-2">
+            <SelectField
+              label="Apply changes to"
+              value={scope}
+              options={orgOptions}
+              disabled={dirty}
+              hint={
+                dirty
+                  ? 'Save or discard your changes before switching.'
+                  : scope
+                    ? 'Only this organization sees what you change here. Anything you leave as it is keeps following the shared content.'
+                    : 'The shared content every organization sees, unless an organization has its own customization.'
+              }
+              onChange={(e) => changeScope(e.target.value)}
+            />
+          </div>
           {perOrg ? (
-            <div className="row" style={{ gap: 8, alignItems: 'center', marginTop: ownOrg ? 0 : 4 }}>
+            <div className="row" style={{ gap: 8, alignItems: 'center', marginTop: 4 }}>
               <Building2 size={15} aria-hidden="true" />
               <span className="small">
                 Editing <strong>{orgName ?? 'this organization'}</strong> only · {customizedCount} customized{' '}
@@ -342,15 +316,13 @@ export function AppContentPage({ mode = 'platform' }: AppContentPageProps = {}) 
     <>
       {header}
 
-      {ownOrg ? null : (
-        <div className="notification notification-info" role="note" style={{ marginBottom: 12 }}>
-          <Briefcase size={16} aria-hidden="true" />
-          <span>
-            Preview in an organization: after saving, open any organization from <Link to="/platform/workspace">Workspace</Link> to see the
-            app exactly as its users do.
-          </span>
-        </div>
-      )}
+      <div className="notification notification-info" role="note" style={{ marginBottom: 12 }}>
+        <Briefcase size={16} aria-hidden="true" />
+        <span>
+          Preview in an organization: after saving, open any organization from <Link to="/platform/workspace">Workspace</Link> to see the
+          app exactly as its users do.
+        </span>
+      </div>
 
       <div className="site-editor">
         <FormError message={saveSubmit.error} />

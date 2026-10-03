@@ -130,6 +130,13 @@ class UserOut(APIModel):
     # True while an emailed invite is still waiting to be accepted - the user
     # has no password yet and cannot sign in.
     pending_invite: bool = False
+    # Modules this user may edit; None = every module of the plan.
+    module_access: Optional[List[str]] = None
+
+    @field_validator("module_access", mode="before")
+    @classmethod
+    def _parse_module_access(cls, value):
+        return module_pricing.parse_stored(value)
 
 
 class OrganizationOut(APIModel):

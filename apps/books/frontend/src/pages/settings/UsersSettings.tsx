@@ -34,7 +34,12 @@ const ROLE_OPTIONS: Array<{ value: Role; labelKey: string }> = [
 // offered as an inline choice - only shown, disabled, when already in effect.
 const ASSIGNABLE_ROLE_OPTIONS = ROLE_OPTIONS.filter((option) => option.value !== 'employee');
 
-export function UsersSettings() {
+interface UsersSettingsProps {
+  /** Opens a user's details; the org admin panel passes its own overview. Defaults to the tenant user dashboard. */
+  onViewUser?: (user: User) => void;
+}
+
+export function UsersSettings({ onViewUser }: UsersSettingsProps = {}) {
   const { t } = useAppContent();
   const toast = useToast();
   const auth = useAuth();
@@ -45,6 +50,7 @@ export function UsersSettings() {
   const isAdmin = actor ? actor.isAdmin : auth.isAdmin;
   const canView = capabilities.userDashboard;
   const [viewingUser, setViewingUser] = useState<User | null>(null);
+  const openUser = onViewUser ?? (canView && isAdmin ? setViewingUser : null);
   const [inviting, setInviting] = useState(false);
   const [resetting, setResetting] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
@@ -86,7 +92,13 @@ export function UsersSettings() {
       render: (row) => (
         <div className="cell-stack">
           <span className="strong">
-            {row.name}
+            {openUser ? (
+              <button type="button" className="btn-link" onClick={() => openUser(row)}>
+                {row.name}
+              </button>
+            ) : (
+              row.name
+            )}
             {row.id === currentUserId ? ` ${t('settings.users.you')}` : ''}
           </span>
           <small>{row.email}</small>
@@ -161,18 +173,8 @@ export function UsersSettings() {
       width: '360px',
       render: (row) => (
         <div className="row-actions">
-          {isAdmin && canView && (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<Eye size={14} />}
-              onClick={() => setViewingUser(row)}
-            >
-              {t('settings.users.view')}
-            </Button>
-          )}
-          {canView ? (
-            <Button variant="ghost" size="sm" icon={<Eye size={14} />} onClick={() => setViewingUser(row)}>
+          {openUser ? (
+            <Button variant="secondary" size="sm" icon={<Eye size={14} />} onClick={() => openUser(row)}>
               {t('settings.users.view')}
             </Button>
           ) : null}
@@ -231,7 +233,6 @@ export function UsersSettings() {
       {viewingUser && canView ? <UserDashboardModal user={viewingUser} onClose={() => setViewingUser(null)} /> : null}
       {inviting ? <InviteUserModal onClose={() => setInviting(false)} onInvited={reload} /> : null}
       {resetting ? <ResetPasswordModal user={resetting} onClose={() => setResetting(null)} /> : null}
-      {viewingUser && canView ? <UserDashboardModal user={viewingUser} onClose={() => setViewingUser(null)} /> : null}
 
       <ConfirmDialog
         open={!!deletingUser}

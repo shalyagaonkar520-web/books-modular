@@ -1,5 +1,6 @@
-"""The organization admin panel: an organization's panel admins manage their
-organization's users, profile, app content and activity log.
+"""The organization admin panel: an organization's panel admins see a
+dashboard of its users and employees, manage its users (roles, deactivation,
+removal) and its profile (GST etc.), and read its full activity log.
 
 Panel admins (``OrgPanelAdmin``) are separate logins, created only by a
 platform admin, with their own token type - tenant users (even tenant admins)
@@ -17,8 +18,9 @@ settings are platform-wide and deliberately not exposed here.
 
 from __future__ import annotations
 
+import json
 from collections import Counter
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -28,8 +30,7 @@ from sqlalchemy.orm import Session
 from backend.config import get_settings
 from backend.db import get_db
 from backend.deps import get_current_org_panel_admin, org_panel_access_error
-from backend.models import AuditLog, Organization, OrgPanelAdmin, OrgPanelRefreshToken, User
-from backend.schemas.app_content import AppContent, AppContentOverrides, OrgAppContentOut
+from backend.models import AuditLog, Employee, Organization, OrgPanelAdmin, OrgPanelRefreshToken, User
 from backend.schemas.auth import (
     AdminResetPasswordRequest,
     AuditLogOut,
@@ -55,16 +56,11 @@ from backend.security import (
     hash_token,
     verify_password,
 )
-from backend.services import audit, org_users
-from backend.services.app_content import (
-    delete_org_app_content,
-    get_app_content,
-    get_org_app_content,
-    get_org_overrides,
-    save_org_app_content,
-)
+from backend.services import audit, module_pricing, org_users, subscription
+from backend.services import user_overview as user_overview_service
 from backend.services.ratelimit import RateLimiter, client_ip
 from backend.services.tenancy import Pagination
+from backend.services.user_overview import UserOverviewOut
 
 settings = get_settings()
 
@@ -74,46 +70,6 @@ router = APIRouter(prefix="/api/org-admin", tags=["Organization admin"])
 ORG_PANEL_REFRESH_COOKIE = "rb_org_panel_refresh"
 _REFRESH_COOKIE_PATH = "/api/org-admin/auth"
 _login_limiter = RateLimiter(settings.login_rate_limit_per_minute)
-
-RECENT_USERS = 5
-RECENT_ACTIVITY = 10
-
-
-class OrgAdminUserStats(APIModel):
-    total: int
-    active: int
-    inactive: int
-    pending_invites: int
-    by_role: Dict[str, int]
-    signed_in_last_30_days: int
-
-
-class OrgAdminAppContentStats(APIModel):
-    customized_fields: int
-    disabled_modules: List[str]
-
-
-class OrgAdminOrgSummary(APIModel):
-    id: str
-    name: str
-    created_at: datetime
-    approval_status: Optional[str] = None
-
-
-class OrgAdminDashboardOut(APIModel):
-    organization: OrgAdminOrgSummary
-    users: OrgAdminUserStats
-    recent_users: List[UserOut]
-    recent_activity: List[AuditLogOut]
-    activity_last_7_days: int
-    app_content: OrgAdminAppContentStats
-
-
-def _aware(value: Optional[datetime]) -> Optional[datetime]:
-    # SQLite hands back naive datetimes; they are stored in UTC.
-    if value is not None and value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value
 
 
 # --------------------------------------------------------------------------- #
@@ -248,46 +204,118 @@ def org_panel_me(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db
 
 
 # --------------------------------------------------------------------------- #
-# Dashboard
+# Dashboard: who is in the organization
 # --------------------------------------------------------------------------- #
+RECENT_ROWS = 5
+RECENT_ACTIVITY = 10
+
+
+class OrgAdminUserStats(APIModel):
+    total: int
+    active: int
+    suspended: int
+    pending_invites: int
+    by_role: Dict[str, int]
+    signed_in_last_30_days: int
+
+
+class OrgAdminEmployeeStats(APIModel):
+    total: int
+    active: int
+    inactive: int
+    # Employees who can sign in to the self-service portal.
+    with_login: int
+    joined_last_30_days: int
+    by_department: Dict[str, int]
+
+
+class OrgAdminEmployeeRow(APIModel):
+    # Deliberately no salary, PAN or bank details.
+    id: str
+    employee_code: str
+    name: str
+    designation: Optional[str] = None
+    department: Optional[str] = None
+    date_of_joining: date
+    is_active: bool
+    has_login: bool
+
+
+class OrgAdminDashboardOut(APIModel):
+    organization_name: str
+    users: OrgAdminUserStats
+    employees: OrgAdminEmployeeStats
+    recent_users: List[UserOut]
+    recent_employees: List[OrgAdminEmployeeRow]
+    recent_activity: List[AuditLogOut]
+    activity_last_7_days: int
+
+
+def _aware(value: Optional[datetime]) -> Optional[datetime]:
+    # SQLite hands back naive datetimes; they are stored in UTC.
+    if value is not None and value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value
+
+
 @router.get("/dashboard", response_model=OrgAdminDashboardOut)
 def dashboard(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
-    org = db.get(Organization, admin.organization_id)
-    users = db.execute(select(User).where(User.organization_id == org.id).order_by(User.created_at.desc())).scalars().all()
+    org_id = admin.organization_id
+    org = db.get(Organization, org_id)
     now = datetime.now(UTC)
     month_ago, week_ago = now - timedelta(days=30), now - timedelta(days=7)
-    outs = [UserOut.model_validate(u) for u in users]
 
+    users = db.execute(select(User).where(User.organization_id == org_id).order_by(User.created_at.desc())).scalars().all()
+    user_outs = [UserOut.model_validate(u) for u in users]
+    employees = (
+        db.execute(select(Employee).where(Employee.organization_id == org_id).order_by(Employee.date_of_joining.desc(), Employee.name))
+        .scalars()
+        .all()
+    )
     activity = (
-        db.execute(select(AuditLog).where(AuditLog.organization_id == org.id).order_by(AuditLog.created_at.desc()).limit(RECENT_ACTIVITY))
+        db.execute(select(AuditLog).where(AuditLog.organization_id == org_id).order_by(AuditLog.created_at.desc()).limit(RECENT_ACTIVITY))
         .scalars()
         .all()
     )
     week_count = db.execute(
-        select(func.count()).select_from(AuditLog).where(AuditLog.organization_id == org.id, AuditLog.created_at >= week_ago)
+        select(func.count()).select_from(AuditLog).where(AuditLog.organization_id == org_id, AuditLog.created_at >= week_ago)
     ).scalar_one()
+    never = datetime.min.replace(tzinfo=UTC)
 
-    content = get_org_app_content(db, org.id)
-    overrides = get_org_overrides(db, org.id)
     return OrgAdminDashboardOut(
-        organization=OrgAdminOrgSummary(
-            id=org.id, name=org.name, created_at=org.created_at, approval_status=getattr(org, "approval_status", None)
-        ),
+        organization_name=org.name,
         users=OrgAdminUserStats(
             total=len(users),
-            active=sum(1 for u in users if u.is_active),
-            inactive=sum(1 for u in users if not u.is_active),
-            pending_invites=sum(1 for o in outs if o.pending_invite),
+            active=sum(1 for u in user_outs if u.is_active and not u.pending_invite),
+            suspended=sum(1 for u in user_outs if not u.is_active and not u.pending_invite),
+            pending_invites=sum(1 for u in user_outs if u.pending_invite),
             by_role=dict(Counter(u.role for u in users)),
-            signed_in_last_30_days=sum(1 for u in users if (_aware(u.last_login_at) or datetime.min.replace(tzinfo=UTC)) >= month_ago),
+            signed_in_last_30_days=sum(1 for u in users if (_aware(u.last_login_at) or never) >= month_ago),
         ),
-        recent_users=outs[:RECENT_USERS],
+        employees=OrgAdminEmployeeStats(
+            total=len(employees),
+            active=sum(1 for e in employees if e.is_active),
+            inactive=sum(1 for e in employees if not e.is_active),
+            with_login=sum(1 for e in employees if e.user_id),
+            joined_last_30_days=sum(1 for e in employees if e.date_of_joining >= month_ago.date()),
+            by_department=dict(Counter((e.department or "").strip() or "No department" for e in employees if e.is_active)),
+        ),
+        recent_users=user_outs[:RECENT_ROWS],
+        recent_employees=[
+            OrgAdminEmployeeRow(
+                id=e.id,
+                employee_code=e.employee_code,
+                name=e.name,
+                designation=e.designation,
+                department=e.department,
+                date_of_joining=e.date_of_joining,
+                is_active=e.is_active,
+                has_login=bool(e.user_id),
+            )
+            for e in employees[:RECENT_ROWS]
+        ],
         recent_activity=[AuditLogOut.model_validate(a) for a in activity],
         activity_last_7_days=week_count,
-        app_content=OrgAdminAppContentStats(
-            customized_fields=sum(len(v) for v in overrides.values()),
-            disabled_modules=sorted(k for k, on in content.modules.items() if not on),
-        ),
     )
 
 
@@ -297,6 +325,54 @@ def dashboard(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: S
 @router.get("/users", response_model=List[UserOut])
 def list_users(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
     return org_users.list_users(db, admin.organization_id)
+
+
+@router.get("/users/{user_id}/overview", response_model=UserOverviewOut)
+def user_overview(user_id: str, admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
+    """Everything about one user: profile, employee record, performance, pending work and recent activity."""
+    return user_overview_service.user_overview(db, admin.organization_id, user_id)
+
+
+class ModuleAccessUpdate(APIModel):
+    # None = every module of the plan (no restriction).
+    modules: Optional[List[str]] = None
+
+
+@router.put("/users/{user_id}/module-access", response_model=UserOut)
+def set_module_access(
+    user_id: str,
+    payload: ModuleAccessUpdate,
+    admin: OrgPanelAdmin = Depends(get_current_org_panel_admin),
+    db: Session = Depends(get_db),
+):
+    """Choose which modules a staff user may edit - only modules of the organization's plan."""
+    target = db.get(User, user_id)
+    if target is None or target.organization_id != admin.organization_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    if target.role in ("admin", "viewer", "employee"):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Module access applies to staff users: admins edit every module of the plan, viewers and employees edit none",
+        )
+    if payload.modules is None:
+        target.module_access = None
+        summary = "every module of the plan"
+    else:
+        known = module_pricing.module_keys()
+        unknown = sorted(set(payload.modules) - set(known))
+        if unknown:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Unknown module(s): {', '.join(unknown)}")
+        plan = subscription.paid_modules(db.get(Organization, admin.organization_id))
+        outside = sorted(set(payload.modules) - plan) if plan is not None else []
+        if outside:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Not in your subscription plan: {', '.join(outside)}")
+        chosen = [key for key in known if key in set(payload.modules)]
+        target.module_access = json.dumps(chosen)
+        summary = ", ".join(chosen) or "no modules"
+    audit.record(db, admin, "update", "user", target.id, f"Edit access for {target.email} set to {summary}")
+    db.commit()
+    db.refresh(target)
+    return UserOut.model_validate(target)
 
 
 @router.post("/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)
@@ -338,6 +414,35 @@ def update_organization(
     return org_users.update_organization(db, admin.organization_id, admin, payload)
 
 
+# --------------------------------------------------------------------------- #
+# Integrations: Razorpay status and sync for this organization. The keys are
+# platform-wide and managed only by the platform super-admin.
+# --------------------------------------------------------------------------- #
+class RazorpaySyncIn(APIModel):
+    full: bool = False
+
+
+@router.get("/integrations/razorpay")
+def razorpay_status(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
+    from backend.routers.razorpay import integration_status_payload
+
+    return integration_status_payload(db, admin.organization_id)
+
+
+@router.post("/integrations/razorpay/sync")
+def razorpay_sync_now(
+    payload: Optional[RazorpaySyncIn] = None,
+    admin: OrgPanelAdmin = Depends(get_current_org_panel_admin),
+    db: Session = Depends(get_db),
+):
+    from backend.routers.razorpay import run_sync_for_org
+
+    result = run_sync_for_org(db, admin.organization_id, full=bool(payload and payload.full), user_id=None)
+    audit.record(db, admin, "sync", "integration", "razorpay", f"Razorpay sync run from the admin panel: {result['message']}")
+    db.commit()
+    return result
+
+
 @router.get("/audit-logs", response_model=Page[AuditLogOut])
 def audit_logs(
     entity_type: Optional[str] = None,
@@ -345,45 +450,5 @@ def audit_logs(
     admin: OrgPanelAdmin = Depends(get_current_org_panel_admin),
     db: Session = Depends(get_db),
 ):
+    """The organization's full activity log, newest first (optionally one entity type)."""
     return org_users.audit_log_page(db, admin.organization_id, entity_type, pagination)
-
-
-# --------------------------------------------------------------------------- #
-# The organization's own app content
-# --------------------------------------------------------------------------- #
-def _content_out(db: Session, org_id: str) -> OrgAppContentOut:
-    org = db.get(Organization, org_id)
-    overrides = get_org_overrides(db, org.id)
-    return OrgAppContentOut(
-        organization_id=org.id,
-        organization_name=org.name,
-        content=get_org_app_content(db, org.id),
-        shared=get_app_content(db),
-        overridden=AppContentOverrides(
-            branding=sorted(overrides["branding"]),
-            modules=sorted(overrides["modules"]),
-            texts=sorted(overrides["texts"]),
-        ),
-    )
-
-
-@router.get("/app-content", response_model=OrgAppContentOut)
-def read_app_content(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
-    return _content_out(db, admin.organization_id)
-
-
-@router.put("/app-content", response_model=OrgAppContentOut)
-def update_app_content(payload: AppContent, admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
-    overrides = save_org_app_content(db, admin.organization_id, payload)
-    count = sum(len(v) for v in overrides.values())
-    audit.record(db, admin, "update", "app_content", admin.organization_id, f"App content customized ({count} field(s))")
-    db.commit()
-    return _content_out(db, admin.organization_id)
-
-
-@router.post("/app-content/reset", response_model=OrgAppContentOut)
-def reset_app_content(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
-    delete_org_app_content(db, admin.organization_id)
-    audit.record(db, admin, "update", "app_content", admin.organization_id, "App content reset to the shared content")
-    db.commit()
-    return _content_out(db, admin.organization_id)

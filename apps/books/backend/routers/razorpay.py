@@ -18,7 +18,6 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import (
-    require_admin,
     require_financial_read,
     require_financial_write,
     require_full_app_access,
@@ -42,7 +41,7 @@ from backend.models import (
     User,
     new_id,
 )
-from backend.services import audit, bank, ledger, razorpay_matching, razorpay_posting, razorpay_sync
+from backend.services import bank, ledger, razorpay_matching, razorpay_posting, razorpay_sync
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.money import money
 from backend.services.razorpay_categorize import (
@@ -1432,15 +1431,10 @@ def _sync_log_row(log: RazorpaySyncLog) -> Dict[str, Any]:
     }
 
 
-@router.get("/integration/status")
-def integration_status(
-    user: User = Depends(require_financial_read),
-    db: Session = Depends(get_db),
-):
-    """Connection state for Settings -> Integrations -> Razorpay."""
+def integration_status_payload(db: Session, org_id: str) -> Dict[str, Any]:
+    """Connection state and this organization's sync history (tenant Payments page, org admin panel)."""
     service = get_razorpay_service()
     settings = service.settings
-    org_id = user.organization_id
 
     status_payload = service.get_status()
     last_success = razorpay_sync.last_successful_sync(db, org_id)
@@ -1467,6 +1461,15 @@ def integration_status(
     }
 
 
+@router.get("/integration/status")
+def integration_status(
+    user: User = Depends(require_financial_read),
+    db: Session = Depends(get_db),
+):
+    """Connection state for the Payments page (read-only)."""
+    return integration_status_payload(db, user.organization_id)
+
+
 class ConnectRazorpayRequest(BaseModel):
     key_id: str
     key_secret: str
@@ -1474,12 +1477,12 @@ class ConnectRazorpayRequest(BaseModel):
     mode: Optional[str] = "test"
 
 
-@router.post("/integration/connect")
-def connect_razorpay(
-    payload: ConnectRazorpayRequest,
-    user: User = Depends(require_admin),
-    db: Session = Depends(get_db),
-):
+# The Razorpay keys are platform-wide (one set in the server's .env shared by
+# every organization), so only a platform super-admin may change them - see
+# /api/platform/integrations/razorpay. There is deliberately no tenant or org
+# admin endpoint for this: any organization could otherwise replace or wipe
+# the keys every other organization uses.
+def connect_credentials(payload: ConnectRazorpayRequest) -> Dict[str, Any]:
     """Save Razorpay credentials, verify live connectivity, and update configuration."""
     key_id = payload.key_id.strip()
     key_secret = payload.key_secret.strip()
@@ -1548,16 +1551,13 @@ def connect_razorpay(
     service = get_razorpay_service()
     status_payload = service.get_status()
 
-    audit.record(
-        db,
-        user,
-        "update",
-        "integration",
-        "razorpay",
-        f"Configured Razorpay credentials (mode={mode}, key_id={service.settings.razorpay_key_id_masked})",
-    )
-    db.commit()
+    mode_note = f"mode={mode}, key_id={service.settings.razorpay_key_id_masked}"
+    result = _connect_response(reachable, mode, warning_error, status_payload)
+    result["audit_summary"] = f"Configured Razorpay credentials ({mode_note})"
+    return result
 
+
+def _connect_response(reachable: bool, mode: str, warning_error: Optional[str], status_payload: Dict[str, Any]) -> Dict[str, Any]:
     if not reachable and mode == "live":
         return {
             "success": False,
@@ -1578,11 +1578,7 @@ def connect_razorpay(
     }
 
 
-@router.post("/integration/disconnect")
-def disconnect_razorpay(
-    user: User = Depends(require_admin),
-    db: Session = Depends(get_db),
-):
+def disconnect_credentials() -> Dict[str, Any]:
     """Clear Razorpay credentials from .env and deactivate connection."""
     from pathlib import Path
 
@@ -1610,32 +1606,13 @@ def disconnect_razorpay(
     get_settings.cache_clear()
     reset_razorpay_service()
 
-    audit.record(db, user, "delete", "integration", "razorpay", "Disconnected Razorpay credentials")
-    db.commit()
-
     service = get_razorpay_service()
     return {"success": True, "connected": False, "message": "Razorpay disconnected successfully.", "status": service.get_status()}
 
 
-@router.post("/sync")
-def run_sync(
-    payload: Optional[SyncRequest] = None,
-    user: User = Depends(require_financial_write),
-    db: Session = Depends(get_db),
-):
-    """Import new Razorpay transactions. Safe to run repeatedly and concurrently.
-
-    Returns the sync log for the run, including how many records were created,
-    updated and skipped as already present.
-    """
-    full = bool(payload and payload.full)
-    log = razorpay_sync.sync_organization(
-        db,
-        user.organization_id,
-        full=full,
-        sync_type="manual",
-        user_id=user.id,
-    )
+def run_sync_for_org(db: Session, org_id: str, *, full: bool, user_id: Optional[str]) -> Dict[str, Any]:
+    """Import new Razorpay transactions for one organization; failures are reported as data."""
+    log = razorpay_sync.sync_organization(db, org_id, full=full, sync_type="manual", user_id=user_id)
     row = _sync_log_row(log)
     if log.status == "failed":
         # A failure is reported as data, not as a 500: the UI shows the reason
@@ -1650,6 +1627,20 @@ def run_sync(
         ),
         "sync": row,
     }
+
+
+@router.post("/sync")
+def run_sync(
+    payload: Optional[SyncRequest] = None,
+    user: User = Depends(require_financial_write),
+    db: Session = Depends(get_db),
+):
+    """Import new Razorpay transactions. Safe to run repeatedly and concurrently.
+
+    Returns the sync log for the run, including how many records were created,
+    updated and skipped as already present.
+    """
+    return run_sync_for_org(db, user.organization_id, full=bool(payload and payload.full), user_id=user.id)
 
 
 @router.get("/sync/logs")

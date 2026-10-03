@@ -1,8 +1,8 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, LayoutTemplate, LogIn, MailPlus, UserCheck, Users } from 'lucide-react';
+import { Activity, Briefcase, LogIn, MailPlus, UserCheck, UserX, Users } from 'lucide-react';
 
-import { APP_MODULES } from '@/api/appContent';
-import { orgAdminApi } from '@/api/orgAdmin';
+import { orgAdminApi, type OrgAdminDashboard } from '@/api/orgAdmin';
 import type { AuditLog, User } from '@/api/types';
 import { Badge } from '@/components/ui/Badge';
 import { Card, StatTile } from '@/components/ui/Card';
@@ -10,40 +10,53 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useAsync } from '@/hooks/useAsync';
-import { formatDateTime, formatNumber, titleCase } from '@/utils/format';
+import { formatDate, formatDateTime, formatNumber, titleCase } from '@/utils/format';
+
+import { UserOverviewModal } from './UserOverviewModal';
+
+type RecentEmployee = OrgAdminDashboard['recentEmployees'][number];
 
 /** Every role the app knows, so the breakdown shows 0 rather than hiding a role nobody has yet. */
-const ROLES: Array<{ key: string; label: string }> = [
-  { key: 'admin', label: 'Admin' },
-  { key: 'staff', label: 'Staff' },
-  { key: 'viewer', label: 'Viewer' },
-  { key: 'employee', label: 'Employee' },
-];
+const ROLES = ['admin', 'staff', 'viewer', 'employee'];
 
 function UserStatusBadge({ user }: { user: User }) {
   if (user.pendingInvite) return <Badge tone="warning">Invite pending</Badge>;
-  return user.isActive ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Inactive</Badge>;
+  return user.isActive ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Suspended</Badge>;
 }
 
+function CountList({ label, rows }: { label: string; rows: Array<[string, number]> }) {
+  if (!rows.length) return <p className="text-muted small">None yet.</p>;
+  return (
+    <ul className="quick-links-list" aria-label={label}>
+      {rows.map(([key, count]) => (
+        <li key={key}>
+          <span>{key}</span>
+          <span className="strong num">{formatNumber(count, 0)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The panel's home: the organization's users and employees at a glance. */
 export function OrgAdminDashboardPage() {
   const navigate = useNavigate();
+  const [viewing, setViewing] = useState<User | null>(null);
   const { data, loading, error, reload } = useAsync((signal) => orgAdminApi.dashboard(signal), []);
 
-  if (loading && !data) return <LoadingBlock label="Building the organization dashboard…" />;
+  if (loading && !data) return <LoadingBlock label="Building the dashboard…" />;
   if (error) return <ErrorBlock message={error} onRetry={reload} />;
   if (!data) return null;
 
-  const { users, appContent } = data;
-  const roleRows = [
-    ...ROLES,
+  const { users, employees } = data;
+  const roleRows: Array<[string, number]> = [
+    ...ROLES.map((role): [string, number] => [titleCase(role), users.byRole[role] ?? 0]),
     // A role the server reports that this build does not know yet still gets a row.
-    ...Object.keys(users.byRole)
-      .filter((key) => !ROLES.some((role) => role.key === key))
-      .map((key) => ({ key, label: titleCase(key) })),
+    ...Object.entries(users.byRole)
+      .filter(([role]) => !ROLES.includes(role))
+      .map(([role, count]): [string, number] => [titleCase(role), count]),
   ];
-  const disabledModules = appContent.disabledModules.map(
-    (key) => APP_MODULES.find((module) => module.key === key)?.label ?? titleCase(key),
-  );
+  const departmentRows = Object.entries(employees.byDepartment).sort((a, b) => b[1] - a[1]);
 
   const userColumns: Array<Column<User>> = [
     {
@@ -51,18 +64,41 @@ export function OrgAdminDashboardPage() {
       header: 'User',
       render: (row) => (
         <div className="cell-stack">
-          <span className="strong">{row.name}</span>
+          <button type="button" className="btn-link strong" onClick={() => setViewing(row)}>
+            {row.name}
+          </button>
           <small style={{ wordBreak: 'break-all' }}>{row.email}</small>
         </div>
       ),
     },
     { key: 'role', header: 'Role', render: (row) => titleCase(row.role) },
     { key: 'status', header: 'Status', render: (row) => <UserStatusBadge user={row} /> },
+    { key: 'lastLogin', header: 'Last login', align: 'right', render: (row) => (row.lastLoginAt ? formatDateTime(row.lastLoginAt) : 'Never') },
+  ];
+
+  const employeeColumns: Array<Column<RecentEmployee>> = [
     {
-      key: 'lastLogin',
-      header: 'Last login',
+      key: 'name',
+      header: 'Employee',
+      render: (row) => (
+        <div className="cell-stack">
+          <span className="strong">{row.name}</span>
+          <small>{[row.employeeCode, row.designation].filter(Boolean).join(' · ')}</small>
+        </div>
+      ),
+    },
+    { key: 'department', header: 'Department', render: (row) => row.department || '-' },
+    { key: 'joined', header: 'Joined', render: (row) => formatDate(row.dateOfJoining) },
+    {
+      key: 'status',
+      header: 'Status',
       align: 'right',
-      render: (row) => (row.lastLoginAt ? formatDateTime(row.lastLoginAt) : 'Never'),
+      render: (row) => (
+        <span className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
+          {row.hasLogin ? <Badge tone="info">Portal login</Badge> : null}
+          {row.isActive ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Inactive</Badge>}
+        </span>
+      ),
     },
   ];
 
@@ -73,7 +109,10 @@ export function OrgAdminDashboardPage() {
       render: (row) => (
         <div className="cell-stack">
           <span className="strong">{row.summary ?? titleCase(row.action)}</span>
-          <small>{titleCase(row.entityType)}{row.userName ? ` · ${row.userName}` : ''}</small>
+          <small>
+            {titleCase(row.entityType)}
+            {row.userName ? ` · ${row.userName}` : ''}
+          </small>
         </div>
       ),
     },
@@ -82,134 +121,87 @@ export function OrgAdminDashboardPage() {
 
   return (
     <>
-      <PageHeader
-        title="Organization overview"
-        subtitle={`Users, activity and app content for ${data.organization.name}.`}
-      />
+      <PageHeader title="Dashboard" subtitle={`Users and employees of ${data.organizationName}.`} />
 
       <div className="stat-grid">
+        <StatTile label="Users" value={formatNumber(users.total, 0)} sublabel={`${users.active} active`} icon={<Users size={16} />} />
+        <StatTile label="Active users" value={formatNumber(users.active, 0)} tone="positive" icon={<UserCheck size={16} />} />
         <StatTile
-          label="Users"
-          value={formatNumber(users.total, 0)}
-          sublabel={`${users.active} active · ${users.inactive} inactive`}
-          icon={<Users size={16} />}
+          label="Suspended"
+          value={formatNumber(users.suspended, 0)}
+          tone={users.suspended ? 'warning' : 'neutral'}
+          icon={<UserX size={16} />}
         />
-        <StatTile label="Active" value={formatNumber(users.active, 0)} tone="positive" icon={<UserCheck size={16} />} />
         <StatTile
           label="Pending invites"
           value={formatNumber(users.pendingInvites, 0)}
-          sublabel={users.pendingInvites > 0 ? 'Waiting to be accepted' : 'No open invites'}
-          tone={users.pendingInvites > 0 ? 'warning' : 'neutral'}
+          tone={users.pendingInvites ? 'warning' : 'neutral'}
           icon={<MailPlus size={16} />}
         />
+        <StatTile label="Signed in last 30 days" value={formatNumber(users.signedInLast30Days, 0)} icon={<LogIn size={16} />} />
         <StatTile
-          label="Signed in last 30 days"
-          value={formatNumber(users.signedInLast30Days, 0)}
-          icon={<LogIn size={16} />}
+          label="Employees"
+          value={formatNumber(employees.total, 0)}
+          sublabel={`${employees.active} active · ${employees.inactive} inactive`}
+          icon={<Briefcase size={16} />}
         />
         <StatTile
-          label="Activity last 7 days"
-          value={formatNumber(data.activityLast7Days, 0)}
-          sublabel="Recorded actions"
-          icon={<Activity size={16} />}
+          label="Joined last 30 days"
+          value={formatNumber(employees.joinedLast30Days, 0)}
+          sublabel={`${employees.withLogin} with a portal login`}
+          icon={<Briefcase size={16} />}
         />
-        <StatTile
-          label="Customized app fields"
-          value={formatNumber(appContent.customizedFields, 0)}
-          sublabel="Differ from the shared content"
-          icon={<LayoutTemplate size={16} />}
-        />
+        <StatTile label="Activity last 7 days" value={formatNumber(data.activityLast7Days, 0)} icon={<Activity size={16} />} />
       </div>
 
       <div className="grid-2">
         <Card
           title="Users by role"
-          subtitle="Everyone with access to this organization"
           actions={
             <button type="button" className="btn btn-link btn-sm" onClick={() => navigate('/org-admin/users')}>
               <span>Manage users</span>
             </button>
           }
         >
-          <ul className="quick-links-list" aria-label="Users by role">
-            {roleRows.map((role) => (
-              <li key={role.key}>
-                <span>{role.label}</span>
-                <span className="strong num">{formatNumber(users.byRole[role.key] ?? 0, 0)}</span>
-              </li>
-            ))}
-          </ul>
+          <CountList label="Users by role" rows={roleRows} />
         </Card>
-
-        <Card
-          title="App content"
-          subtitle="How this organization's app differs from the shared content"
-          actions={
-            <button type="button" className="btn btn-link btn-sm" onClick={() => navigate('/org-admin/app-content')}>
-              <span>Edit app content</span>
-            </button>
-          }
-        >
-          <div className="stack">
-            <p className="small" style={{ margin: 0 }}>
-              <span className="strong">{formatNumber(appContent.customizedFields, 0)}</span> customized{' '}
-              {appContent.customizedFields === 1 ? 'field' : 'fields'}
-            </p>
-            {disabledModules.length === 0 ? (
-              <p className="text-muted small" style={{ margin: 0 }}>Every module is on.</p>
-            ) : (
-              <div>
-                <h3 className="card-subtitle" style={{ margin: '4px 0 6px' }}>
-                  Turned-off modules
-                </h3>
-                <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-                  {disabledModules.map((label) => (
-                    <Badge key={label} tone="neutral">{label}</Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+        <Card title="Active employees by department">
+          <CountList label="Employees by department" rows={departmentRows} />
         </Card>
       </div>
 
-      <div className="card">
-        <div className="card-header">
-          <div>
-            <h2 className="card-title">Recent users</h2>
-            <p className="card-subtitle">Newest members of this organization</p>
-          </div>
-          <button type="button" className="btn btn-link btn-sm" onClick={() => navigate('/org-admin/users')}>
-            <span>View all users</span>
-          </button>
-        </div>
-        {data.recentUsers.length === 0 ? (
-          <div className="card-body">
-            <p className="text-muted small">No users yet.</p>
-          </div>
-        ) : (
+      <Card title="Recent users" subtitle="Click a name to see their performance and pending work">
+        {data.recentUsers.length ? (
           <DataTable columns={userColumns} rows={data.recentUsers} rowKey={(row) => row.id} caption="Recent users" />
-        )}
-      </div>
-
-      <div className="card">
-        <div className="card-header">
-          <div>
-            <h2 className="card-title">Recent activity</h2>
-            <p className="card-subtitle">Latest actions in this organization</p>
-          </div>
-          <button type="button" className="btn btn-link btn-sm" onClick={() => navigate('/org-admin/settings?tab=activity')}>
-            <span>Open activity log</span>
-          </button>
-        </div>
-        {data.recentActivity.length === 0 ? (
-          <div className="card-body">
-            <p className="text-muted small">Nothing recorded yet.</p>
-          </div>
         ) : (
-          <DataTable columns={activityColumns} rows={data.recentActivity} rowKey={(row) => row.id} caption="Recent activity" />
+          <p className="text-muted small">No users yet.</p>
         )}
-      </div>
+      </Card>
+
+      <Card title="Recent employees">
+        {data.recentEmployees.length ? (
+          <DataTable columns={employeeColumns} rows={data.recentEmployees} rowKey={(row) => row.id} caption="Recent employees" />
+        ) : (
+          <p className="text-muted small">No employees yet.</p>
+        )}
+      </Card>
+
+      <Card
+        title="Recent activity"
+        actions={
+          <button type="button" className="btn btn-link btn-sm" onClick={() => navigate('/org-admin/activity')}>
+            <span>Full activity log</span>
+          </button>
+        }
+      >
+        {data.recentActivity.length ? (
+          <DataTable columns={activityColumns} rows={data.recentActivity} rowKey={(row) => row.id} caption="Recent activity" />
+        ) : (
+          <p className="text-muted small">Nothing recorded yet.</p>
+        )}
+      </Card>
+
+      {viewing ? <UserOverviewModal user={viewing} onClose={() => setViewing(null)} /> : null}
     </>
   );
 }
