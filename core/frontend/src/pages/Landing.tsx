@@ -207,13 +207,13 @@ export function Landing() {
           </div>
         </section>
 
-        <section className="lp-section lp-pay" id="payments" aria-labelledby="pay-title">
+        <section className="lp-section lp-pay" id="products" aria-labelledby="products-title">
           <div className="lp-wrap">
             <SectionHead
-              id="pay-title"
-              eyebrow="Payments"
-              title="Every card, one ledger"
-              lead="Customers pay by card or UPI through Razorpay. Every payment lands in Books, matched to its invoice."
+              id="products-title"
+              eyebrow="Products"
+              title="Every app, one account"
+              lead="Scroll through the suite. Books is ready today; the others join the same account and customer list as they launch."
             />
           </div>
         </section>

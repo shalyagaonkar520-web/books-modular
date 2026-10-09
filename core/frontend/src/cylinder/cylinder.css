@@ -98,142 +98,209 @@
   }
 }
 
-.cyl-front-content {
+/* card faces: the same layout on both sides, sized for the smallest card */
+.cyl-content {
   position: absolute;
   inset: 0;
   z-index: 10;
   background: rgba(0, 0, 0, 0.15);
   color: #fff;
+  font-family: Poppins, Inter, system-ui, sans-serif;
 }
-.cyl-chip {
+.cyl-brand {
   position: absolute;
-  left: 20px;
-  top: 50%;
-  translate: 0 -50%;
-  width: 24px;
-  height: 24px;
-}
-.cyl-wordmark {
-  position: absolute;
-  right: 20px;
-  top: 18px;
+  left: 18px;
+  top: 16px;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
   line-height: 1;
-  font-family: Poppins, Inter, system-ui, sans-serif;
-  opacity: 0.95;
 }
-.cyl-wordmark span {
+.cyl-brand span {
   font-size: 7px;
   font-weight: 600;
   letter-spacing: 0.2em;
-}
-.cyl-wordmark b {
-  margin-top: 2px;
-  font-size: 20px;
-  font-weight: 900;
-  letter-spacing: -0.01em;
-}
-.cyl-circles {
-  position: absolute;
-  right: 20px;
-  bottom: 20px;
-  display: flex;
-  align-items: center;
   opacity: 0.9;
 }
-.cyl-circles span {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(1px);
+.cyl-brand b {
+  margin-top: 3px;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.35);
 }
-.cyl-circles span + span {
-  margin-left: -12px;
-  background: rgba(255, 255, 255, 0.35);
+/* frosted tile holding the product icon */
+.cyl-icon {
+  position: absolute;
+  right: 14px;
+  top: 12px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(6px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.cyl-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.cyl-tagline {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 36px;
+  margin: 0;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.92);
+}
+.cyl-status {
+  position: absolute;
+  left: 18px;
+  bottom: 14px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.35);
+}
+.cyl-status-live {
+  color: #6ef2c4;
+  border-color: rgba(110, 242, 196, 0.45);
+}
+.cyl-status-soon {
+  color: #fcd34d;
+  border-color: rgba(252, 211, 77, 0.45);
+}
+.cyl-status-planned {
+  color: rgba(255, 255, 255, 0.78);
 }
 
-/* back face */
-.cyl-stripe {
+/* back face: a dark band (the card's stripe) naming the product, then what it does */
+.cyl-band {
   position: absolute;
   left: 0;
   right: 0;
   top: 16px;
-  height: 28px;
-  z-index: 10;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(12px);
-}
-.cyl-details {
-  position: absolute;
-  left: 16px;
-  bottom: 16px;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-weight: 500;
-  color: #fff;
-}
-.cyl-number {
-  font-size: 10px;
-  letter-spacing: 0.14em;
-}
-.cyl-owner {
+  height: 30px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 7px;
-  letter-spacing: 0.04em;
-  color: rgba(255, 255, 255, 0.7);
-  text-transform: uppercase;
+  justify-content: space-between;
+  padding: 0 18px;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px);
+  font-size: 10px;
+  font-weight: 600;
 }
-.cyl-dot {
-  color: rgba(255, 255, 255, 0.4);
+.cyl-band span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cyl-band i {
+  display: none; /* shown from 640px, where the band has room */
+  font-style: normal;
+  font-weight: 400;
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+.cyl-points {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 3px;
+  font-size: 8.5px;
+  line-height: 1.3;
+}
+.cyl-points li {
+  position: relative;
+  padding-left: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cyl-points li::before {
+  content: '';
+  position: absolute;
+  left: 1px;
+  top: 4px;
+  width: 6px;
+  height: 3px;
+  border-left: 1.5px solid #8ee6ff;
+  border-bottom: 1.5px solid #8ee6ff;
+  transform: rotate(-45deg);
 }
 
 @media (min-width: 640px) {
-  .cyl-chip {
-    left: 24px;
-    width: 29px;
-    height: 29px;
+  .cyl-brand {
+    left: 22px;
+    top: 20px;
   }
-  .cyl-wordmark {
-    right: 24px;
-    top: 22px;
-  }
-  .cyl-wordmark span {
+  .cyl-brand span {
     font-size: 8px;
   }
-  .cyl-wordmark b {
-    font-size: 24px;
+  .cyl-brand b {
+    font-size: 30px;
   }
-  .cyl-circles {
-    right: 24px;
-    bottom: 24px;
+  .cyl-icon {
+    right: 20px;
+    top: 18px;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
   }
-  .cyl-circles span {
-    width: 24px;
-    height: 24px;
+  .cyl-icon svg {
+    width: 22px;
+    height: 22px;
   }
-  .cyl-stripe {
-    top: 20px;
-    height: 36px;
+  .cyl-tagline {
+    left: 22px;
+    bottom: 50px;
+    font-size: 14px;
   }
-  .cyl-details {
-    left: 24px;
+  .cyl-status {
+    left: 22px;
     bottom: 20px;
-    gap: 4px;
+    font-size: 10.5px;
+    padding: 3px 10px;
   }
-  .cyl-number {
+  .cyl-band {
+    top: 20px;
+    height: 38px;
+    padding: 0 22px;
+    font-size: 13px;
+  }
+  .cyl-band i {
+    display: inline;
+    font-size: 9px;
+  }
+  .cyl-points {
+    left: 22px;
+    bottom: 20px;
+    gap: 6px;
     font-size: 12px;
   }
-  .cyl-owner {
-    font-size: 9px;
+  .cyl-points li {
+    padding-left: 16px;
+  }
+  .cyl-points li::before {
+    top: 5px;
+    width: 7px;
+    height: 4px;
   }
 }
 

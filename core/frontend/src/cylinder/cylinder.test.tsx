@@ -1,5 +1,6 @@
 import { render } from '@testing-library/react';
-import { CARD_DETAILS, CardCylinder } from './CardCylinder';
+import { CardCylinder } from './CardCylinder';
+import { PRODUCTS } from './products';
 import { cardMetrics, easeProgress, poseFor, scrollTarget, wrapOffset } from './cylinder';
 
 describe('cylinder maths', () => {
@@ -42,16 +43,18 @@ describe('cylinder maths', () => {
 });
 
 describe('CardCylinder', () => {
-  it('renders five volumetric cards with masked sample details', () => {
+  it('renders one volumetric card per product, with honest status', () => {
     const { container } = render(<CardCylinder />);
     const cards = container.querySelectorAll('.cyl-card');
-    expect(cards).toHaveLength(CARD_DETAILS.length);
+    expect(cards).toHaveLength(PRODUCTS.length);
     // 5 slices each: back, 3 structural, front
     expect(cards[0].children).toHaveLength(5);
-    expect(container.querySelectorAll('.cyl-front')).toHaveLength(5);
-    expect(container.querySelectorAll('.cyl-back')).toHaveLength(5);
-    expect(container.textContent).toContain('•••• •••• •••• 4892');
-    expect(container.textContent).not.toMatch(/\d{4} \d{4} \d{4} \d{4}/); // never a full card number
+    expect(container.querySelectorAll('.cyl-front')).toHaveLength(PRODUCTS.length);
+    expect(container.querySelectorAll('.cyl-back')).toHaveLength(PRODUCTS.length);
+    for (const product of PRODUCTS) expect(container.textContent).toContain(product.name);
+    // only Books is live today
+    expect(container.querySelectorAll('.cyl-status-live')).toHaveLength(1);
+    expect(container.querySelector('.cyl-status-live')?.closest('.cyl-card')?.textContent).toContain('Books');
     expect(container.querySelector('video')).toBeNull(); // no external media
   });
 });

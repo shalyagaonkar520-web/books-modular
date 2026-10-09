@@ -1,28 +1,18 @@
 /**
- * Scroll-driven 3D card cylinder. The section is several screens tall; its
- * stage stays pinned while you scroll, and scrolling turns the cylinder from
- * the first card to the last. Each card has volume (stacked slices), a front
- * and a back face, and the front card tilts toward the cursor with inertia.
+ * Scroll-driven 3D cylinder of product cards. The section is several screens
+ * tall; its stage stays pinned while you scroll, and scrolling turns the
+ * cylinder from the first product to the last. Each card has volume (stacked
+ * slices), a front (the product) and a back (what it does), and the front
+ * card tilts toward the cursor with inertia.
  *
- * Card art is animated CSS (the CSP allows media from 'self' only) and the
- * card details are masked samples, never real card data.
+ * Card art is animated CSS (the CSP allows media from 'self' only).
  */
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import '@fontsource/jetbrains-mono/500.css';
 import { PERSPECTIVE, cardMetrics, easeProgress, poseFor, scrollTarget, wrapOffset, type Metrics } from './cylinder';
+import { PRODUCTS, STATUS_LABEL, type Product } from './products';
 import './cylinder.css';
 
-const CARD_COLORS = ['#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#007AFF', '#5856D6', '#FF2D55', '#AF52DE', '#00C7BE'];
-
-export const CARD_DETAILS = [
-  { last4: '4892', name: 'KUMAR TRADERS' },
-  { last4: '5124', name: 'SHARMA CLINIC' },
-  { last4: '9035', name: 'BLUE LOTUS SPA' },
-  { last4: '2468', name: 'NAIR & SONS' },
-  { last4: '7713', name: 'MEHTA EXPORTS' },
-];
-
-const CARD_COUNT = CARD_DETAILS.length;
+const CARD_COUNT = PRODUCTS.length;
 // Volumetric thickness: dense parallel slices from -1.47px to 1.47px
 const THICKNESS = [-1.47, -0.73, 0, 0.73, 1.47];
 const MAX_TILT_Y = 15; // left-right, degrees
@@ -139,18 +129,14 @@ export function CardCylinder() {
   const size = { width: `${metrics.cardW}px`, height: `${metrics.cardH}px` };
 
   return (
-    <section className="cyl" ref={sectionRef} aria-label="Cards your customers pay with" style={{ height: `${100 + (CARD_COUNT - 1) * 55}vh` }}>
+    <section className="cyl" ref={sectionRef} aria-label="Rooman One products" style={{ height: `${100 + (CARD_COUNT - 1) * 50}vh` }}>
       <div className="cyl-stage" style={{ perspective: `${PERSPECTIVE}px` }} aria-hidden="true">
         <div className="cyl-space" style={size}>
-          {CARD_DETAILS.map((details, i) => {
-            const art = {
-              '--c1': CARD_COLORS[(i * 2) % CARD_COLORS.length],
-              '--c2': CARD_COLORS[(i * 2 + 3) % CARD_COLORS.length],
-              '--delay': `${-i * 2.3}s`,
-            } as CSSProperties;
+          {PRODUCTS.map((product, i) => {
+            const art = { '--c1': product.colors[0], '--c2': product.colors[1], '--delay': `${-i * 2.3}s` } as CSSProperties;
             return (
               <div
-                key={details.last4}
+                key={product.key}
                 className="cyl-card"
                 ref={(el) => {
                   cardsRef.current[i] = el;
@@ -162,14 +148,7 @@ export function CardCylinder() {
                     return (
                       <div key={layer} className="cyl-face cyl-front" style={{ transform: `translateZ(${z}px)` }}>
                         <div className="cyl-art" style={art} />
-                        <div className="cyl-front-content">
-                          <Chip id={i} />
-                          <Wordmark />
-                          <div className="cyl-circles">
-                            <span />
-                            <span />
-                          </div>
-                        </div>
+                        <Front product={product} />
                       </div>
                     );
                   }
@@ -177,15 +156,7 @@ export function CardCylinder() {
                     return (
                       <div key={layer} className="cyl-face cyl-back" style={{ transform: `translateZ(${z}px) rotateX(180deg)` }}>
                         <div className="cyl-art cyl-art-blur" style={art} />
-                        <div className="cyl-stripe" />
-                        <div className="cyl-details">
-                          <div className="cyl-number">•••• •••• •••• {details.last4}</div>
-                          <div className="cyl-owner">
-                            <span>{details.name}</span>
-                            <span className="cyl-dot">•</span>
-                            <span>CVV •••</span>
-                          </div>
-                        </div>
+                        <Back product={product} />
                       </div>
                     );
                   }
@@ -200,33 +171,44 @@ export function CardCylinder() {
   );
 }
 
-/** Silver metallic contact chip. */
-function Chip({ id }: { id: number }) {
-  const gradient = `cylChip${id}`;
+function Icon({ path }: { path: string }) {
   return (
-    <svg className="cyl-chip" viewBox="0 0 60 60" fill="none">
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M20 8H40V14C40.0016 14.5299 40.2128 15.0377 40.5875 15.4125C40.9623 15.7872 41.4701 15.9984 42 16H59V24H42C41.4701 24.0016 40.9623 24.2128 40.5875 24.5875C40.2128 24.9623 40.0016 25.4701 40 26V52H20V8ZM18 8H8.00039C4.47435 8 1.56576 10.6083 1.08 14H18V8ZM1 16V24V26V34V36V44H18V36H1V34H18V26H1V24H18V16H1ZM1.08 46C1.56576 49.3917 4.47435 52 8.00039 52H18V46H1.08ZM42 14V8H52.0004C55.5264 8 58.4342 10.6084 58.92 14H42ZM59 26H42V34H59V26ZM59 36H42V44H59V36ZM52.0004 52H42V46H58.92C58.4342 49.3916 55.5264 52 52.0004 52Z"
-        fill={`url(#${gradient})`}
-      />
-      <defs>
-        <linearGradient id={gradient} x1="30" y1="8" x2="30" y2="52" gradientUnits="userSpaceOnUse">
-          <stop stopColor="white" />
-          <stop offset="1" stopColor="#999999" />
-        </linearGradient>
-      </defs>
-    </svg>
+    <span className="cyl-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d={path} />
+      </svg>
+    </span>
   );
 }
 
-/** Rooman One wordmark for the card's top-right corner. */
-function Wordmark() {
+/** Front: the product, its tagline and whether it is available yet. */
+function Front({ product }: { product: Product }) {
   return (
-    <div className="cyl-wordmark">
-      <span>ROOMAN</span>
-      <b>ONE</b>
+    <div className="cyl-content">
+      <div className="cyl-brand">
+        <span>ROOMAN</span>
+        <b>{product.name}</b>
+      </div>
+      <Icon path={product.icon} />
+      <p className="cyl-tagline">{product.tagline}</p>
+      <span className={`cyl-status cyl-status-${product.status}`}>{STATUS_LABEL[product.status]}</span>
+    </div>
+  );
+}
+
+/** Back: what the product does, under a dark band like a card's stripe. */
+function Back({ product }: { product: Product }) {
+  return (
+    <div className="cyl-content">
+      <div className="cyl-band">
+        <span>Rooman {product.name}</span>
+        <i>Rooman One</i>
+      </div>
+      <ul className="cyl-points">
+        {product.points.map((point) => (
+          <li key={point}>{point}</li>
+        ))}
+      </ul>
     </div>
   );
 }
