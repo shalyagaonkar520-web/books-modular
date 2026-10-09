@@ -1,0 +1,109 @@
+/* @rooman/shell header. Built only on the tokens in tokens.css. */
+.rs-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--header-h, 56px);
+  padding: 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--text);
+}
+.rs-group { position: relative; }
+.rs-spacer { flex: 1; }
+.rs-trigger,
+.rs-icon-btn,
+.rs-avatar,
+.rs-item {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.rs-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+}
+.rs-trigger:hover,
+.rs-icon-btn:hover { background: var(--surface-hover); }
+.rs-brand { font-weight: 600; }
+.rs-sep,
+.rs-muted { color: var(--text-subtle); }
+.rs-org { color: var(--text-muted); padding: 0 8px; }
+.rs-icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius);
+  font-size: 16px;
+}
+.rs-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 12px;
+}
+.rs-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 220px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+.rs-menu-end { left: auto; right: 0; }
+.rs-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  text-decoration: none;
+}
+a.rs-item:hover,
+button.rs-item:hover { background: var(--surface-hover); }
+.rs-item[aria-current] { color: var(--primary); font-weight: 600; }
+.rs-locked { color: var(--text-subtle); cursor: default; }
+.rs-upgrade {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+  text-decoration: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+}
+.rs-profile {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px 10px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.rs-trigger:focus-visible,
+.rs-icon-btn:focus-visible,
+.rs-avatar:focus-visible,
+.rs-item:focus-visible,
+.rs-upgrade:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}

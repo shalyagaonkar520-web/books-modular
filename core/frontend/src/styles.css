@@ -1,0 +1,72 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+}
+.signin {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+.signin-theme {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+}
+.signin-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 32px 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+.signin-brand {
+  margin: 0 0 4px;
+  font-weight: 600;
+  color: var(--primary);
+}
+.signin-card h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+.signin-lead {
+  margin: 0 0 16px;
+  color: var(--text-muted);
+}
+.signin-note {
+  margin: 0 0 16px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--info-soft);
+}
+.signin-status {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.signin-status-healthy {
+  color: var(--success);
+}
+.signin-status-degraded,
+.signin-status-unreachable {
+  color: var(--danger);
+}
+.signin-ref {
+  color: var(--text-subtle);
+}
