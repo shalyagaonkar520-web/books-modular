@@ -344,9 +344,8 @@ export function startHero(root: HTMLElement): () => void {
     play(byId('hxSub1'), { opacity: 0, translate: Y(10) }, 620, 690, EXPO);
     play(byId('hxSub2'), { opacity: 0, translate: Y(10) }, 620, 745, EXPO);
     play($('.cta2'), { opacity: 0, translate: Y(13), scale: '.985' }, 620, 830, EXPO);
-    // the payoff: the wheel rises into depth, the mock lands in front of it last
+    // the payoff: the wheel rises into depth
     play(ring, { opacity: 0, translate: Y(18), scale: '.99' }, 950, 700, EXPO);
-    play($('.browser'), { opacity: 0, translate: Y(26) }, 900, 900, EXPO);
     const finalAnim = lastAnim as Animation | null;
     if (finalAnim) finalAnim.finished.then(settle).catch(settle);
     else settle();

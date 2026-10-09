@@ -1,7 +1,6 @@
 /**
- * The landing hero: a scaled design canvas with the headline, a 3D ring of
- * feature cards and a browser mock of Rooman Books in front of it. Markup is
- * static; engine.ts adds the behaviour after mount.
+ * The landing hero: a scaled design canvas with the headline and a 3D ring
+ * of feature cards. Markup is static; engine.ts adds the behaviour after mount.
  */
 import { useLayoutEffect, useRef } from 'react';
 // Bundled, so the page needs no third-party font requests (the CSP allows fonts from 'self' only).
@@ -120,114 +119,9 @@ export function Hero({ trialUrl }: HeroProps) {
 
           <div className="showcase">
             <div className="ring" aria-hidden="true" />
-            <BrowserMock />
           </div>
         </div>
       </div>
     </header>
-  );
-}
-
-const INVOICES = [
-  { no: 'INV-000123', who: 'Kumar Traders', date: '09 Oct', amount: '₹1,180.00', status: 'paid', label: 'Paid' },
-  { no: 'INV-000122', who: 'Sharma Clinic', date: '08 Oct', amount: '₹24,780.00', status: 'sent', label: 'Sent' },
-  { no: 'INV-000121', who: 'Blue Lotus Spa', date: '06 Oct', amount: '₹8,850.00', status: 'due', label: 'Due in 5 days' },
-  { no: 'INV-000120', who: 'Nair & Sons', date: '03 Oct', amount: '₹62,540.00', status: 'paid', label: 'Paid' },
-];
-
-/** A miniature Rooman Books dashboard with illustrative figures. */
-function BrowserMock() {
-  return (
-    <div className="browser" aria-hidden="true">
-      <div className="bar">
-        <div className="dots">
-          <i style={{ background: '#ee5c62' }} />
-          <i style={{ background: '#f6b719' }} />
-          <i style={{ background: '#12c02f' }} />
-        </div>
-        <div className="omni">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round">
-            <path d="M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z" />
-          </svg>
-          <span>books.rooman.one</span>
-        </div>
-        <div className="tools">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 16V4m0 0L8 8m4-4 4 4" />
-            <path d="M4 15v5h16v-5" />
-          </svg>
-          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          <svg viewBox="0 0 24 24" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 3 3 8l9 5 9-5-9-5Z" fill="#fff" opacity=".95" />
-            <path d="M3 13l9 5 9-5" fill="none" opacity=".55" />
-          </svg>
-        </div>
-      </div>
-      <div className="page">
-        <div className="appbar">
-          <span className="sq" />
-          Rooman One <span className="muted">/</span> Books
-          <span className="org">Kumar Traders</span>
-          <span className="av">RK</span>
-        </div>
-        <div className="dash">
-          <ul className="side">
-            <li className="on">Dashboard</li>
-            <li>Sales</li>
-            <li>Purchases</li>
-            <li>Banking</li>
-            <li>GST</li>
-            <li>Payroll</li>
-            <li>Reports</li>
-          </ul>
-          <div className="main">
-            <h4>Good morning, Ravi</h4>
-            <p className="hint">Here is where your business stands today.</p>
-            <div className="kpis">
-              <div className="kpi">
-                <span>Receivables</span>
-                <b>₹4,82,300</b>
-                <i>12 invoices open</i>
-              </div>
-              <div className="kpi">
-                <span>Payables</span>
-                <b>₹1,26,900</b>
-                <i className="warn">3 bills due this week</i>
-              </div>
-              <div className="kpi">
-                <span>Cash in bank</span>
-                <b>₹9,14,050</b>
-                <i>Reconciled today</i>
-              </div>
-              <div className="kpi">
-                <span>GST payable</span>
-                <b>₹38,420</b>
-                <i className="warn">GSTR-3B due 20 Oct</i>
-              </div>
-            </div>
-            <div className="tbl">
-              <div className="row head">
-                <span>Invoice</span>
-                <span>Customer</span>
-                <span>Date</span>
-                <span className="num">Amount</span>
-                <span>Status</span>
-              </div>
-              {INVOICES.map((inv) => (
-                <div className="row" key={inv.no}>
-                  <span>{inv.no}</span>
-                  <span>{inv.who}</span>
-                  <span>{inv.date}</span>
-                  <span className="num">{inv.amount}</span>
-                  <span className={`st ${inv.status}`}>{inv.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
