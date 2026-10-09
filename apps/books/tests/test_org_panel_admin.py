@@ -55,38 +55,84 @@ def _new_email(prefix: str = "panel") -> str:
 # --------------------------------------------------------------------------- #
 # Super admin side
 # --------------------------------------------------------------------------- #
-def test_super_admin_creates_panel_admin_on_approve(client, platform_h, no_smtp):
-    admin = register_org(client, "Approve")
-    org_id = admin["org"]["id"]
-    _set_org(org_id, approval_status="pending")
-    email = _new_email()
+def test_default_admin_login_setup_and_reset_flow(client, platform_h, no_smtp):
+    owner = register_org(client, "DefaultLogin")
+    org_id = owner["org"]["id"]
+    summary = next(
+        o
+        for o in client.get("/api/platform/organizations", headers=platform_h, params={"page_size": 200}).json()["items"]
+        if o["id"] == org_id
+    )
+    code = summary["code"]
+    assert code and summary["hasPanelAdmin"] is False
 
-    # A weak password or a taken email fails the whole approval.
-    weak = {"panelAdmin": {"name": "Pat Panel", "email": email, "password": "weakpass"}}
-    assert client.post(f"/api/platform/organizations/{org_id}/approve", headers=platform_h, json=weak).status_code == 422
-    taken = create_panel_admin(client, platform_h, register_org(client, "Taken")["org"]["id"])["email"]
-    dup = {"panelAdmin": {"name": "Pat Panel", "email": taken.upper(), "password": PANEL_PASSWORD}}
-    assert client.post(f"/api/platform/organizations/{org_id}/approve", headers=platform_h, json=dup).status_code == 409
-    detail = client.get(f"/api/platform/organizations/{org_id}", headers=platform_h).json()
-    assert detail["approvalStatus"] == "pending" and detail["panelAdmins"] == []
-    assert _login(client, email).status_code == 401
+    # Approving no longer creates a login; the super admin creates the default one separately.
+    created = client.post(f"/api/platform/organizations/{org_id}/panel-admins/default", headers=platform_h)
+    assert created.status_code == 201, created.text
+    creds = created.json()
+    assert creds["loginId"] == f"admin@{code}" and creds["admin"]["mustChangeCredentials"] is True
+    temp = creds["password"]
+    assert client.post(f"/api/platform/organizations/{org_id}/panel-admins/default", headers=platform_h).status_code == 409
 
-    body = {"panelAdmin": {"name": "Pat Panel", "email": email.upper(), "password": PANEL_PASSWORD}}
-    res = client.post(f"/api/platform/organizations/{org_id}/approve", headers=platform_h, json=body)
-    assert res.status_code == 200, res.text
-    out = res.json()
-    assert out["approvalStatus"] == "approved"
-    [panel] = out["panelAdmins"]
-    assert panel["email"] == email and panel["name"] == "Pat Panel" and panel["isActive"] is True
-    assert panel["createdBy"].endswith("@platform.example.com") and panel["lastLoginAt"] is None
-    assert set(panel) == {"id", "name", "email", "isActive", "lastLoginAt", "createdAt", "createdBy"}
-    assert _login(client, email).status_code == 200
+    # First sign-in: only /me and the setup endpoint work until the admin picks their own ID and password.
+    session = TestClient(app)
+    login = session.post("/api/org-admin/auth/login", json={"loginId": f"ADMIN@{code}", "password": temp})
+    assert login.status_code == 200, login.text
+    assert login.json()["admin"]["mustChangeCredentials"] is True
+    h = auth(login.json()["accessToken"])
+    assert client.get("/api/org-admin/me", headers=h).status_code == 200
+    blocked = client.get("/api/org-admin/users", headers=h)
+    assert blocked.status_code == 403 and blocked.json()["detail"].startswith("SETUP_REQUIRED:")
+    same = client.post("/api/org-admin/auth/setup", headers=h, json={"loginId": "owner.one", "newPassword": temp})
+    assert same.status_code == 400  # must not keep the temporary password
+    own_id = f"owner-{uuid.uuid4().hex[:6]}@acme.example.com"
+    done = client.post(
+        "/api/org-admin/auth/setup", headers=h, json={"loginId": own_id, "name": "Olivia Owner", "newPassword": "MyOwnPass9"}
+    )
+    assert done.status_code == 200, done.text
+    assert done.json()["admin"]["email"] == own_id and done.json()["admin"]["mustChangeCredentials"] is False
+    assert client.get("/api/org-admin/users", headers=h).status_code == 200
+    assert client.post("/api/org-admin/auth/setup", headers=h, json={"loginId": own_id, "newPassword": "Another1Pass"}).status_code == 400
+    assert _login(client, f"admin@{code}", temp).status_code == 401
+    assert _login(client, own_id, "MyOwnPass9").status_code == 200
 
-    # The approval without a body still works.
+    # Forgot password: a request to the super admin (same answer for unknown IDs).
+    generic = client.post("/api/org-admin/auth/forgot-password", json={"loginId": "nobody@nowhere.example"})
+    asked = client.post("/api/org-admin/auth/forgot-password", json={"loginId": own_id})
+    assert asked.status_code == generic.status_code == 200 and asked.json() == generic.json()
+    pending = client.get("/api/platform/panel-reset-requests", headers=platform_h).json()
+    [row] = [r for r in pending if r["organizationId"] == org_id]
+    assert row["admin"]["email"] == own_id and row["admin"]["resetRequestedAt"]
+
+    # Approving issues a new temporary password; the admin sets their own again.
+    reset = client.post(f"/api/platform/panel-admins/{row['admin']['id']}/reset-password", headers=platform_h)
+    assert reset.status_code == 200, reset.text
+    assert reset.json()["loginId"] == own_id and reset.json()["admin"]["resetRequestedAt"] is None
+    assert _login(client, own_id, "MyOwnPass9").status_code == 401
+    again = client.post("/api/org-admin/auth/login", json={"loginId": own_id, "password": reset.json()["password"]})
+    assert again.json()["admin"]["mustChangeCredentials"] is True
+    assert not [r for r in client.get("/api/platform/panel-reset-requests", headers=platform_h).json() if r["organizationId"] == org_id]
+
+    # Declining a request leaves the password as it is.
+    client.post("/api/org-admin/auth/forgot-password", json={"loginId": own_id})
+    declined = client.post(f"/api/platform/panel-admins/{row['admin']['id']}/dismiss-reset", headers=platform_h)
+    assert declined.status_code == 200 and declined.json()["resetRequestedAt"] is None
+
+    # Approving an organization takes no login details any more.
     other = register_org(client, "Approve")
     _set_org(other["org"]["id"], approval_status="pending")
     plain = client.post(f"/api/platform/organizations/{other['org']['id']}/approve", headers=platform_h)
     assert plain.status_code == 200 and plain.json()["panelAdmins"] == []
+
+
+def test_org_codes_are_unique_per_name(client):
+    first = register_org(client, "SameName")
+    second = register_org(client, "SameName")
+    from backend.models import Organization as Org
+
+    with SessionLocal() as db:
+        codes = [db.get(Org, first["org"]["id"]).code, db.get(Org, second["org"]["id"]).code]
+    assert len(set(codes)) == 2 and all(codes)
 
 
 def test_super_admin_manages_panel_admins(client, platform_h, tenant):
@@ -173,7 +219,7 @@ def test_login_refresh_me_change_password_logout(client, tenant):
 
     me = client.get("/api/org-admin/me", headers=h)
     assert me.status_code == 200
-    assert set(me.json()["admin"]) == {"id", "name", "email", "organizationId", "lastLoginAt", "createdAt"}
+    assert set(me.json()["admin"]) == {"id", "name", "email", "organizationId", "lastLoginAt", "createdAt", "mustChangeCredentials"}
     assert me.json()["organization"]["id"] == tenant["org_id"]
 
     # Wrong password / unknown email share one generic answer.

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, LogIn, ShieldCheck } from 'lucide-react';
 
+import { orgAdminApi } from '@/api/orgAdmin';
 import { useOrgPanelAuth } from '@/auth/OrgPanelAuthContext';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/Field';
@@ -14,6 +15,15 @@ export function OrgAdminLoginPage() {
   const { submitting, error, fieldErrors, run } = useSubmit();
 
   const [email, setEmail] = useState('');
+  // Forgot password: a request to the platform administrator, who issues a temporary password.
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotSent, setForgotSent] = useState<string | null>(null);
+  const forgot = useSubmit();
+
+  const requestReset = async () => {
+    const sent = await forgot.run(() => orgAdminApi.auth.forgotPassword({ loginId: email.trim().toLowerCase() }));
+    if (sent) setForgotSent(sent.message);
+  };
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
@@ -30,7 +40,7 @@ export function OrgAdminLoginPage() {
   // even when the email is the same - say so instead of a bare "invalid".
   const message =
     error === 'Invalid email or password'
-      ? 'Invalid email or password. Use the admin panel password the platform administrator gave you, not your app password.'
+      ? 'Invalid admin ID or password. Use the admin panel login, not your app login.'
       : error;
 
   return (
@@ -83,10 +93,11 @@ export function OrgAdminLoginPage() {
           <FormError message={message} />
 
           <TextField
-            label="Email"
-            type="email"
-            name="email"
+            label="Admin ID"
+            type="text"
+            name="loginId"
             autoComplete="username"
+            hint="The ID you chose, or admin@<organization code> the first time"
             required
             value={email}
             error={fieldErrors.email}
@@ -126,6 +137,29 @@ export function OrgAdminLoginPage() {
             Sign in
           </Button>
         </form>
+
+        <div style={{ marginTop: 14, textAlign: 'center' }}>
+          {forgotSent ? (
+            <p className="small" role="status" style={{ margin: 0 }}>
+              {forgotSent}
+            </p>
+          ) : forgotOpen ? (
+            <div className="stack" style={{ textAlign: 'left' }}>
+              <FormError message={forgot.error} />
+              <p className="small text-muted" style={{ margin: 0 }}>
+                Enter your admin ID above and send the request. The platform administrator will give you a temporary password;
+                you then choose your own when you sign in.
+              </p>
+              <Button variant="secondary" disabled={!email.trim()} loading={forgot.submitting} onClick={() => void requestReset()}>
+                Send reset request
+              </Button>
+            </div>
+          ) : (
+            <button type="button" className="btn btn-link btn-sm" onClick={() => setForgotOpen(true)}>
+              Forgot password? Request a reset
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

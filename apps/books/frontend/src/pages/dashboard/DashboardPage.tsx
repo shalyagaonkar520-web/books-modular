@@ -18,7 +18,6 @@ import { useAuth } from '@/auth/AuthContext';
 import { Card, StatTile } from '@/components/ui/Card';
 import {
   ChartType,
-  ComparisonBar,
   DonutChart,
   HorizontalBarChart,
   InteractiveSeriesChart,
@@ -352,12 +351,6 @@ export function DashboardPage() {
           </dl>
         </Card>
       </div>
-
-      <ComparisonBar
-        receivables={receivables.totalReceivables}
-        payables={payables.totalPayables}
-        currency={currency}
-      />
 
       {cashFlow ? (
         <Card title={t('dashboard.cashFlow.title')} subtitle={t('dashboard.cashFlow.subtitle', { start: formatDate(cashFlow.startDate), end: formatDate(cashFlow.endDate) })}>

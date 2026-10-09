@@ -23,6 +23,8 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -57,6 +59,13 @@ class Organization(TimestampMixin, Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Short unique code derived from the name ("rooman", "rooman-2"); the
+    # default admin-panel login is admin@<code>. Assigned on insert.
+    code: Mapped[Optional[str]] = mapped_column(String(40), unique=True, index=True)
+    # Which parts of the app content its admin panel may edit (JSON list of
+    # module keys plus "branding" / "general"); NULL = the plan's modules.
+    # See services/panel_content.
+    panel_content_access: Mapped[Optional[str]] = mapped_column(Text)
     legal_name: Mapped[Optional[str]] = mapped_column(String(200))
     gstin: Mapped[Optional[str]] = mapped_column(String(20))
     pan: Mapped[Optional[str]] = mapped_column(String(20))
@@ -205,7 +214,8 @@ class OrgPanelAdmin(TimestampMixin, OrgScopedMixin, Base):
     sign-up). Deliberately NOT a tenant ``User``: it has its own auth and token
     type, can only use the org admin panel, and only for its own organization.
     Its email is a separate namespace, so the same address may also belong to
-    a tenant user or a platform admin.
+    a tenant user or a platform admin. The ``email`` column holds the login ID,
+    which is an email or an ID such as ``admin@rooman``.
     """
 
     __tablename__ = "org_panel_admins"
@@ -218,6 +228,12 @@ class OrgPanelAdmin(TimestampMixin, OrgScopedMixin, Base):
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     # Email of the platform admin who created this login.
     created_by: Mapped[Optional[str]] = mapped_column(String(255))
+    # Set for a default login (admin@<code>, random password) and after a
+    # password reset: the admin must choose their own ID and password before
+    # using the panel.
+    must_change_credentials: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # When the admin asked the platform admin for a password reset (pending).
+    reset_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     organization: Mapped[Organization] = relationship()
 
@@ -1119,3 +1135,30 @@ class ExternalPayment(TimestampMixin, OrgScopedMixin, Base):
 
 
 ExternalPaymentProof = ExternalPayment
+
+
+def org_code_base(name: str) -> str:
+    """Lower-case letters and digits from the name, joined by hyphens ("Rooman Tech" -> "rooman-tech")."""
+    import re
+
+    base = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")[:30].strip("-")
+    return base or "org"
+
+
+@event.listens_for(Organization, "before_insert")
+def _assign_org_code(mapper, connection, target: Organization) -> None:  # noqa: ARG001
+    if target.code:
+        return
+    base = org_code_base(target.name)
+    taken = {
+        row[0]
+        for row in connection.execute(
+            text("SELECT code FROM organizations WHERE code = :base OR code LIKE :pattern"),
+            {"base": base, "pattern": f"{base}-%"},
+        )
+    }
+    code, n = base, 1
+    while code in taken:
+        n += 1
+        code = f"{base}-{n}"
+    target.code = code

@@ -1,8 +1,10 @@
-"""Organization admin panel scope: dashboard, users, organization profile and activity log - no app content."""
+"""Organization admin panel: dashboard, users, organization profile, activity log and the app content it is allowed to edit."""
 
 import uuid
 
 import pytest
+
+from backend.services import module_pricing
 
 from tests.conftest import auth, create_panel_admin, invite_and_accept, platform_admin_headers, register_org
 
@@ -25,19 +27,6 @@ def test_only_panel_logins_can_use_the_panel(client, tenant):
     for h in (tenant["h"], tenant["staff_h"]):
         for path in ("/api/org-admin/users", "/api/org-admin/organization"):
             assert client.get(path, headers=h).status_code == 401
-
-
-@pytest.mark.parametrize(
-    "method, path",
-    [
-        ("get", "/api/org-admin/app-content"),
-        ("put", "/api/org-admin/app-content"),
-        ("post", "/api/org-admin/app-content/reset"),
-    ],
-)
-def test_panel_has_no_app_content(client, tenant, method, path):
-    # App content (and with it the modules of the subscription plan) is the platform admin's.
-    assert getattr(client, method)(path, headers=tenant["panel_h"]).status_code in (404, 405)
 
 
 def test_dashboard_counts_users_and_employees_of_this_organization_only(client, tenant):
@@ -161,19 +150,109 @@ def test_module_access_is_limited_to_the_plan(client, tenant):
     assert accepted.status_code == 200, accepted.text
     staff_id, ph = _staff_id(client, tenant), tenant["panel_h"]
 
-    assert client.get(f"/api/org-admin/users/{staff_id}/overview", headers=ph).json()["planModules"] == ["customers", "invoices"]
+    plan = sorted(module_pricing.resolve([*module_pricing.core_keys(), "invoices"]))
+    assert client.get(f"/api/org-admin/users/{staff_id}/overview", headers=ph).json()["planModules"] == plan
     res = client.put(f"/api/org-admin/users/{staff_id}/module-access", headers=ph, json={"modules": ["invoices", "payroll"]})
     assert res.status_code == 400 and "payroll" in res.json()["detail"]
     assert client.put(f"/api/org-admin/users/{staff_id}/module-access", headers=ph, json={"modules": ["invoices"]}).status_code == 200
 
 
-def test_panel_shows_razorpay_status_and_syncs_but_cannot_change_keys(client, tenant):
+def test_panel_has_no_integrations(client, tenant):
     ph = tenant["panel_h"]
-    status = client.get("/api/org-admin/integrations/razorpay", headers=ph)
-    assert status.status_code == 200, status.text
-    assert {"configured", "transactions_imported", "last_sync"} <= set(status.json())
-    sync = client.post("/api/org-admin/integrations/razorpay/sync", headers=ph, json={})
-    assert sync.status_code == 200 and "success" in sync.json()
-    assert client.post("/api/org-admin/integrations/razorpay/connect", headers=ph, json={}).status_code in (404, 405)
-    # Tenant sessions cannot use the panel's endpoints.
-    assert client.get("/api/org-admin/integrations/razorpay", headers=tenant["h"]).status_code == 401
+    assert client.get("/api/org-admin/integrations/razorpay", headers=ph).status_code == 404
+    assert client.post("/api/org-admin/integrations/razorpay/sync", headers=ph, json={}).status_code == 404
+
+
+def test_custom_invite_sets_the_modules_a_staff_user_can_edit(client, tenant):
+    from unittest.mock import MagicMock, patch
+
+    ph = tenant["panel_h"]
+    assert client.get("/api/org-admin/plan-modules", headers=ph).json() == {"planModules": None}
+
+    def invite(**body):
+        with patch("backend.services.email_service.smtplib.SMTP") as smtp:
+            smtp.return_value = MagicMock()
+            email = f"custom-{uuid.uuid4().hex[:6]}@orgadmin.example.com"
+            return client.post("/api/org-admin/users", headers=ph, json={"name": "Cara Custom", "email": email, **body})
+
+    res = invite(role="staff", moduleAccess=["invoices", "customers"])
+    assert res.status_code == 201, res.text
+    assert res.json()["role"] == "staff" and res.json()["moduleAccess"] == ["customers", "invoices"]
+
+    assert invite(role="viewer", moduleAccess=["invoices"]).status_code == 400
+    assert invite(role="staff", moduleAccess=[]).status_code == 400
+    assert invite(role="staff", moduleAccess=["nope"]).status_code == 422
+
+    # Once a plan is accepted, only its modules can be granted.
+    org_id = tenant["admin"]["org"]["id"]
+    client.post(
+        f"/api/platform/organizations/{org_id}/subscription/approve", headers=platform_admin_headers(client), json={"modules": ["invoices"]}
+    )
+    plan = sorted(module_pricing.resolve([*module_pricing.core_keys(), "invoices"]))
+    assert client.get("/api/org-admin/plan-modules", headers=ph).json() == {"planModules": plan}
+    outside = invite(role="staff", moduleAccess=["invoices", "payroll"])
+    assert outside.status_code == 400 and "payroll" in outside.json()["detail"]
+
+
+def test_panel_edits_only_the_app_content_the_platform_admin_allows(client, tenant):
+    import json as _json
+    from pathlib import Path
+
+    default_doc = _json.loads(
+        (Path(__file__).resolve().parent.parent / "backend" / "content" / "app_content_default.json").read_text(encoding="utf-8")
+    )
+    platform_h = platform_admin_headers(client)
+    org_id = tenant["admin"]["org"]["id"]
+    ph = tenant["panel_h"]
+    staff_h = tenant["staff_h"]
+
+    # Plan: invoices (+ the core modules). By default the panel may edit exactly those modules.
+    plan = module_pricing.resolve([*module_pricing.core_keys(), "invoices"])
+    client.post(f"/api/platform/organizations/{org_id}/subscription/approve", headers=platform_h, json={"modules": ["invoices"]})
+    access = client.get(f"/api/platform/organizations/{org_id}/panel-content-access", headers=platform_h).json()
+    assert access["modules"] == plan and access["isDefault"] is True and access["branding"] is False
+    out = client.get("/api/org-admin/app-content", headers=ph).json()
+    assert out["editable"]["modules"] == plan and out["editable"]["general"] is False
+
+    body = _json.loads(_json.dumps(out["content"]))
+    inv_key = next(k for k in default_doc["texts"] if k.startswith("invoices."))
+    pay_key = next(k for k in default_doc["texts"] if k.startswith("payroll."))
+    gen_key = next(k for k in default_doc["texts"] if k.startswith("dashboard."))
+    body["texts"][inv_key] = "Bills to customers"
+    body["texts"][pay_key] = "Not allowed"
+    body["texts"][gen_key] = "Not allowed either"
+    body["branding"]["appName"] = "Hacked Name"
+    body["modules"] = {k: True for k in body["modules"]}
+    assert client.put("/api/org-admin/app-content", headers=ph, json=body).status_code == 200
+    seen = client.get("/api/app-content", headers=staff_h).json()
+    assert seen["texts"][inv_key] == "Bills to customers"
+    assert seen["texts"][pay_key] == default_doc["texts"][pay_key]
+    assert seen["texts"][gen_key] == default_doc["texts"][gen_key]
+    assert seen["branding"]["appName"] != "Hacked Name"
+    assert {k for k, on in seen["modules"].items() if on} == set(plan)
+
+    # The platform admin grants more (e.g. after an upgrade): payroll texts and branding.
+    granted = client.put(
+        f"/api/platform/organizations/{org_id}/panel-content-access", headers=platform_h, json={"keys": ["invoices", "payroll", "branding"]}
+    )
+    assert granted.status_code == 200 and granted.json()["isDefault"] is False
+    assert (
+        client.put(f"/api/platform/organizations/{org_id}/panel-content-access", headers=platform_h, json={"keys": ["nope"]}).status_code
+        == 422
+    )
+    assert client.put("/api/org-admin/app-content", headers=ph, json=body).status_code == 200
+    seen = client.get("/api/app-content", headers=staff_h).json()
+    assert seen["texts"][pay_key] == "Not allowed" and seen["branding"]["appName"] == "Hacked Name"
+    # Payroll is not in the plan, so its switch stays off even though its texts are editable.
+    assert seen["modules"]["payroll"] is False
+
+    # Reset puts back only what the panel may edit.
+    assert client.post("/api/org-admin/app-content/reset", headers=ph).status_code == 200
+    seen = client.get("/api/app-content", headers=staff_h).json()
+    assert seen["texts"][pay_key] == default_doc["texts"][pay_key] and seen["branding"]["appName"] == default_doc["branding"]["appName"]
+    # Back to the plan default.
+    back = client.put(f"/api/platform/organizations/{org_id}/panel-content-access", headers=platform_h, json={"keys": None})
+    assert back.json()["isDefault"] is True and back.json()["modules"] == plan
+    # Tenant sessions cannot use either side.
+    assert client.get("/api/org-admin/app-content", headers=tenant["h"]).status_code == 401
+    assert client.get(f"/api/platform/organizations/{org_id}/panel-content-access", headers=tenant["h"]).status_code == 401

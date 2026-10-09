@@ -1,7 +1,7 @@
 /** Sales > Payments received: every customer payment, with filters and recording. */
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileDown, FileSpreadsheet, Mail, Plus, Trash2, Wallet } from 'lucide-react';
+import { FileDown, FileSpreadsheet, Mail, Plus, Wallet } from 'lucide-react';
 
 import { contactsApi, customerPaymentsApi } from '@/api/endpoints';
 import type { CustomerPayment } from '@/api/types';
@@ -11,7 +11,7 @@ import { StatTile } from '@/components/ui/Card';
 import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, SkeletonRows } from '@/components/ui/Feedback';
 import { CheckboxField, TextAreaField, TextField } from '@/components/ui/Field';
-import { ConfirmDialog, Modal } from '@/components/ui/Modal';
+import { Modal } from '@/components/ui/Modal';
 import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, Toolbar } from '@/components/ui/Toolbar';
@@ -64,14 +64,12 @@ export function PaymentsReceivedPage() {
   const { t } = useAppContent();
   const toast = useToast();
   const { download } = useDownload();
-  const { submitting, error: actionError, run, reset } = useSubmit();
 
   const [customerId, setCustomerId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [page, setPage] = useState(1);
   const [recording, setRecording] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<CustomerPayment | null>(null);
   const [mailPayment, setMailPayment] = useState<CustomerPayment | null>(null);
 
   const filters = useMemo(
@@ -95,16 +93,6 @@ export function PaymentsReceivedPage() {
     ],
     [customers.data, t],
   );
-
-  const confirmDelete = async () => {
-    if (!pendingDelete) return;
-    const result = await run(() => customerPaymentsApi.remove(pendingDelete.id));
-    if (result) {
-      toast.success(result.message);
-      setPendingDelete(null);
-      refresh();
-    }
-  };
 
   const columns: Array<Column<CustomerPayment>> = [
     { key: 'paymentNumber', header: t('paymentsReceived.col.number'), render: (row) => <span className="mono">{row.paymentNumber}</span> },
@@ -158,19 +146,6 @@ export function PaymentsReceivedPage() {
           >
             <FileDown size={15} />
           </button>
-          <IfCanWrite>
-            <button
-              type="button"
-              className="action-btn is-danger"
-              aria-label={t('paymentsReceived.action.deleteAria', { number: row.paymentNumber })}
-              onClick={() => {
-                reset();
-                setPendingDelete(row);
-              }}
-            >
-              <Trash2 size={15} />
-            </button>
-          </IfCanWrite>
         </span>
       ),
     },
@@ -320,28 +295,6 @@ export function PaymentsReceivedPage() {
         onSaved={refresh}
       />
 
-      <ConfirmDialog
-        open={!!pendingDelete}
-        title={t('paymentsReceived.delete.title')}
-        confirmLabel={t('paymentsReceived.delete.confirm')}
-        busy={submitting}
-        onCancel={() => setPendingDelete(null)}
-        onConfirm={confirmDelete}
-        message={
-          <>
-            <FormError message={actionError} />
-            {pendingDelete ? (
-              <p>
-                {t('paymentsReceived.delete.body', {
-                  number: pendingDelete.paymentNumber,
-                  amount: formatCurrency(pendingDelete.amount),
-                  customer: pendingDelete.customerName,
-                })}
-              </p>
-            ) : null}
-          </>
-        }
-      />
       {mailPayment ? (
         <SendReceiptModal
           payment={mailPayment}

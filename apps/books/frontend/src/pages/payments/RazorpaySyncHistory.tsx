@@ -95,7 +95,7 @@ export function RazorpaySyncHistory() {
       ) : !data || data.items.length === 0 ? (
         <EmptyState
           title="No synchronisations yet"
-          description="Run one from Settings → Integrations → Razorpay to import your transactions."
+          description="Use Sync now at the top of this page to import your transactions."
         />
       ) : (
         <>

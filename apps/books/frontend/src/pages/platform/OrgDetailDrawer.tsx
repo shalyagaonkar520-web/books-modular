@@ -48,13 +48,8 @@ import { formatCurrency, formatDate, formatDateTime, formatPercent, titleCase } 
 import { statusLabel, statusTone } from '@/utils/status';
 
 import { ImpersonateButton } from './ImpersonateButton';
-import {
-  CreatePanelAdminModal,
-  PanelCredentialsModal,
-  PanelLoginUrl,
-  SetPanelPasswordModal,
-  type PanelCredentials,
-} from './PanelAdminForms';
+import { CreateAdminLoginButton, PanelLoginUrl, useResetPanelPassword } from './PanelAdminForms';
+import { PanelContentAccessTab } from './PanelContentAccessTab';
 import {
   OpenInAppMenu,
   OrgApprovalButtons,
@@ -103,13 +98,14 @@ interface OrgDetailDrawerProps {
   onChanged: () => void;
 }
 
-type TabId = 'overview' | 'settings' | 'users' | 'panel' | 'invoices' | 'activity';
+type TabId = 'overview' | 'settings' | 'users' | 'panel' | 'permissions' | 'invoices' | 'activity';
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'settings', label: 'Settings' },
   { id: 'users', label: 'Users' },
   { id: 'panel', label: 'Admin panel logins' },
+  { id: 'permissions', label: 'Panel permissions' },
   { id: 'invoices', label: 'Invoices' },
   { id: 'activity', label: 'Activity' },
 ];
@@ -266,7 +262,8 @@ export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerPr
               }}
             />
           ) : null}
-          {tab === 'panel' ? <PanelAdminsTab orgId={orgId} orgName={data.name} adminEmail={data.adminEmail} admins={data.admins} /> : null}
+          {tab === 'panel' ? <PanelAdminsTab orgId={orgId} orgName={data.name} orgCode={data.code} /> : null}
+          {tab === 'permissions' ? <PanelContentAccessTab orgId={orgId} orgName={data.name} /> : null}
           {tab === 'invoices' ? <OrgInvoicesTab orgId={orgId} currency={data.currency} /> : null}
           {tab === 'activity' ? <OrgActivityTab orgId={orgId} /> : null}
 
@@ -1016,25 +1013,20 @@ function OrgUsersTab({ orgId, orgName, onChanged }: { orgId: string; orgName: st
 interface PanelAdminsTabProps {
   orgId: string;
   orgName: string;
-  adminEmail?: string | null;
-  admins: PlatformUser[];
+  orgCode?: string | null;
 }
 
-function PanelAdminsTab({ orgId, orgName, adminEmail, admins }: PanelAdminsTabProps) {
+function PanelAdminsTab({ orgId, orgName, orgCode }: PanelAdminsTabProps) {
   const toast = useToast();
   const list = useAsync((signal) => platformApi.organizations.panelAdmins.list(orgId, signal), [orgId]);
-  const [adding, setAdding] = useState(false);
-  const [settingPassword, setSettingPassword] = useState<OrgPanelAdminItem | null>(null);
   const [deleting, setDeleting] = useState<OrgPanelAdminItem | null>(null);
-  const [credentials, setCredentials] = useState<PanelCredentials | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const toggleSubmit = useSubmit();
   const deleteSubmit = useSubmit();
+  const dismissSubmit = useSubmit();
+  const passwordReset = useResetPanelPassword(orgName, list.reload);
 
   const rows = list.data ?? [];
-  // Prefill the first login from the organization's registrant; later ones start blank.
-  const registrant = admins.find((user) => user.email.toLowerCase() === adminEmail?.toLowerCase()) ?? admins[0];
-  const initial = rows.length === 0 ? { name: registrant?.name ?? '', email: adminEmail ?? registrant?.email ?? '' } : undefined;
 
   const toggleActive = async (admin: OrgPanelAdminItem) => {
     setTogglingId(admin.id);
@@ -1045,6 +1037,14 @@ function PanelAdminsTab({ orgId, orgName, adminEmail, admins }: PanelAdminsTabPr
       list.reload();
     } else if (toggleSubmit.errorRef.current) {
       toast.error(toggleSubmit.errorRef.current);
+    }
+  };
+
+  const dismissRequest = async (admin: OrgPanelAdminItem) => {
+    const updated = await dismissSubmit.run(() => platformApi.organizations.panelAdmins.dismissReset(admin.id));
+    if (updated) {
+      toast.success(`Reset request from ${admin.email} declined.`);
+      list.reload();
     }
   };
 
@@ -1072,7 +1072,13 @@ function PanelAdminsTab({ orgId, orgName, adminEmail, admins }: PanelAdminsTabPr
     {
       key: 'status',
       header: 'Status',
-      render: (row) => (row.isActive ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Disabled</Badge>),
+      render: (row) => (
+        <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+          {row.isActive ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Disabled</Badge>}
+          {row.mustChangeCredentials ? <Badge tone="info">Awaiting first sign-in</Badge> : null}
+          {row.resetRequestedAt ? <Badge tone="warning">Reset requested</Badge> : null}
+        </div>
+      ),
     },
     {
       key: 'lastLogin',
@@ -1094,27 +1100,39 @@ function PanelAdminsTab({ orgId, orgName, adminEmail, admins }: PanelAdminsTabPr
       header: '',
       align: 'right',
       render: (row) => (
-        <ActionMenu
-          label={`More actions for ${row.email}`}
-          iconOnly
-          disabled={togglingId === row.id}
-          items={[
-            { key: 'password', label: 'Set new password', icon: <KeyRound size={14} />, onSelect: () => setSettingPassword(row) },
-            row.isActive
-              ? { key: 'disable', label: 'Disable', icon: <UserX size={14} />, onSelect: () => void toggleActive(row) }
-              : { key: 'enable', label: 'Enable', icon: <UserCheck size={14} />, onSelect: () => void toggleActive(row) },
-            {
-              key: 'delete',
-              label: 'Delete login',
-              icon: <Trash2 size={14} />,
-              danger: true,
-              onSelect: () => {
-                deleteSubmit.reset();
-                setDeleting(row);
+        <div className="row-actions">
+          {row.resetRequestedAt ? (
+            <>
+              <Button variant="primary" size="sm" icon={passwordReset.icon} loading={passwordReset.resetting} onClick={() => void passwordReset.reset(row)}>
+                Approve reset
+              </Button>
+              <Button variant="ghost" size="sm" loading={dismissSubmit.submitting} onClick={() => void dismissRequest(row)}>
+                Decline
+              </Button>
+            </>
+          ) : null}
+          <ActionMenu
+            label={`More actions for ${row.email}`}
+            iconOnly
+            disabled={togglingId === row.id}
+            items={[
+              { key: 'password', label: 'Reset password', icon: <KeyRound size={14} />, onSelect: () => void passwordReset.reset(row) },
+              row.isActive
+                ? { key: 'disable', label: 'Disable', icon: <UserX size={14} />, onSelect: () => void toggleActive(row) }
+                : { key: 'enable', label: 'Enable', icon: <UserCheck size={14} />, onSelect: () => void toggleActive(row) },
+              {
+                key: 'delete',
+                label: 'Delete login',
+                icon: <Trash2 size={14} />,
+                danger: true,
+                onSelect: () => {
+                  deleteSubmit.reset();
+                  setDeleting(row);
+                },
               },
-            },
-          ]}
-        />
+            ]}
+          />
+        </div>
       ),
     },
   ];
@@ -1125,8 +1143,8 @@ function PanelAdminsTab({ orgId, orgName, adminEmail, admins }: PanelAdminsTabPr
   else if (!rows.length)
     body = (
       <EmptyState
-        title="No admin panel logins"
-        description={`Add a login so ${orgName} can manage its users, settings and app content in its admin panel.`}
+        title="No admin panel login yet"
+        description={`Create one for ${orgName}: the ID is admin@${orgCode ?? '<code>'} with a temporary password, and its admin chooses their own ID and password at first sign-in.`}
       />
     );
   else body = <DataTable columns={columns} rows={rows} rowKey={(row) => row.id} caption={`Admin panel logins of ${orgName}`} />;
@@ -1135,43 +1153,16 @@ function PanelAdminsTab({ orgId, orgName, adminEmail, admins }: PanelAdminsTabPr
     <div className="stack" aria-busy={list.loading}>
       <div className="row-between">
         <PanelLoginUrl />
-        <Button variant="secondary" size="sm" icon={<Plus size={14} />} onClick={() => setAdding(true)}>
-          Add login
-        </Button>
+        {list.data && !rows.length ? <CreateAdminLoginButton org={{ id: orgId, name: orgName, code: orgCode }} onCreated={list.reload} /> : null}
       </div>
       <p className="text-muted small" style={{ margin: 0 }}>
-        These logins open only the organization admin panel. They are separate from the organization's app users.
+        These logins open only the organization admin panel. They are separate from the organization's app users. A forgotten
+        password comes here as a reset request.
       </p>
 
       {body}
 
-      {adding ? (
-        <CreatePanelAdminModal
-          orgId={orgId}
-          orgName={orgName}
-          initial={initial}
-          onClose={() => setAdding(false)}
-          onCreated={(_created, created) => {
-            setAdding(false);
-            setCredentials(created);
-            list.reload();
-          }}
-        />
-      ) : null}
-
-      {settingPassword ? (
-        <SetPanelPasswordModal
-          admin={settingPassword}
-          orgName={orgName}
-          onClose={() => setSettingPassword(null)}
-          onSaved={(saved) => {
-            setSettingPassword(null);
-            setCredentials(saved);
-          }}
-        />
-      ) : null}
-
-      {credentials ? <PanelCredentialsModal credentials={credentials} onClose={() => setCredentials(null)} /> : null}
+      {passwordReset.modal}
 
       <ConfirmDialog
         open={!!deleting}

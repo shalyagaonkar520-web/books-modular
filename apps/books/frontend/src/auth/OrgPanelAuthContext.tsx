@@ -12,7 +12,9 @@ interface OrgPanelAuthContextValue {
   admin: OrgPanelAdmin | null;
   organization: OrgPanelSession['organization'] | null;
   initializing: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (loginId: string, password: string) => Promise<void>;
+  /** First sign-in / after a reset: save the admin's own login ID and password. */
+  completeSetup: (body: { loginId: string; name?: string; newPassword: string }) => Promise<void>;
   logout: () => Promise<void>;
   /** Re-read the admin and organization (e.g. after the organization is renamed). */
   refreshMe: () => Promise<void>;
@@ -60,10 +62,15 @@ export function OrgPanelAuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const login = useCallback(async (email: string, password: string) => {
-    const response = await orgAdminApi.auth.login({ email, password });
+  const login = useCallback(async (loginId: string, password: string) => {
+    const response = await orgAdminApi.auth.login({ loginId, password });
     setOrgPanelAccessToken(response.accessToken);
     setSession({ admin: response.admin, organization: response.organization });
+  }, []);
+
+  const completeSetup = useCallback(async (body: { loginId: string; name?: string; newPassword: string }) => {
+    const me = await orgAdminApi.auth.setup(body);
+    setSession({ admin: me.admin, organization: me.organization });
   }, []);
 
   const logout = useCallback(async () => {
@@ -97,11 +104,12 @@ export function OrgPanelAuthProvider({ children }: { children: ReactNode }) {
       organization: session?.organization ?? null,
       initializing,
       login,
+      completeSetup,
       logout,
       refreshMe,
       changePassword,
     }),
-    [session, initializing, login, logout, refreshMe, changePassword],
+    [session, initializing, login, completeSetup, logout, refreshMe, changePassword],
   );
 
   return <OrgPanelAuthContext.Provider value={value}>{children}</OrgPanelAuthContext.Provider>;

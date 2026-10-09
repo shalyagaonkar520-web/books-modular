@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Ban, CreditCard, FileDown, FileSpreadsheet, IndianRupee, Mail, Pencil, Printer, Send, Trash2 } from 'lucide-react';
+import { ArrowLeft, Ban, FileDown, FileSpreadsheet, IndianRupee, Mail, Pencil, Printer, Send } from 'lucide-react';
 
 import { customerPaymentsApi, invoicesApi } from '@/api/endpoints';
 import type { CustomerPayment, Invoice } from '@/api/types';
@@ -21,10 +21,9 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatDate, formatPercent, formatQuantity } from '@/utils/format';
 import { paymentModeLabel, type Translate, statusLabel, statusTone } from '@/utils/status';
 
-import { PayOnlineModal } from './PayOnlineModal';
 import { RecordPaymentModal, type PaymentInvoiceContext } from './RecordPaymentModal';
 
-type Pending = { kind: 'send' | 'void' } | { kind: 'deletePayment'; payment: CustomerPayment };
+type Pending = { kind: 'send' | 'void' };
 
 const modeLabel = (mode: string, t: Translate): string => paymentModeLabel(mode, t);
 
@@ -38,7 +37,6 @@ export function InvoiceViewPage() {
 
   const [pending, setPending] = useState<Pending | null>(null);
   const [payingOpen, setPayingOpen] = useState(false);
-  const [payOnlineOpen, setPayOnlineOpen] = useState(false);
   const [mailModalOpen, setMailModalOpen] = useState(false);
 
   const invoice = useAsync(() => invoicesApi.get(invoiceId), [invoiceId]);
@@ -57,15 +55,6 @@ export function InvoiceViewPage() {
 
   const runPending = async () => {
     if (!pending || !data) return;
-    if (pending.kind === 'deletePayment') {
-      const result = await run(() => customerPaymentsApi.remove(pending.payment.id));
-      if (result) {
-        toast.success(result.message);
-        setPending(null);
-        refresh();
-      }
-      return;
-    }
     const result = await run(() => invoicesApi.setStatus(data.id, pending.kind === 'send' ? 'sent' : 'void'));
     if (result) {
       toast.success(
@@ -93,28 +82,6 @@ export function InvoiceViewPage() {
     },
     { key: 'reference', header: t('invoices.view.payments.col.reference'), render: (row) => row.reference ?? '—' },
     { key: 'amount', header: t('invoices.view.payments.col.amount'), align: 'right', render: (row) => <span className="num strong">{formatCurrency(row.amount)}</span> },
-    {
-      key: 'actions',
-      header: t('invoices.view.payments.col.actions'),
-      align: 'right',
-      render: (row) => (
-        <IfCanWrite>
-          <span className="row-actions">
-            <button
-              type="button"
-              className="action-btn is-danger"
-              aria-label={t('invoices.view.payments.deleteAria', { number: row.paymentNumber })}
-              onClick={() => {
-                reset();
-                setPending({ kind: 'deletePayment', payment: row });
-              }}
-            >
-              <Trash2 size={15} />
-            </button>
-          </span>
-        </IfCanWrite>
-      ),
-    },
   ];
 
   if (invoice.loading) return <LoadingBlock label={t('invoices.view.loading')} />;
@@ -186,14 +153,6 @@ export function InvoiceViewPage() {
                 ) : null}
                 {canPay ? (
                   <>
-                    <Button
-                      variant="primary"
-                      icon={<CreditCard size={15} />}
-                      onClick={() => setPayOnlineOpen(true)}
-                      style={{ backgroundColor: '#16a34a', borderColor: '#16a34a', color: '#ffffff' }}
-                    >
-                      {t('invoices.view.payOnline')}
-                    </Button>
                     <Button variant="secondary" icon={<IndianRupee size={15} />} onClick={() => setPayingOpen(true)}>
                       {t('invoices.view.recordPayment')}
                     </Button>
@@ -377,15 +336,6 @@ export function InvoiceViewPage() {
 
       <RecordPaymentModal open={payingOpen} invoice={paymentContext} onClose={() => setPayingOpen(false)} onSaved={refresh} />
 
-      {data ? (
-        <PayOnlineModal
-          open={payOnlineOpen}
-          onClose={() => setPayOnlineOpen(false)}
-          invoice={data}
-          onPaymentSuccess={refresh}
-        />
-      ) : null}
-
       {mailModalOpen ? (
         <SendInvoiceDetailGmailModal
           invoice={data}
@@ -400,8 +350,8 @@ export function InvoiceViewPage() {
 
       <ConfirmDialog
         open={!!pending}
-        title={pending?.kind === 'send' ? t('invoices.confirm.sendTitle') : pending?.kind === 'void' ? t('invoices.confirm.voidTitle') : t('invoices.view.deletePayment.title')}
-        confirmLabel={pending?.kind === 'send' ? t('invoices.confirm.sendConfirm') : pending?.kind === 'void' ? t('invoices.confirm.voidConfirm') : t('invoices.view.deletePayment.confirm')}
+        title={pending?.kind === 'send' ? t('invoices.confirm.sendTitle') : t('invoices.confirm.voidTitle')}
+        confirmLabel={pending?.kind === 'send' ? t('invoices.confirm.sendConfirm') : t('invoices.confirm.voidConfirm')}
         tone={pending?.kind === 'send' ? 'primary' : 'danger'}
         busy={submitting}
         onCancel={() => setPending(null)}
@@ -413,10 +363,6 @@ export function InvoiceViewPage() {
               <p>{t('invoices.confirm.sendBody', { number: data.invoiceNumber })}</p>
             ) : pending?.kind === 'void' ? (
               <p>{t('invoices.confirm.voidBody', { number: data.invoiceNumber })}</p>
-            ) : pending?.kind === 'deletePayment' ? (
-              <p>
-                {t('invoices.view.deletePayment.body', { number: pending.payment.paymentNumber, amount: formatCurrency(pending.payment.amount) })}
-              </p>
             ) : null}
           </>
         }

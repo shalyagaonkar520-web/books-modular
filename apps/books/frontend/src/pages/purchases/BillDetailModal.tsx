@@ -1,16 +1,12 @@
-import { useState } from 'react';
-import { Trash2, Wallet } from 'lucide-react';
+import { Wallet } from 'lucide-react';
 
 import { billsApi, vendorPaymentsApi } from '@/api/endpoints';
-import type { VendorPayment } from '@/api/types';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { useAppContent } from '@/app/AppContentContext';
-import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
-import { ConfirmDialog, Modal } from '@/components/ui/Modal';
-import { useToast } from '@/components/ui/Toast';
+import { ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
+import { Modal } from '@/components/ui/Modal';
 import { useAsync } from '@/hooks/useAsync';
-import { useSubmit } from '@/hooks/useSubmit';
 import { daysBetween, formatCurrency, formatDate, formatPercent, formatQuantity, titleCase, todayIso } from '@/utils/format';
 import { PAYMENT_MODES, statusLabel, statusTone } from '@/utils/status';
 
@@ -30,11 +26,8 @@ interface BillDetailModalProps {
   onRecordPayment: (bill: VendorPaymentBill) => void;
 }
 
-export function BillDetailModal({ billId, canWrite, onClose, onChanged, onRecordPayment }: BillDetailModalProps) {
+export function BillDetailModal({ billId, canWrite, onClose, onRecordPayment }: BillDetailModalProps) {
   const { t } = useAppContent();
-  const toast = useToast();
-  const remove = useSubmit();
-  const [pendingPayment, setPendingPayment] = useState<VendorPayment | null>(null);
 
   const detail = useAsync(async () => {
     const [bill, payments] = await Promise.all([billsApi.get(billId), vendorPaymentsApi.list({ bill_id: billId, page_size: 200 })]);
@@ -42,16 +35,6 @@ export function BillDetailModal({ billId, canWrite, onClose, onChanged, onRecord
   }, [billId]);
 
   const bill = detail.data?.bill ?? null;
-
-  const deletePayment = async (payment: VendorPayment) => {
-    const result = await remove.run(() => vendorPaymentsApi.remove(payment.id));
-    if (result) {
-      toast.success(t('bills.detail.paymentDeleted', { number: payment.paymentNumber }));
-      setPendingPayment(null);
-      detail.reload();
-      onChanged();
-    }
-  };
 
   return (
     <Modal
@@ -175,7 +158,6 @@ export function BillDetailModal({ billId, canWrite, onClose, onChanged, onRecord
 
           <div className="form-section">
             <h3 className="form-section-title">{t('bills.detail.paymentHistory')}</h3>
-            <FormError message={remove.error} />
             {detail.data && detail.data.payments.length === 0 ? (
               <p className="text-subtle small">{t('bills.detail.noPayments')}</p>
             ) : (
@@ -188,7 +170,6 @@ export function BillDetailModal({ billId, canWrite, onClose, onChanged, onRecord
                     <th>{t('bills.detail.col.mode')}</th>
                     <th>{t('bills.detail.col.reference')}</th>
                     <th className="align-right">{t('bills.detail.col.amount')}</th>
-                    {canWrite ? <th className="align-right">{t('bills.detail.col.actions')}</th> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -202,49 +183,12 @@ export function BillDetailModal({ billId, canWrite, onClose, onChanged, onRecord
                       <td>{(() => { const option = PAYMENT_MODES.find((o) => o.value === payment.mode); return option ? t(option.labelKey) : titleCase(payment.mode); })()}</td>
                       <td className="text-muted">{payment.reference || '—'}</td>
                       <td className="align-right num">{formatCurrency(payment.amount)}</td>
-                      {canWrite ? (
-                        <td className="align-right">
-                          <button
-                            type="button"
-                            className="action-btn is-danger"
-                            aria-label={t('bills.detail.deletePaymentAria', { number: payment.paymentNumber })}
-                            onClick={() => setPendingPayment(payment)}
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </td>
-                      ) : null}
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
           </div>
-
-          <ConfirmDialog
-            open={pendingPayment !== null}
-            title={t('bills.detail.confirmTitle')}
-            confirmLabel={t('bills.detail.confirmButton')}
-            busy={remove.submitting}
-            message={
-              <>
-                <p>
-                  {t('bills.detail.confirmBody', {
-                    number: pendingPayment?.paymentNumber ?? '',
-                    amount: formatCurrency(pendingPayment?.amount ?? 0),
-                  })}
-                </p>
-                <FormError message={remove.error} />
-              </>
-            }
-            onCancel={() => {
-              setPendingPayment(null);
-              remove.reset();
-            }}
-            onConfirm={() => {
-              if (pendingPayment) void deletePayment(pendingPayment);
-            }}
-          />
         </div>
       )}
     </Modal>

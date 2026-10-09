@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Building2, History, KeyRound, LayoutDashboard, LogOut, Menu, Plug, ShieldCheck, Users } from 'lucide-react';
+import { Building2, History, KeyRound, LayoutDashboard, LayoutTemplate, LogOut, Menu, ShieldCheck, Users } from 'lucide-react';
 
+import { PageErrorBoundary } from '@/components/ErrorBoundary';
+import { ThemeToggle } from '@/app/theme';
 import { useOrgPanelAuth } from '@/auth/OrgPanelAuthContext';
 import { ChangePasswordModal } from '@/pages/platform/ChangePasswordModal';
 import { initials } from '@/utils/format';
@@ -10,7 +12,7 @@ const NAV_LINKS = [
   { to: '/org-admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/org-admin/users', label: 'Users', icon: Users, end: false },
   { to: '/org-admin/organization', label: 'Organization', icon: Building2, end: false },
-  { to: '/org-admin/integrations', label: 'Integrations', icon: Plug, end: false },
+  { to: '/org-admin/app-content', label: 'App content', icon: LayoutTemplate, end: false },
   { to: '/org-admin/activity', label: 'Activity log', icon: History, end: false },
 ];
 
@@ -66,6 +68,7 @@ export function OrgAdminLayout() {
         </div>
 
         <div className="header-right" style={{ gap: 12 }}>
+          <ThemeToggle onDark />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span
               className="avatar"
@@ -131,7 +134,9 @@ export function OrgAdminLayout() {
         </aside>
 
         <main className="app-main" id="main-content">
-          <Outlet />
+          <PageErrorBoundary>
+            <Outlet />
+          </PageErrorBoundary>
         </main>
       </div>
     </div>

@@ -13,7 +13,7 @@ import {
   formatPrice,
   planSummary,
   quote,
-  resolveModules,
+  withCore,
   type BillingCycle,
   type ModulePricing,
 } from '@/api/modulePricing';
@@ -116,7 +116,7 @@ export function usePlanDecisions({ onChanged }: { onChanged?: (orgId: string) =>
     (kind: 'accept' | 'change', org: PlanTarget, start: PlanStart = {}) => {
       reset();
       setLocalError(null);
-      setModules(resolveModules(start.modules ?? DEFAULT_SELECTED_MODULES, catalog));
+      setModules(withCore(start.modules ?? DEFAULT_SELECTED_MODULES, catalog));
       setCycle(start.billingCycle === 'yearly' ? 'yearly' : 'monthly');
       setDecision({ kind, org, start });
     },

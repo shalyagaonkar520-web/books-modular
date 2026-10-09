@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Activity, AlertTriangle, Clock, FileText, IndianRupee, Lock, Receipt } from 'lucide-react';
 
-import { APP_MODULES } from '@/api/appContent';
 import { orgAdminApi, type OrgAdminUserOverview } from '@/api/orgAdmin';
 import type { AuditLog, User } from '@/api/types';
 import { Badge } from '@/components/ui/Badge';
@@ -14,6 +13,7 @@ import { Tabs } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
+import { EDITABLE_MODULES } from '@/pages/settings/moduleAccess';
 import { formatCurrency, formatDate, formatDateTime, formatNumber, titleCase } from '@/utils/format';
 
 type PendingInvoice = OrgAdminUserOverview['pending']['invoices'][number];
@@ -24,21 +24,6 @@ const TABS = [
   { id: 'access', label: 'Edit access' },
   { id: 'pending', label: 'Pending' },
   { id: 'activity', label: 'Activity' },
-];
-
-/** Modules whose changes the server checks per user (deps.require_module); the rest are view-only pages. */
-const EDITABLE_MODULES = [
-  'items',
-  'customers',
-  'vendors',
-  'invoices',
-  'bills',
-  'expenses',
-  'banking',
-  'accounting',
-  'timeTracking',
-  'documents',
-  'payroll',
 ];
 
 const ROLE_OPTIONS = [
@@ -59,7 +44,7 @@ function ModuleAccessEditor({ data, onSaved }: { data: OrgAdminUserOverview; onS
   const { user } = data;
   const plan = data.planModules ?? null;
   const inPlan = (key: string) => plan === null || plan.includes(key);
-  const modules = APP_MODULES.filter((module) => EDITABLE_MODULES.includes(module.key));
+  const modules = EDITABLE_MODULES;
   const [restricted, setRestricted] = useState(user.moduleAccess != null);
   const [chosen, setChosen] = useState<Set<string>>(() => new Set(user.moduleAccess ?? []));
   const isStaff = user.role === 'staff';

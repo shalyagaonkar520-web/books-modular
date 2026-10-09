@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, Any, Dict, List
+from typing import Annotated, Any, Dict, List, Optional
 
 from pydantic import Field, field_validator
 
@@ -70,6 +70,23 @@ class AppContentOverrides(APIModel):
     texts: List[str]
 
 
+class PanelContentAccessOut(APIModel):
+    """What an organization's admin panel may edit (see services/panel_content)."""
+
+    modules: List[str]
+    branding: bool
+    general: bool
+    # True while it follows the subscription plan (nothing chosen by the platform admin).
+    is_default: bool
+    # Modules of the accepted plan; null = every module (trial, or no plan).
+    plan_modules: Optional[List[str]] = None
+
+
+class PanelContentAccessIn(APIModel):
+    # Module keys plus "branding" / "general"; null = back to the plan's modules.
+    keys: Optional[List[str]] = None
+
+
 class OrgAppContentOut(APIModel):
     organization_id: str
     organization_name: str
@@ -78,3 +95,5 @@ class OrgAppContentOut(APIModel):
     # The all-organizations content the overrides sit on.
     shared: AppContent
     overridden: AppContentOverrides
+    # Set for the org admin panel: the parts it may edit.
+    editable: Optional[PanelContentAccessOut] = None

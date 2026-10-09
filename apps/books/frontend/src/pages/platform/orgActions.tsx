@@ -51,15 +51,6 @@ import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { useSubmit } from '@/hooks/useSubmit';
 
-import {
-  PanelAdminFields,
-  PanelCredentialsModal,
-  panelAdminServerErrors,
-  validatePanelAdminForm,
-  type PanelAdminFormErrors,
-  type PanelAdminFormValue,
-  type PanelCredentials,
-} from './PanelAdminForms';
 import { useImpersonate } from './useImpersonate';
 
 /** The minimum an action needs to know about an organization. */
@@ -297,24 +288,9 @@ interface ApprovalCallbacks {
 
 const REJECT_REASON_MAX = 500;
 
-/** The administrator the admin panel login is prefilled from: the registrant if known, else the first admin. */
-function registrant(admins: PlatformUser[] | undefined, email: string | null | undefined): PlatformUser | null {
-  if (!admins?.length) return null;
-  const wanted = email?.toLowerCase();
-  const byEmail = wanted ? admins.find((user) => user.email.toLowerCase() === wanted) : undefined;
-  return byEmail ?? admins.find((user) => user.role === 'admin') ?? null;
-}
-
-function withoutKeys(errors: PanelAdminFormErrors, keys: string[]): PanelAdminFormErrors {
-  const next = { ...errors };
-  keys.forEach((key) => delete next[key as keyof PanelAdminFormErrors]);
-  return next;
-}
-
 /**
- * Approve opens a dialog that also creates the organization's admin panel
- * login (one step on the server: if the login is refused the organization
- * stays unapproved). Reject opens a modal for an optional reason. Render
+ * Approve opens a confirmation (the admin panel login is created separately,
+ * with "Create admin login"). Reject opens a modal for an optional reason. Render
  * `dialogs` once, outside any clickable row.
  */
 export function useOrgApproval({ onApproved, onRejected }: ApprovalCallbacks = {}) {
@@ -323,44 +299,16 @@ export function useOrgApproval({ onApproved, onRejected }: ApprovalCallbacks = {
   const rejectSubmit = useSubmit();
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [approving, setApproving] = useState<OrgTarget | null>(null);
-  const [login, setLogin] = useState<PanelAdminFormValue>({ name: '', email: '', password: '' });
-  const [loginErrors, setLoginErrors] = useState<PanelAdminFormErrors>({});
-  const [credentials, setCredentials] = useState<PanelCredentials | null>(null);
   const [rejecting, setRejecting] = useState<OrgTarget | null>(null);
   const [reason, setReason] = useState('');
-  const prefillRef = useRef<AbortController | null>(null);
 
   const notify = () => window.dispatchEvent(new Event(ORG_APPROVAL_CHANGED_EVENT));
-
-  useEffect(() => () => prefillRef.current?.abort(), []);
 
   const { reset: resetApprove } = approveSubmit;
   const approve = useCallback(
     (org: OrgTarget) => {
       resetApprove();
-      setLoginErrors({});
-      const known = registrant(org.admins, org.adminEmail);
-      setLogin({
-        name: known?.name ?? '',
-        email: org.adminEmail ?? known?.email ?? '',
-        // Left empty so what the platform admin types is exactly what is saved
-        // (a prefilled value got typed onto, producing an unknown password).
-        password: '',
-      });
       setApproving(org);
-      // From a list row the administrator's name may not be known yet: look it up.
-      prefillRef.current?.abort();
-      if (known) return;
-      const controller = new AbortController();
-      prefillRef.current = controller;
-      platformApi.organizations.get(org.id, controller.signal).then(
-        (detail) => {
-          const found = registrant(detail?.admins, org.adminEmail ?? detail?.adminEmail);
-          if (!found) return;
-          setLogin((current) => ({ ...current, name: current.name || found.name, email: current.email || found.email }));
-        },
-        () => undefined,
-      );
     },
     [resetApprove],
   );
@@ -372,38 +320,23 @@ export function useOrgApproval({ onApproved, onRejected }: ApprovalCallbacks = {
   const confirmApprove = async () => {
     if (!approving) return;
     const org = approving;
-    const local = validatePanelAdminForm(login);
-    setLoginErrors(local);
-    if (Object.keys(local).length) return;
-    const panelAdmin = { name: login.name.trim(), email: login.email.trim().toLowerCase(), password: login.password };
     setApprovingId(org.id);
-    const updated = await approveSubmit.run(async () => {
-      try {
-        return await platformApi.organizations.approve(org.id, { panelAdmin });
-      } catch (error) {
-        // Set with the form error (same render), so the message lands on its field straight away.
-        setLoginErrors(panelAdminServerErrors(error));
-        throw error;
-      }
-    });
+    const updated = await approveSubmit.run(() => platformApi.organizations.approve(org.id));
     setApprovingId(null);
     if (updated) {
-      toast.success(`${org.name} was approved and its free trial has started. Its admin panel login is ready.`);
+      toast.success(`${org.name} was approved and its free trial has started.`);
       setApproving(null);
-      setCredentials({ orgName: org.name, email: panelAdmin.email, password: panelAdmin.password });
       notify();
       onApproved?.(updated);
     }
   };
 
-  const loginFieldError = Object.values(loginErrors).some(Boolean);
-
   const approveDialog = (
     <Modal
       open={!!approving}
       title="Approve organization"
-      subtitle={approving ? `Approve ${approving.name} and create the login for its organization admin panel.` : undefined}
-      size="md"
+      subtitle={approving ? `Approve ${approving.name}.` : undefined}
+      size="sm"
       onClose={cancelApprove}
       footer={
         <>
@@ -411,35 +344,19 @@ export function useOrgApproval({ onApproved, onRejected }: ApprovalCallbacks = {
             Cancel
           </Button>
           <Button variant="primary" icon={<BadgeCheck size={14} />} loading={approveSubmit.submitting} onClick={() => void confirmApprove()}>
-            Approve and create login
+            Approve
           </Button>
         </>
       }
     >
       {approving ? (
-        <form
-          className="stack"
-          noValidate
-          onSubmit={(event) => {
-            event.preventDefault();
-            void confirmApprove();
-          }}
-        >
-          <FormError message={loginFieldError ? null : approveSubmit.error} />
+        <div className="stack">
+          <FormError message={approveSubmit.error} />
           <p style={{ margin: 0 }}>
-            Once approved, the users of <strong>{approving.name}</strong> can sign in, and its free trial with every module
-            starts. Its admin chooses a plan during the trial. Its admin panel, where it manages its users, settings and app
-            content, has a separate login that you create here.
+            Once approved, the users of <strong>{approving.name}</strong> can sign in and its free trial with every module
+            starts. Create its admin panel login afterwards with <strong>Create admin login</strong> on the Organizations list.
           </p>
-          <PanelAdminFields
-            value={login}
-            errors={loginErrors}
-            onChange={(patch) => {
-              setLogin((current) => ({ ...current, ...patch }));
-              setLoginErrors((current) => withoutKeys(current, Object.keys(patch)));
-            }}
-          />
-        </form>
+        </div>
       ) : null}
     </Modal>
   );
@@ -519,7 +436,6 @@ export function useOrgApproval({ onApproved, onRejected }: ApprovalCallbacks = {
   const dialogs = (
     <>
       {approveDialog}
-      {credentials ? <PanelCredentialsModal credentials={credentials} onClose={() => setCredentials(null)} /> : null}
       {rejectDialog}
     </>
   );

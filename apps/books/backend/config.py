@@ -35,7 +35,10 @@ class Settings(BaseSettings):
     cors_origins: List[str] | str = Field(default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"])
     allow_public_signup: bool = Field(default=True, description="If false, only invited users can join")
     require_org_approval: bool = Field(
-        default=True, description="REQUIRE_ORG_APPROVAL: new sign-ups wait for a super-admin to approve the organization"
+        # Off: a sign-up starts its free trial at once; the platform admin's
+        # decision comes after the trial, when the organization requests a plan.
+        default=False,
+        description="REQUIRE_ORG_APPROVAL: new sign-ups wait for a super-admin to approve the organization",
     )
     login_rate_limit_per_minute: int = 10
     # Comma-separated IPs/CIDRs of reverse proxies whose X-Forwarded-For header

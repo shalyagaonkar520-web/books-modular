@@ -244,6 +244,9 @@ class InviteUserRequest(APIModel):
     # login belongs to. That employee will then see only their own payslips
     # and profile - never anyone else's, and nothing else in the app.
     employee_id: Optional[str] = None
+    # Staff only: the modules this user may edit (a "custom" invite). Omitted =
+    # every module of the organization's plan. See User.module_access.
+    module_access: Optional[List[str]] = None
 
 
 class InviteInfo(APIModel):

@@ -13,14 +13,16 @@
       "label": "Items",
       "description": "Products and services catalogue with stock",
       "price": 199,
-      "requires": []
+      "requires": [],
+      "core": true
     },
     {
       "key": "customers",
       "label": "Customers",
       "description": "Customer records, contacts and balances",
       "price": 99,
-      "requires": []
+      "requires": [],
+      "core": true
     },
     {
       "key": "invoices",
@@ -29,7 +31,8 @@
       "price": 299,
       "requires": [
         "customers"
-      ]
+      ],
+      "core": true
     },
     {
       "key": "paymentsReceived",
@@ -39,7 +42,8 @@
       "requires": [
         "invoices",
         "customers"
-      ]
+      ],
+      "core": true
     },
     {
       "key": "expenseDashboard",
@@ -128,14 +132,16 @@
       "label": "Accountant",
       "description": "Chart of accounts, journals and ledgers",
       "price": 299,
-      "requires": []
+      "requires": [],
+      "core": true
     },
     {
       "key": "reports",
       "label": "Reports",
       "description": "Profit and loss, balance sheet, GST and more",
       "price": 199,
-      "requires": []
+      "requires": [],
+      "core": true
     },
     {
       "key": "documents",

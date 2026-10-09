@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Ban, BellRing, CreditCard, Eye, FileDown, FileSpreadsheet, FileText, IndianRupee, Mail, Pencil, Plus, Send, Trash2 } from 'lucide-react';
+import { Ban, BellRing, Eye, FileDown, FileSpreadsheet, FileText, IndianRupee, Mail, Pencil, Plus, Send, Trash2 } from 'lucide-react';
 
 import { ApiError } from '@/api/client';
 import { contactsApi, invoicesApi } from '@/api/endpoints';
 import type { Invoice, InvoiceListItem, Message } from '@/api/types';
 import { IfCanWrite } from '@/auth/RouteGuards';
+import { ActionMenu } from '@/components/ui/ActionMenu';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { StatTile } from '@/components/ui/Card';
@@ -25,7 +26,6 @@ import { daysBetween, formatCurrency, formatDate, todayIso } from '@/utils/forma
 import { statusLabel, statusTone } from '@/utils/status';
 
 import { RecordPaymentModal, type PaymentInvoiceContext } from './RecordPaymentModal';
-import { PayOnlineModal } from './PayOnlineModal';
 
 const PAGE_SIZE = 25;
 
@@ -65,7 +65,6 @@ export function InvoicesPage() {
   const [page, setPage] = useState(1);
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [paymentFor, setPaymentFor] = useState<PaymentInvoiceContext | null>(null);
-  const [payOnlineInvoice, setPayOnlineInvoice] = useState<InvoiceListItem | null>(null);
   const [mailInvoice, setMailInvoice] = useState<InvoiceListItem | null>(null);
   const [autoReminding, setAutoReminding] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -224,111 +223,76 @@ export function InvoicesPage() {
             <Eye size={15} />
           </button>
           <IfCanWrite>
-            <>
-              {row.balanceDue > 0 && row.status !== 'void' ? (
-                <button
-                  type="button"
-                  className="action-btn"
-                  style={{ color: '#16a34a' }}
-                  aria-label={t('invoices.action.payOnlineAria', { number: row.invoiceNumber })}
-                  title={t('invoices.action.payOnlineTitle')}
-                  onClick={() => setPayOnlineInvoice(row)}
-                >
-                  <CreditCard size={15} />
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className="action-btn"
-                style={{ color: '#ea4335' }}
-                aria-label={t('invoices.action.mailAria', { number: row.invoiceNumber })}
-                title={t('invoices.action.mailTitle')}
-                onClick={() => setMailInvoice(row)}
-              >
-                <Mail size={15} />
-              </button>
-              <button
-                type="button"
-                className="action-btn"
-                style={{ color: '#dc2626' }}
-                aria-label={t('invoices.action.pdfAria', { number: row.invoiceNumber })}
-                title={t('invoices.action.pdfTitle')}
-                onClick={() => invoicesApi.downloadPdf(row.id, row.invoiceNumber)}
-              >
-                <FileDown size={15} />
-              </button>
-              <button
-                type="button"
-                className="action-btn"
-                style={{ color: '#15803d' }}
-                aria-label={t('invoices.action.excelAria', { number: row.invoiceNumber })}
-                title={t('invoices.action.excelTitle')}
-                onClick={() => invoicesApi.downloadExcel(row.id, row.invoiceNumber)}
-              >
-                <FileSpreadsheet size={15} />
-              </button>
-              {canEdit(row) ? (
-                <button
-                  type="button"
-                  className="action-btn"
-                  aria-label={t('invoices.action.edit', { number: row.invoiceNumber })}
-                  onClick={() => navigate(`/invoices/${row.id}/edit`)}
-                >
-                  <Pencil size={15} />
-                </button>
-              ) : null}
-              {canTakePayment(row) ? (
-                <button
-                  type="button"
-                  className="action-btn"
-                  aria-label={t('invoices.action.recordPayment', { number: row.invoiceNumber })}
-                  onClick={() =>
-                    setPaymentFor({ id: row.id, invoiceNumber: row.invoiceNumber, customerId: row.customerId, balanceDue: row.balanceDue })
-                  }
-                >
-                  <IndianRupee size={15} />
-                </button>
-              ) : null}
-              {row.status === 'draft' ? (
-                <button
-                  type="button"
-                  className="action-btn"
-                  aria-label={t('invoices.action.markSent', { number: row.invoiceNumber })}
-                  onClick={() => {
-                    reset();
-                    setPending({ kind: 'send', invoice: row });
-                  }}
-                >
-                  <Send size={15} />
-                </button>
-              ) : null}
-              {row.status !== 'void' ? (
-                <button
-                  type="button"
-                  className="action-btn is-danger"
-                  aria-label={t('invoices.action.void', { number: row.invoiceNumber })}
-                  onClick={() => {
-                    reset();
-                    setPending({ kind: 'void', invoice: row });
-                  }}
-                >
-                  <Ban size={15} />
-                </button>
-              ) : null}
-              {isInvoiceDeletable(row) ? (
-                <button
-                  type="button"
-                  className="action-btn is-danger"
-                  aria-label={t('invoices.action.delete', { number: row.invoiceNumber })}
-                  onClick={() => {
-                    reset();
-                    setPending({ kind: 'delete', invoice: row });
-                  }}
-                >
-                  <Trash2 size={15} />
-                </button>
-              ) : null}
-            </>
+            <ActionMenu
+              label={t('invoices.action.more', { number: row.invoiceNumber })}
+              iconOnly
+              variant="ghost"
+              items={[
+                { key: 'mail', label: t('invoices.view.sendGmail'), icon: <Mail size={14} />, onSelect: () => setMailInvoice(row) },
+                { key: 'pdf', label: t('invoices.view.downloadPdf'), icon: <FileDown size={14} />, onSelect: () => void invoicesApi.downloadPdf(row.id, row.invoiceNumber) },
+                {
+                  key: 'excel',
+                  label: t('invoices.view.downloadExcel'),
+                  icon: <FileSpreadsheet size={14} />,
+                  onSelect: () => void invoicesApi.downloadExcel(row.id, row.invoiceNumber),
+                },
+                ...(canEdit(row)
+                  ? [{ key: 'edit', label: t('invoices.view.edit'), icon: <Pencil size={14} />, onSelect: () => navigate(`/invoices/${row.id}/edit`) }]
+                  : []),
+                ...(canTakePayment(row)
+                  ? [
+                      {
+                        key: 'payment',
+                        label: t('invoices.view.recordPayment'),
+                        icon: <IndianRupee size={14} />,
+                        onSelect: () =>
+                          setPaymentFor({ id: row.id, invoiceNumber: row.invoiceNumber, customerId: row.customerId, balanceDue: row.balanceDue }),
+                      },
+                    ]
+                  : []),
+                ...(row.status === 'draft'
+                  ? [
+                      {
+                        key: 'send',
+                        label: t('invoices.view.markSent'),
+                        icon: <Send size={14} />,
+                        onSelect: () => {
+                          reset();
+                          setPending({ kind: 'send', invoice: row });
+                        },
+                      },
+                    ]
+                  : []),
+                ...(row.status !== 'void'
+                  ? [
+                      {
+                        key: 'void',
+                        label: t('invoices.view.void'),
+                        icon: <Ban size={14} />,
+                        danger: true,
+                        onSelect: () => {
+                          reset();
+                          setPending({ kind: 'void', invoice: row });
+                        },
+                      },
+                    ]
+                  : []),
+                ...(isInvoiceDeletable(row)
+                  ? [
+                      {
+                        key: 'delete',
+                        label: t('invoices.action.deleteLabel'),
+                        icon: <Trash2 size={14} />,
+                        danger: true,
+                        onSelect: () => {
+                          reset();
+                          setPending({ kind: 'delete', invoice: row });
+                        },
+                      },
+                    ]
+                  : []),
+              ]}
+            />
           </IfCanWrite>
         </span>
       ),
@@ -585,23 +549,6 @@ export function InvoicesPage() {
         />
       ) : null}
 
-      {payOnlineInvoice ? (
-        <PayOnlineModal
-          open
-          invoice={{
-            id: payOnlineInvoice.id,
-            invoiceNumber: payOnlineInvoice.invoiceNumber,
-            customerName: payOnlineInvoice.customerName,
-            total: payOnlineInvoice.total,
-            balanceDue: payOnlineInvoice.balanceDue,
-          }}
-          onClose={() => setPayOnlineInvoice(null)}
-          onPaymentSuccess={() => {
-            setPayOnlineInvoice(null);
-            refresh();
-          }}
-        />
-      ) : null}
 
       <ConfirmDialog
         open={!!pending}

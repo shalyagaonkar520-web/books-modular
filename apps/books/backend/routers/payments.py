@@ -291,28 +291,18 @@ def export_customer_payments_excel(
     )
 
 
-@router.post("/customer-payments", response_model=CustomerPaymentOut, status_code=status.HTTP_201_CREATED)
-def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
-    org_id = user.organization_id
-    customer = get_or_404(db, Contact, payload.customer_id, org_id, "Customer")
-    if customer.type != "customer":
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selected contact is not a customer")
-    bank_acct = get_or_404(db, BankAccount, payload.bank_account_id, org_id, "Bank account")
-    amount = money(payload.amount)
-    invoice = None
-    if payload.invoice_id:
-        invoice = get_or_404(db, Invoice, payload.invoice_id, org_id, "Invoice")
-        if invoice.customer_id != customer.id:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invoice belongs to a different customer")
-        if invoice.status not in _PAYABLE_INVOICE_STATUSES:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, f"Payments can only be applied to sent invoices (current status: {invoice.status})"
-            )
-        if amount > money(invoice.balance_due):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the invoice balance of {invoice.balance_due}")
-        # The checks above are a friendly early answer; this is the one that
-        # holds under concurrency. It must run first, before anything is posted.
-        _apply_invoice_payment(db, invoice, amount)
+def _record_customer_payment(
+    db: Session,
+    org_id: str,
+    user: User,
+    customer: Contact,
+    bank_acct: BankAccount,
+    invoice: Optional[Invoice],
+    amount: Decimal,
+    payload: CustomerPaymentCreate,
+    notes: Optional[str],
+) -> CustomerPayment:
+    """One receipt: against ``invoice`` (already applied by the caller), or a customer advance when None."""
     payment = CustomerPayment(
         organization_id=org_id,
         payment_number=numbering.next_number(db, org_id, "customer_payment"),
@@ -323,7 +313,7 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
         amount=amount,
         mode=payload.mode,
         reference=payload.reference,
-        notes=payload.notes,
+        notes=notes,
         created_by=user.id,
     )
     db.add(payment)
@@ -359,11 +349,78 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
         credit_account,
         entry.id,
     )
-
     audit.record(db, user, "create", "customer_payment", payment.id, desc)
+    return payment
+
+
+@router.post("/customer-payments", response_model=CustomerPaymentOut, status_code=status.HTTP_201_CREATED)
+def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+    """Record money received from a customer.
+
+    With an invoice: applied to that invoice. Without one: applied to the
+    customer's unpaid invoices, oldest due first (one receipt per invoice), and
+    only what is left over is kept as a customer advance. Returns the first receipt.
+    """
+    org_id = user.organization_id
+    customer = get_or_404(db, Contact, payload.customer_id, org_id, "Customer")
+    if customer.type != "customer":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selected contact is not a customer")
+    bank_acct = get_or_404(db, BankAccount, payload.bank_account_id, org_id, "Bank account")
+    amount = money(payload.amount)
+
+    if payload.invoice_id:
+        invoice = get_or_404(db, Invoice, payload.invoice_id, org_id, "Invoice")
+        if invoice.customer_id != customer.id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invoice belongs to a different customer")
+        if invoice.status not in _PAYABLE_INVOICE_STATUSES:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, f"Payments can only be applied to sent invoices (current status: {invoice.status})"
+            )
+        if amount > money(invoice.balance_due):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the invoice balance of {invoice.balance_due}")
+        # The checks above are a friendly early answer; this is the one that
+        # holds under concurrency. It must run first, before anything is posted.
+        _apply_invoice_payment(db, invoice, amount)
+        first = _record_customer_payment(db, org_id, user, customer, bank_acct, invoice, amount, payload, payload.notes)
+    else:
+        open_invoices = (
+            db.execute(
+                select(Invoice)
+                .where(
+                    Invoice.organization_id == org_id,
+                    Invoice.customer_id == customer.id,
+                    Invoice.status.in_(_PAYABLE_INVOICE_STATUSES),
+                    Invoice.date <= payload.date,
+                )
+                .order_by(Invoice.due_date, Invoice.date, Invoice.invoice_number)
+            )
+            .scalars()
+            .all()
+        )
+        remaining = amount
+        receipts: List[CustomerPayment] = []
+        split = len(open_invoices) > 0
+        note = payload.notes
+        if split:
+            part_of = f"Part of {amount} received" + (f" ({payload.reference})" if payload.reference else "")
+            note = f"{payload.notes}\n{part_of}" if payload.notes else part_of
+        for inv in open_invoices:
+            if remaining <= 0:
+                break
+            portion = min(remaining, money(inv.balance_due))
+            if portion <= 0:
+                continue
+            _apply_invoice_payment(db, inv, portion)
+            receipts.append(_record_customer_payment(db, org_id, user, customer, bank_acct, inv, portion, payload, note))
+            remaining = money(remaining - portion)
+        if remaining > 0:
+            # Nothing (more) is owed: the rest is held as the customer's advance.
+            receipts.append(_record_customer_payment(db, org_id, user, customer, bank_acct, None, remaining, payload, note))
+        first = receipts[0]
+
     db.commit()
-    db.refresh(payment)
-    return cp_out(payment)
+    db.refresh(first)
+    return cp_out(first)
 
 
 @router.delete("/customer-payments/{payment_id}", response_model=Message)

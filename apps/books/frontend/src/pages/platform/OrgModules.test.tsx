@@ -26,11 +26,14 @@ const ADMIN = {
   createdAt: '2026-09-20T04:00:00Z',
 };
 
+/** Included in every plan: ₹499 base + ₹1,244 of modules = ₹1,743 a month. */
+const CORE = ['items', 'customers', 'invoices', 'paymentsReceived', 'accounting', 'reports'];
+
 const REQUEST = {
-  modules: ['customers', 'invoices'],
+  modules: CORE,
   billingCycle: 'yearly' as const,
-  monthlyPrice: 897,
-  planPrice: 8970,
+  monthlyPrice: 1743,
+  planPrice: 17430,
   requestedAt: '2026-09-29T10:00:00Z',
 };
 
@@ -122,23 +125,27 @@ describe('Organization subscriptions (super admin)', () => {
     expect(within(card).getByTestId('org-subscription-summary')).toHaveTextContent('2 days left');
     const request = within(card).getByRole('group', { name: 'Plan request' });
     expect(within(request).getByText('Customers')).toBeInTheDocument();
-    expect(within(request).getByText(/Yearly · ₹8,970\/yr/)).toBeInTheDocument();
+    expect(within(request).getByText(/Yearly · ₹17,430\/yr/)).toBeInTheDocument();
 
     fireEvent.click(within(request).getByRole('button', { name: 'Accept' }));
     const dialog = screen.getByRole('dialog', { name: 'Accept plan request' });
     expect(within(dialog).getByRole('checkbox', { name: 'Customers' })).toBeChecked();
-    expect(within(dialog).getByRole('checkbox', { name: 'Items' })).not.toBeChecked();
+    // Core modules are always included and cannot be unticked.
+    expect(within(dialog).getByRole('checkbox', { name: 'Items' })).toBeChecked();
+    expect(within(dialog).getByRole('checkbox', { name: 'Items' })).toBeDisabled();
+    expect(within(dialog).getByRole('checkbox', { name: 'Razorpay payments' })).not.toBeChecked();
     expect(within(dialog).getByRole('radio', { name: /Yearly/ })).toBeChecked();
-    expect(within(dialog).getByTestId('plan-price')).toHaveTextContent('₹8,970/yr');
+    expect(within(dialog).getByTestId('plan-price')).toHaveTextContent('₹17,430/yr');
 
+    // Razorpay adds ₹199 a month.
     fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Razorpay payments' }));
     fireEvent.click(within(dialog).getByRole('radio', { name: 'Monthly' }));
-    expect(within(dialog).getByTestId('plan-price')).toHaveTextContent('₹1,096/mo');
+    expect(within(dialog).getByTestId('plan-price')).toHaveTextContent('₹1,942/mo');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Accept plan' }));
 
     await waitFor(() =>
       expect(bodyOf(calls, '/api/platform/organizations/org1/subscription/approve')).toEqual({
-        modules: ['customers', 'invoices', 'razorpay'],
+        modules: ['items', 'customers', 'invoices', 'paymentsReceived', 'razorpay', 'accounting', 'reports'],
         billingCycle: 'monthly',
       }),
     );
@@ -192,7 +199,7 @@ describe('Organization subscriptions (super admin)', () => {
       ...trialOrg(),
       subscriptionStatus: 'active',
       pendingRequest: null,
-      plan: { modules: ['customers', 'invoices'], billingCycle: 'monthly', monthlyPrice: 897, planPrice: 897 },
+      plan: { modules: CORE, billingCycle: 'monthly', monthlyPrice: 1743, planPrice: 1743 },
     };
     const { calls } = installMockApi({
       'GET /api/platform/organizations/org1': active,
@@ -201,18 +208,18 @@ describe('Organization subscriptions (super admin)', () => {
     renderDrawer();
     const card = await screen.findByRole('region', { name: 'Subscription' });
     expect(within(card).getByText('Active')).toBeInTheDocument();
-    expect(within(card).getByTestId('org-subscription-summary')).toHaveTextContent('2 modules · Monthly · ₹897/mo');
+    expect(within(card).getByTestId('org-subscription-summary')).toHaveTextContent('6 modules · Monthly · ₹1,743/mo');
     // No trial to extend once a plan is active.
     expect(within(card).queryByRole('button', { name: 'Extend trial' })).not.toBeInTheDocument();
 
     fireEvent.click(within(card).getByRole('button', { name: 'Change plan' }));
     const dialog = screen.getByRole('dialog', { name: 'Change plan' });
     fireEvent.click(within(dialog).getByRole('radio', { name: /Yearly/ }));
-    expect(within(dialog).getByTestId('plan-price')).toHaveTextContent('₹8,970/yr');
+    expect(within(dialog).getByTestId('plan-price')).toHaveTextContent('₹17,430/yr');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save plan' }));
     await waitFor(() =>
       expect(bodyOf(calls, '/api/platform/organizations/org1/subscription/approve')).toEqual({
-        modules: ['customers', 'invoices'],
+        modules: CORE,
         billingCycle: 'yearly',
       }),
     );
@@ -236,10 +243,10 @@ describe('Plan requests (Subscriptions & Pricing)', () => {
     organizationId: 'org1',
     organizationName: 'Acme Traders',
     requestedAt: '2026-09-29T10:00:00Z',
-    modules: ['customers', 'invoices'],
+    modules: CORE,
     billingCycle: 'monthly',
-    monthlyPrice: 897,
-    planPrice: 897,
+    monthlyPrice: 1743,
+    planPrice: 1743,
     subscriptionStatus: 'expired',
     trialEndsAt: '2026-09-28T10:00:00Z',
   };
@@ -258,7 +265,7 @@ describe('Plan requests (Subscriptions & Pricing)', () => {
     const table = await screen.findByRole('table', { name: 'Plan requests' });
     expect(within(table).getByText('Acme Traders')).toBeInTheDocument();
     expect(within(table).getByText('Invoices')).toBeInTheDocument();
-    expect(within(table).getByText('₹897/mo')).toBeInTheDocument();
+    expect(within(table).getByText('₹1,743/mo')).toBeInTheDocument();
     expect(within(table).getByText('Expired')).toBeInTheDocument();
 
     fireEvent.click(within(table).getByRole('button', { name: 'Accept plan for Acme Traders' }));
@@ -268,7 +275,7 @@ describe('Plan requests (Subscriptions & Pricing)', () => {
 
     await waitFor(() =>
       expect(bodyOf(calls, '/api/platform/organizations/org1/subscription/approve')).toEqual({
-        modules: ['customers', 'invoices'],
+        modules: CORE,
         billingCycle: 'monthly',
       }),
     );

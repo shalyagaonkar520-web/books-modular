@@ -15,7 +15,9 @@ import {
   type AppContent,
   type AppModuleKey,
 } from '@/api/appContent';
+import { orgAdminApi } from '@/api/orgAdmin';
 import { platformApi } from '@/api/platform';
+import { OrgPanelApiError } from '@/api/orgPanelClient';
 import { PlatformApiError } from '@/api/platformClient';
 import { useAppContent } from '@/app/AppContentContext';
 import { Badge } from '@/components/ui/Badge';
@@ -50,6 +52,9 @@ function groupOf(key: string): string {
 }
 
 /** Text keys grouped by their first segment, in catalog order. */
+/** Text groups named after a module belong to it; the rest are "general" texts. */
+const MODULE_KEYS = new Set<string>(APP_MODULES.map((module) => module.key));
+
 const TEXT_GROUPS: Array<{ id: string; label: string; keys: string[] }> = (() => {
   const groups = new Map<string, string[]>();
   Object.keys(DEFAULT_TEXTS).forEach((key) => {
@@ -76,28 +81,57 @@ function sectionOfPath(path: string): string | null {
 // Page
 // ---------------------------------------------------------------------------
 
-/** The super-admin editor: the shared content or, via ?org=, any organization's copy. */
-export function AppContentPage() {
+interface AppContentPageProps {
+  /**
+   * 'platform' (the super-admin console) edits the shared content or, via ?org=,
+   * any organization's copy. 'organization' (the org admin panel) edits only the
+   * signed-in panel admin's organization, through the org panel API.
+   */
+  mode?: 'platform' | 'organization';
+}
+
+export function AppContentPage({ mode = 'platform' }: AppContentPageProps = {}) {
   const toast = useToast();
   const { reload: reloadAppContent } = useAppContent();
   const [searchParams, setSearchParams] = useSearchParams();
+  const ownOrg = mode === 'organization';
   // '' edits the shared content every organization sees; an org id edits only that organization's copy.
-  const scope = searchParams.get('org') ?? '';
+  const scope = ownOrg ? '' : (searchParams.get('org') ?? '');
   // Editing one organization's copy (compared against the shared content) rather than the shared content itself.
-  const perOrg = Boolean(scope);
-  const orgs = useAsync((signal) => platformApi.organizations.list({ page: 1, page_size: 200 }, signal), []);
+  const perOrg = ownOrg || Boolean(scope);
+  const orgs = useAsync(
+    (signal) => (ownOrg ? Promise.resolve(null) : platformApi.organizations.list({ page: 1, page_size: 200 }, signal)),
+    [ownOrg],
+  );
   const remote = useAsync(
     async (signal) => {
+      if (ownOrg) {
+        const org = await orgAdminApi.appContent.get(signal);
+        return {
+          content: normalizeAppContent(org.content),
+          shared: normalizeAppContent(org.shared),
+          orgName: org.organizationName,
+          editable: org.editable ?? null,
+        };
+      }
       if (!scope) {
         return { content: normalizeAppContent(await platformApi.appContent.get(signal)), shared: DEFAULT_APP_CONTENT, orgName: null };
       }
       const org = await platformApi.appContent.org.get(scope, signal);
       return { content: normalizeAppContent(org.content), shared: normalizeAppContent(org.shared), orgName: org.organizationName };
     },
-    [scope],
+    [scope, ownOrg],
   );
   const baseline = remote.data?.shared ?? DEFAULT_APP_CONTENT;
   const orgName = remote.data?.orgName ?? null;
+  // The org admin panel edits only what the platform admin allows (null = everything).
+  const editable = remote.data && 'editable' in remote.data ? remote.data.editable : null;
+  const groupAllowed = (id: string) => {
+    if (!editable) return true;
+    return MODULE_KEYS.has(id) ? editable.modules.includes(id) : editable.general;
+  };
+  const shownModules = editable ? APP_MODULES.filter((module) => editable.modules.includes(module.key)) : APP_MODULES;
+  const outsidePlan = (key: string) => Boolean(editable?.planModules && !editable.planModules.includes(key));
   const [saved, setSaved] = useState<AppContent | null>(null);
   const [draft, setDraft] = useState<AppContent | null>(null);
   const [openSections, setOpenSections] = useState<Set<string>>(() => new Set<string>());
@@ -149,7 +183,7 @@ export function AppContentPage() {
   const query = search.trim().toLowerCase();
   const visibleGroups = useMemo(() => {
     if (!draft) return [];
-    return TEXT_GROUPS.map((group) => ({
+    return TEXT_GROUPS.filter((group) => groupAllowed(group.id)).map((group) => ({
       ...group,
       keys: query
         ? group.keys.filter((key) =>
@@ -157,7 +191,8 @@ export function AppContentPage() {
           )
         : group.keys,
     })).filter((group) => group.keys.length > 0);
-  }, [draft, query]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, query, editable]);
 
   const toggleSection = (id: string) =>
     setOpenSections((current) => {
@@ -203,10 +238,11 @@ export function AppContentPage() {
     setServerErrors({});
     const updated = await saveSubmit.run(async () => {
       try {
+        if (ownOrg) return normalizeAppContent((await orgAdminApi.appContent.update(draft)).content);
         if (scope) return normalizeAppContent((await platformApi.appContent.org.update(scope, draft)).content);
         return await platformApi.appContent.update(draft);
       } catch (error) {
-        if (error instanceof PlatformApiError && Object.keys(error.pathErrors).length) {
+        if ((error instanceof PlatformApiError || error instanceof OrgPanelApiError) && Object.keys(error.pathErrors).length) {
           setServerErrors(error.pathErrors);
           expandSectionsFor(Object.keys(error.pathErrors));
         }
@@ -228,6 +264,7 @@ export function AppContentPage() {
 
   const reset = async () => {
     const defaults = await resetSubmit.run(async () => {
+      if (ownOrg) return normalizeAppContent((await orgAdminApi.appContent.reset()).content);
       return scope ? normalizeAppContent((await platformApi.appContent.org.reset(scope)).content) : platformApi.appContent.reset();
     });
     if (defaults) {
@@ -256,28 +293,34 @@ export function AppContentPage() {
     <>
       <PageHeader
         title="App content"
-        subtitle="Edit what organizations see after signing in: branding, which modules are on, and every label and message."
+        subtitle={
+          ownOrg
+            ? `Edit what ${orgName ?? 'your organization'}'s users see after signing in: branding, which modules are on, and every label and message.`
+            : 'Edit what organizations see after signing in: branding, which modules are on, and every label and message.'
+        }
       />
       <div className="card" style={{ marginBottom: 12 }}>
         <div className="card-body">
-          <div className="form-grid-2">
-            <SelectField
-              label="Apply changes to"
-              value={scope}
-              options={orgOptions}
-              disabled={dirty}
-              hint={
-                dirty
-                  ? 'Save or discard your changes before switching.'
-                  : scope
-                    ? 'Only this organization sees what you change here. Anything you leave as it is keeps following the shared content.'
-                    : 'The shared content every organization sees, unless an organization has its own customization.'
-              }
-              onChange={(e) => changeScope(e.target.value)}
-            />
-          </div>
+          {ownOrg ? null : (
+            <div className="form-grid-2">
+              <SelectField
+                label="Apply changes to"
+                value={scope}
+                options={orgOptions}
+                disabled={dirty}
+                hint={
+                  dirty
+                    ? 'Save or discard your changes before switching.'
+                    : scope
+                      ? 'Only this organization sees what you change here. Anything you leave as it is keeps following the shared content.'
+                      : 'The shared content every organization sees, unless an organization has its own customization.'
+                }
+                onChange={(e) => changeScope(e.target.value)}
+              />
+            </div>
+          )}
           {perOrg ? (
-            <div className="row" style={{ gap: 8, alignItems: 'center', marginTop: 4 }}>
+            <div className="row" style={{ gap: 8, alignItems: 'center', marginTop: ownOrg ? 0 : 4 }}>
               <Building2 size={15} aria-hidden="true" />
               <span className="small">
                 Editing <strong>{orgName ?? 'this organization'}</strong> only · {customizedCount} customized{' '}
@@ -316,73 +359,79 @@ export function AppContentPage() {
     <>
       {header}
 
-      <div className="notification notification-info" role="note" style={{ marginBottom: 12 }}>
-        <Briefcase size={16} aria-hidden="true" />
-        <span>
-          Preview in an organization: after saving, open any organization from <Link to="/platform/workspace">Workspace</Link> to see the
-          app exactly as its users do.
-        </span>
-      </div>
+      {ownOrg ? null : (
+        <div className="notification notification-info" role="note" style={{ marginBottom: 12 }}>
+          <Briefcase size={16} aria-hidden="true" />
+          <span>
+            Preview in an organization: after saving, open any organization from <Link to="/platform/workspace">Workspace</Link> to see the
+            app exactly as its users do.
+          </span>
+        </div>
+      )}
 
       <div className="site-editor">
         <FormError message={saveSubmit.error} />
 
-        <EditorSection {...sectionProps('branding')} title="Branding" description="App name, logo and primary colour used in the header, sign-in pages and buttons.">
-          <div className="form-grid-3">
-            <TextField
-              label="App name"
-              required
-              maxLength={LIMITS.appNameMax}
-              value={branding.appName}
-              error={errors['branding.appName']}
-              onChange={(e) => patchBranding({ appName: e.target.value })}
-            />
-            <TextField
-              label="Logo URL"
-              hint="A site path such as /rooman-logo.png or an https:// URL."
-              maxLength={LIMITS.logoUrl}
-              value={branding.logoUrl}
-              error={errors['branding.logoUrl']}
-              onChange={(e) => patchBranding({ logoUrl: e.target.value })}
-            />
-            <div className="row" style={{ alignItems: 'flex-end', gap: 8 }}>
-              <input
-                type="color"
-                aria-label="Pick primary colour"
-                value={colorValid ? branding.primaryColor.toLowerCase() : DEFAULT_APP_CONTENT.branding.primaryColor}
-                onChange={(e) => patchBranding({ primaryColor: e.target.value })}
-                style={{ width: 44, height: 38, padding: 2, border: '1px solid var(--border)', borderRadius: 8, background: 'none', marginBottom: 14 }}
-              />
-              <div style={{ flex: 1, minWidth: 0 }}>
+        {!editable || editable.branding ? (
+          <>
+            <EditorSection {...sectionProps('branding')} title="Branding" description="App name, logo and primary colour used in the header, sign-in pages and buttons.">
+              <div className="form-grid-3">
                 <TextField
-                  label="Primary colour"
-                  hint="Hex, e.g. #2563eb"
-                  maxLength={7}
-                  value={branding.primaryColor}
-                  error={errors['branding.primaryColor']}
-                  onChange={(e) => patchBranding({ primaryColor: e.target.value.trim() })}
+                  label="App name"
+                  required
+                  maxLength={LIMITS.appNameMax}
+                  value={branding.appName}
+                  error={errors['branding.appName']}
+                  onChange={(e) => patchBranding({ appName: e.target.value })}
                 />
+                <TextField
+                  label="Logo URL"
+                  hint="A site path such as /rooman-logo.png or an https:// URL."
+                  maxLength={LIMITS.logoUrl}
+                  value={branding.logoUrl}
+                  error={errors['branding.logoUrl']}
+                  onChange={(e) => patchBranding({ logoUrl: e.target.value })}
+                />
+                <div className="row" style={{ alignItems: 'flex-end', gap: 8 }}>
+                  <input
+                    type="color"
+                    aria-label="Pick primary colour"
+                    value={colorValid ? branding.primaryColor.toLowerCase() : DEFAULT_APP_CONTENT.branding.primaryColor}
+                    onChange={(e) => patchBranding({ primaryColor: e.target.value })}
+                    style={{ width: 44, height: 38, padding: 2, border: '1px solid var(--border)', borderRadius: 8, background: 'none', marginBottom: 14 }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <TextField
+                      label="Primary colour"
+                      hint="Hex, e.g. #2563eb"
+                      maxLength={7}
+                      value={branding.primaryColor}
+                      error={errors['branding.primaryColor']}
+                      onChange={(e) => patchBranding({ primaryColor: e.target.value.trim() })}
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-          <div className="stack" style={{ gap: 6 }}>
-            <span className="site-editor-legend">Live preview</span>
-            <div className="row" style={{ gap: 16, flexWrap: 'wrap', alignItems: 'center' }} aria-label="Branding preview">
-              <span className="row" style={{ gap: 8, alignItems: 'center' }}>
-                <img src={branding.logoUrl} alt="" width={24} height={24} style={{ borderRadius: 6 }} />
-                <strong>{branding.appName || DEFAULT_APP_CONTENT.branding.appName}</strong>
-              </span>
-              <span className="btn btn-primary btn-sm" style={{ background: palette.primary, borderColor: palette.primary, pointerEvents: 'none' }}>
-                {texts['header.create'] || DEFAULT_TEXTS['header.create']}
-              </span>
-              <span
-                style={{ display: 'inline-flex', padding: '6px 12px', borderRadius: 8, background: palette.soft, color: palette.hover, fontWeight: 600, fontSize: 13 }}
-              >
-                {texts['sidebar.dashboard'] || DEFAULT_TEXTS['sidebar.dashboard']}
-              </span>
-            </div>
-          </div>
-        </EditorSection>
+              <div className="stack" style={{ gap: 6 }}>
+                <span className="site-editor-legend">Live preview</span>
+                <div className="row" style={{ gap: 16, flexWrap: 'wrap', alignItems: 'center' }} aria-label="Branding preview">
+                  <span className="row" style={{ gap: 8, alignItems: 'center' }}>
+                    <img src={branding.logoUrl} alt="" width={24} height={24} style={{ borderRadius: 6 }} />
+                    <strong>{branding.appName || DEFAULT_APP_CONTENT.branding.appName}</strong>
+                  </span>
+                  <span className="btn btn-primary btn-sm" style={{ background: palette.primary, borderColor: palette.primary, pointerEvents: 'none' }}>
+                    {texts['header.create'] || DEFAULT_TEXTS['header.create']}
+                  </span>
+                  <span
+                    style={{ display: 'inline-flex', padding: '6px 12px', borderRadius: 8, background: palette.soft, color: palette.hover, fontWeight: 600, fontSize: 13 }}
+                  >
+                    {texts['sidebar.dashboard'] || DEFAULT_TEXTS['sidebar.dashboard']}
+                  </span>
+                </div>
+              </div>
+            </EditorSection>
+          </>
+        ) : null}
 
         <EditorSection
           {...sectionProps('modules')}
@@ -394,12 +443,13 @@ export function AppContentPage() {
           }
         >
           <div className="form-grid-3">
-            {APP_MODULES.map((module) => (
+            {shownModules.map((module) => (
               <CheckboxField
                 key={module.key}
                 label={module.label}
-                hint={module.routes.join(', ')}
-                checked={modules[module.key]}
+                hint={outsidePlan(module.key) ? 'Not in your plan. Locked' : module.routes.join(', ')}
+                checked={outsidePlan(module.key) ? false : modules[module.key]}
+                disabled={outsidePlan(module.key)}
                 onChange={(e) => setModule(module.key, e.target.checked)}
               />
             ))}

@@ -26,17 +26,21 @@ def test_catalog_keys_match_app_content_modules():
 def test_resolve_and_quote():
     assert module_pricing.resolve(["paymentsMade"]) == ["vendors", "bills", "paymentsMade"]
     assert module_pricing.resolve(["receivablesPayables"]) == ["customers", "invoices", "vendors", "bills", "receivablesPayables"]
+    core = ["items", "customers", "invoices", "paymentsReceived", "accounting", "reports"]
+    assert module_pricing.core_keys() == core
+    # Every plan includes the core modules; the choice is added on top.
     q = module_pricing.quote(["invoices"])
     assert q == {
-        "modules": ["customers", "invoices"],
+        "modules": core,
         "basePrice": 499,
-        "modulesTotal": 398,
-        "monthlyPrice": 897,
+        "modulesTotal": 1244,
+        "monthlyPrice": 1743,
         "billingCycle": "monthly",
-        "planPrice": 897,
+        "planPrice": 1743,
     }
+    assert module_pricing.quote(["payroll"])["modules"] == [*core[:4], "accounting", "reports", "payroll"]
     yearly = module_pricing.quote(["invoices"], "yearly")
-    assert yearly["billingCycle"] == "yearly" and yearly["monthlyPrice"] == 897 and yearly["planPrice"] == 8970
+    assert yearly["billingCycle"] == "yearly" and yearly["monthlyPrice"] == 1743 and yearly["planPrice"] == 17430
     with pytest.raises(ValueError):
         module_pricing.quote(["invoices"], "weekly")
     with pytest.raises(ValueError):
@@ -52,7 +56,7 @@ def test_public_pricing_needs_no_auth():
     assert body["baseIncludes"] == ["Dashboard", "Settings"]
     assert [m["key"] for m in body["modules"]] == module_pricing.module_keys()
     first = body["modules"][0]
-    assert set(first) == {"key", "label", "description", "price", "requires"}
+    assert set(first) == {"key", "label", "description", "price", "requires", "core"}
 
 
 def test_set_org_modules_keeps_branding_and_text_overrides(client):

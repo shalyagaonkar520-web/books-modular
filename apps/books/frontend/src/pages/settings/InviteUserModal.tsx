@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Lock } from 'lucide-react';
 
 import { useAppContent } from '@/app/AppContentContext';
 import { Button } from '@/components/ui/Button';
@@ -12,6 +13,8 @@ import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { useToast } from '@/components/ui/Toast';
 
+import { EDITABLE_MODULES } from './moduleAccess';
+
 interface InviteUserModalProps {
   onClose: () => void;
   onInvited: () => void;
@@ -22,12 +25,30 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
   const toast = useToast();
   const orgApi = useScopedOrgApi();
   // The org admin panel has no payroll, so it cannot link a portal-only employee.
-  const { employeeInvites } = useApiScope().capabilities;
+  const { employeeInvites, customInvites } = useApiScope().capabilities;
   const { submitting, error, fieldErrors, run, setError } = useSubmit();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('staff');
   const [employeeId, setEmployeeId] = useState('');
+  // "custom" = a staff user who may edit only the ticked modules.
+  const [chosen, setChosen] = useState<Set<string>>(() => new Set());
+  const isCustom = role === 'custom';
+
+  const plan = useAsync(
+    () => (customInvites ? orgApi.planModules() : Promise.resolve({ planModules: null })),
+    [customInvites],
+  );
+  const planModules = plan.data?.planModules ?? null;
+  const inPlan = (key: string) => planModules === null || planModules.includes(key);
+  const toggleModule = (key: string, on: boolean) =>
+    setChosen((current) => {
+      const next = new Set(current);
+      if (on) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  const chosenKeys = EDITABLE_MODULES.map((module) => module.key).filter((key) => chosen.has(key) && inPlan(key));
 
   const unlinkedEmployees = useAsync<EmployeeOption[]>(
     () => (employeeInvites ? payrollApi.unlinkedEmployees() : Promise.resolve([])),
@@ -50,12 +71,17 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
       setError(t('settings.invite.employeeRequired'));
       return;
     }
+    if (isCustom && chosenKeys.length === 0) {
+      setError('Tick at least one module this user can edit.');
+      return;
+    }
     const created = await run(() =>
       orgApi.inviteUser({
         name: name.trim(),
         email: email.trim().toLowerCase(),
-        role,
+        role: isCustom ? 'staff' : role,
         employeeId: role === 'employee' ? employeeId : undefined,
+        moduleAccess: isCustom ? chosenKeys : undefined,
       }),
     );
     if (created) {
@@ -80,7 +106,7 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
             variant="primary"
             onClick={invite}
             loading={submitting}
-            disabled={!name.trim() || !email.trim() || (role === 'employee' && !employeeId)}
+            disabled={!name.trim() || !email.trim() || (role === 'employee' && !employeeId) || (isCustom && chosenKeys.length === 0)}
           >
             {t('settings.invite.submit')}
           </Button>
@@ -100,6 +126,7 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
               label: t('settings.invite.role.staff'),
             },
             { value: 'viewer', label: t('settings.invite.role.viewer') },
+            ...(customInvites ? [{ value: 'custom', label: 'Custom — choose which modules they can edit' }] : []),
             ...(employeeInvites ? [{ value: 'employee', label: t('settings.invite.role.employee') }] : []),
           ]}
           onChange={(event) => {
@@ -107,6 +134,45 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
             setEmployeeId('');
           }}
         />
+
+        {isCustom ? (
+          <fieldset className="stack" style={{ border: 0, padding: 0, margin: 0 }}>
+            <legend className="field-label">Modules they can edit</legend>
+            <p className="small text-muted" style={{ margin: 0 }}>
+              They join as Staff and can view everything in your plan, but only edit the modules you tick. You can change this
+              later from their user window.
+            </p>
+            <div className="form-grid-3" role="group" aria-label="Modules they can edit">
+              {EDITABLE_MODULES.map((module) => {
+                const available = inPlan(module.key);
+                return (
+                  <label
+                    key={module.key}
+                    className="checkbox-field"
+                    title={available ? undefined : 'Not in your subscription plan'}
+                    style={available ? undefined : { opacity: 0.55 }}
+                  >
+                    <input
+                      type="checkbox"
+                      className="checkbox"
+                      disabled={!available}
+                      checked={available && chosen.has(module.key)}
+                      onChange={(event) => toggleModule(module.key, event.target.checked)}
+                    />
+                    <span>
+                      {module.label}
+                      {available ? null : (
+                        <span className="field-hint">
+                          <Lock size={11} aria-hidden="true" /> Not in plan
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+        ) : null}
 
         {role === 'employee' ? (
           <SelectField

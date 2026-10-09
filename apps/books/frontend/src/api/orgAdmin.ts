@@ -4,7 +4,8 @@
  * administrator) and their own session (see orgPanelClient.ts).
  */
 import { orgPanelClient, orgPanelRefresh, orgPanelRequest } from './orgPanelClient';
-import type { IntegrationStatus, SyncResponse } from './razorpay';
+import type { AppContent } from './appContent';
+import type { OrgAppContent } from './platform';
 import type { AuditLog, Message, User } from './types';
 
 /** A login for the organization admin panel (not one of the organization's users). */
@@ -15,6 +16,8 @@ export interface OrgPanelAdmin {
   organizationId: string;
   lastLoginAt?: string | null;
   createdAt: string;
+  /** Signed in with the default ID or a temporary password: must choose their own first. */
+  mustChangeCredentials?: boolean;
 }
 
 export interface OrgPanelSession {
@@ -115,18 +118,25 @@ export interface OrgAdminUserOverview {
 
 export const orgAdminApi = {
   auth: {
-    login: (body: { email: string; password: string }) =>
+    login: (body: { loginId: string; password: string }) =>
       orgPanelRequest<OrgPanelAuthResponse>('/org-admin/auth/login', { method: 'POST', body, retryOnUnauthorized: false }),
     refresh: () => orgPanelRefresh<OrgPanelAuthResponse>(),
     logout: () => orgPanelRequest<Message>('/org-admin/auth/logout', { method: 'POST', retryOnUnauthorized: false }),
     changePassword: (body: { currentPassword: string; newPassword: string }) =>
       orgPanelClient.post<Message>('/org-admin/auth/change-password', body),
+    /** Replace the default ID / temporary password with the admin's own. */
+    setup: (body: { loginId: string; name?: string; newPassword: string }) =>
+      orgPanelClient.post<OrgPanelSession>('/org-admin/auth/setup', body),
+    /** Ask the platform admin for a new password. */
+    forgotPassword: (body: { loginId: string }) =>
+      orgPanelRequest<Message>('/org-admin/auth/forgot-password', { method: 'POST', body, retryOnUnauthorized: false }),
   },
   me: (signal?: AbortSignal) => orgPanelClient.get<OrgPanelSession>('/org-admin/me', undefined, signal),
-  /** Razorpay for this organization: status and sync only (the keys are the platform admin's). */
-  razorpay: {
-    status: () => orgPanelClient.get<IntegrationStatus>('/org-admin/integrations/razorpay'),
-    sync: (full: boolean) => orgPanelClient.post<SyncResponse>('/org-admin/integrations/razorpay/sync', { full }),
+  /** This organization's app content; only the parts in `editable` can be changed. */
+  appContent: {
+    get: (signal?: AbortSignal) => orgPanelClient.get<OrgAppContent>('/org-admin/app-content', undefined, signal),
+    update: (body: AppContent) => orgPanelClient.put<OrgAppContent>('/org-admin/app-content', body),
+    reset: () => orgPanelClient.post<OrgAppContent>('/org-admin/app-content/reset'),
   },
   dashboard: (signal?: AbortSignal) => orgPanelClient.get<OrgAdminDashboard>('/org-admin/dashboard', undefined, signal),
   updateUserRole: (userId: string, role: string) => orgPanelClient.patch<User>(`/org-admin/users/${userId}`, { role }),

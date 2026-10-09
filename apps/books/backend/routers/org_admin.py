@@ -31,6 +31,7 @@ from backend.config import get_settings
 from backend.db import get_db
 from backend.deps import get_current_org_panel_admin, org_panel_access_error
 from backend.models import AuditLog, Employee, Organization, OrgPanelAdmin, OrgPanelRefreshToken, User
+from backend.schemas.app_content import AppContent, AppContentOverrides, OrgAppContentOut, PanelContentAccessOut
 from backend.schemas.auth import (
     AdminResetPasswordRequest,
     AuditLogOut,
@@ -43,11 +44,13 @@ from backend.schemas.auth import (
 from backend.schemas.common import APIModel, Message, Page
 from backend.schemas.org_admin import (
     ChangeOrgPanelPasswordRequest,
+    ForgotPanelPasswordRequest,
     OrgPanelAdminProfile,
     OrgPanelLoginRequest,
     OrgPanelMeOut,
     OrgPanelOrgRef,
     OrgPanelTokenResponse,
+    SetupCredentialsRequest,
 )
 from backend.security import (
     create_org_panel_access_token,
@@ -56,8 +59,9 @@ from backend.security import (
     hash_token,
     verify_password,
 )
-from backend.services import audit, module_pricing, org_users, subscription
+from backend.services import audit, module_pricing, org_users, panel_content, subscription
 from backend.services import user_overview as user_overview_service
+from backend.services.app_content import get_app_content, get_org_app_content, get_org_overrides
 from backend.services.ratelimit import RateLimiter, client_ip
 from backend.services.tenancy import Pagination
 from backend.services.user_overview import UserOverviewOut
@@ -123,8 +127,7 @@ def _issue_tokens(db: Session, admin: OrgPanelAdmin, response: Response, request
 @auth_router.post("/login", response_model=OrgPanelTokenResponse)
 def org_panel_login(payload: OrgPanelLoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     _login_limiter.check(f"org-panel-login:{client_ip(request)}")
-    email = payload.email.lower().strip()
-    admin = db.execute(select(OrgPanelAdmin).where(OrgPanelAdmin.email == email)).scalar_one_or_none()
+    admin = db.execute(select(OrgPanelAdmin).where(OrgPanelAdmin.email == payload.login_id)).scalar_one_or_none()
     # Constant-ish work whether or not the account exists, to blunt enumeration.
     ok = bool(admin) and admin.is_active and verify_password(payload.password, admin.password_hash)
     if not ok:
@@ -171,6 +174,57 @@ def org_panel_logout(request: Request, response: Response, db: Session = Depends
             db.commit()
     response.delete_cookie(ORG_PANEL_REFRESH_COOKIE, path=_REFRESH_COOKIE_PATH, domain=settings.cookie_domain)
     return Message(message="Signed out")
+
+
+@auth_router.post("/forgot-password", response_model=Message)
+def org_panel_forgot_password(payload: ForgotPanelPasswordRequest, request: Request, db: Session = Depends(get_db)):
+    """Ask the platform admin for a new password. The answer is the same whether or not the ID exists."""
+    _login_limiter.check(f"org-panel-forgot:{client_ip(request)}")
+    admin = db.execute(select(OrgPanelAdmin).where(OrgPanelAdmin.email == payload.login_id)).scalar_one_or_none()
+    if admin is not None and admin.is_active and admin.reset_requested_at is None:
+        admin.reset_requested_at = datetime.now(UTC)
+        audit.record(db, admin, "request", "org_panel_admin", admin.id, f"Password reset requested for admin login {admin.email}")
+        db.commit()
+    return Message(
+        message="Your request has been sent to the platform administrator. Once they approve it, they will give you a new "
+        "temporary password."
+    )
+
+
+@auth_router.post("/setup", response_model=OrgPanelMeOut)
+def org_panel_setup(
+    payload: SetupCredentialsRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: OrgPanelAdmin = Depends(get_current_org_panel_admin),
+):
+    """First sign-in (or after a reset): replace the default ID / temporary password with the admin's own."""
+    if not admin.must_change_credentials:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Your login is already set up. Use Change password instead.")
+    if db.execute(select(OrgPanelAdmin.id).where(OrgPanelAdmin.email == payload.login_id, OrgPanelAdmin.id != admin.id)).first():
+        raise HTTPException(status.HTTP_409_CONFLICT, "This login ID is already taken. Choose another one.")
+    if verify_password(payload.new_password, admin.password_hash):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose a new password, not the temporary one.")
+    old_id = admin.email
+    admin.email = payload.login_id
+    if payload.name:
+        admin.name = payload.name
+    admin.password_hash = hash_password(payload.new_password)
+    admin.must_change_credentials = False
+    admin.reset_requested_at = None
+    # Keep this browser signed in; end every other session.
+    raw = request.cookies.get(ORG_PANEL_REFRESH_COOKIE)
+    keep_hash = hash_token(raw) if raw else None
+    now = datetime.now(UTC)
+    stmt = select(OrgPanelRefreshToken).where(OrgPanelRefreshToken.admin_id == admin.id, OrgPanelRefreshToken.revoked_at.is_(None))
+    for tok in db.execute(stmt).scalars().all():
+        if not (keep_hash and tok.token_hash == keep_hash):
+            tok.revoked_at = now
+    changed = f"login ID {old_id} -> {admin.email}" if old_id != admin.email else f"login ID {admin.email}"
+    audit.record(db, admin, "update", "org_panel_admin", admin.id, f"Admin login set up ({changed}, new password)")
+    db.commit()
+    db.refresh(admin)
+    return _me_out(admin, db.get(Organization, admin.organization_id))
 
 
 @auth_router.post("/change-password", response_model=Message)
@@ -375,6 +429,13 @@ def set_module_access(
     return UserOut.model_validate(target)
 
 
+@router.get("/plan-modules")
+def plan_modules(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
+    """Modules of the organization's accepted plan (null = every module: trial or no plan)."""
+    plan = subscription.paid_modules(db.get(Organization, admin.organization_id))
+    return {"planModules": sorted(plan) if plan is not None else None}
+
+
 @router.post("/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 def invite_user(payload: InviteUserRequest, admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
     return org_users.invite_user(db, admin.organization_id, admin, payload)
@@ -414,35 +475,6 @@ def update_organization(
     return org_users.update_organization(db, admin.organization_id, admin, payload)
 
 
-# --------------------------------------------------------------------------- #
-# Integrations: Razorpay status and sync for this organization. The keys are
-# platform-wide and managed only by the platform super-admin.
-# --------------------------------------------------------------------------- #
-class RazorpaySyncIn(APIModel):
-    full: bool = False
-
-
-@router.get("/integrations/razorpay")
-def razorpay_status(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
-    from backend.routers.razorpay import integration_status_payload
-
-    return integration_status_payload(db, admin.organization_id)
-
-
-@router.post("/integrations/razorpay/sync")
-def razorpay_sync_now(
-    payload: Optional[RazorpaySyncIn] = None,
-    admin: OrgPanelAdmin = Depends(get_current_org_panel_admin),
-    db: Session = Depends(get_db),
-):
-    from backend.routers.razorpay import run_sync_for_org
-
-    result = run_sync_for_org(db, admin.organization_id, full=bool(payload and payload.full), user_id=None)
-    audit.record(db, admin, "sync", "integration", "razorpay", f"Razorpay sync run from the admin panel: {result['message']}")
-    db.commit()
-    return result
-
-
 @router.get("/audit-logs", response_model=Page[AuditLogOut])
 def audit_logs(
     entity_type: Optional[str] = None,
@@ -452,3 +484,46 @@ def audit_logs(
 ):
     """The organization's full activity log, newest first (optionally one entity type)."""
     return org_users.audit_log_page(db, admin.organization_id, entity_type, pagination)
+
+
+# --------------------------------------------------------------------------- #
+# App content: only the parts the platform admin lets this panel edit
+# --------------------------------------------------------------------------- #
+def _content_out(db: Session, org: Organization) -> OrgAppContentOut:
+    overrides = get_org_overrides(db, org.id)
+    return OrgAppContentOut(
+        organization_id=org.id,
+        organization_name=org.name,
+        content=get_org_app_content(db, org.id),
+        shared=get_app_content(db),
+        overridden=AppContentOverrides(
+            branding=sorted(overrides["branding"]),
+            modules=sorted(overrides["modules"]),
+            texts=sorted(overrides["texts"]),
+        ),
+        editable=PanelContentAccessOut(**panel_content.access_out(org)),
+    )
+
+
+@router.get("/app-content", response_model=OrgAppContentOut)
+def read_app_content(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
+    return _content_out(db, db.get(Organization, admin.organization_id))
+
+
+@router.put("/app-content", response_model=OrgAppContentOut)
+def update_app_content(payload: AppContent, admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
+    org = db.get(Organization, admin.organization_id)
+    overrides = panel_content.save_for_panel(db, org, payload)
+    count = sum(len(v) for v in overrides.values())
+    audit.record(db, admin, "update", "app_content", org.id, f"App content customized ({count} field(s))")
+    db.commit()
+    return _content_out(db, org)
+
+
+@router.post("/app-content/reset", response_model=OrgAppContentOut)
+def reset_app_content(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
+    org = db.get(Organization, admin.organization_id)
+    panel_content.reset_for_panel(db, org)
+    audit.record(db, admin, "update", "app_content", org.id, "Editable app content reset to the shared content")
+    db.commit()
+    return _content_out(db, org)

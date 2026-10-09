@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { APP_MODULES } from './appContent';
 import {
   DEFAULT_MODULE_PRICING,
+  coreModules,
   dependentsOf,
   fetchModulePricing,
   formatPrice,
@@ -11,6 +12,7 @@ import {
   planSummary,
   quote,
   resolveModules,
+  withCore,
 } from './modulePricing';
 
 const catalog = DEFAULT_MODULE_PRICING;
@@ -52,28 +54,39 @@ describe('dependentsOf', () => {
 });
 
 describe('quote', () => {
-  it('prices the resolved selection on top of the base fee, monthly by default', () => {
-    const monthly = 499 + 99 + 299 + 149;
-    expect(quote(['paymentsReceived'], catalog)).toEqual({
-      modules: ['customers', 'invoices', 'paymentsReceived'],
+  // Core modules (what Books needs to run) are in every plan.
+  const core = ['items', 'customers', 'invoices', 'paymentsReceived', 'accounting', 'reports'];
+  const coreTotal = 199 + 99 + 299 + 149 + 299 + 199;
+
+  it('prices the core modules plus the selection on top of the base fee, monthly by default', () => {
+    expect(coreModules(catalog)).toEqual(core);
+    const monthly = 499 + coreTotal + 399;
+    expect(quote(['payroll'], catalog)).toEqual({
+      modules: [...core, 'payroll'],
       basePrice: 499,
-      modulesTotal: 99 + 299 + 149,
+      modulesTotal: coreTotal + 399,
       monthlyPrice: monthly,
       billingCycle: 'monthly',
       planPrice: monthly,
       yearlySaving: monthly * 2,
     });
-    expect(quote([], catalog).monthlyPrice).toBe(499);
+    expect(quote([], catalog).modules).toEqual(core);
+    expect(quote([], catalog).monthlyPrice).toBe(499 + coreTotal);
   });
 
   it('charges a yearly plan at the multiplier (10 × monthly: two months free)', () => {
-    const q = quote(['items', 'customers', 'invoices', 'paymentsReceived', 'vendors', 'bills'], catalog, 'yearly');
-    expect(q.monthlyPrice).toBe(1593);
+    const q = quote(['vendors', 'bills'], catalog, 'yearly');
+    const monthly = 499 + coreTotal + 99 + 249;
+    expect(q.monthlyPrice).toBe(monthly);
     expect(q.billingCycle).toBe('yearly');
-    expect(q.planPrice).toBe(15930);
-    expect(q.yearlySaving).toBe(1593 * 12 - 15930);
+    expect(q.planPrice).toBe(monthly * 10);
+    expect(q.yearlySaving).toBe(monthly * 12 - monthly * 10);
     expect(freeMonths(catalog)).toBe(2);
     expect(quote(['items'], { ...catalog, yearlyMultiplier: 12 }, 'yearly').yearlySaving).toBe(0);
+  });
+
+  it('adds the core modules to a selection', () => {
+    expect(withCore(['bills'], catalog)).toEqual([...core.slice(0, 4), 'vendors', 'bills', 'accounting', 'reports']);
   });
 });
 

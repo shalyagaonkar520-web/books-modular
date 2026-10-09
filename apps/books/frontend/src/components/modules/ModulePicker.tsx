@@ -5,11 +5,13 @@
  *
  * Dependencies: ticking a module also ticks what it needs; unticking a module
  * also unticks every selected module that needs it (each card says which).
+ * Core modules (what Books needs to run) are always ticked and locked.
  */
 import { useId } from 'react';
 
 import {
   MODULE_GROUPS,
+  coreModules,
   cycleSuffix,
   dependentsOf,
   formatPrice,
@@ -17,7 +19,7 @@ import {
   moduleLabel,
   periodSuffix,
   quote,
-  resolveModules,
+  withCore,
   type BillingCycle,
   type ModulePricing,
   type PricedModule,
@@ -42,7 +44,8 @@ function listLabels(keys: string[], catalog: ModulePricing): string {
 
 export function ModulePicker({ catalog, value, onChange, compact = false, disabled = false, error, label = 'Modules' }: ModulePickerProps) {
   const baseId = useId();
-  const selected = new Set<string>(value);
+  const core = new Set<string>(coreModules(catalog));
+  const selected = new Set<string>([...value, ...core]);
   const byKey = new Map(catalog.modules.map((module) => [module.key as string, module]));
   const grouped = new Set(MODULE_GROUPS.flatMap((group) => group.keys));
   const groups = MODULE_GROUPS.map((group) => ({
@@ -57,11 +60,12 @@ export function ModulePicker({ catalog, value, onChange, compact = false, disabl
   }
 
   const toggle = (key: AppModuleKey) => {
+    if (core.has(key)) return;
     if (selected.has(key)) {
       const removed = new Set<string>([key, ...dependentsOf(key, value, catalog)]);
-      onChange(value.filter((item) => !removed.has(item)));
+      onChange(withCore(value.filter((item) => !removed.has(item)), catalog));
     } else {
-      onChange(resolveModules([...value, key], catalog));
+      onChange(withCore([...value, key], catalog));
     }
   };
 
@@ -71,7 +75,7 @@ export function ModulePicker({ catalog, value, onChange, compact = false, disabl
     <div className={`module-picker${compact ? ' is-compact' : ''}`} role="group" aria-label={label}>
       <div className="module-picker-bar">
         <span className="text-muted small">
-          {value.length} of {catalog.modules.length} selected
+          {selected.size} of {catalog.modules.length} selected
         </span>
         <span className="row" style={{ gap: 4 }}>
           <button
@@ -82,7 +86,12 @@ export function ModulePicker({ catalog, value, onChange, compact = false, disabl
           >
             Select all
           </button>
-          <button type="button" className="btn btn-link btn-sm" disabled={disabled || value.length === 0} onClick={() => onChange([])}>
+          <button
+            type="button"
+            className="btn btn-link btn-sm"
+            disabled={disabled || selected.size <= core.size}
+            onClick={() => onChange(withCore([], catalog))}
+          >
             Clear
           </button>
         </span>
@@ -96,15 +105,17 @@ export function ModulePicker({ catalog, value, onChange, compact = false, disabl
             <div className="module-grid">
               {group.modules.map((module) => {
                 const checked = selected.has(module.key);
+                const locked = core.has(module.key);
                 const nameId = `${baseId}-${module.key}-name`;
                 const infoId = `${baseId}-${module.key}-info`;
-                const usedBy = checked ? dependentsOf(module.key, value, catalog) : [];
+                const usedBy = checked && !locked ? dependentsOf(module.key, value, catalog) : [];
                 return (
-                  <label key={module.key} className={`module-card${checked ? ' is-selected' : ''}`}>
+                  <label key={module.key} className={`module-card${checked ? ' is-selected' : ''}${locked ? ' is-core' : ''}`}>
                     <input
                       type="checkbox"
                       className="checkbox"
                       checked={checked}
+                      disabled={locked}
                       onChange={() => toggle(module.key)}
                       aria-labelledby={nameId}
                       aria-describedby={infoId}
@@ -121,7 +132,8 @@ export function ModulePicker({ catalog, value, onChange, compact = false, disabl
                       </span>
                       <span id={infoId}>
                         {!compact && module.description ? <span className="module-card-desc">{module.description}</span> : null}
-                        {module.requires.length ? (
+                        {locked ? <span className="module-card-hint">Included in every plan</span> : null}
+                        {!locked && module.requires.length ? (
                           <span className="module-card-hint">Needs {listLabels(module.requires, catalog)}</span>
                         ) : null}
                         {usedBy.length ? (

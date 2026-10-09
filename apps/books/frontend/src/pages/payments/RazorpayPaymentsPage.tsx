@@ -93,7 +93,7 @@ export function RazorpayPaymentsPage() {
         <div className="notification notification-info" role="status">
           <span>
             Razorpay is not configured on this server. An administrator can set the credentials in the server
-            environment — see Settings → Integrations → Razorpay.
+            environment (set by the platform administrator).
           </span>
         </div>
       ) : null}

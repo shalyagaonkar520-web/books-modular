@@ -130,7 +130,7 @@ function authHeader(fetchMock: MockApi['fetchMock'], path: string): string | und
 }
 
 async function signIn(email: string, password: string) {
-  fireEvent.change(await screen.findByLabelText(/^Email/), { target: { value: email } });
+  fireEvent.change(await screen.findByLabelText(/^Admin ID/), { target: { value: email } });
   fireEvent.change(screen.getByLabelText(/^Password/), { target: { value: password } });
   fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 }
@@ -163,11 +163,51 @@ describe('Organization admin panel', () => {
     expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
     expect(screen.getByTestId('location').textContent).toBe('/org-admin');
     expect(calls.find((call) => call.path === '/api/org-admin/auth/login')?.body).toEqual({
-      email: 'meera@rooman.example',
+      loginId: 'meera@rooman.example',
       password: 'S3cret-pass',
     });
     // Panel requests carry the panel token.
     expect(authHeader(fetchMock, '/api/org-admin/dashboard')).toBe('Bearer panel-token');
+  });
+
+  it('sends a default login to set up its own ID and password first', async () => {
+    const temp = { ...PANEL_AUTH, admin: { ...PANEL_AUTH.admin, email: 'admin@rooman', name: 'Admin', mustChangeCredentials: true } };
+    const { calls } = installMockApi({
+      ...signedOut,
+      'POST /api/org-admin/auth/login': temp,
+      'POST /api/org-admin/auth/setup': { ...PANEL_SESSION, admin: { ...PANEL_SESSION.admin, email: 'meera@rooman.example', mustChangeCredentials: false } },
+      'GET /api/org-admin/dashboard': DASHBOARD,
+    });
+    renderPanel('/org-admin/login');
+    await signIn('admin@rooman', 'Tmp-Pass-1234');
+
+    expect(await screen.findByRole('heading', { name: 'Set up your admin login' })).toBeInTheDocument();
+    expect(screen.getByTestId('location').textContent).toBe('/org-admin/setup');
+    fireEvent.change(screen.getByLabelText(/^Your admin ID/), { target: { value: 'Meera@Rooman.example' } });
+    fireEvent.change(screen.getByLabelText(/^Your name/), { target: { value: 'Meera Iyer' } });
+    fireEvent.change(screen.getByLabelText(/^New password/), { target: { value: 'Own-Pass-2026' } });
+    fireEvent.change(screen.getByLabelText(/^Confirm new password/), { target: { value: 'Own-Pass-2026' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save and continue' }));
+
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(calls.find((call) => call.path === '/api/org-admin/auth/setup')?.body).toEqual({
+      loginId: 'meera@rooman.example',
+      name: 'Meera Iyer',
+      newPassword: 'Own-Pass-2026',
+    });
+  });
+
+  it('sends a forgot-password request to the platform administrator', async () => {
+    const { calls } = installMockApi({
+      ...signedOut,
+      'POST /api/org-admin/auth/forgot-password': { message: 'Your request has been sent to the platform administrator.' },
+    });
+    renderPanel('/org-admin/login');
+    fireEvent.change(await screen.findByLabelText(/^Admin ID/), { target: { value: 'Meera@Rooman.example' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Forgot password? Request a reset' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send reset request' }));
+    expect(await screen.findByText('Your request has been sent to the platform administrator.')).toBeInTheDocument();
+    expect(calls.find((call) => call.path === '/api/org-admin/auth/forgot-password')?.body).toEqual({ loginId: 'meera@rooman.example' });
   });
 
   it('shows the server message when sign-in is refused', async () => {
@@ -188,7 +228,7 @@ describe('Organization admin panel', () => {
     expect(screen.getByText('Organization Admin')).toBeInTheDocument();
     expect(screen.getByText('Meera Iyer')).toBeInTheDocument();
     const nav = screen.getByRole('complementary', { name: 'Organization admin navigation' });
-    expect(Array.from(nav.querySelectorAll('a')).map((link) => link.textContent)).toEqual(['Dashboard', 'Users', 'Organization', 'Integrations', 'Activity log']);
+    expect(Array.from(nav.querySelectorAll('a')).map((link) => link.textContent)).toEqual(['Dashboard', 'Users', 'Organization', 'App content', 'Activity log']);
     expect(screen.queryByRole('button', { name: 'Back to app' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Change password' })).toBeInTheDocument();
   });
@@ -259,7 +299,8 @@ describe('Organization admin panel', () => {
     const dialog = await screen.findByRole('dialog');
     const role = within(dialog).getByLabelText(/^Role/) as HTMLSelectElement;
     // Employee invites need the payroll employee list, which the panel does not have.
-    expect(Array.from(role.options).map((option) => option.value)).toEqual(['admin', 'staff', 'viewer']);
+    // ...but it can invite staff with a custom set of editable modules.
+    expect(Array.from(role.options).map((option) => option.value)).toEqual(['admin', 'staff', 'viewer', 'custom']);
     expect(calls.some((call) => call.path.startsWith('/api/payroll'))).toBe(false);
     fireEvent.change(within(dialog).getByLabelText(/^Full name/), { target: { value: 'Arun Rao' } });
     fireEvent.change(within(dialog).getByLabelText(/^Email/), { target: { value: 'arun@example.com' } });
@@ -283,7 +324,7 @@ describe('Organization admin panel', () => {
     expect(calls.some((call) => call.path.includes('audit-logs'))).toBe(false);
   });
 
-  it.each(['/org-admin/settings', '/org-admin/app-content'])('sends the removed page %s to the dashboard', async (route) => {
+  it.each(['/org-admin/settings'])('sends the removed page %s to the dashboard', async (route) => {
     installMockApi({ ...signedIn, 'GET /api/org-admin/dashboard': DASHBOARD });
     renderPanel(route);
     expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
@@ -378,41 +419,39 @@ describe('Organization admin panel', () => {
     expect(calls.find((call) => call.method === 'PATCH')?.body).toEqual({ role: 'staff' });
   });
 
-  it('shows Razorpay status and syncs for the organization, without the keys form', async () => {
-    const status = {
-      configured: true,
-      connected: true,
-      reachable: false,
-      mode: 'test',
-      key_id_masked: 'rzp_test_AB...YZ',
-      webhook_configured: true,
-      auto_sync_enabled: false,
-      sync_interval_minutes: 30,
-      initial_import_days: 30,
-      webhook_path: '/api/razorpay/webhook',
-      transactions_imported: 42,
-      ever_synced: true,
-      last_successful_sync: null,
-      last_sync: null,
-    };
+  it('has no Integrations page any more', async () => {
+    installMockApi({ ...signedIn, 'GET /api/org-admin/dashboard': DASHBOARD });
+    renderPanel('/org-admin/integrations');
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(screen.getByTestId('location').textContent).toBe('/org-admin');
+  });
+
+  it('edits only the app content the platform admin allows', async () => {
     const { calls } = installMockApi({
       ...signedIn,
-      'GET /api/org-admin/integrations/razorpay': status,
-      'POST /api/org-admin/integrations/razorpay/sync': { success: true, message: '3 transactions imported', sync: null },
+      'GET /api/app-content': DEFAULT_APP_CONTENT,
+      'GET /api/org-admin/app-content': {
+        organizationId: 'org1',
+        organizationName: 'Rooman Technologies',
+        content: DEFAULT_APP_CONTENT,
+        shared: DEFAULT_APP_CONTENT,
+        overridden: { branding: [], modules: [], texts: [] },
+        editable: { modules: ['invoices', 'payroll'], branding: false, general: false, isDefault: false, planModules: ['customers', 'invoices'] },
+      },
     });
-    renderPanel('/org-admin/integrations');
-    expect(await screen.findByText('rzp_test_AB...YZ')).toBeInTheDocument();
-    expect(screen.getByText('42')).toBeInTheDocument();
-    // The keys are platform-wide: no connect, edit or disconnect here.
-    expect(screen.queryByRole('button', { name: /Disconnect/i })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/Key secret/i)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Sync now/i }));
-    await waitFor(() =>
-      expect(calls.find((call) => call.method === 'POST' && call.path === '/api/org-admin/integrations/razorpay/sync')?.body).toEqual({
-        full: false,
-      }),
-    );
-    expect(calls.some((call) => call.path.startsWith('/api/razorpay'))).toBe(false);
+    renderPanel('/org-admin/app-content');
+    expect(await screen.findByLabelText('Search texts')).toBeInTheDocument();
+    // No branding section, and only the allowed text groups.
+    expect(screen.queryByRole('button', { name: /^Branding/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Invoices/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Items/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Dashboard/ })).not.toBeInTheDocument();
+    // Modules: only the allowed ones; payroll is outside the plan, so it is locked off.
+    fireEvent.click(screen.getByRole('button', { name: /^Modules/ }));
+    expect(screen.getByRole('checkbox', { name: /^Invoices/ })).toBeEnabled();
+    expect(screen.getByRole('checkbox', { name: /^Payroll/ })).toBeDisabled();
+    expect(screen.queryByRole('checkbox', { name: /^Banking/ })).not.toBeInTheDocument();
+    expect(calls.some((call) => call.path.startsWith('/api/platform'))).toBe(false);
   });
 
   it('shows the full activity log from the panel endpoint', async () => {

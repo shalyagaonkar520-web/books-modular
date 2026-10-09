@@ -94,6 +94,11 @@ def _shared_enabled(c: TestClient) -> set:
     return {k for k, v in c.get("/api/public/app-content").json()["modules"].items() if v}
 
 
+def _plan(keys) -> list:
+    """What a plan stores for a selection: the core modules, the selection and their requires."""
+    return module_pricing.resolve([*module_pricing.core_keys(), *keys])
+
+
 def _price(keys) -> int:
     cat = module_pricing.catalog()
     prices = {m["key"]: m["price"] for m in cat["modules"]}
@@ -253,15 +258,15 @@ def test_admin_requests_monthly_and_yearly(client, tenant):
     res = _request(client, h, ["paymentsReceived", "items"])
     assert res.status_code == 200, res.text
     pending = res.json()["pendingRequest"]
-    expected = ["items", "customers", "invoices", "paymentsReceived"]
-    assert pending["modules"] == expected and pending["billingCycle"] == "monthly"
-    assert pending["monthlyPrice"] == pending["planPrice"] == _price(expected) == 499 + 199 + 99 + 299 + 149
+    expected = ["items", "customers", "invoices", "paymentsReceived", "accounting", "reports"]  # the core modules
+    assert pending["modules"] == expected == _plan(["paymentsReceived", "items"]) and pending["billingCycle"] == "monthly"
+    assert pending["monthlyPrice"] == pending["planPrice"] == _price(expected) == 499 + 199 + 99 + 299 + 149 + 299 + 199
     assert pending["requestedAt"] and res.json()["status"] == "trial" and res.json()["plan"] is None
 
     # A new request replaces the pending one; yearly = 10 x monthly.
     yearly = _request(client, h, ["bills"], "yearly").json()["pendingRequest"]
-    assert yearly["modules"] == ["vendors", "bills"] and yearly["billingCycle"] == "yearly"
-    assert yearly["monthlyPrice"] == _price(["vendors", "bills"]) and yearly["planPrice"] == 10 * _price(["vendors", "bills"])
+    assert yearly["modules"] == _plan(["bills"]) and "vendors" in yearly["modules"] and yearly["billingCycle"] == "yearly"
+    assert yearly["monthlyPrice"] == _price(_plan(["bills"])) and yearly["planPrice"] == 10 * _price(_plan(["bills"]))
     # Requesting does not change the modules during the trial.
     assert _enabled_modules(client, h) == _shared_enabled(client)
 
@@ -311,12 +316,12 @@ def test_super_admin_approves_request_with_override(client, tenant, platform_h):
 
     rows = client.get("/api/platform/subscription-requests", headers=platform_h).json()
     row = next(r for r in rows if r["organizationId"] == org_id)
-    assert row["modules"] == ["vendors", "bills"] and row["billingCycle"] == "yearly"
+    assert row["modules"] == _plan(["bills"]) and row["billingCycle"] == "yearly"
     assert row["planPrice"] == 10 * row["monthlyPrice"] and row["subscriptionStatus"] == "expired" and row["requestedAt"]
     assert row["organizationName"] == tenant["org"]["name"] and row["trialEndsAt"]
     assert client.get("/api/platform/dashboard", headers=platform_h).json()["pendingSubscriptionRequests"] >= 1
     detail = client.get(f"/api/platform/organizations/{org_id}", headers=platform_h).json()
-    assert detail["subscriptionStatus"] == "expired" and detail["pendingRequest"]["modules"] == ["vendors", "bills"]
+    assert detail["subscriptionStatus"] == "expired" and detail["pendingRequest"]["modules"] == _plan(["bills"])
     summary = next(
         o
         for o in client.get(
@@ -330,7 +335,7 @@ def test_super_admin_approves_request_with_override(client, tenant, platform_h):
     res = client.post(f"/api/platform/organizations/{org_id}/subscription/approve", headers=platform_h, json={"modules": ["invoices"]})
     assert res.status_code == 200, res.text
     out = res.json()
-    expected = ["customers", "invoices"]
+    expected = _plan(["invoices"])
     assert out["subscriptionStatus"] == "active" and out["pendingRequest"] is None
     assert out["plan"] == {
         "modules": expected,
@@ -348,16 +353,16 @@ def test_super_admin_approves_request_with_override(client, tenant, platform_h):
 
     # An active org asking for a change keeps its plan until that is accepted.
     change = _request(client, h, ["payroll"], "monthly").json()
-    assert change["status"] == "active" and change["plan"]["modules"] == expected and change["pendingRequest"]["modules"] == ["payroll"]
+    assert change["status"] == "active" and change["plan"]["modules"] == expected and change["pendingRequest"]["modules"] == _plan(["payroll"])
     assert client.post(f"/api/platform/organizations/{org_id}/subscription/approve", headers=platform_h).status_code == 200
     sub = client.get("/api/subscription", headers=h).json()
     assert sub["plan"] == {
-        "modules": ["payroll"],
+        "modules": _plan(["payroll"]),
         "billingCycle": "monthly",
-        "monthlyPrice": _price(["payroll"]),
-        "planPrice": _price(["payroll"]),
+        "monthlyPrice": _price(_plan(["payroll"])),
+        "planPrice": _price(_plan(["payroll"])),
     }
-    assert _enabled_modules(client, h) == {"payroll"} & _shared_enabled(client)
+    assert _enabled_modules(client, h) == set(_plan(["payroll"])) & _shared_enabled(client)
 
     # Cancelling the plan locks the org and switches every module back on.
     cancelled = client.post(f"/api/platform/organizations/{org_id}/subscription/cancel", headers=platform_h)
@@ -375,10 +380,10 @@ def test_approve_needs_a_request_or_modules(client, tenant, platform_h):
     res = client.post(url, headers=platform_h, json={"modules": ["items"], "billingCycle": "yearly"})
     assert res.status_code == 200, res.text
     assert res.json()["plan"] == {
-        "modules": ["items"],
+        "modules": _plan(["items"]),
         "billingCycle": "yearly",
-        "monthlyPrice": _price(["items"]),
-        "planPrice": 10 * _price(["items"]),
+        "monthlyPrice": _price(_plan(["items"])),
+        "planPrice": 10 * _price(_plan(["items"])),
     }
     assert client.post("/api/platform/organizations/nope/subscription/approve", headers=platform_h).status_code == 404
 
@@ -441,9 +446,9 @@ def _accept(c: TestClient, platform_h: dict, org_id: str, modules) -> None:
 
 def test_writes_outside_the_plan_are_refused(client, tenant, platform_h):
     h, org_id = tenant["h"], tenant["org_id"]
-    _accept(client, platform_h, org_id, ["invoices"])  # pulls in customers
+    _accept(client, platform_h, org_id, ["invoices"])  # plus the core modules
 
-    for path, body in (("/api/items", {"name": "Widget"}), ("/api/payroll/employees", {}), ("/api/documents/import-excel-commit", {})):
+    for path, body in (("/api/bills", {}), ("/api/payroll/employees", {}), ("/api/documents/import-excel-commit", {})):
         res = client.post(path, headers=h, json=body)
         assert res.status_code == 403 and "subscription plan" in res.json()["detail"], (path, res.text)
     # Reads stay open: paid modules look up items, accounts and bank accounts.

@@ -202,7 +202,7 @@ export function RazorpayTransactions({ categories }: { categories: CategoryOptio
         ) : !data || data.items.length === 0 ? (
           <EmptyState
             title="No transactions match these filters"
-            description="Clear the filters, or run a synchronisation from Settings → Integrations → Razorpay."
+            description="Clear the filters, or use Sync now at the top of this page."
           />
         ) : (
           <>

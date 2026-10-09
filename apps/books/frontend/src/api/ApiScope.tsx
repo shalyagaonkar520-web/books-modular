@@ -30,6 +30,8 @@ export interface ApiScopeCapabilities {
   userDashboard: boolean;
   /** Inviting with the portal-only "employee" role (needs the payroll employee list). */
   employeeInvites: boolean;
+  /** Inviting staff with a custom set of editable modules (GET {prefix}/plan-modules). */
+  customInvites?: boolean;
 }
 
 export interface ApiScopeValue {
@@ -76,7 +78,8 @@ export function useScopedOrgApi() {
       get: () => client.get<Organization>(`${prefix}/organization`),
       update: (body: Partial<Organization>) => client.put<Organization>(`${prefix}/organization`, body),
       users: () => client.get<User[]>(`${prefix}/users`),
-      inviteUser: (body: { name: string; email: string; role: string; employeeId?: string }) =>
+      planModules: () => client.get<{ planModules: string[] | null }>(`${prefix}/plan-modules`),
+      inviteUser: (body: { name: string; email: string; role: string; employeeId?: string; moduleAccess?: string[] }) =>
         client.post<User>(`${prefix}/users`, body),
       updateUser: (id: string, body: { name?: string; role?: string; isActive?: boolean }) =>
         client.patch<User>(`${prefix}/users/${id}`, body),

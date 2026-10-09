@@ -145,8 +145,15 @@ def get_current_org_panel_admin(
     error = org_panel_access_error(org)
     if error:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=error)
+    if admin.must_change_credentials and request.url.path not in _PANEL_SETUP_PATHS:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=PANEL_SETUP_REQUIRED_DETAIL)
     request.state.org_panel_admin = admin
     return admin
+
+
+# A default login or a reset password must first be replaced by the admin's own.
+_PANEL_SETUP_PATHS = frozenset({"/api/org-admin/me", "/api/org-admin/auth/setup"})
+PANEL_SETUP_REQUIRED_DETAIL = "SETUP_REQUIRED: Choose your own login ID and password before using the admin panel."
 
 
 TRIAL_ENDED_ADMIN_ONLY_DETAIL = (

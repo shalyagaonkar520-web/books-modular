@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { FileDown, FileSpreadsheet, Mail, Plus, Trash2, Wallet } from 'lucide-react';
+import { FileDown, FileSpreadsheet, Mail, Plus, Wallet } from 'lucide-react';
 
 import { contactsApi, vendorPaymentsApi } from '@/api/endpoints';
 import type { VendorPayment } from '@/api/types';
@@ -8,13 +8,12 @@ import { StatTile } from '@/components/ui/Card';
 import { DataTable, Pagination, type Column } from '@/components/ui/DataTable';
 import { EmptyState, ErrorBlock, FormError, SkeletonRows } from '@/components/ui/Feedback';
 import { CheckboxField, TextAreaField, TextField } from '@/components/ui/Field';
-import { ConfirmDialog, Modal } from '@/components/ui/Modal';
+import { Modal } from '@/components/ui/Modal';
 import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { FilterSelect, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
 import { IfCanWrite } from '@/auth/RouteGuards';
-import { useAuth } from '@/auth/AuthContext';
 import { useAsync } from '@/hooks/useAsync';
 import { useDownload } from '@/hooks/useDownload';
 import { useSubmit } from '@/hooks/useSubmit';
@@ -39,14 +38,12 @@ export function PaymentsMadePage() {
   const { t } = useAppContent();
   const toast = useToast();
   const { download } = useDownload();
-  const { canWrite } = useAuth();
 
   const [vendorId, setVendorId] = useState('');
   const [startDate, setStartDate] = useState(monthStart);
   const [endDate, setEndDate] = useState(todayIso);
   const [page, setPage] = useState(1);
   const [recording, setRecording] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<VendorPayment | null>(null);
   const [mailPayment, setMailPayment] = useState<VendorPayment | null>(null);
   const remove = useSubmit();
 
@@ -87,15 +84,6 @@ export function PaymentsMadePage() {
   const changeFilter = <T,>(setter: (value: T) => void) => (value: T) => {
     setter(value);
     setPage(1);
-  };
-
-  const deletePayment = async (payment: VendorPayment) => {
-    const result = await remove.run(() => vendorPaymentsApi.remove(payment.id));
-    if (result) {
-      toast.success(t('paymentsMade.toast.deleted', { number: payment.paymentNumber }));
-      setPendingDelete(null);
-      refreshAll();
-    }
   };
 
   const columns: Array<Column<VendorPayment>> = [
@@ -146,16 +134,6 @@ export function PaymentsMadePage() {
           >
             <FileDown size={15} />
           </button>
-          {canWrite ? (
-            <button
-              type="button"
-              className="action-btn is-danger"
-              aria-label={t('paymentsMade.aria.delete', { number: payment.paymentNumber })}
-              onClick={() => setPendingDelete(payment)}
-            >
-              <Trash2 size={15} />
-            </button>
-          ) : null}
         </div>
       ),
     },
@@ -289,31 +267,6 @@ export function PaymentsMadePage() {
         />
       ) : null}
 
-      <ConfirmDialog
-        open={pendingDelete !== null}
-        title={t('paymentsMade.confirm.title')}
-        confirmLabel={t('paymentsMade.confirm.button')}
-        busy={remove.submitting}
-        message={
-          <>
-            <p>
-              {t('paymentsMade.confirm.body', {
-                number: pendingDelete?.paymentNumber ?? '',
-                amount: formatCurrency(pendingDelete?.amount ?? 0),
-                vendor: pendingDelete?.vendorName ?? '',
-              })}
-            </p>
-            <FormError message={remove.error} />
-          </>
-        }
-        onCancel={() => {
-          setPendingDelete(null);
-          remove.reset();
-        }}
-        onConfirm={() => {
-          if (pendingDelete) void deletePayment(pendingDelete);
-        }}
-      />
 
       {mailPayment ? (
         <SendRemittanceModal

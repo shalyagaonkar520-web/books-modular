@@ -3,7 +3,9 @@
 The catalog (``backend/content/module_pricing.json``) lists every switchable
 app module (the same keys as the app content ``modules``) with a monthly price
 and the modules it depends on. Dashboard and Settings are always included in
-the base price. A yearly plan costs ``yearlyMultiplier`` months (see
+the base price. Modules flagged ``core`` are what Books needs to run (items,
+customers, invoices, payments received, accounting, reports): every plan
+includes them, and the organization chooses the rest on top. A yearly plan costs ``yearlyMultiplier`` months (see
 services/subscription for how a plan is requested and activated).
 """
 
@@ -30,6 +32,11 @@ def catalog() -> Dict[str, Any]:
 
 def module_keys() -> List[str]:
     return [m["key"] for m in catalog()["modules"]]
+
+
+def core_keys() -> List[str]:
+    """Modules every plan includes, in catalog order."""
+    return [m["key"] for m in catalog()["modules"] if m.get("core")]
 
 
 def _by_key() -> Dict[str, Dict[str, Any]]:
@@ -66,14 +73,14 @@ def yearly_multiplier() -> int:
 
 
 def quote(modules: Iterable[str], billing_cycle: str = "monthly") -> Dict[str, Any]:
-    """Price a selection (requires are added first) for a billing cycle.
+    """Price a selection (the core modules and requires are added first) for a billing cycle.
 
     ``planPrice`` is what one cycle costs: the monthly price, or
     ``yearlyMultiplier`` times it for a yearly plan.
     """
     if billing_cycle not in BILLING_CYCLES:
         raise ValueError(f"Billing cycle must be one of {', '.join(BILLING_CYCLES)}")
-    resolved = resolve(modules)
+    resolved = resolve([*core_keys(), *modules])
     by_key = _by_key()
     base = catalog()["basePrice"]
     modules_total = sum(by_key[key]["price"] for key in resolved)
