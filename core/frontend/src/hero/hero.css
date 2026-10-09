@@ -150,8 +150,9 @@
   opacity: 0.65;
 }
 
-/* ---------- glow button (pixel contract B) ---------- */
-.hx .btn {
+/* ---------- glow button (pixel contract B); .lp-gbtn reuses it on the rest of the page ---------- */
+.hx .btn,
+.lp-gbtn {
   display: grid;
   place-items: center;
   color: #fff;
@@ -195,7 +196,8 @@
     box-shadow 0.25s,
     filter 0.25s;
 }
-.hx .btn::before {
+.hx .btn::before,
+.lp-gbtn::before {
   content: '';
   position: absolute;
   left: 22%;
@@ -213,7 +215,8 @@
     rgba(120, 225, 255, 0) 100%
   );
 }
-.hx .btn::after {
+.hx .btn::after,
+.lp-gbtn::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -244,14 +247,16 @@
     rgba(0, 0, 0, 0.02) 100%
   );
 }
-.hx .btn span {
+.hx .btn span,
+.lp-gbtn span {
   position: relative;
   z-index: 2;
   display: block;
   line-height: 1;
   text-shadow: 0 1px 2px rgba(0, 20, 30, 0.5);
 }
-.hx .btn:hover {
+.hx .btn:hover,
+.lp-gbtn:hover {
   transform: translateY(-1px);
   filter: brightness(1.12);
   box-shadow:
