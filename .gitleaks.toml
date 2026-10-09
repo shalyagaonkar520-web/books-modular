@@ -1,0 +1,17 @@
+title = "Rooman One gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test-only and placeholder values"
+paths = [
+  '.*\.env\.example$',
+  'apps/books/frontend/package-lock\.json$',
+  'package-lock\.json$',
+]
+regexes = [
+  'ci-secret-key-for-tests-only',
+  'ci-smoke-secret',
+  'ci-integration-secret',
+]

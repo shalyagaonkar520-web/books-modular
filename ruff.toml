@@ -1,0 +1,12 @@
+# Ruff settings for code outside a service folder (contracts/). Services and
+# packages keep their own pyproject.toml, matching Books.
+line-length = 140
+target-version = "py311"
+extend-exclude = ["apps", "core", "packages", "node_modules"]
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]
+
+[lint.isort]
+known-first-party = ["rooman_sdk"]

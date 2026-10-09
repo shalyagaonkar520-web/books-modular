@@ -1,0 +1,61 @@
+# Node / frontend (patterns below match at any depth, e.g. frontend/node_modules/)
+node_modules/
+dist/
+.vite/
+coverage/
+*.local
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+
+# Application data (databases and uploaded files) - covers database/data/
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite3
+
+# Backup / scratch files someone might drop in the data dir
+*.bak
+*.save
+*.orig
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Logs
+*.log
+
+# Monorepo
+.venv-one/
+infra/compose/.env
+infra/backup/backup.env
+# Backups never live in the repo
+*.dump
+*.sql.gz
+backups/
