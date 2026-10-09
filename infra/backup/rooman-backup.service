@@ -1,0 +1,11 @@
+[Unit]
+Description=Rooman One database backup
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+Environment=BACKUP_ENV=/etc/rooman/backup.env
+ExecStart=/opt/rooman-one/infra/backup/pg_backup.sh
+Nice=10
+IOSchedulingClass=idle

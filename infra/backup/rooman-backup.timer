@@ -1,0 +1,14 @@
+# systemd timer for the nightly backup. Install (only with an explicit go-ahead
+# for the target host):
+#   cp infra/backup/rooman-backup.{service,timer} /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now rooman-backup.timer
+[Unit]
+Description=Nightly Rooman One database backup
+
+[Timer]
+OnCalendar=*-*-* 01:30:00 UTC
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
