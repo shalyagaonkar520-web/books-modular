@@ -6,9 +6,10 @@ import { Landing } from './Landing';
 describe('Landing page', () => {
   it('leads with the one-login promise and links to the free trial and sign-in', () => {
     render(<Landing />);
-    expect(screen.getByRole('heading', { level: 1, name: /One login for every app/ })).toBeInTheDocument();
-    const trial = screen.getByRole('link', { name: 'Start your 3-day free trial' });
-    expect(trial.getAttribute('href')).toMatch(/\/register$/);
+    expect(screen.getByRole('heading', { level: 1, name: /One login, every app/ })).toBeInTheDocument();
+    const trials = screen.getAllByRole('link', { name: 'Start free trial' });
+    expect(trials.length).toBeGreaterThanOrEqual(2);
+    trials.forEach((link) => expect(link.getAttribute('href')).toMatch(/\/register$/));
     expect(screen.getAllByRole('link', { name: 'Sign in' })[0]).toHaveAttribute('href', '/signin');
   });
 

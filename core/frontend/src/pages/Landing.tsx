@@ -4,6 +4,7 @@
  * ship. No invented customers, figures or testimonials.
  */
 import { ThemeToggle } from '@rooman/shell';
+import { Hero } from '../hero/Hero';
 import { appUrls } from '../config';
 import '../landing.css';
 
@@ -88,56 +89,9 @@ export function Landing() {
       <a className="lp-skip" href="#main">
         Skip to content
       </a>
-      <header className="lp-nav">
-        <div className="lp-wrap lp-nav-inner">
-          <a className="lp-logo" href="/" aria-label="Rooman One home">
-            <LogoMark />
-            <span>
-              Rooman <strong>One</strong>
-            </span>
-          </a>
-          <nav className="lp-links" aria-label="Sections">
-            <a href="#apps">Apps</a>
-            <a href="#how">How it works</a>
-            <a href="#india">Built for India</a>
-            <a href="#trust">Security</a>
-          </nav>
-          <div className="lp-nav-actions">
-            <ThemeToggle />
-            <a className="lp-btn lp-btn-ghost" href="/signin">
-              Sign in
-            </a>
-            <a className="lp-btn lp-btn-primary lp-hide-sm" href={trialUrl}>
-              Start free trial
-            </a>
-          </div>
-        </div>
-      </header>
+      <Hero trialUrl={trialUrl} />
 
       <main id="main">
-        <section className="lp-hero">
-          <div className="lp-wrap lp-hero-grid">
-            <div>
-              <p className="lp-eyebrow">One suite for Indian businesses</p>
-              <h1>One login for every app your business runs on.</h1>
-              <p className="lp-lead">
-                Rooman One brings accounting, appointments, billing and more under one account and one customer list. Sign in once, use what your plan includes, and
-                let your data move between apps on its own.
-              </p>
-              <div className="lp-cta-row">
-                <a className="lp-btn lp-btn-primary lp-btn-lg" href={trialUrl}>
-                  Start your 3-day free trial
-                </a>
-                <a className="lp-btn lp-btn-ghost lp-btn-lg" href="#apps">
-                  See the apps
-                </a>
-              </div>
-              <p className="lp-fine">Start with Rooman Books today. New apps join your account as they launch.</p>
-            </div>
-            <HeroVisual />
-          </div>
-        </section>
-
         <section className="lp-section" id="apps" aria-labelledby="apps-title">
           <div className="lp-wrap">
             <h2 id="apps-title">The apps</h2>
@@ -237,19 +191,11 @@ export function Landing() {
             <a href="#apps">Apps</a>
             <a href="#trust">Security</a>
             <a href="/signin">Sign in</a>
+            <ThemeToggle />
           </nav>
         </div>
       </footer>
     </div>
-  );
-}
-
-function LogoMark() {
-  return (
-    <svg className="lp-mark" viewBox="0 0 32 32" aria-hidden="true">
-      <rect x="2" y="2" width="28" height="28" rx="8" fill="var(--primary)" />
-      <path d="M11 23V9h6a4.5 4.5 0 0 1 0 9h-6m6 0 4.5 5" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }
 
@@ -267,56 +213,5 @@ function AppIcon({ app }: { app: string }) {
         <path d={ICON_PATHS[app]} />
       </svg>
     </span>
-  );
-}
-
-/** An illustration of the idea: one switcher, one customer, events flowing between apps. */
-function HeroVisual() {
-  return (
-    <div className="lp-visual" aria-hidden="true">
-      <div className="lp-window">
-        <div className="lp-window-bar">
-          <i />
-          <i />
-          <i />
-          <span>Rooman One</span>
-        </div>
-        <div className="lp-window-body">
-          <div className="lp-switcher">
-            <p className="lp-mini-title">Your apps</p>
-            <div className="lp-switch-item lp-on">
-              <AppIcon app="books" /> Books
-            </div>
-            <div className="lp-switch-item lp-on">
-              <AppIcon app="bookings" /> Bookings
-            </div>
-            <div className="lp-switch-item lp-off">
-              <AppIcon app="billing" /> Billing <em>Upgrade</em>
-            </div>
-          </div>
-          <div className="lp-customer">
-            <p className="lp-mini-title">Customer</p>
-            <div className="lp-person">
-              <span className="lp-avatar">RK</span>
-              <div>
-                <strong>Ravi Kumar</strong>
-                <span>Known in Books and Bookings</span>
-              </div>
-            </div>
-            <ol className="lp-flow">
-              <li>
-                <span className="lp-dot lp-dot-a" /> Appointment completed <small>Bookings</small>
-              </li>
-              <li>
-                <span className="lp-dot lp-dot-b" /> Invoice created <small>Books</small>
-              </li>
-              <li>
-                <span className="lp-dot lp-dot-c" /> Payment recorded <small>Books</small>
-              </li>
-            </ol>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }

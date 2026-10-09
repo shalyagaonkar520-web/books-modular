@@ -1,0 +1,1224 @@
+/* Rooman One landing hero.
+ *
+ * A fixed 1172 x 657 design canvas, every element absolutely positioned in
+ * design pixels, scaled by one transform (--k, set by engine.ts). Tablet keeps
+ * the canvas with a narrower design window; phones get a real flow column.
+ * Everything is scoped under .hx so the generic class names (.nav, .btn,
+ * .card) cannot leak into the rest of the site. The hero is always dark.
+ */
+.hx {
+  font-family: Poppins, Inter, system-ui, sans-serif;
+  color: #fff;
+  -webkit-font-smoothing: antialiased;
+}
+.hx * {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+.hx a {
+  text-decoration: none;
+  color: inherit;
+}
+.hx ul,
+.hx ol {
+  list-style: none;
+}
+
+/* ---------- stage + scaled canvas ---------- */
+.hx .stage {
+  position: relative;
+  height: 100vh;
+  height: 100svh;
+  min-height: 520px;
+  overflow: hidden;
+  background: #020204;
+}
+.hx .bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    linear-gradient(180deg, rgba(25, 127, 255, 0) 38%, rgba(25, 127, 255, 0.042) 54%, rgba(25, 127, 255, 0.052) 68%, rgba(25, 127, 255, 0.03) 100%),
+    #020204;
+}
+.hx .stars {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  border-radius: 50%;
+  background: #fff;
+}
+.hx .canvas {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 1172px;
+  height: 657px;
+  transform: translateX(-50%) scale(var(--k, 1));
+  transform-origin: 50% 0;
+}
+.hx .canvas > * {
+  position: absolute;
+}
+.hx .stack {
+  position: absolute;
+  inset: 0;
+  z-index: 300;
+}
+.hx .stack > * {
+  position: absolute;
+}
+.hx .navmenu {
+  display: contents;
+}
+.hx .burger {
+  display: none;
+}
+
+/* ---------- nav pill ---------- */
+.hx .nav {
+  left: 247px;
+  top: 3px;
+  width: 678px;
+  height: 64px;
+  border-radius: 32px;
+  z-index: 400;
+  background: rgba(255, 255, 255, 0.008);
+  border: 1px solid rgba(255, 255, 255, 0.105);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+.hx .mark {
+  position: absolute;
+  left: 21px;
+  top: 19px;
+  width: 24px;
+  height: 24px;
+  filter: drop-shadow(0 0 6px rgba(60, 224, 255, 0.75));
+}
+.hx .wm {
+  position: absolute;
+  left: 50px;
+  top: 0;
+  white-space: nowrap;
+}
+.hx .wm .kick {
+  position: absolute;
+  left: 1px;
+  top: 20px;
+  font-size: 4.4px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: #fff;
+  opacity: 0.92;
+  line-height: 1;
+}
+.hx .wm .name {
+  position: absolute;
+  left: 0;
+  top: 26px;
+  transform-origin: 0 50%;
+  font-family: Poppins;
+  font-weight: 900;
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+.hx .links {
+  position: absolute;
+  left: 156px;
+  top: 0;
+  height: 62px;
+  transform-origin: 0 50%;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.hx .links a {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.92);
+  white-space: nowrap;
+  transition: opacity 0.25s;
+}
+.hx .links a:hover {
+  opacity: 0.65;
+}
+
+/* ---------- glow button (pixel contract B) ---------- */
+.hx .btn {
+  display: grid;
+  place-items: center;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+  /* bloom is a fixed ~18px bank of light at the foot, sampled row by row */
+  background: linear-gradient(
+    to top,
+    #9ad9ec 1px,
+    #89dff0 2px,
+    #79e0f1 3px,
+    #61daef 4px,
+    #3ec8e4 5px,
+    #14a8c6 6px,
+    #0596b3 7px,
+    #038aa8 8px,
+    #047796 9px,
+    #006180 10px,
+    #025066 12px,
+    #0a4f5e 13px,
+    #04465a 14px,
+    #073746 16px,
+    #0a2a37 18px,
+    #0d212e 20px,
+    #0f1824 24px,
+    #0a121e 30px,
+    #0a111d 34px,
+    #0a111d 100%
+  );
+  box-shadow:
+    inset 0 3px 3px -2px rgba(180, 228, 255, 0.1),
+    inset 1px 0 0 rgba(255, 255, 255, 0.09),
+    inset -1px 0 0 rgba(255, 255, 255, 0.09),
+    var(--hair, 0 1px 0 rgba(152, 218, 234, 0.38)),
+    1px 0 0 rgba(152, 218, 234, 0.17),
+    -1px 0 0 rgba(152, 218, 234, 0.17),
+    0 0 8px rgba(60, 190, 235, 0.1),
+    0 2px 5px -3px rgba(90, 220, 255, 0.45);
+  transition:
+    transform 0.25s,
+    box-shadow 0.25s,
+    filter 0.25s;
+}
+.hx .btn::before {
+  content: '';
+  position: absolute;
+  left: 22%;
+  right: 38%;
+  top: 0.8px;
+  height: 1.9px;
+  z-index: 1;
+  filter: blur(0.55px);
+  background: linear-gradient(
+    90deg,
+    rgba(120, 225, 255, 0) 0%,
+    rgba(120, 225, 255, 0.58) 34%,
+    rgba(160, 240, 255, 0.74) 50%,
+    rgba(120, 225, 255, 0.58) 66%,
+    rgba(120, 225, 255, 0) 100%
+  );
+}
+.hx .btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+  background:
+    linear-gradient(90deg, rgba(200, 245, 255, 0.7), rgba(200, 245, 255, 0) 13px),
+    linear-gradient(270deg, rgba(200, 245, 255, 0.7), rgba(200, 245, 255, 0) 13px);
+  -webkit-mask: linear-gradient(
+    to top,
+    #000 0,
+    #000 6px,
+    rgba(0, 0, 0, 0.4) 12px,
+    rgba(0, 0, 0, 0.15) 18px,
+    rgba(0, 0, 0, 0.09) 24px,
+    rgba(0, 0, 0, 0.02) 30px,
+    rgba(0, 0, 0, 0.02) 100%
+  );
+  mask: linear-gradient(
+    to top,
+    #000 0,
+    #000 6px,
+    rgba(0, 0, 0, 0.4) 12px,
+    rgba(0, 0, 0, 0.15) 18px,
+    rgba(0, 0, 0, 0.09) 24px,
+    rgba(0, 0, 0, 0.02) 30px,
+    rgba(0, 0, 0, 0.02) 100%
+  );
+}
+.hx .btn span {
+  position: relative;
+  z-index: 2;
+  display: block;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 20, 30, 0.5);
+}
+.hx .btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.12);
+  box-shadow:
+    inset 0 1px 0 rgba(200, 245, 255, 0.6),
+    inset 1px 0 0 rgba(170, 225, 255, 0.35),
+    inset -1px 0 0 rgba(170, 225, 255, 0.35),
+    0 6px 22px rgba(20, 180, 225, 0.55);
+}
+.hx .btn:focus-visible,
+.hx .links a:focus-visible,
+.hx .wm:focus-visible {
+  outline: 2px solid rgba(120, 225, 255, 0.8);
+  outline-offset: 3px;
+}
+.hx .nav .btn {
+  position: absolute;
+  left: 530.7px;
+  top: 10.5px;
+  width: 125.5px;
+  height: 39.5px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+.hx .cta2 {
+  position: absolute;
+  left: 519px;
+  top: 349px;
+  width: 135px;
+  height: 54.5px;
+  --hair: 0 0 0 transparent;
+  border-radius: 13px;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  z-index: 300;
+}
+.hx .cta2::before {
+  display: none;
+}
+
+/* ---------- badge (pixel contract A) ---------- */
+.hx .badge {
+  left: 462px;
+  top: 95px;
+  width: 250px;
+  height: 39px;
+  border-radius: 12px;
+  z-index: 300;
+  border: 1px solid rgba(255, 255, 255, 0.115);
+  /* faint bank of light along the foot, sampled off the prototype */
+  background: linear-gradient(
+    to top,
+    rgba(190, 225, 255, 0.175) 0px,
+    rgba(190, 225, 255, 0.128) 2px,
+    rgba(190, 225, 255, 0.075) 4px,
+    rgba(190, 225, 255, 0.026) 6px,
+    rgba(255, 255, 255, 0.012) 9px,
+    rgba(255, 255, 255, 0.012) 100%
+  );
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+.hx .badge i {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 29px;
+  height: 29px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(
+    to top,
+    #46afc8 0px,
+    #35abc7 2px,
+    #0b859d 4px,
+    #026c84 6px,
+    #004e66 8px,
+    #053f58 10px,
+    #012c3d 12px,
+    #031a2a 14px,
+    #061125 16px,
+    #090f25 19px,
+    #090c1c 23px,
+    #060d16 29px
+  );
+  box-shadow:
+    inset 1px 0 0 rgba(150, 220, 250, 0.4),
+    inset -1px 0 0 rgba(150, 220, 250, 0.52),
+    0 0 6px rgba(60, 190, 230, 0.2),
+    0 3px 8px -5px rgba(90, 220, 255, 0.6);
+}
+.hx .badge i svg {
+  width: 14px;
+  height: 16px;
+  position: relative;
+  top: -1px;
+  left: 0;
+}
+.hx .badge b {
+  position: absolute;
+  left: 45px;
+  transform-origin: 0 50%;
+  top: 0;
+  height: 39px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.94);
+  white-space: nowrap;
+  padding-top: 1.5px;
+}
+
+/* ---------- hero type ---------- */
+.hx .h1 {
+  left: 586px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  line-height: 1;
+  font-family: Poppins;
+  font-weight: 900;
+  font-size: 54px;
+  letter-spacing: -0.004em;
+  word-spacing: 0.175em;
+  text-transform: uppercase;
+  color: #fff;
+  text-shadow: 0 0 34px rgba(130, 180, 255, 0.22);
+  z-index: 300;
+}
+.hx .h1 .accent {
+  background: linear-gradient(180deg, #ffffff 30%, #8ee6ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hx .sub {
+  left: 586px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  line-height: 1;
+  font-size: 13.2px;
+  color: #a9aeb5;
+  z-index: 300;
+}
+.hx .sub b {
+  font-weight: 600;
+  color: #fff;
+}
+.hx .nb {
+  white-space: nowrap;
+}
+
+/* ---------- 3D ring ---------- */
+.hx .showcase {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1172px;
+  height: 0;
+}
+.hx .ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1172px;
+  height: 657px;
+  z-index: 5;
+  perspective: 891px;
+  perspective-origin: 586px 918px;
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+.hx .card {
+  position: absolute;
+  left: 586px;
+  top: 616px;
+  width: 130px;
+  height: 300px;
+  margin: -150px 0 0 -65px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0d1117;
+  box-shadow:
+    0 24px 46px rgba(0, 0, 0, 0.6),
+    0 3px 8px rgba(0, 0, 0, 0.5);
+  backface-visibility: hidden;
+  will-change: transform;
+  color: #16171b;
+}
+.hx .card .edge {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.15),
+    inset 0 16px 30px rgba(255, 255, 255, 0.05);
+}
+.hx .cv {
+  position: absolute;
+  left: 0;
+  right: 0;
+  padding: 0 10px;
+}
+.hx .fill {
+  position: absolute;
+  inset: 0;
+}
+.hx .abs {
+  position: absolute;
+}
+.hx .t-big {
+  font-family: Poppins;
+  font-weight: 900;
+  text-transform: uppercase;
+  line-height: 0.96;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+  transform: scaleX(0.875);
+  transform-origin: left center;
+}
+.hx .t-serif {
+  font-family: 'Playfair Display', Georgia, serif;
+  line-height: 1.02;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.hx .kv {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.12);
+}
+.hx .pill {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 20px;
+  font-weight: 700;
+}
+
+/* ---------- browser mock ---------- */
+.hx .browser {
+  position: absolute;
+  left: 165px;
+  top: 558px;
+  width: 842px;
+  height: calc(99px + var(--fill, 0px));
+  border-radius: 28px 28px 0 0;
+  overflow: hidden;
+  z-index: 100;
+  box-shadow: 0 -14px 44px rgba(0, 0, 0, 0.55);
+}
+.hx .browser::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 42px;
+  bottom: 0;
+  background: rgba(20, 20, 26, 0.82);
+  z-index: 0;
+}
+.hx .bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 42px;
+  background: linear-gradient(180deg, rgba(20, 24, 48, 0.48), rgba(15, 19, 38, 0.58));
+  -webkit-backdrop-filter: blur(6px) saturate(112%);
+  backdrop-filter: blur(6px) saturate(112%);
+}
+.hx .dots {
+  position: absolute;
+  left: 27px;
+  top: 16px;
+  display: flex;
+  gap: 2.6px;
+}
+.hx .dots i {
+  width: 7.6px;
+  height: 7.6px;
+  border-radius: 50%;
+}
+.hx .omni {
+  position: absolute;
+  left: 246px;
+  top: 7px;
+  width: 336px;
+  height: 26px;
+  border-radius: 5px;
+  background: rgba(9, 13, 26, 0.93);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.hx .omni svg {
+  width: 9px;
+  height: 9px;
+  opacity: 0.72;
+}
+.hx .omni span {
+  font-size: 9.5px;
+  color: rgba(255, 255, 255, 0.72);
+  letter-spacing: 0.005em;
+}
+.hx .tools {
+  position: absolute;
+  right: 27px;
+  top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.9;
+}
+.hx .tools svg {
+  width: 11px;
+  height: 12px;
+}
+.hx .page {
+  position: absolute;
+  left: 7px;
+  right: 6px;
+  top: 42px;
+  bottom: 0;
+  background: #f8fafc;
+  color: #0f172a;
+  overflow: hidden;
+  border-radius: 10px 10px 0 0;
+}
+/* a miniature Rooman Books dashboard */
+.hx .appbar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  border-radius: 10px 10px 0 0;
+  font-size: 6.4px;
+  font-weight: 600;
+}
+.hx .appbar .sq {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: #2563eb;
+}
+.hx .appbar .muted {
+  color: #94a3b8;
+  font-weight: 400;
+}
+.hx .appbar .org {
+  margin-left: auto;
+  color: #475569;
+  font-weight: 500;
+}
+.hx .appbar .av {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #dbeafe;
+  color: #2563eb;
+  display: grid;
+  place-items: center;
+  font-size: 4.4px;
+}
+.hx .dash {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 22px;
+  bottom: 0;
+  display: flex;
+}
+.hx .side {
+  width: 92px;
+  flex: none;
+  padding: 10px 8px;
+  background: #fff;
+  border-right: 1px solid #e2e8f0;
+  font-size: 5.6px;
+  color: #475569;
+}
+.hx .side li {
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+.hx .side li.on {
+  background: #eff6ff;
+  color: #2563eb;
+  font-weight: 600;
+}
+.hx .main {
+  flex: 1;
+  padding: 10px 14px;
+}
+.hx .main h4 {
+  font-size: 8.6px;
+  font-weight: 700;
+}
+.hx .main .hint {
+  font-size: 5px;
+  color: #94a3b8;
+  margin-top: 1px;
+}
+.hx .kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+.hx .kpi {
+  padding: 7px 8px;
+  border-radius: 6px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+}
+.hx .kpi span {
+  display: block;
+  font-size: 4.6px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.hx .kpi b {
+  display: block;
+  margin-top: 3px;
+  font-size: 9px;
+  font-weight: 700;
+}
+.hx .kpi i {
+  display: block;
+  margin-top: 2px;
+  font-style: normal;
+  font-size: 4.6px;
+  color: #059669;
+}
+.hx .kpi i.warn {
+  color: #d97706;
+}
+.hx .tbl {
+  margin-top: 9px;
+  border-radius: 6px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  font-size: 5.4px;
+}
+.hx .tbl .row {
+  display: grid;
+  grid-template-columns: 1.1fr 1.6fr 1fr 1fr 0.8fr;
+  gap: 6px;
+  padding: 5px 9px;
+  border-top: 1px solid #f1f5f9;
+  align-items: center;
+}
+.hx .tbl .row.head {
+  border-top: 0;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 4.6px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.hx .tbl .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.hx .st {
+  justify-self: start;
+  padding: 1.5px 5px;
+  border-radius: 10px;
+  font-size: 4.4px;
+  font-weight: 600;
+}
+.hx .st.paid {
+  background: #ecfdf5;
+  color: #059669;
+}
+.hx .st.due {
+  background: #fef3c7;
+  color: #b45309;
+}
+.hx .st.sent {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+/* ---------- entrance resting states (individual properties compose with
+   the transforms owned by the fitter and the ring loop) ---------- */
+.hx.intro .nav {
+  opacity: 0;
+  translate: 0 -9px;
+}
+.hx.intro .mark,
+.hx.intro .wm,
+.hx.intro .links a,
+.hx.intro .nav .btn,
+.hx.intro .burger {
+  opacity: 0;
+  translate: 0 6px;
+}
+.hx.intro .badge {
+  opacity: 0;
+  translate: 0 11px;
+  scale: 0.985;
+}
+.hx.intro .h1 {
+  opacity: 0;
+  translate: 0 15px;
+  clip-path: inset(100% 0 -30% 0);
+}
+.hx.intro .sub {
+  opacity: 0;
+  translate: 0 10px;
+}
+.hx.intro .cta2 {
+  opacity: 0;
+  translate: 0 13px;
+  scale: 0.985;
+}
+.hx.intro .ring {
+  opacity: 0;
+  translate: 0 18px;
+  scale: 0.99;
+}
+.hx.intro .browser {
+  opacity: 0;
+  translate: 0 26px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hx.intro .nav,
+  .hx.intro .mark,
+  .hx.intro .wm,
+  .hx.intro .links a,
+  .hx.intro .nav .btn,
+  .hx.intro .burger,
+  .hx.intro .badge,
+  .hx.intro .h1,
+  .hx.intro .sub,
+  .hx.intro .cta2,
+  .hx.intro .ring,
+  .hx.intro .browser {
+    opacity: 1;
+    translate: none;
+    scale: none;
+    clip-path: none;
+  }
+}
+
+/* ================= shared narrow nav (<=1080) ================= */
+@media (max-width: 1080px) {
+  .hx .burger {
+    display: grid;
+    place-content: center;
+    gap: 4px;
+    position: absolute;
+    right: 12px;
+    top: 11px;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    border: 0;
+    border-radius: 14px;
+    background: transparent;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .hx .burger span {
+    display: block;
+    width: 19px;
+    height: 1.6px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.92);
+    transition:
+      transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+      opacity 0.18s;
+  }
+  .hx .burger:focus-visible {
+    outline: 2px solid rgba(120, 225, 255, 0.7);
+    outline-offset: 2px;
+  }
+  .hx .nav.open .burger span:nth-child(1) {
+    transform: translateY(5.6px) rotate(45deg);
+  }
+  .hx .nav.open .burger span:nth-child(2) {
+    opacity: 0;
+  }
+  .hx .nav.open .burger span:nth-child(3) {
+    transform: translateY(-5.6px) rotate(-45deg);
+  }
+  .hx .navmenu {
+    display: block;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 74px;
+    padding: 12px;
+    border-radius: 22px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: linear-gradient(180deg, rgba(11, 15, 22, 0.985), rgba(7, 10, 16, 0.99));
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    backdrop-filter: blur(18px) saturate(140%);
+    box-shadow:
+      0 26px 60px rgba(0, 0, 0, 0.6),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-8px);
+    transition:
+      opacity 0.24s ease,
+      transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+      visibility 0.28s;
+  }
+  .hx .nav.open .navmenu {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+  }
+  .hx .links {
+    position: static;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+    gap: 2px;
+    transform: none !important;
+  }
+  .hx .links a {
+    font-size: 15px;
+    padding: 11px 14px;
+    border-radius: 12px;
+    color: rgba(255, 255, 255, 0.9);
+    transition:
+      background 0.2s,
+      color 0.2s;
+  }
+  /* relative, not static: the button's ::before/::after (inset:0) need the
+     button as their containing block, or they would cover the whole panel */
+  .hx .nav .btn {
+    position: relative;
+    left: auto;
+    top: auto;
+    width: 100%;
+    height: 46px;
+    margin-top: 10px;
+    font-size: 15px;
+  }
+  .hx .nav .btn span {
+    margin-top: 3px;
+  }
+}
+@media (hover: hover) and (max-width: 1080px) {
+  .hx .burger:hover span {
+    background: #fff;
+  }
+  .hx .links a:hover {
+    background: rgba(255, 255, 255, 0.055);
+    color: #fff;
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hx .navmenu,
+  .hx .burger span {
+    transition: none;
+  }
+}
+
+/* ================= tablet 701-1080 ================= */
+@media (min-width: 701px) and (max-width: 1080px) {
+  .hx .nav {
+    left: 286px;
+    width: 620px;
+  }
+  .hx .badge {
+    left: 448px;
+    width: 277px;
+  }
+  .hx .stack {
+    transform: translateY(var(--stshift, 0px));
+  }
+  .hx .showcase {
+    transform: translateY(var(--sshift, 0px));
+  }
+  .hx .ring {
+    transform: scale(var(--rs, 1));
+    transform-origin: 586px 595px;
+  }
+}
+
+/* ================= phone <=700 : a real flow column ================= */
+@media (max-width: 700px) {
+  .hx .canvas {
+    position: relative;
+    left: auto;
+    top: auto;
+    width: 100%;
+    height: 100%;
+    transform: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 20px;
+  }
+  .hx .canvas > * {
+    position: static;
+  }
+  .hx .stack {
+    display: contents;
+  }
+  .hx .nav {
+    position: relative;
+    left: auto;
+    top: auto;
+    width: 100%;
+    max-width: 500px;
+    height: 58px;
+    margin-top: clamp(10px, 1.5vh, 15px);
+    flex: 0 0 auto;
+  }
+  .hx .mark {
+    left: 16px;
+    top: calc(50% - 13px);
+    width: 26px;
+    height: 26px;
+  }
+  .hx .wm {
+    left: 49px;
+    top: 0;
+    height: 100%;
+  }
+  .hx .wm .kick {
+    top: calc(50% - 15px);
+    font-size: 5px;
+    letter-spacing: 0.2em;
+  }
+  .hx .wm .name {
+    top: calc(50% - 9px);
+    font-size: 18px;
+  }
+  .hx .burger {
+    right: 8px;
+    top: 7px;
+    width: 44px;
+    height: 44px;
+  }
+  .hx .navmenu {
+    top: 68px;
+    padding: 12px;
+  }
+  .hx .links a {
+    font-size: 16px;
+    padding: 12px 15px;
+    border-radius: 12px;
+  }
+  .hx .nav .btn {
+    height: 48px;
+    margin-top: 10px;
+    font-size: 16px;
+  }
+  /* the badge becomes auto-width; the tile stays pinned left and the label
+     stays to its right through padding, so they never overlap */
+  .hx .badge {
+    position: relative;
+    left: auto;
+    top: auto;
+    margin-top: clamp(16px, 2.6vh, 26px);
+    width: auto;
+    max-width: 100%;
+    height: 36px;
+    flex: 0 0 auto;
+    border-radius: 18px;
+  }
+  .hx .badge b {
+    position: relative;
+    left: auto;
+    top: auto;
+    height: 36px;
+    padding: 0 15px 0 42px;
+    font-size: 12.5px;
+  }
+  .hx .badge i {
+    top: 4px;
+    left: 4px;
+    width: 28px;
+    height: 28px;
+  }
+  .hx .badge i svg {
+    width: 13px;
+    height: 19px;
+  }
+  .hx .h1 {
+    position: relative;
+    left: auto;
+    top: auto;
+    transform: none;
+    white-space: normal;
+    text-align: center;
+    font-size: clamp(29px, 8.4vw, 36px);
+    line-height: 1.06;
+    letter-spacing: -0.01em;
+    max-width: 9em;
+  }
+  .hx .h1.l1 {
+    margin-top: clamp(12px, 2.2vh, 20px);
+  }
+  .hx .sub {
+    position: relative;
+    left: auto;
+    top: auto;
+    transform: none;
+    white-space: normal;
+    text-align: center;
+    font-size: clamp(14px, 3.9vw, 15.5px);
+    line-height: 1.5;
+    max-width: 340px;
+  }
+  .hx .sub.s1 {
+    margin-top: clamp(10px, 1.8vh, 16px);
+  }
+  .hx .cta2 {
+    position: relative;
+    left: auto;
+    top: auto;
+    margin-top: clamp(16px, 2.6vh, 26px);
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 158px;
+    height: 52px;
+    padding: 0 26px;
+    font-size: 16px;
+  }
+  .hx .showcase {
+    position: relative;
+    left: auto;
+    top: auto;
+    flex: 1 1 auto;
+    width: 100%;
+    height: auto;
+    min-height: 224px;
+  }
+  /* the ring keeps its full 1172x657 3D geometry, just repositioned and clipped */
+  .hx .ring {
+    position: absolute;
+    left: 50%;
+    margin-left: -586px;
+    top: -446px;
+    bottom: auto;
+    width: 1172px;
+    height: 657px;
+    transform-origin: 586px 466px;
+    transform: scale(1.02);
+  }
+  .hx .browser {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: 212px;
+    bottom: 0;
+    width: calc(100% + 40px);
+    height: auto;
+    border-radius: 22px 22px 0 0;
+  }
+  .hx .browser .bar {
+    height: 36px;
+  }
+  .hx .browser::before {
+    top: 36px;
+  }
+  .hx .omni {
+    left: 50%;
+    transform: translateX(-50%);
+    width: 58%;
+    height: 24px;
+    top: 6px;
+  }
+  .hx .omni span {
+    font-size: 9px;
+  }
+  .hx .dots {
+    top: 14px;
+  }
+  .hx .tools {
+    display: none;
+  }
+  .hx .page {
+    top: 36px;
+  }
+  /* the mock is nearly full-bleed, so the dashboard reads as a real UI */
+  .hx .appbar {
+    height: 34px;
+    font-size: 11px;
+    gap: 8px;
+  }
+  .hx .appbar .sq {
+    width: 16px;
+    height: 16px;
+  }
+  .hx .appbar .av {
+    width: 20px;
+    height: 20px;
+    font-size: 8px;
+  }
+  .hx .dash {
+    top: 34px;
+  }
+  .hx .side {
+    display: none;
+  }
+  .hx .main {
+    padding: 14px 16px;
+  }
+  .hx .main h4 {
+    font-size: 15px;
+  }
+  .hx .main .hint {
+    font-size: 10px;
+  }
+  .hx .kpis {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .hx .kpi {
+    padding: 10px 12px;
+    border-radius: 9px;
+  }
+  .hx .kpi span {
+    font-size: 8.5px;
+  }
+  .hx .kpi b {
+    font-size: 16px;
+  }
+  .hx .kpi i {
+    font-size: 9px;
+  }
+  .hx .tbl {
+    font-size: 10.5px;
+    border-radius: 9px;
+    margin-top: 12px;
+  }
+  .hx .tbl .row {
+    grid-template-columns: 1.1fr 1.4fr 1fr;
+    padding: 8px 12px;
+  }
+  /* phones show customer, amount and status */
+  .hx .tbl .row > :nth-child(1),
+  .hx .tbl .row > :nth-child(3) {
+    display: none;
+  }
+  .hx .tbl .row.head {
+    font-size: 8.5px;
+  }
+  .hx .st {
+    font-size: 8.5px;
+    padding: 2px 8px;
+  }
+}
