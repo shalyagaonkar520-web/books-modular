@@ -257,6 +257,14 @@
   height: 20px;
 }
 
+/* the payments head sits right above the pinned card cylinder */
+.lp-pay {
+  padding-bottom: 8px;
+}
+.lp-pay .lp-head {
+  margin-bottom: 0;
+}
+
 /* ---------- apps ---------- */
 .lp-apps {
   display: grid;

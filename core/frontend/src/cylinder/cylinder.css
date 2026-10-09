@@ -1,0 +1,244 @@
+/* Scroll-driven card cylinder. The section is tall; .cyl-stage stays pinned
+ * to the viewport while the page scrolls through it. Pure black stage. */
+.cyl {
+  position: relative;
+}
+.cyl-stage {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #000000;
+  pointer-events: none;
+  user-select: none;
+}
+/* soften the hand-off between the black stage and the starry page */
+.cyl-stage::before,
+.cyl-stage::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 18%;
+  z-index: 5000;
+  pointer-events: none;
+}
+.cyl-stage::before {
+  top: 0;
+  background: linear-gradient(180deg, #020204, rgba(0, 0, 0, 0));
+}
+.cyl-stage::after {
+  bottom: 0;
+  background: linear-gradient(0deg, #020204, rgba(0, 0, 0, 0));
+}
+.cyl-space {
+  position: absolute;
+  transform-style: preserve-3d;
+}
+.cyl-card {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  backface-visibility: visible;
+  will-change: transform;
+}
+
+/* middle structural slices give the card its edge */
+.cyl-slice {
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  border: 1px solid #808080;
+  background: #808080;
+}
+.cyl-face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: #0f0f0f;
+  backface-visibility: hidden;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15);
+}
+
+/* animated card art: two coloured light pools drifting over near-black */
+.cyl-art {
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(40% 55% at 25% 35%, var(--c1), transparent 70%),
+    radial-gradient(45% 60% at 78% 70%, var(--c2), transparent 72%),
+    radial-gradient(30% 40% at 60% 15%, rgba(255, 255, 255, 0.35), transparent 70%),
+    #0f0f0f;
+  opacity: 0.9;
+  animation: cyl-drift 14s ease-in-out infinite alternate;
+  animation-delay: var(--delay, 0s);
+}
+.cyl-art-blur {
+  filter: blur(16px);
+  transform: scale(1.15);
+}
+@keyframes cyl-drift {
+  0% {
+    translate: -6% -4%;
+    rotate: 0deg;
+  }
+  50% {
+    translate: 5% 3%;
+    rotate: 8deg;
+  }
+  100% {
+    translate: -2% 6%;
+    rotate: -6deg;
+  }
+}
+
+.cyl-front-content {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.15);
+  color: #fff;
+}
+.cyl-chip {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  translate: 0 -50%;
+  width: 24px;
+  height: 24px;
+}
+.cyl-wordmark {
+  position: absolute;
+  right: 20px;
+  top: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1;
+  font-family: Poppins, Inter, system-ui, sans-serif;
+  opacity: 0.95;
+}
+.cyl-wordmark span {
+  font-size: 7px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+}
+.cyl-wordmark b {
+  margin-top: 2px;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+.cyl-circles {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  opacity: 0.9;
+}
+.cyl-circles span {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(1px);
+}
+.cyl-circles span + span {
+  margin-left: -12px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* back face */
+.cyl-stripe {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 16px;
+  height: 28px;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px);
+}
+.cyl-details {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-weight: 500;
+  color: #fff;
+}
+.cyl-number {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+.cyl-owner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 7px;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.7);
+  text-transform: uppercase;
+}
+.cyl-dot {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+@media (min-width: 640px) {
+  .cyl-chip {
+    left: 24px;
+    width: 29px;
+    height: 29px;
+  }
+  .cyl-wordmark {
+    right: 24px;
+    top: 22px;
+  }
+  .cyl-wordmark span {
+    font-size: 8px;
+  }
+  .cyl-wordmark b {
+    font-size: 24px;
+  }
+  .cyl-circles {
+    right: 24px;
+    bottom: 24px;
+  }
+  .cyl-circles span {
+    width: 24px;
+    height: 24px;
+  }
+  .cyl-stripe {
+    top: 20px;
+    height: 36px;
+  }
+  .cyl-details {
+    left: 24px;
+    bottom: 20px;
+    gap: 4px;
+  }
+  .cyl-number {
+    font-size: 12px;
+  }
+  .cyl-owner {
+    font-size: 9px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cyl-art {
+    animation: none;
+  }
+}

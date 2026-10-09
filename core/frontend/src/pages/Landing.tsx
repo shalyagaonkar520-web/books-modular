@@ -6,6 +6,7 @@
  * apps are marked "Coming soon" or "Planned". No invented customers or quotes.
  */
 import { useEffect, useRef, type CSSProperties, type RefObject } from 'react';
+import { CardCylinder } from '../cylinder/CardCylinder';
 import { Hero } from '../hero/Hero';
 import { appUrls } from '../config';
 import '../landing.css';
@@ -205,6 +206,18 @@ export function Landing() {
             </ul>
           </div>
         </section>
+
+        <section className="lp-section lp-pay" id="payments" aria-labelledby="pay-title">
+          <div className="lp-wrap">
+            <SectionHead
+              id="pay-title"
+              eyebrow="Payments"
+              title="Every card, one ledger"
+              lead="Customers pay by card or UPI through Razorpay. Every payment lands in Books, matched to its invoice."
+            />
+          </div>
+        </section>
+        <CardCylinder />
 
         <section className="lp-section" id="how" aria-labelledby="how-title">
           <div className="lp-wrap">
