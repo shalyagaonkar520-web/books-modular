@@ -46,6 +46,10 @@
   --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 
+  --header-h: 56px;
+  --sidebar-w: 236px;
+}
+
 :root[data-theme='dark'] {
   --bg: #0b1220;
   --surface: #111a2b;
