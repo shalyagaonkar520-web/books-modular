@@ -1,0 +1,19 @@
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+extend-exclude = ["database/alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "B008", "B904"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["core_api"]
+ignore_missing_imports = true
+check_untyped_defs = true
