@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.rooman.one/events/payment.received.v1.schema.json",
+  "title": "payment.received v1",
+  "x-source": "books",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "type": {
+      "const": "payment.received"
+    },
+    "version": {
+      "const": 1
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payment_id",
+        "customer_id",
+        "amount",
+        "currency",
+        "received_on",
+        "applied_to"
+      ],
+      "properties": {
+        "payment_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "party_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "customer_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "amount": {
+          "type": "string",
+          "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+          "description": "Decimal as a string, never a float."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "method": {
+          "type": "string"
+        },
+        "received_on": {
+          "type": "string",
+          "format": "date"
+        },
+        "applied_to": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "invoice_id",
+              "amount"
+            ],
+            "properties": {
+              "invoice_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "amount": {
+                "type": "string",
+                "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+                "description": "Decimal as a string, never a float."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

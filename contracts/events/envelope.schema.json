@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.rooman.one/events/envelope.schema.json",
+  "title": "Event envelope",
+  "description": "Every event published by a Rooman One service. Delivery is at least once: consumers deduplicate by id.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "version",
+    "org_id",
+    "actor",
+    "source",
+    "occurred_at",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[0-9a-f]{32}$"
+    },
+    "type": {
+      "type": "string",
+      "pattern": "^[a-z][a-z_]*\\.[a-z][a-z_]*$"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "org_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "user",
+            "service",
+            "system"
+          ]
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "data": {
+      "type": "object"
+    }
+  }
+}

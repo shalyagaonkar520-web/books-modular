@@ -1,0 +1,23 @@
+{
+  "id": "evt_00000000000000000000000000000001",
+  "type": "subscription.cancelled",
+  "version": 1,
+  "org_id": "7b0c3a9e-6f0e-4d7a-9a51-3d2f4c1b8e01",
+  "actor": {
+    "type": "user",
+    "id": "u1"
+  },
+  "source": "billing",
+  "occurred_at": "2026-10-09T10:00:00Z",
+  "data": {
+    "subscription_id": "3f2b8a1c-5d4e-4f6a-8b7c-9d0e1f2a3b4c",
+    "party_id": "8c7d6e5f-4a3b-4c2d-9e1f-0a9b8c7d6e5f",
+    "plan_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+    "status": "cancelled",
+    "current_period_end": "2026-11-09T00:00:00Z",
+    "amount": "999.00",
+    "currency": "INR",
+    "cancelled_at": "2026-10-20T08:00:00Z",
+    "reason": "Customer request"
+  }
+}

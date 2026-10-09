@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.rooman.one/events/appointment.cancelled.v1.schema.json",
+  "title": "appointment.cancelled v1",
+  "x-source": "bookings",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "type": {
+      "const": "appointment.cancelled"
+    },
+    "version": {
+      "const": 1
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "appointment_id",
+        "party_id",
+        "cancelled_by"
+      ],
+      "properties": {
+        "appointment_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "party_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 500
+        },
+        "cancelled_by": {
+          "enum": [
+            "customer",
+            "staff",
+            "system"
+          ]
+        }
+      }
+    }
+  }
+}

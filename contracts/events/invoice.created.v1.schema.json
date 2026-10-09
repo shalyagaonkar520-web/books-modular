@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.rooman.one/events/invoice.created.v1.schema.json",
+  "title": "invoice.created v1",
+  "x-source": "books",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "type": {
+      "const": "invoice.created"
+    },
+    "version": {
+      "const": 1
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invoice_id",
+        "number",
+        "customer_id",
+        "date",
+        "currency",
+        "subtotal",
+        "tax_total",
+        "total"
+      ],
+      "properties": {
+        "invoice_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "number": {
+          "type": "string"
+        },
+        "party_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "customer_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "date": {
+          "type": "string",
+          "format": "date"
+        },
+        "due_date": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "date"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "subtotal": {
+          "type": "string",
+          "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+          "description": "Decimal as a string, never a float."
+        },
+        "tax_total": {
+          "type": "string",
+          "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+          "description": "Decimal as a string, never a float."
+        },
+        "total": {
+          "type": "string",
+          "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+          "description": "Decimal as a string, never a float."
+        },
+        "source_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "e.g. appointment id when created from Bookings."
+        }
+      }
+    }
+  }
+}
