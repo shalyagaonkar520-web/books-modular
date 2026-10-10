@@ -3,17 +3,21 @@
 The central database holds only what every app shares: users, organizations, memberships, roles, plans, app access, the shared customer list (`parties`) and the audit log. Business data stays in each app's own database (Books in CT103, and so on). Apps reach Core through its API, never by connecting to this database.
 
 ```
-CT103  Books (own DB) ──► Core API ──► CT104 rooman-core-db  (this runbook)
-CT100  postgres-db    ── unrelated; never touch
+Proxmox server 192.168.1.50                Proxmox server 192.168.1.60 ("Rooman")
+  Books container 192.168.1.54  ── 5432/TLS ──►  CT104 rooman-one-core-db 192.168.1.64
+  (Books + its own database)                     (central Core database, this runbook)
+                                                 CT100 postgres-db: unrelated, never touch
 ```
 
-## 1. Create the container in Proxmox (host "Rooman", 192.168.1.60)
+The two are separate physical servers on the same 192.168.1.0/24 network, so a failure of one does not take down the other.
+
+## 1. Create the container in Proxmox (server "Rooman", 192.168.1.60)
 
 Proxmox UI → **Create CT**:
 
 | Field | Value |
 |---|---|
-| CT ID / Hostname | `104` / `rooman-core-db` |
+| CT ID / Hostname | `104` / `rooman-one-core-db` |
 | Unprivileged | yes |
 | Template | Debian 12 standard |
 | Disk | `local-lvm`, 32 GB |
@@ -24,7 +28,7 @@ Proxmox UI → **Create CT**:
 After it's created: **CT104 → Options → Features → enable `nesting` and `keyctl`**, the same as CT103, so Docker runs inside the LXC. Then **Options → Start at boot: yes**.
 
 Firewall, so only Books' container (and later the Core API's) can reach PostgreSQL:
-**CT104 → Firewall → Add**: Direction `in`, Action `ACCEPT`, Protocol `tcp`, Dest. port `5432`, Source `<CT103 IP>/32`. Then **Firewall → Options → Firewall: Yes, Input policy: DROP**. Also add an `ACCEPT` rule for `tcp 22` from your admin machine, or you will lock yourself out of SSH.
+**CT104 → Firewall → Add**: Direction `in`, Action `ACCEPT`, Protocol `tcp`, Dest. port `5432`, Source `192.168.1.54/32` (the Books container on the .50 server). Then **Firewall → Options → Firewall: Yes, Input policy: DROP**. Also add an `ACCEPT` rule for `tcp 22` from your admin machine, or you will lock yourself out of SSH.
 
 ## 2. Install Docker in CT104
 
@@ -45,7 +49,7 @@ nano .env
 
 In `.env`:
 - `BIND_IP`: CT104's own address (e.g. `192.168.1.64`). PostgreSQL is published here only.
-- `ALLOWED_CIDR`: the container that runs the Core API, as `/32`. Until Core is deployed, use CT103's address.
+- `ALLOWED_CIDR`: the container that runs the Core API, as `/32`. Until Core is deployed, use the Books container's address, `192.168.1.54/32`.
 - three passwords of 20+ characters each (`openssl rand -base64 32 | tr -d '/+=' | cut -c1-32`). Store them in your password manager.
 
 ## 4. Start it
@@ -83,7 +87,7 @@ Use the shared backup script on CT104. In `/etc/rooman/backup.env`:
 DATABASES="rooman-core-db|rooman_core|rooman_core_owner"
 ```
 
-Then follow `docs/runbooks/backup-restore.md`, with an off-site target. Because CT103 and CT104 run on the same Proxmox host, a host failure takes both down; off-site copies are the only protection against that. A Proxmox-level backup of CT104 (Datacenter → Backup) is a good extra layer, but it doesn't replace `pg_dump`.
+Then follow `docs/runbooks/backup-restore.md`, with an off-site target. Books and Core sit on different physical servers (.50 and .60), so as a cheap extra layer each server can also keep a copy of the other's backups. A Proxmox-level backup of CT104 (Datacenter → Backup) helps too, but it doesn't replace `pg_dump`.
 
 ## Changing who may connect
 
