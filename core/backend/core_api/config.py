@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     # No default database: Core always runs on its own Postgres. Tests set a
     # SQLite URL explicitly.
     database_url: str = Field(default="", alias="DATABASE_URL")
+    # Migrations run as the schema owner; the app itself connects as a
+    # least-privilege runtime user. Falls back to DATABASE_URL when unset.
+    migrations_database_url: str = Field(default="", alias="MIGRATIONS_DATABASE_URL")
 
     # Public base URL of this service, e.g. https://id.<domain>. Used as the
     # token issuer from Phase 1; empty means "not configured yet".

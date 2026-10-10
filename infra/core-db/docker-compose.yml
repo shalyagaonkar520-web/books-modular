@@ -1,0 +1,71 @@
+# Rooman One central database (Core) on its own server.
+#
+# Holds only shared data: users, organizations, memberships, roles, plans,
+# app access, the shared customer list and the audit log. Business data
+# (invoices, appointments) stays in each app's own database.
+#
+# Run it with ./setup.sh, not by hand: setup.sh creates the TLS certificate
+# and checks the settings first. See docs/runbooks/core-db-server.md.
+#
+# Security:
+# - published on the server's PRIVATE address only (BIND_IP), never 0.0.0.0
+# - TLS required; scram-sha-256 passwords; only ALLOWED_CIDR may connect
+# - two login roles: rooman_core_owner (migrations) and rooman_core_app
+#   (runtime: read/write rows only, no DDL, not a superuser)
+
+name: rooman-core-db
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: rooman-core-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: postgres
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=scram-sha-256
+      CORE_DB_NAME: ${CORE_DB_NAME:-rooman_core}
+      CORE_OWNER_PASSWORD: ${CORE_OWNER_PASSWORD:?set CORE_OWNER_PASSWORD in .env}
+      CORE_APP_PASSWORD: ${CORE_APP_PASSWORD:?set CORE_APP_PASSWORD in .env}
+      ALLOWED_CIDR: ${ALLOWED_CIDR:?set ALLOWED_CIDR in .env}
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/certs/server.crt
+      - -c
+      - ssl_key_file=/certs/server.key
+      - -c
+      - ssl_min_protocol_version=TLSv1.2
+      - -c
+      - password_encryption=scram-sha-256
+      - -c
+      - hba_file=/var/lib/postgresql/data/pg_hba.conf
+      - -c
+      - log_connections=on
+      - -c
+      - log_disconnections=on
+      - -c
+      - log_min_duration_statement=500
+      - -c
+      - max_connections=${MAX_CONNECTIONS:-200}
+      - -c
+      - shared_buffers=${SHARED_BUFFERS:-512MB}
+    ports:
+      - '${BIND_IP:?set BIND_IP (the private address) in .env}:${PORT:-5432}:5432'
+    volumes:
+      - core_db_data:/var/lib/postgresql/data
+      - ./certs:/certs:ro
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    shm_size: 256mb
+
+volumes:
+  core_db_data:
+    name: rooman_core_db_data

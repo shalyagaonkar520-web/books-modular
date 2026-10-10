@@ -59,3 +59,7 @@ infra/backup/backup.env
 *.dump
 *.sql.gz
 backups/
+
+# Central DB server kit: secrets and generated certificates never go in git
+infra/core-db/.env
+infra/core-db/certs/
