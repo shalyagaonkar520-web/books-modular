@@ -28,7 +28,9 @@ esac
 case "$ALLOWED_CIDR" in
   0.0.0.0/0 | ::/0) echo "ALLOWED_CIDR must name the app servers, not the whole internet." >&2; exit 1 ;;
 esac
-ip -o addr show | grep -q " $BIND_IP/" || { echo "BIND_IP $BIND_IP is not an address of this server." >&2; exit 1; }
+# Capture first: with pipefail, `ip | grep -q` fails when grep exits early (SIGPIPE).
+addrs="$(ip -o addr show)"
+grep -q " $BIND_IP/" <<< "$addrs" || { echo "BIND_IP $BIND_IP is not an address of this server." >&2; exit 1; }
 
 # TLS certificate (self-signed, 10 years). Replace with your CA's if you have one.
 mkdir -p certs
