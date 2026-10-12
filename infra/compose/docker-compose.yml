@@ -129,7 +129,8 @@ services:
 
   core-api:
     build:
-      context: ../../core/backend
+      context: ../..
+      dockerfile: core/backend/Dockerfile
     restart: unless-stopped
     environment:
       ENVIRONMENT: development

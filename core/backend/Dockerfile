@@ -1,4 +1,5 @@
 # ---------- Rooman One Core API ----------
+# Build context: the repository root (Core uses packages/sdk-python).
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -11,12 +12,13 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY packages/sdk-python /src/sdk-python
+COPY core/backend/requirements.txt ./
+RUN pip install --no-cache-dir /src/sdk-python -r requirements.txt
 
-COPY core_api ./core_api
-COPY database ./database
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY core/backend/core_api ./core_api
+COPY core/backend/database ./database
+COPY core/backend/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 RUN useradd --create-home --uid 10001 appuser && chown -R appuser:appuser /app

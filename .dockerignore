@@ -1,0 +1,13 @@
+# Root build context (Core, Core web): keep images small and secrets out
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/.venv*
+.venv*
+.git
+**/.env
+**/*.db
+**/dist
+apps/books/database/data

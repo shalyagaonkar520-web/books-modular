@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 SERVICES = {
     "books": {"path": ROOT / "apps" / "books", "db": "backend.db", "models": "backend.models", "app": "backend.main", "title": "Rooman Books"},
-    "core": {"path": ROOT / "core" / "backend", "db": "core_api.db", "models": None, "app": "core_api.main", "title": "Rooman One Core"},
+    "core": {"path": ROOT / "core" / "backend", "db": "core_api.db", "models": "core_api.models", "app": "core_api.main", "title": "Rooman One Core"},
     "bookings": {"path": ROOT / "apps" / "bookings" / "backend", "db": "bookings_api.db", "models": None, "app": "bookings_api.main", "title": "Rooman Bookings"},
 }
 
