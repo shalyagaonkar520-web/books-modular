@@ -145,7 +145,7 @@ def sign(session: Session, claims: dict[str, Any], ttl: timedelta) -> str:
     return jwt.encode(payload, pem, algorithm=ALGORITHM, headers={"kid": key.kid})
 
 
-def verify(session: Session, token: str, audience: str) -> dict[str, Any]:
+def verify(session: Session, token: str, audience: str | None) -> dict[str, Any]:
     """Decode a token Core signed (any key still in /jwks). Raises jwt.PyJWTError when invalid."""
     kid = jwt.get_unverified_header(token).get("kid")
     key = session.scalar(select(SigningKey).where(SigningKey.kid == kid, SigningKey.status.in_(("active", "retiring"))))
@@ -159,7 +159,7 @@ def verify(session: Session, token: str, audience: str) -> dict[str, Any]:
         audience=audience,
         issuer=get_settings().issuer,
         leeway=30,
-        options={"require": ["exp", "iat", "iss", "aud", "sub"]},
+        options={"require": ["exp", "iat", "iss", "aud", "sub"], "verify_aud": audience is not None},
     )
 
 

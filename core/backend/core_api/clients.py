@@ -56,6 +56,43 @@ def create(session: Session, app_key: str, scopes: list[str]) -> tuple[OAuthClie
     return client, secret
 
 
+WEB_SCOPES = ("openid", "profile", "email", "offline_access")
+
+
+def create_web(session: Session, app_key: str, redirect_uris: list[str], public: bool) -> tuple[OAuthClient, str | None]:
+    """A client that signs people in (OIDC code flow). Public = browser app with PKCE only, no secret (not committed)."""
+    from urllib.parse import urlparse
+
+    if session.get(App, app_key) is None:
+        raise ValueError(f"Unknown app '{app_key}'.")
+    if not redirect_uris:
+        raise ValueError("At least one --redirect-uri is required.")
+    for uri in redirect_uris:
+        parsed = urlparse(uri)
+        local = parsed.hostname in ("localhost", "127.0.0.1")
+        if parsed.scheme not in ("https", "http") or not parsed.hostname or parsed.fragment or (parsed.scheme == "http" and not local):
+            raise ValueError(f"Redirect URI must be https (http only for localhost) with no #fragment: {uri}")
+    secret = None if public else secrets.token_urlsafe(32)
+    client = OAuthClient(
+        app_key=app_key,
+        client_id=f"{app_key}-web-{secrets.token_hex(4)}",
+        secret_hash=_hash(secret) if secret else None,
+        scopes=list(WEB_SCOPES),
+        redirect_uris=list(dict.fromkeys(redirect_uris)),
+        is_active=True,
+    )
+    session.add(client)
+    session.add(
+        AuditLog(
+            actor_type="system",
+            action="client.created",
+            target=client.client_id,
+            detail={"app": app_key, "redirect_uris": client.redirect_uris},
+        )
+    )
+    return client, secret
+
+
 def rotate(session: Session, client_id: str) -> str:
     client = session.scalar(select(OAuthClient).where(OAuthClient.client_id == client_id))
     if client is None:
@@ -82,6 +119,10 @@ def main(argv: list[str] | None = None) -> int:
     c = sub.add_parser("create")
     c.add_argument("--app", required=True)
     c.add_argument("--scopes", nargs="+", required=True, choices=SCOPES)
+    w = sub.add_parser("create-web", help="an app that signs people in")
+    w.add_argument("--app", required=True)
+    w.add_argument("--redirect-uri", action="append", required=True, dest="redirect_uris")
+    w.add_argument("--public", action="store_true", help="browser app: PKCE only, no secret")
     for name in ("rotate", "disable"):
         sub.add_parser(name).add_argument("client_id")
     sub.add_parser("list")
@@ -96,6 +137,13 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"CORE_CLIENT_ID={client.client_id}\nCORE_CLIENT_SECRET={secret}\n(The secret is shown once. Put both in the app's .env.)"
             )
+        elif args.command == "create-web":
+            client, secret = create_web(session, args.app, args.redirect_uris, args.public)
+            session.commit()
+            print(f"OIDC_CLIENT_ID={client.client_id}")
+            if secret:
+                print(f"OIDC_CLIENT_SECRET={secret}")
+                print("(The secret is shown once.)")
         elif args.command == "rotate":
             secret = rotate(session, args.client_id)
             session.commit()

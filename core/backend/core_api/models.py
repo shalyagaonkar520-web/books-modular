@@ -406,5 +406,78 @@ class AuditLog(Base):
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+# --------------------------------------------------------------------------- #
+# Sign-in (OIDC authorization code flow with PKCE)
+# --------------------------------------------------------------------------- #
+class AuthRequest(Base):
+    """An app's sign-in request, kept while the person signs in (10 minutes)."""
+
+    __tablename__ = "auth_requests"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # random, given to the sign-in page
+    client_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    redirect_uri: Mapped[str] = mapped_column(String(500), nullable=False)
+    scope: Mapped[str] = mapped_column(String(200), nullable=False)
+    state: Mapped[str | None] = mapped_column(String(500))
+    nonce: Mapped[str | None] = mapped_column(String(200))
+    code_challenge: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class UserSession(Base):
+    """A signed-in browser at Core (the "rooman_sid" cookie). Only its SHA-256 is stored."""
+
+    __tablename__ = "user_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ip: Mapped[str | None] = mapped_column(String(64))
+    user_agent: Mapped[str | None] = mapped_column(String(300))
+
+
+class AuthCode(Base):
+    """A one-time code for an app (60 seconds), bound to its PKCE challenge."""
+
+    __tablename__ = "auth_codes"
+
+    code_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    client_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    org_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    session_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    redirect_uri: Mapped[str] = mapped_column(String(500), nullable=False)
+    scope: Mapped[str] = mapped_column(String(200), nullable=False)
+    nonce: Mapped[str | None] = mapped_column(String(200))
+    code_challenge: Mapped[str] = mapped_column(String(128), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    family_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)  # refresh family it started (revoked if the code is replayed)
+
+
+class RefreshToken(Base):
+    """Refresh tokens, rotated on every use. Reusing an old one revokes the whole family."""
+
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    family_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    client_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    org_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    session_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, index=True)
+    scope: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 # Transactional outbox for Core's events (org.created, user.invited, ...)
 outbox = outbox_table(Base.metadata)

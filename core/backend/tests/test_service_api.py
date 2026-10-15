@@ -153,7 +153,10 @@ def test_sdk_verifier_accepts_core_tokens(api):
 
 def test_discovery_document(api):
     doc = api.get("/.well-known/openid-configuration").json()
-    assert doc["issuer"] == ISSUER and doc["jwks_uri"] == f"{ISSUER}/jwks" and doc["token_endpoint"] == f"{ISSUER}/token"
+    assert (
+        doc["issuer"] == ISSUER and doc["jwks_uri"] == f"{ISSUER}/api/oauth/jwks" and doc["token_endpoint"] == f"{ISSUER}/api/oauth/token"
+    )
+    assert doc["code_challenge_methods_supported"] == ["S256"] and "authorization_code" in doc["grant_types_supported"]
 
 
 # --------------------------------------------------------------------------- #

@@ -1,33 +1,140 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { SignIn } from './SignIn';
 
-function respond(ok: boolean, body: unknown, headers: Record<string, string> = {}) {
+type Route = { status?: number; body: unknown; headers?: Record<string, string> };
+
+function routes(table: Record<string, Route>) {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
   vi.stubGlobal(
     'fetch',
-    vi.fn(() => Promise.resolve({ ok, headers: new Headers(headers), json: () => Promise.resolve(body) })),
+    vi.fn((url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      const route = table[`${init?.method ?? 'GET'} ${url}`];
+      if (!route) return Promise.reject(new Error(`no route for ${url}`));
+      const status = route.status ?? 200;
+      return Promise.resolve({
+        ok: status < 400,
+        status,
+        headers: new Headers(route.headers ?? {}),
+        json: () => Promise.resolve(route.body),
+      });
+    }),
   );
+  return calls;
 }
 
-afterEach(() => vi.unstubAllGlobals());
+const REQUEST = '?request=req123';
+const INFO = { app: { key: 'books', name: 'Rooman Books' }, signedIn: false };
+const ORGS = [
+  { id: 'o1', name: 'Alpha Traders', code: 'alpha', role: 'admin' },
+  { id: 'o2', name: 'Beta Clinic', code: 'beta', role: 'staff' },
+];
+const assign = vi.fn();
+const realLocation = window.location;
 
-describe('Core sign-in placeholder', () => {
-  it('reports a healthy service', async () => {
-    respond(true, { status: 'healthy' });
-    render(<SignIn />);
+beforeEach(() => {
+  assign.mockReset();
+  Object.defineProperty(window, 'location', { configurable: true, value: { ...realLocation, assign } });
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  Object.defineProperty(window, 'location', { configurable: true, value: realLocation });
+});
+
+describe('Sign-in without an app request', () => {
+  it('explains how to sign in and reports a healthy service', async () => {
+    routes({ 'GET /api/health': { body: { status: 'healthy' } } });
+    render(<SignIn search="" />);
     expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.getByText(/Open the app you want to use/)).toBeInTheDocument();
     expect(await screen.findByText('The identity service is running.')).toBeInTheDocument();
   });
 
   it('shows a reference id when the database is down', async () => {
-    respond(true, { status: 'degraded' }, { 'X-Request-ID': 'abc123' });
-    render(<SignIn />);
+    routes({ 'GET /api/health': { body: { status: 'degraded' }, headers: { 'X-Request-ID': 'abc123' } } });
+    render(<SignIn search="" />);
     expect(await screen.findByText(/database is not reachable/)).toBeInTheDocument();
     expect(screen.getByText(/Reference: abc123/)).toBeInTheDocument();
   });
 
   it('explains what to do when the service cannot be reached', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('offline'))));
-    render(<SignIn />);
+    render(<SignIn search="" />);
     expect(await screen.findByText(/cannot be reached/)).toBeInTheDocument();
+  });
+
+  it('confirms a sign-out', () => {
+    routes({ 'GET /api/health': { body: { status: 'healthy' } } });
+    render(<SignIn search="?signed_out=1" />);
+    expect(screen.getByText(/signed out of every Rooman app/)).toBeInTheDocument();
+  });
+});
+
+describe('Sign-in for an app', () => {
+  const fill = async () => {
+    await screen.findByText('to continue to Rooman Books');
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: ' ravi@acme.test ' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'Str0ngPass!' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+  };
+
+  it('signs in and returns to the app', async () => {
+    const calls = routes({
+      'GET /api/oauth/requests/req123': { body: INFO },
+      'POST /api/oauth/login': { body: { redirect: 'https://books.test/auth/callback?code=c1&state=s' } },
+    });
+    render(<SignIn search={REQUEST} />);
+    await fill();
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://books.test/auth/callback?code=c1&state=s'));
+    const login = calls.find((c) => c.url === '/api/oauth/login');
+    expect(JSON.parse(String(login?.init?.body))).toEqual({ request_id: 'req123', email: 'ravi@acme.test', password: 'Str0ngPass!' });
+    expect((login?.init?.headers as Record<string, string>)['X-Rooman-Signin']).toBe('1');
+  });
+
+  it('shows the reason a sign-in failed and clears the password', async () => {
+    routes({
+      'GET /api/oauth/requests/req123': { body: INFO },
+      'POST /api/oauth/login': { status: 401, body: { code: 'invalid_credentials', detail: 'Wrong email or password.' } },
+    });
+    render(<SignIn search={REQUEST} />);
+    await fill();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Wrong email or password.');
+    expect(screen.getByLabelText('Password')).toHaveValue('');
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('lets someone in several organizations choose one', async () => {
+    const calls = routes({
+      'GET /api/oauth/requests/req123': { body: INFO },
+      'POST /api/oauth/login': { body: { chooseOrganization: ORGS } },
+      'POST /api/oauth/choose-org': { body: { redirect: 'https://books.test/cb?code=c2' } },
+    });
+    render(<SignIn search={REQUEST} />);
+    await fill();
+    fireEvent.click(await screen.findByRole('button', { name: /Beta Clinic/ }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://books.test/cb?code=c2'));
+    const choose = calls.find((c) => c.url === '/api/oauth/choose-org');
+    expect(JSON.parse(String(choose?.init?.body))).toEqual({ request_id: 'req123', org_id: 'o2' });
+  });
+
+  it('goes straight to the organization choice when already signed in', async () => {
+    routes({ 'GET /api/oauth/requests/req123': { body: { ...INFO, signedIn: true, organizations: ORGS } } });
+    render(<SignIn search={REQUEST} />);
+    expect(await screen.findByRole('heading', { name: 'Choose an organization' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
+  });
+
+  it('explains an expired link', async () => {
+    routes({
+      'GET /api/oauth/requests/req123': { status: 400, body: { detail: 'This sign-in link has expired. Go back to the app and sign in again.' } },
+    });
+    render(<SignIn search={REQUEST} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('has expired');
+  });
+
+  it('explains when Core cannot be reached', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('offline'))));
+    render(<SignIn search={REQUEST} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('not available right now');
   });
 });

@@ -113,10 +113,11 @@ def create_app() -> FastAPI:
             headers={"X-Request-ID": request_id},
         )
 
-    from core_api.routers import internal, oauth
+    from core_api.routers import internal, oauth, oidc
 
     app.include_router(oauth.router)
     app.include_router(internal.router)
+    app.include_router(oidc.router)
 
     @app.get("/api/health", tags=["Health"])
     def health():

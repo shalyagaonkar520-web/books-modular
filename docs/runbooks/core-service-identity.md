@@ -49,3 +49,39 @@ The first token request creates the first signing key automatically.
 | `GET /internal/orgs/{id}/entitlements` | `entitlements:read` | Which apps and modules the organization has, and its subscription status. |
 
 The calling app is taken from its token, never from the request. A missing or bad `KEY_ENCRYPTION_KEYS` or `PUBLIC_URL` answers 503 rather than issuing unsigned or wrongly signed tokens.
+
+## User sign-in (single sign-on)
+
+People sign in once at `https://id.<domain>/signin` and every app trusts that. It uses the OpenID Connect code flow with PKCE:
+
+1. The app sends the browser to `/api/oauth/authorize`.
+2. The person signs in at `/signin`, and picks an organization if they belong to several.
+3. Core sends the browser back to the app with a one-time code (60 seconds).
+4. The app swaps the code at `/api/oauth/token` for:
+   - an **access token**: 15 minutes, its audience is that app, and it carries role, apps, modules and trial status as `rooman_sdk.tokens` expects;
+   - an **ID token**;
+   - a **refresh token**: 30 days, replaced on every use.
+
+Register each app that signs people in:
+```bash
+# Browser app (PKCE only, no secret)
+python -m core_api.clients create-web --app books --redirect-uri https://books.<domain>/auth/callback --public
+# Or a server-side app that can keep a secret
+python -m core_api.clients create-web --app books --redirect-uri https://books.<domain>/auth/callback
+```
+
+| Protection | What it does |
+|---|---|
+| Exact return address | The redirect URI must match a registered one exactly. An unknown app or address shows an error page and never redirects. |
+| PKCE S256 | Required on every request. The code works once, and only with the verifier and redirect URI it was issued for. |
+| Code replay | Exchanging a used code is refused and revokes the tokens that code produced. |
+| Refresh rotation | Each refresh token works once. Reusing an old one revokes its whole family (assumed stolen). |
+| Wrong passwords | 5 in a row lock the account for 15 minutes; failures per address are rate limited. Unknown email and wrong password get the same answer. |
+| Sign-out | `/api/oauth/logout` ends the Core session and every refresh token it produced. |
+| Session cookie | `rooman_sid`: HttpOnly, SameSite=Lax, scoped to `/api/oauth`, Secure outside development. Only its SHA-256 is stored. |
+| Sign-in page calls | Must carry the `X-Rooman-Signin` header, so other sites cannot post to them. |
+| Access to organizations | Only active memberships in active organizations. A suspended organization or a disabled user cannot sign in, and a refresh fails once access is removed. |
+
+Settings (all optional): `USER_TOKEN_MINUTES`, `REFRESH_TOKEN_DAYS`, `SESSION_HOURS`, `AUTH_CODE_SECONDS`, `MAX_FAILED_LOGINS`, `LOCKOUT_MINUTES`, `COOKIE_SECURE`.
+
+Not yet included: MFA, password reset and invitations at Core (Books still handles these), and per-organization sign-in texts.
