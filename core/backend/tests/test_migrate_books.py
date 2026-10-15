@@ -261,3 +261,22 @@ def test_checksum_ignores_order_and_normalises_values():
     a = [{"id": uuid.UUID(int=1), "at": datetime(2026, 1, 1, tzinfo=UTC)}, {"id": uuid.UUID(int=2), "at": None}]
     b = [{"id": uuid.UUID(int=2), "at": None}, {"id": uuid.UUID(int=1), "at": datetime(2026, 1, 1)}]  # naive = UTC
     assert mb.checksum(a) == mb.checksum(b)
+
+
+def test_copies_from_an_older_books_version(books, core, pricing):
+    """Production Books can be older than this tool: columns and tables it has not got yet read as empty."""
+    engine = create_engine(f"sqlite:///{books}")
+    with engine.begin() as c:
+        c.execute(text("DROP TABLE org_panel_admins"))
+        c.execute(text("DROP TABLE platform_admins"))
+        c.execute(text("ALTER TABLE organizations DROP COLUMN code"))
+        c.execute(text("ALTER TABLE organizations DROP COLUMN panel_content_access"))
+        c.execute(text("ALTER TABLE users DROP COLUMN module_access"))
+    engine.dispose()
+
+    reports = _run(books, core, pricing)
+    assert all(r.consistent for r in reports.values()), mb.format_report(list(reports.values()), False)
+    assert reports["organizations"].source == 4 and reports["users"].source == 4
+    assert reports["panel_admins"].source == 0 and reports["platform_admins"].source == 0
+    # Without a Books code, each organization gets "<name-slug>-<first 6 of id>".
+    assert core.scalar(select(m.Organization.code).where(m.Organization.id == uuid.UUID(ORG_ACTIVE))) == f"acme-traders-{ORG_ACTIVE[:6]}"
