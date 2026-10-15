@@ -5,7 +5,6 @@ import uuid
 import pytest
 
 from backend.services import module_pricing
-
 from tests.conftest import auth, create_panel_admin, invite_and_accept, platform_admin_headers, register_org
 
 

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
+from backend.integrations import customers as customer_sync
 from backend.models import (
     Account,
     Bill,
@@ -243,6 +244,8 @@ def create_contact(payload: ContactCreate, user: User = Depends(require_write), 
     db.flush()
     audit.record(db, user, "create", "contact", contact.id, f"Created {contact.type} {contact.display_name}")
     db.commit()
+    # Rooman One: link to Core's shared customer record (no-op unless integration is on; never fails the request).
+    customer_sync.after_save(db, contact, created=True, user=user)
     return to_out(contact)
 
 
@@ -252,12 +255,14 @@ def update_contact(contact_id: str, payload: ContactUpdate, user: User = Depends
     fields = payload.model_dump(exclude_unset=True)
     if fields.get("ledger_account_id") and fields["ledger_account_id"] != contact.ledger_account_id:
         _validate_ledger_account(db, user.organization_id, contact.type, fields["ledger_account_id"])
+    party_changes = customer_sync.party_changes(contact, fields)
     for field, value in fields.items():
         setattr(contact, field, value)
     if {"salutation", "first_name", "last_name"} & fields.keys():
         _sync_contact_person(contact)
     audit.record(db, user, "update", "contact", contact.id, f"Updated {contact.type} {contact.display_name}")
     db.commit()
+    customer_sync.after_save(db, contact, created=False, changed=party_changes, user=user)
     outstanding = _outstanding_map(db, user.organization_id, contact.type).get(contact.id)
     return to_out(contact, outstanding)
 

@@ -30,9 +30,17 @@ async def lifespan(_app: FastAPI):
         create_all()
     logger.info("Rooman Books API started (env=%s, db=%s)", settings.environment, "sqlite" if settings.is_sqlite else "postgresql")
     razorpay_scheduler.start()
+    if get_settings().integration_enabled:
+        from backend.integrations import relay
+
+        relay.start()
     try:
         yield
     finally:
+        if get_settings().integration_enabled:
+            from backend.integrations import relay
+
+            await relay.stop()
         await razorpay_scheduler.stop()
 
 
@@ -228,6 +236,15 @@ def create_app() -> FastAPI:
     app.include_router(public_site.router)
     app.include_router(public_site.tenant_router)
     app.include_router(platform_site.router, dependencies=[Depends(require_superuser)])
+
+    # Rooman One (backend/integrations): mounted only with INTEGRATION_ENABLED=true,
+    # so with the flag off the API is exactly what it was.
+    if get_settings().integration_enabled:
+        from backend.integrations import admin as integration_admin
+        from backend.integrations import inbound
+
+        app.include_router(inbound.router)
+        app.include_router(integration_admin.router, dependencies=[Depends(require_superuser)])
 
     @app.get("/api/health", tags=["Health"])
     def health():

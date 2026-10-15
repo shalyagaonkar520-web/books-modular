@@ -444,6 +444,11 @@ class Contact(TimestampMixin, OrgScopedMixin, Base):
     payment_terms_days: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Rooman One: the shared customer record in Core (32-hex, like every Books
+    # id). NULL until linked; party_sync_pending marks a change Core has not
+    # seen yet (Core was unreachable). Only used when INTEGRATION_ENABLED=true.
+    party_id: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    party_sync_pending: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
 
     ledger_account: Mapped[Optional[Account]] = relationship(foreign_keys=[ledger_account_id])
 
@@ -1162,3 +1167,7 @@ def _assign_org_code(mapper, connection, target: Organization) -> None:  # noqa:
         n += 1
         code = f"{base}-{n}"
     target.code = code
+
+
+# Rooman One outbox and processed-events tables, registered on the same metadata.
+from backend.integrations import tables as _integration_tables  # noqa: E402, F401
