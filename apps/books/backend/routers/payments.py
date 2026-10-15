@@ -9,7 +9,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, status
 from fastapi.responses import HTMLResponse, Response
 from pydantic import Field
 from sqlalchemy import func, select, update
@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.config import get_settings
 from backend.db import get_db
-from backend.deps import ROLE_ADMIN, require_full_app_access, require_write
+from backend.deps import ROLE_ADMIN, require_full_app_access, require_module, require_write
 from backend.models import (
     BankAccount,
     Bill,
@@ -353,7 +353,12 @@ def _record_customer_payment(
     return payment
 
 
-@router.post("/customer-payments", response_model=CustomerPaymentOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/customer-payments",
+    response_model=CustomerPaymentOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_module("paymentsReceived"))],
+)
 def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
     """Record money received from a customer.
 
@@ -423,7 +428,7 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
     return cp_out(first)
 
 
-@router.delete("/customer-payments/{payment_id}", response_model=Message)
+@router.delete("/customer-payments/{payment_id}", response_model=Message, dependencies=[Depends(require_module("paymentsReceived"))])
 def delete_customer_payment(payment_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
     payment = get_or_404(db, CustomerPayment, payment_id, user.organization_id, "Payment")
     number = payment.payment_number
@@ -473,7 +478,7 @@ def download_customer_payment_pdf(payment_id: str, user: User = Depends(require_
     )
 
 
-@router.post("/customer-payments/{payment_id}/send-gmail")
+@router.post("/customer-payments/{payment_id}/send-gmail", dependencies=[Depends(require_module("paymentsReceived"))])
 def send_customer_payment_receipt_gmail(
     payment_id: str,
     payload: SendPaymentEmailRequest,
@@ -506,7 +511,10 @@ def send_customer_payment_receipt_gmail(
         company_name=org.name if org else None,
     )
     if not result.get("success"):
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, result.get("error"))
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            result.get("error") or "The email could not be sent. Check the address, or ask your administrator to check the email settings.",
+        )
     audit.record(db, user, "email", "customer_payment", payment.id, f"Emailed receipt {payment.payment_number} to {payload.to_email}")
     db.commit()
     return result
@@ -624,7 +632,12 @@ def export_vendor_payments_excel(
     )
 
 
-@router.post("/vendor-payments", response_model=VendorPaymentOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/vendor-payments",
+    response_model=VendorPaymentOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_module("paymentsMade"))],
+)
 def create_vendor_payment(payload: VendorPaymentCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
     org_id = user.organization_id
     vendor = get_or_404(db, Contact, payload.vendor_id, org_id, "Vendor")
@@ -698,7 +711,7 @@ def create_vendor_payment(payload: VendorPaymentCreate, user: User = Depends(req
     return vp_out(payment)
 
 
-@router.delete("/vendor-payments/{payment_id}", response_model=Message)
+@router.delete("/vendor-payments/{payment_id}", response_model=Message, dependencies=[Depends(require_module("paymentsMade"))])
 def delete_vendor_payment(payment_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
     payment = get_or_404(db, VendorPayment, payment_id, user.organization_id, "Payment")
     ledger.reverse_entries_for_source(db, user.organization_id, "vendor_payment", payment.id, date.today(), user.id, "Payment deleted")
@@ -732,7 +745,7 @@ def download_vendor_payment_pdf(payment_id: str, user: User = Depends(require_fu
     )
 
 
-@router.post("/vendor-payments/{payment_id}/send-gmail")
+@router.post("/vendor-payments/{payment_id}/send-gmail", dependencies=[Depends(require_module("paymentsMade"))])
 def send_vendor_payment_remittance_gmail(
     payment_id: str,
     payload: SendPaymentEmailRequest,
@@ -765,7 +778,10 @@ def send_vendor_payment_remittance_gmail(
         company_name=org.name if org else None,
     )
     if not result.get("success"):
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, result.get("error"))
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            result.get("error") or "The email could not be sent. Check the address, or ask your administrator to check the email settings.",
+        )
     audit.record(db, user, "email", "vendor_payment", payment.id, f"Emailed remittance {payment.payment_number} to {payload.to_email}")
     db.commit()
     return result
@@ -1110,7 +1126,7 @@ def process_approved_external_payment(
     return payment
 
 
-@router.post("/payments/external/incoming", status_code=status.HTTP_201_CREATED)
+@router.post("/payments/external/incoming", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_module("paymentsReceived"))])
 def receive_external_payment(
     payload: IncomingExternalPayment,
     user: User = Depends(require_write),
@@ -1183,7 +1199,11 @@ def receive_external_payment(
 
     return {
         "success": True,
-        "message": "External payment received. Confirmation request dispatched via Gmail SMTP.",
+        "message": (
+            "External payment received. A confirmation request was emailed to the organization's admins."
+            if email_result["success"]
+            else "External payment received, but the confirmation email could not be sent. Resend it from the payment."
+        ),
         "external_payment_id": ext_payment.id,
         "platform": ext_payment.platform,
         "external_transaction_id": ext_payment.external_transaction_id,
@@ -1263,18 +1283,57 @@ def _result_page(title: str, heading: str, subtitle: str, icon: str, color: str,
 
 
 @router.get("/payments/external/confirm", response_class=HTMLResponse)
-def confirm_external_payment_from_email(
+def confirm_external_payment_page(
     token: str = Query(..., max_length=128, description="Approval token from Gmail confirmation email"),
     decision: str = Query(..., max_length=10, description="yes or no"),
     db: Session = Depends(get_db),
 ):
-    """Processes 1-click YES or NO confirmation directly from the Gmail SMTP email.
+    """The link in the confirmation email: shows the payment and a button.
+
+    Opening the link changes nothing - email security scanners and link
+    previews open links on their own. The decision is made by the button,
+    which POSTs to the same address.
+    """
+    return _decide_external_payment(token, decision, db, act=False)
+
+
+@router.post("/payments/external/confirm", response_class=HTMLResponse)
+def confirm_external_payment_from_email(
+    token: str = Form(..., max_length=128),
+    decision: str = Form(..., max_length=10),
+    db: Session = Depends(get_db),
+):
+    """Records the YES or NO chosen on the confirmation page.
 
     Unauthenticated by design: the unguessable token, sent only to the
     organization's admins, is the credential. A token decides a payment once
     (the status change is atomic) and stops working CONFIRM_TOKEN_TTL after the
     payment was received.
     """
+    return _decide_external_payment(token, decision, db, act=True)
+
+
+def _confirm_page(token: str, decision: str, amount: str, platform: str, txn: str, desk: str) -> HTMLResponse:
+    approve = decision == "yes"
+    label = "Approve and record this payment" if approve else "Reject this payment"
+    color = "#16a34a" if approve else "#dc2626"
+    return HTMLResponse(
+        content=(
+            f'<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="robots" content="noindex">'
+            f'<title>Confirm payment</title><style>{_PAGE_STYLE}</style></head><body><div class="card">'
+            f'<h2 style="color:{color};">{html.escape(label)}?</h2>'
+            f"<p>{html.escape(platform)} payment of <strong>{html.escape(amount)}</strong> (Ref: {html.escape(txn)}).</p>"
+            f'<form method="post" action="/api/payments/external/confirm">'
+            f'<input type="hidden" name="token" value="{html.escape(token)}">'
+            f'<input type="hidden" name="decision" value="{html.escape(decision)}">'
+            f'<button type="submit" style="background:{color};color:#fff;border:0;border-radius:6px;padding:10px 18px;'
+            f'font-size:15px;cursor:pointer;">{html.escape(label)}</button></form>'
+            f'<p style="color:#64748b;font-size:13px;">{html.escape(desk)}</p></div></body></html>'
+        ),
+    )
+
+
+def _decide_external_payment(token: str, decision: str, db: Session, act: bool) -> HTMLResponse:
     ext_pay = db.execute(select(ExternalPayment).where(ExternalPayment.approval_token == token)).scalar_one_or_none()
 
     if not ext_pay:
@@ -1323,6 +1382,9 @@ def confirm_external_payment_from_email(
             "#ef4444",
             410,
         )
+
+    if not act:
+        return _confirm_page(token, decision_clean, formatted_amount, platform, txn, desk)
 
     if decision_clean == "yes":
         try:
@@ -1402,7 +1464,9 @@ def list_external_payments(
     return Page(items=[ext_out(p) for p in rows], total=total, page=pagination.page, page_size=pagination.page_size)
 
 
-@router.post("/payments/external/{payment_id}/resend-email", response_model=Message)
+@router.post(
+    "/payments/external/{payment_id}/resend-email", response_model=Message, dependencies=[Depends(require_module("paymentsReceived"))]
+)
 def resend_external_payment_confirmation_email(
     payment_id: str,
     user: User = Depends(require_write),
@@ -1424,7 +1488,7 @@ def resend_external_payment_confirmation_email(
     db.commit()
     result = _send_confirmation_requests(db, ext_pay)
     if not result["success"]:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, result["error"] or "Failed to send the confirmation email")
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, result["error"] or "Failed to send the confirmation email")
 
     recipients = ", ".join(result["recipients"])
     ext_pay.confirmation_email_sent = True

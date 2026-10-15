@@ -328,6 +328,13 @@ class SmtpSettingsUpdate(APIModel):
     password: Optional[str] = Field(default=None, max_length=255)
     sender_name: str = Field(min_length=1, max_length=120)
 
+    @field_validator("host", "password", "sender_name")
+    @classmethod
+    def _single_line(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and any(ch in value for ch in ("\r", "\n", "\x00")):
+            raise ValueError("Must be a single line.")
+        return value
+
 
 class SmtpTestRequest(APIModel):
     to_email: EmailStr

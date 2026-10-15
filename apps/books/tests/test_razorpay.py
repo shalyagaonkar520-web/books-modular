@@ -114,7 +114,7 @@ def test_razorpay_refund_flow(client, org):
             "reason": "Customer returned partial order",
         },
     )
-    assert rfnd_res.status_code == 200
+    assert rfnd_res.status_code == 200, rfnd_res.text
     rfnd_data = rfnd_res.json()
     assert rfnd_data["success"] is True
     assert rfnd_data["refund_amount"] == 2000.0

@@ -8,6 +8,7 @@ returns it, logs it, or includes it in an API response.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import hmac
 import logging
@@ -16,6 +17,7 @@ from decimal import Decimal
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import razorpay
+import requests
 from razorpay.errors import BadRequestError, GatewayError, ServerError, SignatureVerificationError
 
 from backend.config import get_settings
@@ -25,6 +27,18 @@ logger = logging.getLogger("roomanbooks.razorpay")
 # Razorpay caps a single listing page at 100 items.
 MAX_PAGE_SIZE = 100
 
+# Seconds to wait for Razorpay before giving up. The SDK sets no timeout of its
+# own, so without this a stalled connection would hang the request forever.
+REQUEST_TIMEOUT_SECONDS = 15
+
+# Fixed, readable messages for failures. The raw SDK/urllib3 text is logged,
+# never shown to users.
+MSG_UNREACHABLE = "Could not reach Razorpay."
+MSG_BAD_KEYS = "Razorpay rejected the API keys."
+MSG_REJECTED = "Razorpay rejected the request."
+MSG_UNAVAILABLE = "Razorpay is temporarily unavailable."
+MSG_UNEXPECTED = "Razorpay returned an unexpected error."
+
 
 class RazorpayNotConfigured(RuntimeError):
     """Raised when an operation needs credentials that were never supplied."""
@@ -32,6 +46,17 @@ class RazorpayNotConfigured(RuntimeError):
 
 class RazorpayUnavailable(RuntimeError):
     """Raised when Razorpay could not be reached or refused the request."""
+
+
+def build_client(key_id: str, key_secret: str) -> razorpay.Client:
+    """A Razorpay SDK client whose every HTTP request carries a timeout.
+
+    The SDK dispatches through ``session.get/post/...``, which all funnel into
+    ``session.request``; binding ``timeout`` there covers every call.
+    """
+    session = requests.Session()
+    session.request = functools.partial(session.request, timeout=REQUEST_TIMEOUT_SECONDS)  # type: ignore[method-assign]
+    return razorpay.Client(session=session, auth=(key_id, key_secret))
 
 
 class RazorpayService:
@@ -43,7 +68,7 @@ class RazorpayService:
         self.mode = self.settings.razorpay_mode
         # The SDK is constructed even without credentials so that the module
         # imports cleanly; every call checks `is_configured` first.
-        self.client = razorpay.Client(auth=(self.key_id, self.key_secret))
+        self.client = build_client(self.key_id, self.key_secret)
 
     # ------------------------------------------------------------------ #
     # Configuration
@@ -86,15 +111,18 @@ class RazorpayService:
                 # A one-item listing is the cheapest authenticated call available.
                 self.client.payment.all({"count": 1})
                 reachable = True
-            except BadRequestError as exc:
+            except BadRequestError:
                 reachable = False
-                error = f"Razorpay rejected the credentials: {exc}"
-            except (GatewayError, ServerError) as exc:
+                error = MSG_BAD_KEYS
+                logger.warning("Razorpay rejected the status check.", exc_info=True)
+            except (GatewayError, ServerError):
                 reachable = False
-                error = f"Razorpay is unavailable right now: {exc}"
-            except Exception as exc:  # network failures, timeouts
+                error = MSG_UNAVAILABLE
+                logger.warning("Razorpay status check failed.", exc_info=True)
+            except Exception:  # network failures, timeouts
                 reachable = False
-                error = f"Could not reach Razorpay: {exc}"
+                error = MSG_UNREACHABLE
+                logger.warning("Could not reach Razorpay for the status check.", exc_info=True)
         is_connected = bool(configured and (reachable or self.allows_simulation))
         return {
             "configured": configured,
@@ -213,17 +241,33 @@ class RazorpayService:
             logger.info("Could not fetch payment %s from Razorpay (%s)", payment_id, exc)
             return None
 
+    def fetch_order(self, order_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch one order. Returns None when it cannot be retrieved."""
+        if not self.is_configured:
+            return None
+        try:
+            return self.client.order.fetch(order_id)
+        except Exception as exc:
+            logger.info("Could not fetch order %s from Razorpay (%s)", order_id, type(exc).__name__)
+            return None
+
     def fetch_payments_page(self, options: Dict[str, Any]) -> List[Dict[str, Any]]:
         """One page of payments. Raises :class:`RazorpayUnavailable` on failure."""
         self._require_configured()
         try:
             response = self.client.payment.all(options)
         except BadRequestError as exc:
-            raise RazorpayUnavailable(f"Razorpay rejected the request: {exc}") from exc
+            logger.exception("Razorpay rejected the payments listing.")
+            raise RazorpayUnavailable(MSG_BAD_KEYS) from exc
         except (GatewayError, ServerError) as exc:
-            raise RazorpayUnavailable(f"Razorpay is temporarily unavailable: {exc}") from exc
+            logger.exception("Razorpay failed to list payments.")
+            raise RazorpayUnavailable(MSG_UNAVAILABLE) from exc
+        except requests.exceptions.RequestException as exc:
+            logger.exception("Could not reach Razorpay to list payments.")
+            raise RazorpayUnavailable(MSG_UNREACHABLE) from exc
         except Exception as exc:
-            raise RazorpayUnavailable(f"Could not reach Razorpay: {exc}") from exc
+            logger.exception("Unexpected error listing Razorpay payments.")
+            raise RazorpayUnavailable(MSG_UNEXPECTED) from exc
         return list(response.get("items") or [])
 
     def iter_payments(
@@ -272,10 +316,18 @@ class RazorpayService:
                 options["to"] = int(to_ts)
             try:
                 response = self.client.refund.all(options)
+            except BadRequestError as exc:
+                logger.exception("Razorpay rejected the refunds listing.")
+                raise RazorpayUnavailable(MSG_BAD_KEYS) from exc
             except (GatewayError, ServerError) as exc:
-                raise RazorpayUnavailable(f"Razorpay is temporarily unavailable: {exc}") from exc
+                logger.exception("Razorpay failed to list refunds.")
+                raise RazorpayUnavailable(MSG_UNAVAILABLE) from exc
+            except requests.exceptions.RequestException as exc:
+                logger.exception("Could not reach Razorpay to list refunds.")
+                raise RazorpayUnavailable(MSG_UNREACHABLE) from exc
             except Exception as exc:
-                raise RazorpayUnavailable(f"Could not list refunds: {exc}") from exc
+                logger.exception("Unexpected error listing Razorpay refunds.")
+                raise RazorpayUnavailable(MSG_UNEXPECTED) from exc
             items = list(response.get("items") or [])
             yield items
             if len(items) < page_size:

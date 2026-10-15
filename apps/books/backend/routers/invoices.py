@@ -570,7 +570,7 @@ def send_invoice_via_gmail(
         error = res.get("error", "Gmail SMTP send failed")
         if issued_now:
             error = f"{error}. The invoice has been marked as sent; the email can be retried."
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail=error)
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=error)
 
     audit.record(
         db,

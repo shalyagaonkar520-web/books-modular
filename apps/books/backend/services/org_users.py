@@ -60,7 +60,7 @@ def _get_org(db: Session, org_id: str) -> Organization:
 
 def _get_user(db: Session, org_id: str, user_id: str) -> User:
     target = db.get(User, user_id)
-    if target is None or target.organization_id != org_id:
+    if target is None or target.organization_id != org_id or target.role == "integration":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     return target
 
@@ -94,7 +94,9 @@ def update_organization(db: Session, org_id: str, actor: Actor, payload: Organiz
 # Users
 # --------------------------------------------------------------------------- #
 def list_users(db: Session, org_id: str) -> List[UserOut]:
-    rows = db.execute(select(User).where(User.organization_id == org_id).order_by(User.created_at)).scalars().all()
+    rows = (
+        db.execute(select(User).where(User.organization_id == org_id, User.role != "integration").order_by(User.created_at)).scalars().all()
+    )
     return [UserOut.model_validate(u) for u in rows]
 
 

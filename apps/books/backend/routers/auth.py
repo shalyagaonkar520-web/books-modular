@@ -479,6 +479,8 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
     email_clean = payload.email.strip().lower()
     login_limiter.check(f"login:{client_ip(request)}:{email_clean}")
     user = db.execute(select(User).where(User.email == email_clean)).scalar_one_or_none()
+    if user is not None and user.role == "integration":
+        user = None  # a connected app's service account: it uses its API key, never a sign-in
     if user and user.password_hash is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "This invitation hasn't been accepted yet. Check your email for the setup link.")
     stored_hash = user.password_hash if user is not None else _dummy_password_hash()
@@ -515,7 +517,7 @@ def forgot_password(payload: ForgotPasswordRequest, request: Request, db: Sessio
     generic = ForgotPasswordResponse(message=FORGOT_PASSWORD_MESSAGE, cooldown_seconds=60)
 
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
-    if not user or not user.is_active:
+    if not user or not user.is_active or user.role == "integration":
         return generic
 
     # Resend cooldown: 60 seconds
@@ -665,10 +667,12 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
 
 
 @router.get("/me", response_model=AuthResponse)
-def me(user: User = Depends(get_current_user)):
-    # Re-issue a fresh access token alongside profile data so the client can extend its session.
-    # Keep the platform-admin attribution when re-issuing an impersonated session.
-    access = create_access_token(user.id, user.organization_id, user.role, impersonator=getattr(user, "impersonated_by", None))
+def me(request: Request, user: User = Depends(get_current_user)):
+    # Hands back the token the caller already holds (same expiry). Sessions are
+    # extended only through /refresh, whose cookie is revoked by sign-out and
+    # password changes - so a copied access token, or a platform admin's
+    # impersonation token, can never be renewed from here.
+    access = request.headers.get("authorization", "").partition(" ")[2].strip()
     return _auth_response(access, user)
 
 

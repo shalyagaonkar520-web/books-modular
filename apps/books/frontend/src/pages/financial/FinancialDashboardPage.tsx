@@ -28,6 +28,7 @@ import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
+import { useDownload } from '@/hooks/useDownload';
 import { formatCurrency, formatDate } from '@/utils/format';
 
 // Labels are app-content keys, resolved with t() at render.
@@ -44,6 +45,7 @@ const PERIOD_OPTIONS = [
 export function FinancialDashboardPage() {
   const { t } = useAppContent();
   const toast = useToast();
+  const { download, downloading } = useDownload();
 
   // Period State
   const [period, setPeriod] = useState<string>('this_month');
@@ -182,12 +184,10 @@ export function FinancialDashboardPage() {
 
   // Export CSV Handler
   const handleExport = (type: string) => {
-    try {
-      razorpayApi.exportReport(type, startDate || undefined, endDate || undefined);
+    void download(async () => {
+      await razorpayApi.exportReport(type, startDate || undefined, endDate || undefined);
       toast.success(t('financialHub.toast.downloading', { type }));
-    } catch {
-      toast.error(t('financialHub.toast.exportFailed'));
-    }
+    });
   };
 
   // Filtered Payments Table
@@ -237,7 +237,7 @@ export function FinancialDashboardPage() {
             </Button>
 
             <div style={{ position: 'relative', display: 'inline-block' }}>
-              <Button icon={<Download size={14} />} variant="secondary" onClick={() => handleExport('payments')}>
+              <Button icon={<Download size={14} />} variant="secondary" disabled={downloading} onClick={() => handleExport('payments')}>
                 {t('financialHub.export')}
               </Button>
             </div>
@@ -546,6 +546,8 @@ export function FinancialDashboardPage() {
             <Card title={t('financialHub.analytics.title')}>
               {analytics.loading && !analytics.data ? (
                 <LoadingBlock />
+              ) : analytics.error ? (
+                <ErrorBlock message={analytics.error} onRetry={analytics.reload} />
               ) : analytics.data ? (
                 <div className="stack" style={{ gap: '1.25rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
@@ -662,6 +664,8 @@ export function FinancialDashboardPage() {
           >
             {payments.loading && !payments.data ? (
               <LoadingBlock />
+            ) : payments.error ? (
+              <ErrorBlock message={payments.error} onRetry={payments.reload} />
             ) : !filteredPayments.length ? (
               <EmptyState title={t('financialHub.payments.empty.title')} description={t('financialHub.payments.empty.body')} />
             ) : (
@@ -751,13 +755,15 @@ export function FinancialDashboardPage() {
             title={t('financialHub.refunds.title')}
             subtitle={t('financialHub.refunds.subtitle')}
             actions={
-              <Button icon={<Download size={14} />} variant="secondary" onClick={() => handleExport('refunds')}>
+              <Button icon={<Download size={14} />} variant="secondary" disabled={downloading} onClick={() => handleExport('refunds')}>
                 {t('financialHub.refunds.export')}
               </Button>
             }
           >
             {refunds.loading && !refunds.data ? (
               <LoadingBlock />
+            ) : refunds.error ? (
+              <ErrorBlock message={refunds.error} onRetry={refunds.reload} />
             ) : !refunds.data?.items.length ? (
               <EmptyState title={t('financialHub.refunds.empty.title')} description={t('financialHub.refunds.empty.body')} />
             ) : (
@@ -852,6 +858,8 @@ export function FinancialDashboardPage() {
 
               {reconciliations.loading && !reconciliations.data ? (
                 <LoadingBlock />
+              ) : reconciliations.error ? (
+                <ErrorBlock message={reconciliations.error} onRetry={reconciliations.reload} />
               ) : !reconciliations.data?.items.length ? (
                 <EmptyState
                   title={t('financialHub.recon.empty.title')}
@@ -899,13 +907,15 @@ export function FinancialDashboardPage() {
               title={t('financialHub.settlements.title')}
               subtitle={t('financialHub.settlements.subtitle')}
               actions={
-                <Button icon={<Download size={14} />} variant="secondary" onClick={() => handleExport('settlements')}>
+                <Button icon={<Download size={14} />} variant="secondary" disabled={downloading} onClick={() => handleExport('settlements')}>
                   {t('financialHub.settlements.export')}
                 </Button>
               }
             >
               {settlements.loading && !settlements.data ? (
                 <LoadingBlock />
+              ) : settlements.error ? (
+                <ErrorBlock message={settlements.error} onRetry={settlements.reload} />
               ) : !settlements.data?.items.length ? (
                 <EmptyState title={t('financialHub.settlements.empty.title')} description={t('financialHub.settlements.empty.body')} />
               ) : (
@@ -950,13 +960,15 @@ export function FinancialDashboardPage() {
             title={t('financialHub.ledger.title')}
             subtitle={t('financialHub.ledger.subtitle')}
             actions={
-              <Button icon={<Download size={14} />} variant="secondary" onClick={() => handleExport('ledger')}>
+              <Button icon={<Download size={14} />} variant="secondary" disabled={downloading} onClick={() => handleExport('ledger')}>
                 {t('financialHub.ledger.export')}
               </Button>
             }
           >
             {transactions.loading && !transactions.data ? (
               <LoadingBlock />
+            ) : transactions.error ? (
+              <ErrorBlock message={transactions.error} onRetry={transactions.reload} />
             ) : !transactions.data?.items.length ? (
               <EmptyState title={t('financialHub.ledger.empty.title')} description={t('financialHub.ledger.empty.body')} />
             ) : (

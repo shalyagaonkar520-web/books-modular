@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Optional
@@ -26,6 +27,7 @@ from backend.services.money import money, qty
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
 router = APIRouter(prefix="/api/bills", tags=["Purchases"])
+logger = logging.getLogger("roomanbooks.bills")
 OPEN_STATUSES = ("open", "partially_paid")
 
 
@@ -429,18 +431,21 @@ def send_bill_via_gmail(
     msg["From"] = f"{sender_name} <{sender_email}>"
     msg["To"] = payload.to_email
 
-    vendor_name = bill.vendor.display_name if bill.vendor else "Vendor"
+    from html import escape
+
+    # Everything a user typed is escaped: the email is HTML from our sender.
+    vendor_name = escape(bill.vendor.display_name if bill.vendor else "Vendor")
     html = f"""<!DOCTYPE html><html><body style="font-family:sans-serif;padding:24px;background:#f8fafc;color:#1e293b;">
     <div style="max-width:550px;margin:0 auto;background:#fff;padding:28px;border-radius:10px;border:1px solid #e2e8f0;">
     <h2 style="color:#0f172a;margin-top:0;">Rooman Technologies - Purchase Bill Voucher</h2>
     <p>Dear <strong>{vendor_name}</strong>,</p>
-    <p>Please find attached voucher details for Purchase Bill <strong>{bill.bill_number}</strong> (Vendor Ref: {bill.vendor_bill_number or "N/A"}).</p>
+    <p>Please find attached voucher details for Purchase Bill <strong>{bill.bill_number}</strong> (Vendor Ref: {escape(bill.vendor_bill_number or "N/A")}).</p>
     <div style="background:#f1f5f9;padding:16px;border-radius:6px;margin:16px 0;">
       <div>Bill Amount: <strong>₹{bill.total:,.2f}</strong></div>
       <div>Due Date: <strong>{bill.due_date.strftime("%d %b %Y")}</strong></div>
       <div>Balance Outstanding: <strong>₹{bill.balance_due:,.2f}</strong></div>
     </div>
-    {f'<p style="background:#eff6ff;padding:12px;border-left:4px solid #2563eb;"><strong>Note:</strong> {payload.custom_notes}</p>' if payload.custom_notes else ""}
+    {f'<p style="background:#eff6ff;padding:12px;border-left:4px solid #2563eb;"><strong>Note:</strong> {escape(payload.custom_notes or "")}</p>' if payload.custom_notes else ""}
     <p>Warm regards,<br/><strong>Accounts Payable Team</strong><br/>Rooman Technologies</p>
     </div></body></html>"""
 
@@ -450,16 +455,26 @@ def send_bill_via_gmail(
         part.add_header("Content-Disposition", "attachment", filename=f"Bill_{bill.bill_number}.pdf")
         msg.attach(part)
 
+    server = None
     try:
         server = get_smtp_connection()
         server.sendmail(sender_email, payload.to_email, msg.as_string())
-        server.quit()
     except Exception as e:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Gmail SMTP error: {e}")
+        logger.error("Emailing bill %s to %s failed", bill.id, payload.to_email, exc_info=e)
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "The email could not be sent. Check the address, or ask your administrator to check the email settings.",
+        ) from e
+    finally:
+        if server is not None:
+            try:
+                server.quit()
+            except Exception:
+                pass
 
     audit.record(db, user, "email", "bill", bill.id, f"Emailed bill {bill.bill_number} to {payload.to_email}")
     db.commit()
-    return {"success": True, "message": f"Bill {bill.bill_number} emailed to {payload.to_email} via Gmail SMTP"}
+    return {"success": True, "message": f"Bill {bill.bill_number} emailed to {payload.to_email}."}
 
 
 @router.post("", response_model=BillOut, status_code=status.HTTP_201_CREATED)

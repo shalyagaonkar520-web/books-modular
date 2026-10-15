@@ -412,7 +412,7 @@ def send_contact_email(
         recipient_name=contact.display_name,
     )
     if not result.get("success"):
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Gmail SMTP error: {result.get('error')}")
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, result.get("error") or "The email could not be sent. Check the address, or ask your administrator to check the email settings.")
     audit.record(db, user, "email", "contact", contact.id, f"Sent email to {contact.display_name} ({recipient})")
     db.commit()
     return result

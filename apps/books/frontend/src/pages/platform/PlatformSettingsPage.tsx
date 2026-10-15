@@ -12,6 +12,8 @@ import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { titleCase } from '@/utils/format';
 
+import { EmailSettings } from '../settings/EmailSettings';
+
 export function PlatformSettingsPage() {
   const toast = useToast();
   const { data, loading, error, reload, setData } = useAsync((signal) => platformApi.settings.get(signal), []);
@@ -77,6 +79,8 @@ export function PlatformSettingsPage() {
           <FreeTrialCard settings={data} onSaved={setData} />
 
           <NewOrgDefaultsCard settings={data} onSaved={setData} />
+
+          <EmailSettings />
 
           <Card title="Environment & integrations" subtitle="Read-only status of the running deployment.">
             <dl className="detail-grid">

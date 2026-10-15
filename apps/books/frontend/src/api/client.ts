@@ -158,6 +158,27 @@ function refreshOnce(): Promise<boolean> {
   return refreshInFlight;
 }
 
+const UNREACHABLE = 'Cannot reach the server. Check your connection and try again.';
+
+/** Message for an error response whose body is not JSON (proxy pages, HTTP/2 with no reason phrase). */
+function fallbackMessage(response: Response): string {
+  if (response.status === 413) return 'The file is too large to upload.';
+  if (response.status === 502 || response.status === 503 || response.status === 504) {
+    return 'The server is not responding right now. Please try again in a moment.';
+  }
+  return response.statusText || `Request failed (${response.status})`;
+}
+
+/** fetch() that turns a network failure into an ApiError instead of a raw TypeError. */
+async function fetchOrThrow(send: () => Promise<Response>): Promise<Response> {
+  try {
+    return await send();
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') throw error;
+    throw new ApiError(UNREACHABLE, 0);
+  }
+}
+
 export interface RequestOptions {
   method?: string;
   body?: unknown;
@@ -195,18 +216,12 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     });
   };
 
-  let response: Response;
-  try {
-    response = await send();
-  } catch (error) {
-    if ((error as Error).name === 'AbortError') throw error;
-    throw new ApiError('Cannot reach the server. Check your connection and try again.', 0);
-  }
+  let response = await fetchOrThrow(send);
 
   if (response.status === 401 && retryOnUnauthorized) {
     const refreshed = await refreshOnce();
     if (refreshed) {
-      response = await send();
+      response = await fetchOrThrow(send);
     } else {
       accessToken = null;
       notifyUnauthorized();
@@ -226,7 +241,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     }
     const locked = subscriptionRequired(response.status, payload);
     if (locked) subscriptionListeners.forEach((listener) => listener(locked));
-    throw parseError(response.status, payload ?? { detail: response.statusText });
+    throw parseError(response.status, payload ?? { detail: fallbackMessage(response) });
   }
   return payload as T;
 }
@@ -244,15 +259,18 @@ export const api = {
 export async function downloadFile(path: string, filename: string): Promise<void> {
   const headers: Record<string, string> = {};
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  let response = await fetch(buildUrl(path), { headers, credentials: 'include' });
+  let response = await fetchOrThrow(() => fetch(buildUrl(path), { headers, credentials: 'include' }));
   if (response.status === 401 && (await refreshOnce())) {
-    response = await fetch(buildUrl(path), {
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-      credentials: 'include',
-    });
+    response = await fetchOrThrow(() =>
+      fetch(buildUrl(path), {
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+        credentials: 'include',
+      }),
+    );
   }
   if (!response.ok) {
-    throw parseError(response.status, await response.json().catch(() => ({ detail: 'Download failed' })));
+    const failed = response;
+    throw parseError(failed.status, await failed.json().catch(() => ({ detail: fallbackMessage(failed) })));
   }
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);

@@ -75,6 +75,24 @@ class Settings(BaseSettings):
         default=60, ge=0, le=1440, description="Re-scan window before the last sync so late captures are not missed"
     )
 
+    # Connected apps (services/integrations.py): other apps using Books with a
+    # scoped API key, and webhooks Books sends them.
+    integration_rate_limit_per_minute: int = Field(default=300, ge=10, le=10000, description="API requests per minute per connected app")
+    webhooks_enabled: bool = Field(default=True, description="Run the webhook delivery loop")
+    webhook_allowed_hosts: List[str] | str = Field(
+        default_factory=list, description="WEBHOOK_ALLOWED_HOSTS: comma-separated internal hosts webhooks may reach (other Rooman apps)"
+    )
+    webhook_allow_private: bool | None = Field(
+        default=None, description="WEBHOOK_ALLOW_PRIVATE: allow webhooks to private/local addresses (default: only outside production)"
+    )
+
+    @field_validator("webhook_allowed_hosts", mode="before")
+    @classmethod
+    def _split_hosts(cls, value):
+        if isinstance(value, str):
+            return [host.strip().lower() for host in value.split(",") if host.strip()]
+        return [str(host).strip().lower() for host in (value or [])]
+
     # Rooman One (backend/integrations). Everything is OFF by default: with these
     # unset Books behaves exactly as it did before Rooman One existed.
     auth_mode: str = Field(default="local", description="AUTH_MODE: local | core (Core-issued tokens, a later stage)")
@@ -181,6 +199,10 @@ def get_settings() -> Settings:
             raise RuntimeError("SECRET_KEY must be set in production")
         # Ephemeral key for local development only. Tokens are invalidated on restart.
         settings.secret_key = secrets.token_urlsafe(48)
+    if settings.is_production and len(settings.secret_key) < 32:
+        raise RuntimeError("SECRET_KEY must be at least 32 characters in production")
+    if settings.webhook_allow_private is None:
+        settings.webhook_allow_private = not settings.is_production
     if settings.is_production and settings.auto_create_tables:
         # Migrations are the source of truth in production.
         settings.auto_create_tables = False

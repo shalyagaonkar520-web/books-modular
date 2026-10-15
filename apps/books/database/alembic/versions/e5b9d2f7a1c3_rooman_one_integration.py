@@ -10,7 +10,7 @@ Nothing is backfilled; every existing row keeps working unchanged, and the new
 tables stay empty while INTEGRATION_ENABLED is off.
 
 Revision ID: e5b9d2f7a1c3
-Revises: c7a2e9d4b1f6
+Revises: d3f8a1c6e9b2
 Create Date: 2026-10-15
 """
 
@@ -21,7 +21,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "e5b9d2f7a1c3"
-down_revision = "c7a2e9d4b1f6"
+down_revision = "d3f8a1c6e9b2"
 branch_labels = None
 depends_on = None
 

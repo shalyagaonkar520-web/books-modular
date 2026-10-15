@@ -1169,5 +1169,92 @@ def _assign_org_code(mapper, connection, target: Organization) -> None:  # noqa:
     target.code = code
 
 
+# --------------------------------------------------------------------------- #
+# Connected apps: other Rooman apps (or a customer's own system) using Books
+# features through the API with a scoped key, and receiving its events
+# (services/integrations.py, docs/INTEGRATIONS.md)
+# --------------------------------------------------------------------------- #
+
+
+class AppConnection(TimestampMixin, OrgScopedMixin, Base):
+    """One app connected to one organization's Books, created by a platform admin.
+
+    The app calls the normal Books API with ``Authorization: Bearer rbk_...``.
+    It acts as ``service_user`` (role ``integration``: never signs in, not
+    listed with the organization's users), limited to ``scopes`` - feature
+    keys of backend/features.py with ``:read`` or ``:write`` - and to the
+    organization's plan. Only the SHA-256 of the key is stored.
+    """
+
+    __tablename__ = "app_connections"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    key_prefix: Mapped[str] = mapped_column(String(24), nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    # JSON lists: ["invoices:write", "contacts:read"] and ["invoice.created", ...].
+    scopes: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    events: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    webhook_url: Mapped[Optional[str]] = mapped_column(String(500))
+    # Bumped on "rotate secret"; the signing secret is derived from it (never stored).
+    secret_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    service_user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by: Mapped[Optional[str]] = mapped_column(String(120))
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    service_user: Mapped[User] = relationship()
+
+
+class IntegrationEvent(Base):
+    """Something that happened in Books (outbox), written in the same transaction as the change."""
+
+    __tablename__ = "integration_events"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    organization_id: Mapped[str] = mapped_column(String(32), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    type: Mapped[str] = mapped_column(String(60), nullable=False)
+    entity_id: Mapped[Optional[str]] = mapped_column(String(32))
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class WebhookDelivery(Base):
+    """One event to one connected app's webhook, retried with backoff until delivered or dead."""
+
+    __tablename__ = "webhook_deliveries"
+    __table_args__ = (Index("ix_webhook_deliveries_due", "status", "next_attempt_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    event_id: Mapped[str] = mapped_column(String(32), ForeignKey("integration_events.id", ondelete="CASCADE"), nullable=False, index=True)
+    connection_id: Mapped[str] = mapped_column(String(32), ForeignKey("app_connections.id", ondelete="CASCADE"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)  # pending | delivered | dead
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    last_status_code: Mapped[Optional[int]] = mapped_column(Integer)
+    last_error: Mapped[Optional[str]] = mapped_column(String(500))
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    event: Mapped[IntegrationEvent] = relationship()
+
+
+class IdempotencyRecord(Base):
+    """The first response to a connected app's write with an ``Idempotency-Key``, replayed on a retry."""
+
+    __tablename__ = "idempotency_records"
+    __table_args__ = (UniqueConstraint("connection_id", "key", name="uq_idempotency_connection_key"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    connection_id: Mapped[str] = mapped_column(String(32), ForeignKey("app_connections.id", ondelete="CASCADE"), nullable=False)
+    key: Mapped[str] = mapped_column(String(120), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status_code: Mapped[Optional[int]] = mapped_column(Integer)  # NULL while the first request is running
+    response_body: Mapped[Optional[str]] = mapped_column(Text)
+    content_type: Mapped[Optional[str]] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+
+
 # Rooman One outbox and processed-events tables, registered on the same metadata.
 from backend.integrations import tables as _integration_tables  # noqa: E402, F401

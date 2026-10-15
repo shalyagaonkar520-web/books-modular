@@ -7,6 +7,7 @@ import {
   type InvoiceMatchResult,
   type TransactionDetail,
 } from '@/api/razorpay';
+import { ApiError } from '@/api/client';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -54,8 +55,8 @@ export function RazorpayTransactionDetail({ paymentId, categories, onClose, onCh
       setData({ ...data, ...updated });
       toast.success(`Category confirmed as ${updated.category_label}.`);
       onChanged();
-    } catch {
-      toast.error('Could not update the category.');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Could not update the category.');
     } finally {
       setBusy(false);
     }
@@ -70,8 +71,8 @@ export function RazorpayTransactionDetail({ paymentId, categories, onClose, onCh
         setData({ ...data, ...updated });
         toast.success(`Category set to ${updated.category_label}.`);
         onChanged();
-      } catch {
-        toast.error('Could not update the category.');
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.message : 'Could not update the category.');
       } finally {
         setBusy(false);
       }

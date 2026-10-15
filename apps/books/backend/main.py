@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 from backend.config import get_settings
 from backend.db import SessionLocal, create_all
-from backend.services import razorpay_scheduler
+from backend.services import idempotency, razorpay_scheduler, webhook_dispatcher
 
 settings = get_settings()
 logger = logging.getLogger("roomanbooks")
@@ -30,6 +30,7 @@ async def lifespan(_app: FastAPI):
         create_all()
     logger.info("Rooman Books API started (env=%s, db=%s)", settings.environment, "sqlite" if settings.is_sqlite else "postgresql")
     razorpay_scheduler.start()
+    webhook_dispatcher.start()
     if get_settings().integration_enabled:
         from backend.integrations import relay
 
@@ -41,6 +42,7 @@ async def lifespan(_app: FastAPI):
             from backend.integrations import relay
 
             await relay.stop()
+        await webhook_dispatcher.stop()
         await razorpay_scheduler.stop()
 
 
@@ -59,8 +61,11 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID", "Idempotency-Key"],
     )
+
+    # Connected apps' retried writes (Idempotency-Key) answer with the first response.
+    app.middleware("http")(idempotency.middleware)
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
@@ -124,27 +129,7 @@ def create_app() -> FastAPI:
         )
 
     from backend.deps import require_full_app_access, require_module, require_subscription
-    from backend.routers import (
-        accounting,
-        auth,
-        banking,
-        bills,
-        contacts,
-        dashboard,
-        documents,
-        employee_portal,
-        expenses,
-        invoices,
-        items,
-        org_admin,
-        organization,
-        payments,
-        payroll,
-        projects,
-        razorpay,
-        reports,
-        subscription,
-    )
+    from backend.routers import auth, employee_portal, org_admin, payments, razorpay, subscription
 
     # auth (login, /me, change-password, sessions) and the employee portal
     # stay reachable by every role, including the restricted "employee"
@@ -171,45 +156,22 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(subscription.router)
     app.include_router(employee_portal.router, dependencies=[Depends(require_subscription)])
-    # Writes to a module outside the organization's accepted plan answer 403
-    # (deps.require_module); the module keys are those of module_pricing.json.
-    plan_modules = {
-        items: ("items",),
-        contacts: ("customers", "vendors"),
-        invoices: ("invoices",),
-        bills: ("bills",),
-        expenses: ("expenses",),
-        banking: ("banking",),
-        accounting: ("accounting",),
-        projects: ("timeTracking",),
-        documents: ("documents",),
-        payroll: ("payroll",),
-    }
-    for module in (
-        organization,
-        items,
-        contacts,
-        invoices,
-        bills,
-        expenses,
-        banking,
-        accounting,
-        projects,
-        documents,
-        payroll,
-        reports,
-        dashboard,
-    ):
+    # Every feature is declared once in backend/features.py: mounted here behind
+    # require_full_app_access, plus require_module when it is sold in a plan
+    # (writes outside the organization's accepted plan answer 403).
+    from backend import features
+
+    for feature in features.FEATURES:
         guards = [Depends(require_full_app_access)]
-        if module in plan_modules:
-            guards.append(Depends(require_module(*plan_modules[module])))
-        app.include_router(module.router, dependencies=guards)
+        if feature.plan_keys:
+            guards.append(Depends(require_module(*feature.plan_keys)))
+        for router in feature.load_routers():
+            app.include_router(router, dependencies=guards)
     app.include_router(payments.router)
     app.include_router(razorpay.router)
     from backend.routes import email
 
     app.include_router(email.router)
-    app.include_router(items.adjustments_router, dependencies=[Depends(require_full_app_access), Depends(require_module("items"))])
 
     # Super-admin (platform operator) console. Its auth endpoints are open so an
     # admin can log in; every other platform route is cross-tenant and guarded
@@ -219,6 +181,16 @@ def create_app() -> FastAPI:
 
     app.include_router(platform_admin.auth_router)
     app.include_router(platform_admin.router, dependencies=[Depends(require_superuser)])
+
+    # Connected apps: managed by the platform admin; an app calls
+    # /api/connect/v1 with its key, and the rest of the API within its scopes.
+    from backend.routers import connected_apps
+
+    app.include_router(connected_apps.platform_router, dependencies=[Depends(require_superuser)])
+    from backend.routers import platform_email
+
+    app.include_router(platform_email.router, dependencies=[Depends(require_superuser)])
+    app.include_router(connected_apps.connect_router)
 
     # Organization admin panel. Its own logins (created by a platform admin),
     # its own token type: tenant and platform tokens are rejected, and a panel

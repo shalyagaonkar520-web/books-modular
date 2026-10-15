@@ -319,7 +319,11 @@ def dashboard(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: S
     now = datetime.now(UTC)
     month_ago, week_ago = now - timedelta(days=30), now - timedelta(days=7)
 
-    users = db.execute(select(User).where(User.organization_id == org_id).order_by(User.created_at.desc())).scalars().all()
+    users = (
+        db.execute(select(User).where(User.organization_id == org_id, User.role != "integration").order_by(User.created_at.desc()))
+        .scalars()
+        .all()
+    )
     user_outs = [UserOut.model_validate(u) for u in users]
     employees = (
         db.execute(select(Employee).where(Employee.organization_id == org_id).order_by(Employee.date_of_joining.desc(), Employee.name))
@@ -401,7 +405,7 @@ def set_module_access(
 ):
     """Choose which modules a staff user may edit - only modules of the organization's plan."""
     target = db.get(User, user_id)
-    if target is None or target.organization_id != admin.organization_id:
+    if target is None or target.organization_id != admin.organization_id or target.role == "integration":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     if target.role in ("admin", "viewer", "employee"):
         raise HTTPException(

@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Iterable
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 
+from backend.config import get_settings
 from backend.db import get_db
 from backend.models import Organization, OrgPanelAdmin, PlatformAdmin, User
 from backend.security import decode_access_token, decode_org_panel_token, decode_platform_token
-from backend.services import module_pricing, subscription
+from backend.services import integrations, module_pricing, subscription
+from backend.services.ratelimit import RateLimiter
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -56,11 +60,13 @@ def get_current_user(
 ) -> User:
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    if integrations.is_api_key(credentials.credentials):
+        return _connected_app_user(request, credentials.credentials, db)
     payload = decode_access_token(credentials.credentials)
     if not payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
     user = db.get(User, payload.get("sub"))
-    if not user or not user.is_active:
+    if not user or not user.is_active or user.role == integrations.INTEGRATION_ROLE:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User is inactive or does not exist")
     org = db.get(Organization, user.organization_id)
     if org is not None and org.is_suspended:
@@ -72,6 +78,51 @@ def get_current_user(
     # audit.record() uses it to attribute changes to the admin.
     user.impersonated_by = payload.get("imp")
     request.state.user = user
+    return user
+
+
+_api_key_limiter = RateLimiter(limit=get_settings().integration_rate_limit_per_minute, window_seconds=60)
+
+
+def _connected_app_user(request: Request, token: str, db: Session) -> User:
+    """A connected app's key -> its service user, acting as an admin within its scopes.
+
+    Default deny: only paths of a feature the key holds a scope for are open
+    (services/integrations.scope_error); the plan, suspension and the trial
+    lock apply exactly as to a person.
+    """
+    conn = integrations.find_connection(db, token)
+    if conn is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or revoked API key")
+    _api_key_limiter.check(f"app:{conn.id}")
+    error = integrations.scope_error(conn, request.method, request.url.path)
+    if error:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=error)
+    user = conn.service_user
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or revoked API key")
+    org = db.get(Organization, user.organization_id)
+    if org is None or org.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ARCHIVED_ORG_DETAIL)
+    if org.is_suspended:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=SUSPENDED_ORG_DETAIL)
+    approval_error = org_approval_error(org)
+    if approval_error:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=approval_error)
+    # Within its scopes the app may do what an admin may; the stored role stays
+    # "integration" (never a sign-in, never counted as an admin), so this is
+    # only the in-memory value for this request.
+    set_committed_value(user, "role", ROLE_ADMIN)
+    user.impersonated_by = None
+    user.connected_app = conn
+    now = datetime.now(UTC)
+    last = conn.last_used_at
+    if last is None or now - (last if last.tzinfo else last.replace(tzinfo=UTC)) > timedelta(minutes=5):
+        # Throttled, so a busy app does not write on every request.
+        conn.last_used_at = now
+        db.commit()
+    request.state.user = user
+    request.state.connected_app = conn
     return user
 
 
@@ -221,15 +272,37 @@ def require_module(*keys: str):
     def _guard(request: Request, user: User = Depends(get_current_user)) -> None:
         if request.method in _READ_METHODS:
             return
-        allowed = subscription.paid_modules(user.organization)
-        if allowed is not None and not allowed.intersection(keys):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=MODULE_NOT_IN_PLAN_DETAIL)
-        if user.role != ROLE_ADMIN:
-            granted = module_pricing.parse_stored(user.module_access)
-            if granted is not None and not set(granted).intersection(keys):
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=NO_MODULE_ACCESS_DETAIL)
+        error = module_write_error(user, keys)
+        if error:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=error)
 
     return _guard
+
+
+def module_write_error(user: User, keys: Iterable[str], request: Request | None = None) -> str | None:
+    """Why ``user`` may not write to a module in ``keys`` (the 403 detail), else None.
+
+    The plan, the user's own module access and - for a connected app - its
+    scopes. For an endpoint that writes into several modules' records (e.g.
+    an Excel import that creates invoices and bills), call it once per module.
+    """
+    keys = set(keys)
+    allowed = subscription.paid_modules(user.organization)
+    if allowed is not None and not allowed.intersection(keys):
+        return MODULE_NOT_IN_PLAN_DETAIL
+    if user.role != ROLE_ADMIN:
+        granted = module_pricing.parse_stored(user.module_access)
+        if granted is not None and not set(granted).intersection(keys):
+            return NO_MODULE_ACCESS_DETAIL
+    conn = getattr(request.state, "connected_app", None) if request is not None else None
+    if conn is not None:
+        from backend import features
+
+        scopes = integrations.parse_list(conn.scopes)
+        needed = [f"{f.key}:write" for f in features.connectable() if keys.intersection(f.plan_keys)]
+        if needed and not any(scope in scopes for scope in needed):
+            return f"This app's key does not have the {needed[0]} permission."
+    return None
 
 
 require_write = require_roles(*WRITE_ROLES)
