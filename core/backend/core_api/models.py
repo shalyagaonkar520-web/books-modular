@@ -364,6 +364,30 @@ class OAuthClient(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
+SIGNING_KEY_STATUSES = ("active", "retiring", "retired")
+
+
+class SigningKey(Base):
+    """An RSA key pair that signs Core's tokens. Exactly one is active at a time.
+
+    "retiring" keys no longer sign but stay in /jwks for the overlap window, so
+    tokens they signed keep verifying. The private key is stored encrypted with
+    KEY_ENCRYPTION_KEYS and never leaves Core.
+    """
+
+    __tablename__ = "signing_keys"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    kid: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    algorithm: Mapped[str] = mapped_column(String(10), default="RS256", nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="active", nullable=False, index=True)
+    public_jwk: Mapped[dict[str, Any]] = mapped_column(Json, nullable=False)
+    private_key_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    retiring_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class AuditLog(Base):
     """Every admin action and every sign-in. org_id NULL = a platform-level action."""
 
