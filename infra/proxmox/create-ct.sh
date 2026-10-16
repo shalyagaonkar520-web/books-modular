@@ -70,6 +70,7 @@ BOOKS_DB_PASSWORD=$(gen)
 BOOKS_SECRET_KEY=$(gen)
 BOOKS_ENVIRONMENT=production
 CORE_DB_PASSWORD=$(gen)
+CORE_KEY_ENCRYPTION_KEYS=$(openssl rand -base64 32 | tr '+/' '-_')
 BOOKINGS_DB_PASSWORD=$(gen)
 NATS_PASSWORD=$(gen)
 ENV

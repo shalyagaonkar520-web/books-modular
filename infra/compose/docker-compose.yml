@@ -138,6 +138,8 @@ services:
       DATABASE_URL: postgresql+psycopg://${CORE_DB_USER:-rooman_core}:${CORE_DB_PASSWORD}@core-db:5432/${CORE_DB_NAME:-rooman_core}
       PUBLIC_URL: ${PUBLIC_SCHEME:-http}://${CORE_HOST:-id.${DOMAIN:-localhost}}
       CORS_ORIGINS: ${PUBLIC_SCHEME:-http}://${CORE_HOST:-id.${DOMAIN:-localhost}}
+      KEY_ENCRYPTION_KEYS: ${CORE_KEY_ENCRYPTION_KEYS:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     depends_on:
       core-db:
         condition: service_healthy
