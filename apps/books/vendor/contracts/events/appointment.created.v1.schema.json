@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.rooman.one/events/appointment.created.v1.schema.json",
+  "title": "appointment.created v1",
+  "x-source": "bookings",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "type": {
+      "const": "appointment.created"
+    },
+    "version": {
+      "const": 1
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "appointment_id",
+        "party_id",
+        "service_id",
+        "starts_at",
+        "ends_at",
+        "timezone"
+      ],
+      "properties": {
+        "appointment_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "party_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "service_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "staff_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "starts_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "ends_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1
+        },
+        "amount": {
+          "type": "string",
+          "pattern": "^-?\\d{1,12}(\\.\\d{1,2})?$",
+          "description": "Decimal as a string, never a float."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      }
+    }
+  }
+}

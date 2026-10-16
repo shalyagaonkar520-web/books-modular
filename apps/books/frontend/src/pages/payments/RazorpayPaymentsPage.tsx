@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 
+import { ApiError } from '@/api/client';
 import { razorpaySyncApi } from '@/api/razorpay';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -49,8 +50,8 @@ export function RazorpayPaymentsPage() {
       }
       setRefreshKey((key) => key + 1);
       reload();
-    } catch {
-      toast.error('Could not reach the server to start the synchronisation.');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Could not start the synchronisation.');
     } finally {
       setSyncing(false);
     }

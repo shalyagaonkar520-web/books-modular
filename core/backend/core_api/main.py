@@ -1,7 +1,9 @@
 """Rooman One Core API: identity and platform.
 
-Phase 0 ships only the service skeleton (health, request IDs, error
-handling). Identity, organizations and OIDC arrive in Phase 1.
+Service-to-service identity: signing keys and /jwks (keys.py), app tokens
+via the client-credentials grant (routers/oauth.py), and the internal API the
+apps call - the shared customer record and entitlements (routers/internal.py).
+User sign-in (OIDC) comes next.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 from core_api.config import get_settings
 from core_api.db import SessionLocal
+from core_api.keys import KeyConfigError
 
 SERVICE_NAME = "Rooman One Core"
 
@@ -96,6 +99,25 @@ def create_app() -> FastAPI:
             content={"detail": f"Something went wrong on our side. Please try again (reference {request_id}).", "requestId": request_id},
             headers={"X-Request-ID": request_id},
         )
+
+    @app.exception_handler(KeyConfigError)
+    async def key_config_error(request: Request, exc: KeyConfigError):
+        request_id = _request_id(request)
+        logger.error("Signing keys unusable rid=%s: %s", request_id, exc)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "Core cannot issue or check tokens right now: its signing keys are not configured.",
+                "requestId": request_id,
+            },
+            headers={"X-Request-ID": request_id},
+        )
+
+    from core_api.routers import internal, oauth, oidc
+
+    app.include_router(oauth.router)
+    app.include_router(internal.router)
+    app.include_router(oidc.router)
 
     @app.get("/api/health", tags=["Health"])
     def health():

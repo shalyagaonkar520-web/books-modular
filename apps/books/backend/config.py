@@ -75,6 +75,55 @@ class Settings(BaseSettings):
         default=60, ge=0, le=1440, description="Re-scan window before the last sync so late captures are not missed"
     )
 
+    # Connected apps (services/integrations.py): other apps using Books with a
+    # scoped API key, and webhooks Books sends them.
+    integration_rate_limit_per_minute: int = Field(default=300, ge=10, le=10000, description="API requests per minute per connected app")
+    webhooks_enabled: bool = Field(default=True, description="Run the webhook delivery loop")
+    webhook_allowed_hosts: List[str] | str = Field(
+        default_factory=list, description="WEBHOOK_ALLOWED_HOSTS: comma-separated internal hosts webhooks may reach (other Rooman apps)"
+    )
+    webhook_allow_private: bool | None = Field(
+        default=None, description="WEBHOOK_ALLOW_PRIVATE: allow webhooks to private/local addresses (default: only outside production)"
+    )
+
+    @field_validator("webhook_allowed_hosts", mode="before")
+    @classmethod
+    def _split_hosts(cls, value):
+        if isinstance(value, str):
+            return [host.strip().lower() for host in value.split(",") if host.strip()]
+        return [str(host).strip().lower() for host in (value or [])]
+
+    # Rooman One (backend/integrations). Everything is OFF by default: with these
+    # unset Books behaves exactly as it did before Rooman One existed.
+    auth_mode: str = Field(default="local", description="AUTH_MODE: local | core (Core-issued tokens, a later stage)")
+    integration_enabled: bool = Field(default=False, description="INTEGRATION_ENABLED: outbox publishing, event handling, Core links")
+    event_source: str = Field(default="books", description="The `source` written on every event Books publishes")
+    event_transport: str = Field(default="webhook", description="EVENT_TRANSPORT: webhook | nats")
+    event_subscribers: List[str] | str = Field(default_factory=list, description="EVENT_SUBSCRIBERS: comma-separated webhook URLs")
+    event_signing_secret: str = Field(default="", description="EVENT_SIGNING_SECRET: signs outgoing and verifies incoming events")
+    event_signing_secret_previous: str = Field(default="", description="EVENT_SIGNING_SECRET_PREVIOUS: still accepted during a rotation")
+    event_max_attempts: int = Field(default=8, ge=1, le=50, description="Delivery attempts before an event is marked failed")
+    event_relay_interval_seconds: int = Field(default=5, ge=1, le=300)
+    event_contracts_dir: str = Field(default="", description="EVENT_CONTRACTS_DIR: contracts/events (found automatically in the monorepo)")
+    nats_url: str = Field(default="", description="NATS_URL, for EVENT_TRANSPORT=nats")
+    core_api_url: str = Field(default="", description="CORE_API_URL: Core's private service API base URL")
+    core_token_url: str = Field(default="", description="CORE_TOKEN_URL: client-credentials token endpoint (default <CORE_API_URL>/token)")
+    core_client_id: str = Field(default="", description="CORE_CLIENT_ID")
+    core_client_secret: str = Field(default="", description="CORE_CLIENT_SECRET")
+    core_timeout_seconds: float = Field(default=3.0, gt=0, le=30, description="Per-request timeout for calls to Core")
+
+    @field_validator("event_subscribers", mode="before")
+    @classmethod
+    def _split_subscribers(cls, value):
+        if isinstance(value, str):
+            return [url.strip() for url in value.split(",") if url.strip()]
+        return list(value or [])
+
+    @field_validator("auth_mode", "event_transport", mode="before")
+    @classmethod
+    def _lower(cls, value):
+        return str(value or "").strip().lower()
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_origins(cls, value):
@@ -150,9 +199,19 @@ def get_settings() -> Settings:
             raise RuntimeError("SECRET_KEY must be set in production")
         # Ephemeral key for local development only. Tokens are invalidated on restart.
         settings.secret_key = secrets.token_urlsafe(48)
+    if settings.is_production and len(settings.secret_key) < 32:
+        raise RuntimeError("SECRET_KEY must be at least 32 characters in production")
+    if settings.webhook_allow_private is None:
+        settings.webhook_allow_private = not settings.is_production
     if settings.is_production and settings.auto_create_tables:
         # Migrations are the source of truth in production.
         settings.auto_create_tables = False
     if settings.is_production and settings.razorpay_mode == "live" and not settings.razorpay_webhook_secret:
         raise RuntimeError("RAZORPAY_WEBHOOK_SECRET must be set when running Razorpay in live mode")
+    if settings.auth_mode not in ("local", "core"):
+        raise RuntimeError("AUTH_MODE must be 'local' or 'core'")
+    if settings.event_transport not in ("webhook", "nats"):
+        raise RuntimeError("EVENT_TRANSPORT must be 'webhook' or 'nats'")
+    if settings.integration_enabled and not settings.event_signing_secret:
+        raise RuntimeError("EVENT_SIGNING_SECRET must be set when INTEGRATION_ENABLED=true")
     return settings

@@ -51,7 +51,7 @@ def test_incoming_external_payment_and_email_dispatch(mock_smtp, client, org):
     token = _token_from_email(mock_server)
 
     # Verify YES decision from Gmail 1-click confirmation link
-    res_yes = client.get(f"/api/payments/external/confirm?token={token}&decision=yes")
+    res_yes = client.post("/api/payments/external/confirm", data={"token": token, "decision": "yes"})
     assert res_yes.status_code == 200
     assert "text/html" in res_yes.headers["content-type"]
     assert "Payment Approved &amp; Recorded" in res_yes.text or "Payment Approved & Recorded" in res_yes.text
@@ -59,7 +59,7 @@ def test_incoming_external_payment_and_email_dispatch(mock_smtp, client, org):
     assert "UPI-IND-99887766" in res_yes.text
 
     # Verify second click on YES returns already approved safely
-    res_yes_second = client.get(f"/api/payments/external/confirm?token={token}&decision=yes")
+    res_yes_second = client.post("/api/payments/external/confirm", data={"token": token, "decision": "yes"})
     assert res_yes_second.status_code == 200
     assert "Payment Already Approved" in res_yes_second.text
 
@@ -83,14 +83,14 @@ def test_incoming_external_payment_rejection_flow(mock_smtp, client, org):
     token = _token_from_email(mock_server)
 
     # Confirm NO rejection
-    res_no = client.get(f"/api/payments/external/confirm?token={token}&decision=no")
+    res_no = client.post("/api/payments/external/confirm", data={"token": token, "decision": "no"})
     assert res_no.status_code == 200
     assert "text/html" in res_no.headers["content-type"]
     assert "Payment Rejected" in res_no.text
     assert "ch_3N998877aazz" in res_no.text
 
     # Verify second click on NO returns already rejected safely
-    res_no_second = client.get(f"/api/payments/external/confirm?token={token}&decision=no")
+    res_no_second = client.post("/api/payments/external/confirm", data={"token": token, "decision": "no"})
     assert res_no_second.status_code == 200
     assert "Payment Already Rejected" in res_no_second.text
 
@@ -134,3 +134,33 @@ def test_external_payments_list_and_resend(mock_smtp, client, org):
     second_token = _token_from_email(mock_server)
     assert second_token != first_token
     assert client.get(f"/api/payments/external/confirm?token={first_token}&decision=yes").status_code == 404
+
+
+def test_opening_the_confirmation_link_changes_nothing(client, org):
+    """Mail scanners open links on their own: only the button (a POST) decides."""
+    import uuid
+
+    from backend.db import SessionLocal
+    from backend.models import ExternalPayment
+
+    with patch("backend.services.email_service.smtplib.SMTP") as smtp:
+        smtp.return_value = MagicMock()
+        res = client.post(
+            "/api/payments/external/incoming",
+            headers=org["h"],
+            json={
+                "platform": "upi",
+                "external_transaction_id": f"SCAN-{uuid.uuid4().hex[:8]}",
+                "amount": 250.0,
+                "currency": "INR",
+                "payer_name": "Scanner",
+            },
+        )
+    assert res.status_code == 201, res.text
+    with SessionLocal() as db:
+        ext = db.get(ExternalPayment, res.json()["external_payment_id"])
+        token = ext.approval_token
+    page = client.get(f"/api/payments/external/confirm?token={token}&decision=yes")
+    assert page.status_code == 200 and 'method="post"' in page.text
+    with SessionLocal() as db:
+        assert db.get(ExternalPayment, res.json()["external_payment_id"]).status == "pending_confirmation"

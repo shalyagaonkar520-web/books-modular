@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Plus, RefreshCw, Trash2 } from 'lucide-react';
 
+import { ApiError } from '@/api/client';
 import { razorpaySyncApi, type CategoryOption, type CategoryRule } from '@/api/razorpay';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -68,8 +69,8 @@ export function RazorpayCategories({ categories, matchTypes }: Props) {
         await razorpaySyncApi.deleteRule(rule.id);
         toast.success(`Rule "${rule.name}" deleted.`);
         reload();
-      } catch {
-        toast.error('Could not delete this rule.');
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.message : 'Could not delete this rule.');
       }
     },
     [reload, toast],
@@ -82,8 +83,8 @@ export function RazorpayCategories({ categories, matchTypes }: Props) {
       toast.success(
         `${result.recategorised} of ${result.evaluated} undecided transactions were recategorised.`,
       );
-    } catch {
-      toast.error('Could not re-run categorisation.');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Could not re-run categorisation.');
     } finally {
       setReapplying(false);
     }

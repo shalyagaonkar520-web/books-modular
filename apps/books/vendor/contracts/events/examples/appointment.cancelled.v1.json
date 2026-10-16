@@ -1,0 +1,18 @@
+{
+  "id": "evt_00000000000000000000000000000001",
+  "type": "appointment.cancelled",
+  "version": 1,
+  "org_id": "7b0c3a9e-6f0e-4d7a-9a51-3d2f4c1b8e01",
+  "actor": {
+    "type": "user",
+    "id": "u1"
+  },
+  "source": "bookings",
+  "occurred_at": "2026-10-09T10:00:00Z",
+  "data": {
+    "appointment_id": "3f2b8a1c-5d4e-4f6a-8b7c-9d0e1f2a3b4c",
+    "party_id": "8c7d6e5f-4a3b-4c2d-9e1f-0a9b8c7d6e5f",
+    "reason": null,
+    "cancelled_by": "customer"
+  }
+}

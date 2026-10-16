@@ -17,6 +17,7 @@ import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
+import { useDownload } from '@/hooks/useDownload';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatDate, formatPercent, formatQuantity } from '@/utils/format';
 import { paymentModeLabel, type Translate, statusLabel, statusTone } from '@/utils/status';
@@ -32,6 +33,7 @@ export function InvoiceViewPage() {
   const { invoiceId = '' } = useParams<{ invoiceId: string }>();
   const navigate = useNavigate();
   const toast = useToast();
+  const { download, downloading } = useDownload();
   const { organization } = useAuth();
   const { submitting, error: actionError, run, reset } = useSubmit();
 
@@ -115,14 +117,16 @@ export function InvoiceViewPage() {
             <Button
               variant="secondary"
               icon={<FileDown size={15} style={{ color: '#dc2626' }} />}
-              onClick={() => invoicesApi.downloadPdf(data.id, data.invoiceNumber)}
+              disabled={downloading}
+              onClick={() => void download(() => invoicesApi.downloadPdf(data.id, data.invoiceNumber))}
             >
               {t('invoices.view.downloadPdf')}
             </Button>
             <Button
               variant="secondary"
               icon={<FileSpreadsheet size={15} style={{ color: '#15803d' }} />}
-              onClick={() => invoicesApi.downloadExcel(data.id, data.invoiceNumber)}
+              disabled={downloading}
+              onClick={() => void download(() => invoicesApi.downloadExcel(data.id, data.invoiceNumber))}
             >
               {t('invoices.view.downloadExcel')}
             </Button>

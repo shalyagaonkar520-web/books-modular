@@ -70,3 +70,87 @@ body {
 .signin-ref {
   color: var(--text-subtle);
 }
+.signin-form {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.signin-form label {
+  font-weight: 600;
+  font-size: 14px;
+}
+.signin-form input {
+  font: inherit;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+.signin-form input:focus-visible,
+.signin-submit:focus-visible,
+.signin-org:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.signin-submit {
+  margin-top: 8px;
+  font: inherit;
+  font-weight: 600;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: var(--text-inverse);
+  cursor: pointer;
+}
+.signin-submit:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+.signin-submit:disabled,
+.signin-org:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.signin-error {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.signin-orgs h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+.signin-orgs ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.signin-org {
+  width: 100%;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  font: inherit;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.signin-org:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--primary);
+}
+.signin-org-name {
+  font-weight: 600;
+}
+.signin-org-meta {
+  font-size: 13px;
+  color: var(--text-muted);
+}

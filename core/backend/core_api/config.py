@@ -26,6 +26,32 @@ class Settings(BaseSettings):
     public_url: str = ""
     cors_origins_raw: str = Field(default="", alias="CORS_ORIGINS")
 
+    # Fernet keys that encrypt the token-signing private keys stored in the
+    # database, comma-separated, newest first. Only the first encrypts; the
+    # others still decrypt, so this key can itself be rotated.
+    key_encryption_keys_raw: str = Field(default="", alias="KEY_ENCRYPTION_KEYS")
+    # How long a replaced signing key stays in /jwks. Must be longer than the
+    # access-token lifetime plus the apps' JWKS cache time.
+    signing_key_overlap_hours: int = 24
+    # Lifetime of the tokens apps get from POST /token (client credentials).
+    service_token_minutes: int = Field(default=15, ge=1, le=60)
+    # Sign-in (users): access token, refresh token, browser session at Core,
+    # one-time code lifetimes, and the lockout after wrong passwords.
+    user_token_minutes: int = Field(default=15, ge=1, le=60)
+    refresh_token_days: int = Field(default=30, ge=1, le=90)
+    session_hours: int = Field(default=12, ge=1, le=720)
+    auth_code_seconds: int = Field(default=60, ge=10, le=600)
+    max_failed_logins: int = Field(default=5, ge=3, le=20)
+    lockout_minutes: int = Field(default=15, ge=1, le=1440)
+    # Secure cookies need https; on by default except in development and tests.
+    cookie_secure: bool | None = None
+
+    @property
+    def secure_cookies(self) -> bool:
+        if self.cookie_secure is not None:
+            return self.cookie_secure
+        return self.environment.lower() not in ("development", "test")
+
     @property
     def is_production(self) -> bool:
         return self.environment.lower() == "production"
@@ -33,6 +59,14 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins_raw.split(",") if origin.strip()]
+
+    @property
+    def key_encryption_keys(self) -> list[str]:
+        return [key.strip() for key in self.key_encryption_keys_raw.split(",") if key.strip()]
+
+    @property
+    def issuer(self) -> str:
+        return self.public_url.rstrip("/")
 
 
 @lru_cache

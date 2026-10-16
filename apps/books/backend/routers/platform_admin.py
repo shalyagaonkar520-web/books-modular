@@ -328,7 +328,11 @@ def _org_summaries(db: Session, orgs: List[Organization]) -> List[OrgSummary]:
     ids = [o.id for o in orgs]
     users_by_org = (
         dict(
-            db.execute(select(User.organization_id, func.count()).where(User.organization_id.in_(ids)).group_by(User.organization_id)).all()
+            db.execute(
+                select(User.organization_id, func.count())
+                .where(User.organization_id.in_(ids), User.role != "integration")
+                .group_by(User.organization_id)
+            ).all()
         )
         if ids
         else {}
@@ -399,7 +403,7 @@ def _org_summaries(db: Session, orgs: List[Organization]) -> List[OrgSummary]:
 
 
 def _org_detail(db: Session, org: Organization) -> OrgDetail:
-    user_count = db.scalar(select(func.count()).select_from(User).where(User.organization_id == org.id)) or 0
+    user_count = db.scalar(select(func.count()).select_from(User).where(User.organization_id == org.id, User.role != "integration")) or 0
     invoice_count = (
         db.scalar(
             select(func.count()).select_from(Invoice).where(Invoice.organization_id == org.id, Invoice.status.in_(_LIVE_INVOICE_STATUSES))
@@ -472,7 +476,12 @@ def platform_login(payload: PlatformLoginRequest, request: Request, response: Re
     email = payload.email.lower().strip()
     admin = db.execute(select(PlatformAdmin).where(PlatformAdmin.email == email)).scalar_one_or_none()
     # Constant-ish work whether or not the account exists, to blunt enumeration.
-    ok = bool(admin) and admin.is_active and verify_password(payload.password, admin.password_hash)
+    # Like the tenant login: a space pasted or autofilled around the password is forgiven.
+    ok = (
+        bool(admin)
+        and admin.is_active
+        and (verify_password(payload.password, admin.password_hash) or verify_password(payload.password.strip(), admin.password_hash))
+    )
     if not ok:
         # Burn a hash even on unknown email so timing does not leak existence.
         if not admin:
@@ -665,8 +674,8 @@ def platform_dashboard(db: Session = Depends(get_db), admin: PlatformAdmin = Dep
     pending_orgs = (
         db.execute(select(Organization).where(*pending_filter).order_by(Organization.created_at.desc()).limit(10)).scalars().all()
     )
-    total_users = db.scalar(select(func.count()).select_from(User)) or 0
-    active_users = db.scalar(select(func.count()).select_from(User).where(User.is_active.is_(True))) or 0
+    total_users = db.scalar(select(func.count()).select_from(User).where(User.role != "integration")) or 0
+    active_users = db.scalar(select(func.count()).select_from(User).where(User.is_active.is_(True), User.role != "integration")) or 0
     total_invoices = db.scalar(select(func.count()).select_from(Invoice).where(Invoice.status.in_(_LIVE_INVOICE_STATUSES))) or 0
     invoiced = db.scalar(select(func.coalesce(func.sum(Invoice.total), 0)).where(Invoice.status.in_(_LIVE_INVOICE_STATUSES)))
     collected = db.scalar(select(func.coalesce(func.sum(CustomerPayment.amount), 0)))
@@ -724,7 +733,7 @@ def platform_dashboard(db: Session = Depends(get_db), admin: PlatformAdmin = Dep
             org = orgs.get(org_id)
             if not org:
                 continue
-            uc = db.scalar(select(func.count()).select_from(User).where(User.organization_id == org_id)) or 0
+            uc = db.scalar(select(func.count()).select_from(User).where(User.organization_id == org_id, User.role != "integration")) or 0
             ic = (
                 db.scalar(
                     select(func.count())
@@ -865,7 +874,7 @@ def organization_users(
     org = db.get(Organization, org_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
-    stmt = select(User).where(User.organization_id == org_id)
+    stmt = select(User).where(User.organization_id == org_id, User.role != "integration")
     total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
     users = db.execute(stmt.order_by(User.created_at.desc()).offset(pagination.offset).limit(pagination.page_size)).scalars().all()
     items = [_user_out(u, org.name) for u in users]
@@ -1548,7 +1557,7 @@ def list_users(
     search: Optional[str] = Query(None, max_length=200),
     organization_id: Optional[str] = Query(None),
 ):
-    stmt = select(User)
+    stmt = select(User).where(User.role != "integration")
     if organization_id:
         stmt = stmt.where(User.organization_id == organization_id)
     if search:
@@ -1605,7 +1614,7 @@ def update_user(
     user_id: str, payload: UpdatePlatformUserRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
 ):
     user = db.get(User, user_id)
-    if user is None:
+    if user is None or user.role == "integration":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     data = payload.model_dump(exclude_unset=True)
 
@@ -1662,7 +1671,7 @@ def reset_user_password(
     user_id: str, payload: ResetUserPasswordRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
 ):
     user = db.get(User, user_id)
-    if user is None:
+    if user is None or user.role == "integration":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     user.password_hash = hash_password(payload.new_password)
     audit.record(
@@ -1675,7 +1684,7 @@ def reset_user_password(
 @router.delete("/users/{user_id}")
 def delete_user(user_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
     user = db.get(User, user_id)
-    if user is None:
+    if user is None or user.role == "integration":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     if _would_orphan_org(db, user):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, _ORPHAN_MSG)
@@ -1695,7 +1704,7 @@ def export_users(
     organization_id: Optional[str] = Query(None),
 ):
     # Same query/joins as list_users, without pagination.
-    stmt = select(User)
+    stmt = select(User).where(User.role != "integration")
     if organization_id:
         stmt = stmt.where(User.organization_id == organization_id)
     if search:
@@ -1725,7 +1734,7 @@ def impersonate_user(user_id: str, db: Session = Depends(get_db), admin: Platfor
     when the access token expires and cannot be silently extended.
     """
     user = db.get(User, user_id)
-    if user is None:
+    if user is None or user.role == "integration":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     if user.role not in ("admin", "staff", "viewer"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This user's role cannot be impersonated")
@@ -1777,7 +1786,12 @@ def platform_search(
     org_out = _org_summaries(db, orgs)
 
     users = (
-        db.execute(select(User).where(User.name.ilike(like) | User.email.ilike(like)).order_by(User.created_at.desc()).limit(10))
+        db.execute(
+            select(User)
+            .where(User.role != "integration", User.name.ilike(like) | User.email.ilike(like))
+            .order_by(User.created_at.desc())
+            .limit(10)
+        )
         .scalars()
         .all()
     )

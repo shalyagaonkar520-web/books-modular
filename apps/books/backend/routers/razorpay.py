@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import logging
+import re
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
@@ -13,6 +15,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from razorpay.errors import BadRequestError, GatewayError, ServerError
+from requests.exceptions import RequestException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -31,6 +35,7 @@ from backend.models import (
     FinancialTransactionRecord,
     Invoice,
     JournalEntry,
+    Organization,
     PaymentEvent,
     PaymentRecord,
     PaymentRefund,
@@ -51,6 +56,10 @@ from backend.services.razorpay_categorize import (
     categorise,
 )
 from backend.services.razorpay_service import (
+    MSG_BAD_KEYS,
+    MSG_UNREACHABLE,
+    RazorpayNotConfigured,
+    build_client,
     get_razorpay_service,
 )
 from backend.services.tenancy import Pagination, paginate
@@ -62,6 +71,31 @@ router = APIRouter(prefix="/api/razorpay", tags=["razorpay"])
 
 def _refresh_invoice_status(inv: Invoice) -> None:
     razorpay_posting.refresh_invoice_status(inv)
+
+
+def _razorpay_http_error(exc: Exception, action: str) -> HTTPException:
+    """Turn a Razorpay SDK / network failure into a plain, user-facing error.
+
+    The raw exception is logged; only Razorpay's own short description of a
+    rejected request is passed through to the user.
+    """
+    if isinstance(exc, RazorpayNotConfigured):
+        logger.warning("Razorpay %s attempted without credentials.", action)
+        return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Razorpay is not set up yet.")
+    logger.exception("Razorpay %s failed.", action)
+    if isinstance(exc, BadRequestError):
+        detail = " ".join(str(exc or "").split())[:200] or "no reason given"
+        return HTTPException(status.HTTP_502_BAD_GATEWAY, f"Razorpay refused the request: {detail}")
+    if isinstance(exc, (GatewayError, ServerError)):
+        return HTTPException(status.HTTP_502_BAD_GATEWAY, "Razorpay returned an unexpected error. Please try again.")
+    return HTTPException(status.HTTP_502_BAD_GATEWAY, "Could not reach Razorpay. Please try again.")
+
+
+_RAZORPAY_ERRORS = (RazorpayNotConfigured, BadRequestError, GatewayError, ServerError, RequestException)
+
+
+def _paise_to_inr(value: Any) -> Decimal:
+    return money(Decimal(str(value or 0)) / Decimal("100"))
 
 
 # --------------------------------------------------------------------------- #
@@ -135,6 +169,9 @@ def get_config(user: User = Depends(require_full_app_access)):
     return cfg
 
 
+_SERVER_NOTE_KEYS = frozenset({"invoice_id", "invoice_number", "organization_id", "customer_id"})
+
+
 @router.post("/create-order")
 def create_order(
     payload: CreateOrderRequest,
@@ -157,19 +194,25 @@ def create_order(
         amount = invoice.balance_due
 
     service = get_razorpay_service()
+    # Server keys go last so a client-supplied note can never re-point the
+    # order at another invoice or organization.
+    client_notes = {k: v for k, v in (payload.notes or {}).items() if k not in _SERVER_NOTE_KEYS}
     notes = {
+        **client_notes,
         "invoice_id": invoice.id,
         "invoice_number": invoice.invoice_number,
         "organization_id": org_id,
         "customer_id": invoice.customer_id,
-        **(payload.notes or {}),
     }
 
-    order = service.create_order(
-        amount_inr=amount,
-        receipt=invoice.invoice_number,
-        notes=notes,
-    )
+    try:
+        order = service.create_order(
+            amount_inr=amount,
+            receipt=invoice.invoice_number,
+            notes=notes,
+        )
+    except _RAZORPAY_ERRORS as exc:
+        raise _razorpay_http_error(exc, "order creation") from exc
 
     return {
         "order_id": order["id"],
@@ -188,10 +231,41 @@ def create_order(
 # --------------------------------------------------------------------------- #
 # Verify Payment (Standard Checkout Callback)
 # --------------------------------------------------------------------------- #
+def _confirm_payment_with_razorpay(
+    service: Any,
+    payment_info: Dict[str, Any],
+    payload: VerifyPaymentRequest,
+    invoice: Invoice,
+    org_id: str,
+) -> Decimal:
+    """Check Razorpay's record of a payment against the invoice; return the amount paid."""
+    state = (payment_info.get("status") or "").lower()
+    if state == "authorized":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Razorpay has authorised this payment but not captured it yet. Try again once it is captured.",
+        )
+    if state != "captured":
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Razorpay reports this payment as {state or 'unknown'}, so it cannot be recorded.")
+    if payment_info.get("order_id") != payload.razorpay_order_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This payment does not belong to the order being confirmed.")
+
+    order = service.fetch_order(payload.razorpay_order_id)
+    if order is None:
+        if not service.allows_simulation:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Could not confirm this payment with Razorpay. Please try again.")
+    else:
+        notes = order.get("notes") if isinstance(order.get("notes"), dict) else {}
+        if notes.get("invoice_id") != invoice.id or notes.get("organization_id") != org_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "This payment was not made for this invoice.")
+
+    return _paise_to_inr(payment_info.get("amount"))
+
+
 @router.post("/verify-payment")
 def verify_payment(
     payload: VerifyPaymentRequest,
-    user: User = Depends(require_write),
+    user: User = Depends(require_financial_write),
     db: Session = Depends(get_db),
 ):
     """Verifies Razorpay signature, updates invoice, creates internal customer payment,
@@ -212,12 +286,11 @@ def verify_payment(
 
     # 2. Check idempotency: avoid duplicate payment records
     existing_pay = db.execute(
-        select(PaymentRecord).where(
-            PaymentRecord.razorpay_payment_id == payload.razorpay_payment_id,
-            PaymentRecord.organization_id == org_id,
-        )
+        select(PaymentRecord).where(PaymentRecord.razorpay_payment_id == payload.razorpay_payment_id)
     ).scalar_one_or_none()
 
+    if existing_pay and existing_pay.organization_id != org_id:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This payment has already been recorded elsewhere.")
     if existing_pay:
         return {
             "success": True,
@@ -232,10 +305,30 @@ def verify_payment(
     if not invoice:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
 
-    # 4. Fetch details from Razorpay or compute standard fee
+    # 4. Confirm the payment with Razorpay. The checkout signature covers only
+    #    order_id|payment_id, so the amount and invoice sent by the browser are
+    #    never trusted: Razorpay's own record decides both.
     payment_info = service.fetch_payment(payload.razorpay_payment_id)
-    method = payload.method or (payment_info.get("method") if payment_info else "card") or "card"
-    fee_inr, tax_on_fee, net_settlement = service.calculate_fees_and_settlement(payload.amount, payment_info)
+    if payment_info is None:
+        if not service.allows_simulation:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Could not confirm this payment with Razorpay. Please try again.")
+        # Offline development only (never in production): no Razorpay record to
+        # check against, so the submitted amount stands in for it.
+        paid_amount = money(payload.amount)
+    else:
+        paid_amount = _confirm_payment_with_razorpay(service, payment_info, payload, invoice, org_id)
+
+    if paid_amount <= 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The payment amount must be more than zero.")
+    if paid_amount > invoice.balance_due:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"The payment of {paid_amount} is more than the invoice balance of {invoice.balance_due}. "
+            "Record the difference as an advance or refund it.",
+        )
+
+    method = (payment_info.get("method") if payment_info else None) or payload.method or "card"
+    fee_inr, tax_on_fee, net_settlement = service.calculate_fees_and_settlement(paid_amount, payment_info)
 
     # 5. Find the account Razorpay settles into
     bank_account = razorpay_posting.default_bank_account(db, org_id)
@@ -251,7 +344,7 @@ def verify_payment(
         org_id,
         invoice,
         bank_account,
-        money(payload.amount),
+        paid_amount,
         payload.razorpay_payment_id,
         payload.razorpay_order_id,
         method,
@@ -282,7 +375,7 @@ def verify_payment(
         sales_order_id=invoice.sales_order_id if hasattr(invoice, "sales_order_id") else None,
         invoice_id=invoice.id,
         customer_payment_id=cust_payment.id,
-        amount=money(payload.amount),
+        amount=paid_amount,
         currency="INR",
         payment_method=method,
         payment_status="captured",
@@ -330,6 +423,7 @@ def verify_payment(
 async def handle_webhook(
     request: Request,
     x_razorpay_signature: Optional[str] = Header(None, alias="X-Razorpay-Signature"),
+    x_razorpay_event_id: Optional[str] = Header(None, alias="X-Razorpay-Event-Id"),
     db: Session = Depends(get_db),
 ):
     """Secure webhook handler with signature verification, idempotency, and audit."""
@@ -345,10 +439,25 @@ async def handle_webhook(
         data = json.loads(body_bytes.decode("utf-8"))
     except Exception:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Malformed JSON")
+    if not isinstance(data, dict):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Malformed JSON")
 
-    event_id = data.get("event_id") or data.get("id") or f"evt_{hash(body_bytes)}"
+    # Razorpay identifies each delivery in the X-Razorpay-Event-Id header. The
+    # last resort is a digest of the body, which -- unlike Python's hash() --
+    # is the same in every process, so a redelivery is still recognised.
+    event_id = (
+        (x_razorpay_event_id or "").strip()[:100]
+        or data.get("event_id")
+        or data.get("id")
+        or f"evt_{hashlib.sha256(body_bytes).hexdigest()}"
+    )
     event_type = data.get("event", "unknown")
-    entity_payload = data.get("payload", {})
+    entity_payload = data.get("payload") if isinstance(data.get("payload"), dict) else {}
+
+    def _entity(name: str) -> Dict[str, Any]:
+        wrapper = entity_payload.get(name)
+        entity = wrapper.get("entity") if isinstance(wrapper, dict) else None
+        return entity if isinstance(entity, dict) else {}
 
     # 2. Check idempotency
     existing_evt = db.execute(select(PaymentEvent).where(PaymentEvent.event_id == event_id)).scalar_one_or_none()
@@ -371,21 +480,28 @@ async def handle_webhook(
 
     # 3. Process event types
     if event_type == "payment.captured":
-        payment_entity = entity_payload.get("payment", {}).get("entity", {})
+        payment_entity = _entity("payment")
         pay_id = payment_entity.get("id")
         amount_paise = payment_entity.get("amount", 0)
         amount_inr = Decimal(str(amount_paise)) / Decimal("100")
-        notes = payment_entity.get("notes", {})
+        # Razorpay sends "notes": [] (a list) when a payment has no notes.
+        raw_notes = payment_entity.get("notes")
+        notes = raw_notes if isinstance(raw_notes, dict) else {}
         invoice_id = notes.get("invoice_id")
-        org_id = notes.get("organization_id") or "org_default"
-        evt_record.organization_id = org_id
+        org_id = notes.get("organization_id")
+        if org_id:
+            evt_record.organization_id = org_id
 
-        # If not already recorded, create PaymentRecord
-        existing_pay = db.execute(select(PaymentRecord).where(PaymentRecord.razorpay_payment_id == pay_id)).scalar_one_or_none()
+        # If not already recorded, create PaymentRecord -- but only for an
+        # invoice that belongs to the organization named on the payment. A
+        # payment that cannot be tied to an organization is audited, not booked.
+        existing_pay = (
+            db.execute(select(PaymentRecord).where(PaymentRecord.razorpay_payment_id == pay_id)).scalar_one_or_none() if pay_id else None
+        )
 
-        if not existing_pay and invoice_id:
+        if pay_id and not existing_pay and invoice_id and org_id:
             invoice = db.get(Invoice, invoice_id)
-            if invoice:
+            if invoice and invoice.organization_id == org_id:
                 fee_inr, tax_on_fee, net_settlement = service.calculate_fees_and_settlement(amount_inr, payment_entity)
                 rec = PaymentRecord(
                     id=new_id(),
@@ -405,25 +521,29 @@ async def handle_webhook(
                     net_settlement=net_settlement,
                 )
                 db.add(rec)
+            else:
+                logger.warning("Webhook payment %s names an invoice outside its organization; not booked.", pay_id)
 
     elif event_type == "payment.failed":
-        payment_entity = entity_payload.get("payment", {}).get("entity", {})
+        payment_entity = _entity("payment")
         pay_id = payment_entity.get("id")
         error_code = payment_entity.get("error_code")
         error_desc = payment_entity.get("error_description")
-        rec = db.execute(select(PaymentRecord).where(PaymentRecord.razorpay_payment_id == pay_id)).scalar_one_or_none()
+        rec = db.execute(select(PaymentRecord).where(PaymentRecord.razorpay_payment_id == pay_id)).scalar_one_or_none() if pay_id else None
         if rec:
+            evt_record.organization_id = rec.organization_id
             rec.payment_status = "failed"
             rec.error_code = error_code
             rec.error_description = error_desc
 
     elif event_type in ("refund.created", "refund.processed"):
-        refund_entity = entity_payload.get("refund", {}).get("entity", {})
+        refund_entity = _entity("refund")
         rfnd_id = refund_entity.get("id")
         pay_id = refund_entity.get("payment_id")
         amount_inr = Decimal(str(refund_entity.get("amount", 0))) / Decimal("100")
-        rec = db.execute(select(PaymentRecord).where(PaymentRecord.razorpay_payment_id == pay_id)).scalar_one_or_none()
-        if rec:
+        rec = db.execute(select(PaymentRecord).where(PaymentRecord.razorpay_payment_id == pay_id)).scalar_one_or_none() if pay_id else None
+        if rec and rfnd_id:
+            evt_record.organization_id = rec.organization_id
             existing_rfnd = db.execute(select(PaymentRefund).where(PaymentRefund.razorpay_refund_id == rfnd_id)).scalar_one_or_none()
             if not existing_rfnd:
                 rfnd = PaymentRefund(
@@ -444,9 +564,17 @@ async def handle_webhook(
                 rec.payment_status = "refunded" if rec.refund_amount >= rec.amount else "partially_refunded"
 
     elif event_type == "settlement.processed":
-        setl_entity = entity_payload.get("settlement", {}).get("entity", {})
+        setl_entity = _entity("settlement")
         setl_id = setl_entity.get("id")
-        if setl_id:
+        # A settlement carries no notes, so it can only be filed under an
+        # organization the event itself names, and only one that exists.
+        setl_org_id = evt_record.organization_id
+        if setl_org_id and db.get(Organization, setl_org_id) is None:
+            setl_org_id = None
+        if setl_id and not setl_org_id:
+            logger.warning("Settlement %s could not be tied to an organization; recorded the event only.", setl_id)
+            evt_record.status = "ignored"
+        elif setl_id:
             gross = Decimal(str(setl_entity.get("amount", 0))) / Decimal("100")
             fee = Decimal(str(setl_entity.get("fees", 0))) / Decimal("100")
             tax = Decimal(str(setl_entity.get("tax", 0))) / Decimal("100")
@@ -455,7 +583,7 @@ async def handle_webhook(
             if not existing_setl:
                 s_rec = SettlementRecord(
                     id=new_id(),
-                    organization_id=evt_record.organization_id,
+                    organization_id=setl_org_id,
                     settlement_id=setl_id,
                     settlement_date=date.today(),
                     gross_amount=gross,
@@ -495,110 +623,64 @@ def create_refund(
     if not payment:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Payment record not found")
 
-    refundable = payment.amount - payment.refund_amount
+    # Every check runs before Razorpay is asked to move money: once the refund
+    # is issued there it cannot be taken back, so nothing that could still
+    # fail locally may come after it.
+    already_refunded = db.execute(
+        select(func.coalesce(func.sum(PaymentRefund.amount), 0)).where(PaymentRefund.payment_id == payment.id)
+    ).scalar_one()
+    refundable = payment.amount - max(payment.refund_amount, money(already_refunded))
     if payload.amount <= 0 or payload.amount > refundable:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             f"Refund amount ({payload.amount}) exceeds remaining refundable balance ({refundable})",
         )
 
+    # The refund leaves the account Razorpay settles into -- the same one the
+    # checkout deposited the payment in -- not simply the oldest account.
+    bank_account = razorpay_posting.default_bank_account(db, org_id)
+    if not bank_account:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Add a bank account before issuing a refund.")
+    try:
+        sales_account = get_account_by_code(db, org_id, "4000")  # Sales / Revenue
+    except RuntimeError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The Sales account (4000) is missing from the chart of accounts.")
+    bank.check_cash_overdraft(db, bank_account, payload.amount)
+
     service = get_razorpay_service()
-    refund_res = service.initiate_refund(
-        payment_id=payment.razorpay_payment_id,
-        amount_inr=payload.amount,
-        notes={"reason": payload.reason, "org_id": org_id, "payment_id": payment.id},
-        speed=payload.speed,
-    )
+    try:
+        refund_res = service.initiate_refund(
+            payment_id=payment.razorpay_payment_id,
+            amount_inr=payload.amount,
+            notes={"reason": payload.reason, "org_id": org_id, "payment_id": payment.id},
+            speed=payload.speed,
+        )
+    except _RAZORPAY_ERRORS as exc:
+        raise _razorpay_http_error(exc, "refund") from exc
 
     rfnd_id = refund_res.get("id") or f"rfnd_{new_id()[:10]}"
     rfnd_date = date.today()
+    refund_amount = money(payload.amount)
 
-    refund_record = PaymentRefund(
-        id=new_id(),
-        organization_id=org_id,
-        payment_id=payment.id,
-        razorpay_payment_id=payment.razorpay_payment_id,
-        razorpay_refund_id=rfnd_id,
-        invoice_id=payment.invoice_id,
-        amount=money(payload.amount),
-        currency="INR",
-        refund_date=rfnd_date,
-        reason=payload.reason,
-        status="processed",
-        speed=payload.speed,
-        created_by=user.id,
-    )
-    db.add(refund_record)
-
-    # Update Payment status
-    payment.refund_amount = money(payment.refund_amount + payload.amount)
-    if payment.refund_amount >= payment.amount:
-        payment.payment_status = "refunded"
-    else:
-        payment.payment_status = "partially_refunded"
-
-    # Update linked Invoice if present
-    if payment.invoice_id:
-        invoice = db.get(Invoice, payment.invoice_id)
-        if invoice:
-            invoice.amount_paid = money(max(Decimal("0"), invoice.amount_paid - payload.amount))
-            _refresh_invoice_status(invoice)
-
-    # Post Accounting Entry: Debit Sales (Revenue Adjustment), Credit Bank Account
-    bank_account = (
-        db.execute(select(BankAccount).where(BankAccount.organization_id == org_id).order_by(BankAccount.created_at.asc()))
-        .scalars()
-        .first()
-    )
-
-    if bank_account:
-        sales_account = get_account_by_code(db, org_id, "4000")  # Sales / Revenue
-        desc = f"Refund {rfnd_id} for Payment {payment.razorpay_payment_id}"
-        entry = ledger.post_entry(
-            db,
-            org_id,
-            rfnd_date,
-            [
-                (sales_account.id, payload.amount, Decimal("0"), desc, payment.customer_id),
-                (bank_account.ledger_account_id, Decimal("0"), payload.amount, desc, payment.customer_id),
-            ],
-            "refund",
-            refund_record.id,
-            reference=rfnd_id,
-            created_by=user.id,
+    try:
+        refund_record = _book_refund(db, payload, payment, bank_account, sales_account, rfnd_id, rfnd_date, refund_amount, org_id, user.id)
+        db.commit()
+    except Exception:
+        # The money has already left at Razorpay. Keep at least a record of
+        # the refund so the refundable balance reflects it and a retry cannot
+        # refund the same amount twice.
+        logger.exception("Razorpay refund %s succeeded but could not be booked for payment %s.", rfnd_id, payment.id)
+        db.rollback()
+        try:
+            _record_unbooked_refund(db, payload, payment.id, rfnd_id, rfnd_date, refund_amount, org_id, user.id)
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("Could not save even a minimal record of Razorpay refund %s.", rfnd_id)
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            f"The refund was issued at Razorpay but could not be recorded in the books. Contact support with reference {rfnd_id}.",
         )
-        bank.record_movement(
-            db,
-            bank_account,
-            rfnd_date,
-            "withdrawal",
-            payload.amount,
-            desc,
-            "refund",
-            refund_record.id,
-            user.id,
-            rfnd_id,
-            sales_account.id,
-            entry.id,
-        )
-
-    # Record in Transaction Ledger
-    _record_financial_txn(
-        db,
-        org_id,
-        txn_type="refund",
-        ref_type="refund",
-        ref_id=refund_record.id,
-        debit=Decimal("0"),
-        credit=payload.amount,
-        amount=payload.amount,
-        account="Sales Returns / Refunds",
-        txn_date=rfnd_date,
-        description=f"Refund {rfnd_id} - {payload.reason}",
-        user_id=user.id,
-    )
-
-    db.commit()
 
     return {
         "success": True,
@@ -609,6 +691,131 @@ def create_refund(
         "payment_status": payment.payment_status,
         "remaining_refundable": float(payment.amount - payment.refund_amount),
     }
+
+
+def _apply_refund_to_payment(payment: PaymentRecord, amount: Decimal) -> None:
+    payment.refund_amount = money(payment.refund_amount + amount)
+    payment.payment_status = "refunded" if payment.refund_amount >= payment.amount else "partially_refunded"
+
+
+def _book_refund(
+    db: Session,
+    payload: RefundRequest,
+    payment: PaymentRecord,
+    bank_account: BankAccount,
+    sales_account: Account,
+    rfnd_id: str,
+    rfnd_date: date,
+    amount: Decimal,
+    org_id: str,
+    user_id: str,
+) -> PaymentRefund:
+    """Record a refund Razorpay has issued: refund row, invoice, ledger and bank."""
+    refund_record = PaymentRefund(
+        id=new_id(),
+        organization_id=org_id,
+        payment_id=payment.id,
+        razorpay_payment_id=payment.razorpay_payment_id,
+        razorpay_refund_id=rfnd_id,
+        invoice_id=payment.invoice_id,
+        amount=amount,
+        currency="INR",
+        refund_date=rfnd_date,
+        reason=payload.reason,
+        status="processed",
+        speed=payload.speed,
+        created_by=user_id,
+    )
+    db.add(refund_record)
+
+    # Update Payment status
+    _apply_refund_to_payment(payment, amount)
+
+    # Update linked Invoice if present
+    if payment.invoice_id:
+        invoice = db.get(Invoice, payment.invoice_id)
+        if invoice:
+            invoice.amount_paid = money(max(Decimal("0"), invoice.amount_paid - amount))
+            _refresh_invoice_status(invoice)
+
+    # Post Accounting Entry: Debit Sales (Revenue Adjustment), Credit Bank Account
+    desc = f"Refund {rfnd_id} for Payment {payment.razorpay_payment_id}"
+    entry = ledger.post_entry(
+        db,
+        org_id,
+        rfnd_date,
+        [
+            (sales_account.id, amount, Decimal("0"), desc, payment.customer_id),
+            (bank_account.ledger_account_id, Decimal("0"), amount, desc, payment.customer_id),
+        ],
+        "refund",
+        refund_record.id,
+        reference=rfnd_id,
+        created_by=user_id,
+    )
+    bank.record_movement(
+        db,
+        bank_account,
+        rfnd_date,
+        "withdrawal",
+        amount,
+        desc,
+        "refund",
+        refund_record.id,
+        user_id,
+        rfnd_id,
+        sales_account.id,
+        entry.id,
+    )
+
+    # Record in Transaction Ledger
+    _record_financial_txn(
+        db,
+        org_id,
+        txn_type="refund",
+        ref_type="refund",
+        ref_id=refund_record.id,
+        debit=Decimal("0"),
+        credit=amount,
+        amount=amount,
+        account="Sales Returns / Refunds",
+        txn_date=rfnd_date,
+        description=f"Refund {rfnd_id} - {payload.reason}",
+        user_id=user_id,
+    )
+    return refund_record
+
+
+def _record_unbooked_refund(
+    db: Session,
+    payload: RefundRequest,
+    payment_id: str,
+    rfnd_id: str,
+    rfnd_date: date,
+    amount: Decimal,
+    org_id: str,
+    user_id: str,
+) -> None:
+    """Minimal trace of a Razorpay refund whose ledger posting failed."""
+    payment = db.get(PaymentRecord, payment_id)
+    db.add(
+        PaymentRefund(
+            id=new_id(),
+            organization_id=org_id,
+            payment_id=payment_id,
+            razorpay_payment_id=payment.razorpay_payment_id,
+            razorpay_refund_id=rfnd_id,
+            invoice_id=payment.invoice_id,
+            amount=amount,
+            currency="INR",
+            refund_date=rfnd_date,
+            reason=f"{payload.reason} (not yet booked in the ledger)"[:255],
+            status="processed",
+            speed=payload.speed,
+            created_by=user_id,
+        )
+    )
+    _apply_refund_to_payment(payment, amount)
 
 
 @router.get("/refunds")
@@ -1219,6 +1426,28 @@ def list_transactions(
 # --------------------------------------------------------------------------- #
 # CSV Reports Export
 # --------------------------------------------------------------------------- #
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+# A plain signed number (e.g. a negative amount) is data, not a formula.
+_PLAIN_NUMBER = re.compile(r"[+-]?\d+(\.\d+)?")
+
+
+def _csv_safe(value: Any) -> Any:
+    """Stop spreadsheet apps from running a cell as a formula."""
+    if isinstance(value, str) and value.startswith(_CSV_FORMULA_PREFIXES) and not _PLAIN_NUMBER.fullmatch(value):
+        return "'" + value
+    return value
+
+
+class _SafeCsvWriter:
+    """csv.writer wrapper that neutralises formula-like text cells."""
+
+    def __init__(self, writer: Any) -> None:
+        self._writer = writer
+
+    def writerow(self, row: Any) -> Any:
+        return self._writer.writerow([_csv_safe(value) for value in row])
+
+
 @router.get("/reports/export")
 def export_reports(
     report_type: str = Query("payments", description="payments | expenses | revenue | refunds | settlements | pnl | cashflow"),
@@ -1230,7 +1459,7 @@ def export_reports(
     """Exports structured financial reports in CSV format."""
     org_id = user.organization_id
     output = io.StringIO()
-    writer = csv.writer(output)
+    writer = _SafeCsvWriter(csv.writer(output))
 
     if report_type == "payments":
         writer.writerow(
@@ -1491,21 +1720,24 @@ def connect_credentials(payload: ConnectRazorpayRequest) -> Dict[str, Any]:
 
     if not key_id or not key_secret:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Both Key ID and Key Secret are required.")
+    # These values are written into .env one per line; a line break would let
+    # a value smuggle in extra settings.
+    if any(ch in value for value in (key_id, key_secret, webhook_secret) for ch in ("\r", "\n")):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Keys cannot contain line breaks.")
 
     # 1. Test credentials with Razorpay API
-    import razorpay
-    from razorpay.errors import BadRequestError
-
-    test_client = razorpay.Client(auth=(key_id, key_secret))
+    test_client = build_client(key_id, key_secret)
     reachable = False
     warning_error = None
     try:
         test_client.payment.all({"count": 1})
         reachable = True
-    except BadRequestError as exc:
-        warning_error = f"Razorpay rejected credentials: {exc}"
-    except Exception as exc:
-        warning_error = f"Could not reach Razorpay API: {exc}"
+    except BadRequestError:
+        warning_error = MSG_BAD_KEYS
+        logger.warning("Razorpay rejected the keys being connected.", exc_info=True)
+    except Exception:
+        warning_error = MSG_UNREACHABLE
+        logger.warning("Could not reach Razorpay while connecting.", exc_info=True)
 
     # 2. Update .env file on disk
     from pathlib import Path
@@ -1563,7 +1795,7 @@ def _connect_response(reachable: bool, mode: str, warning_error: Optional[str], 
             "success": False,
             "connected": False,
             "reachable": False,
-            "message": f"Credentials saved, but Razorpay live connection failed: {warning_error}. Please check Key ID and Secret in Razorpay Dashboard.",
+            "message": f"Credentials saved, but Razorpay live connection failed: {warning_error} Please check Key ID and Secret in Razorpay Dashboard.",
             "status": status_payload,
         }
 
@@ -1831,6 +2063,8 @@ def get_payment_detail(
             raw = None
 
     ledger_account = db.get(Account, payment.ledger_account_id) if payment.ledger_account_id else None
+    if ledger_account is not None and ledger_account.organization_id != payment.organization_id:
+        ledger_account = None
 
     return {
         **_payment_row(payment),
@@ -2064,6 +2298,14 @@ def list_category_rules(
     return {"items": [_rule_row(rule) for rule in rules], "total": len(rules)}
 
 
+def _validate_rule_account(db: Session, account_id: Optional[str], org_id: str) -> None:
+    """A rule may only point at a ledger account of the same organization."""
+    if account_id:
+        account = db.get(Account, account_id)
+        if account is None or account.organization_id != org_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ledger account not found")
+
+
 @router.post("/category-rules", status_code=status.HTTP_201_CREATED)
 def create_category_rule(
     payload: CategoryRuleRequest,
@@ -2074,10 +2316,7 @@ def create_category_rule(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Match type must be one of {list(MATCH_TYPES)}")
     if payload.category not in CATEGORIES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown category: {payload.category}")
-    if payload.ledger_account_id:
-        account = db.get(Account, payload.ledger_account_id)
-        if account is None or account.organization_id != user.organization_id:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ledger account not found")
+    _validate_rule_account(db, payload.ledger_account_id, user.organization_id)
 
     rule = RazorpayCategoryRule(
         id=new_id(),
@@ -2111,6 +2350,7 @@ def update_category_rule(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Match type must be one of {list(MATCH_TYPES)}")
     if payload.category not in CATEGORIES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown category: {payload.category}")
+    _validate_rule_account(db, payload.ledger_account_id, user.organization_id)
 
     rule.name = payload.name.strip()
     rule.match_type = payload.match_type

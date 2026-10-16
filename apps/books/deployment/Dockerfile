@@ -14,6 +14,10 @@ RUN apt-get update \
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Rooman One: the shared SDK and event contracts (vendored copies, see vendor/README.md).
+COPY vendor ./vendor
+RUN pip install --no-cache-dir ./vendor/sdk-python "jsonschema>=4.23"
+
 COPY backend ./backend
 COPY database/alembic ./database/alembic
 COPY database/alembic.ini ./database/alembic.ini

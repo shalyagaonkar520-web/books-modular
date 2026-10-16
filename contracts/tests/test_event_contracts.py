@@ -22,7 +22,7 @@ REGISTRY = (
 )
 
 STARTING_SET = {
-    "org.created", "org.plan_changed", "user.invited", "user.removed",
+    "org.created", "org.plan_changed", "user.invited", "user.removed", "plan.upserted",
     "customer.created", "customer.updated",
     "appointment.created", "appointment.completed", "appointment.cancelled",
     "invoice.created", "payment.received",

@@ -37,6 +37,32 @@ over HTTPS.
 acting user, entity and a summary. Financial documents are never silently mutated: voiding posts
 a reversing journal entry instead of deleting history.
 
+**Plans and module access.** Writes to a module need it in the organization's subscription plan
+and, for staff, in the user's module access (`deps.require_module` / `module_write_error`).
+Endpoints that create records of other modules check each one: an Excel import that creates
+invoices needs Invoices access, not only Documents.
+
+**Platform-wide settings.** The outbound email (SMTP) account and the Razorpay keys serve every
+organization, so only a platform admin can change them. The stored SMTP password is never reused
+for a different server or account. Values written to `.env` must be single lines. STARTTLS
+verifies the mail server's certificate.
+
+**Sessions.** `/api/auth/me` returns the caller's existing token. Sessions are extended only
+through `/refresh`, whose cookie is revoked by sign-out and password changes, so a copied access
+token or an impersonation token expires on time.
+
+**Connected apps** (docs/INTEGRATIONS.md). Other apps use the API with scoped keys (`rbk_…`, only
+the SHA-256 stored). Access is default deny: a key reaches only the paths of features it was
+granted, never users, settings or admin areas. Each key belongs to one organization and acts
+through a service account that can't sign in. Apps are rate limited, and retried writes are
+idempotent. Webhooks are HMAC-signed, don't follow redirects, and are refused for private or
+local addresses unless the host is in `WEBHOOK_ALLOWED_HOSTS`.
+
+**Generated files.** User text in PDFs is shown as text, never as markup (no `<img>` or font
+tricks), and Excel exports store user text that starts with `=` as text, not as a formula. Links
+in emails that approve a payment open a confirmation page; only its button (a POST) records the
+decision, so mail scanners can't approve anything.
+
 ## Deployment requirements
 
 - `SECRET_KEY` must be a high-entropy value supplied through the environment. The application
@@ -53,3 +79,7 @@ a reversing journal entry instead of deleting history.
 - Document uploads are stored on the local filesystem. Use a shared volume or object storage if
   you run more than one API instance.
 - Multi-factor authentication and SSO are not implemented.
+- The connected-app rate limit and the OTP failure counter are also per process. With
+  `WEB_CONCURRENCY=2` the effective limits are doubled.
+- Webhook addresses are checked when they are saved and before each send. The connection itself
+  resolves the name again, so a host that changes its DNS answer in between is not pinned.

@@ -37,7 +37,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import MetaData, create_engine, select
+from sqlalchemy import MetaData, create_engine, inspect, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -46,7 +46,9 @@ from core_api import models as m
 APP = "books"
 # Fixed namespace so derived ids are the same on every run and every database.
 NS = uuid.UUID("2f8f4b8e-1d2a-4c55-9b63-8f0b3b8f5c21")
-DEFAULT_PRICING = Path(__file__).resolve().parents[3] / "apps" / "books" / "backend" / "content" / "module_pricing.json"
+# In the repository; inside the Core image there is no apps/books, so pass --pricing there.
+_REPO = Path(__file__).resolve().parents[min(3, len(Path(__file__).resolve().parents) - 1)]
+DEFAULT_PRICING = _REPO / "apps" / "books" / "backend" / "content" / "module_pricing.json"
 BOOKS_TABLES = ["organizations", "users", "platform_admins", "org_panel_admins", "platform_settings"]
 APP_CONTENT_KEY = "app_content"
 
@@ -493,11 +495,24 @@ def books_engine(url: str) -> Engine:
     return create_engine(url, connect_args={"options": "-c default_transaction_read_only=on"})
 
 
+class _Row(dict):
+    """A Books row. A column an older Books version does not have yet reads as None."""
+
+    def __missing__(self, key: str) -> None:
+        return None
+
+
 def read_books(engine: Engine) -> dict[str, list[dict[str, Any]]]:
+    # Production Books may be older than this tool: a table it does not have
+    # yet is read as empty, and a missing column as None (see _Row).
+    existing = set(inspect(engine).get_table_names())
     meta = MetaData()
-    meta.reflect(bind=engine, only=BOOKS_TABLES)
+    meta.reflect(bind=engine, only=[t for t in BOOKS_TABLES if t in existing])
     with engine.connect() as conn:
-        return {name: [dict(r._mapping) for r in conn.execute(select(meta.tables[name]))] for name in BOOKS_TABLES}
+        return {
+            name: ([_Row(r._mapping) for r in conn.execute(select(meta.tables[name]))] if name in meta.tables else [])
+            for name in BOOKS_TABLES
+        }
 
 
 def _project(row: Any, entity: Entity) -> dict[str, Any]:

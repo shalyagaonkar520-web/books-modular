@@ -46,7 +46,6 @@ import type {
   ProfitAndLoss,
   Project,
   Session,
-  SmtpSettings,
   StoredDocument,
   TaxSummary,
   TimeEntry,
@@ -100,10 +99,6 @@ export const orgApi = {
   deleteUser: (id: string) => api.delete<Message>(`/users/${id}`),
   resetUserPassword: (id: string, newPassword: string) => api.post<Message>(`/users/${id}/reset-password`, undefined, { new_password: newPassword }),
   auditLogs: (query?: Query) => api.get<Page<AuditLog>>('/audit-logs', query),
-  smtpSettings: () => api.get<SmtpSettings>('/settings/smtp'),
-  updateSmtpSettings: (body: { host: string; port: number; username: string; password?: string; senderName: string }) =>
-    api.put<SmtpSettings>('/settings/smtp', body),
-  sendSmtpTest: (toEmail: string) => api.post<Message>('/settings/smtp/test', { toEmail }),
   getUserDashboard: (id: string) => api.get<UserDashboardSummary>(`/users/${id}/dashboard`),
   downloadUserDashboardPdf: (id: string, name: string) => {
     const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '_');

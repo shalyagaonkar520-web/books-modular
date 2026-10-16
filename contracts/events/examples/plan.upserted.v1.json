@@ -1,0 +1,22 @@
+{
+  "id": "evt_00000000000000000000000000000020",
+  "type": "plan.upserted",
+  "version": 1,
+  "org_id": "7b0c3a9e-6f0e-4d7a-9a51-3d2f4c1b8e01",
+  "actor": {
+    "type": "service",
+    "id": "billing"
+  },
+  "source": "billing",
+  "occurred_at": "2026-10-16T10:00:00Z",
+  "data": {
+    "plan_id": "plan_pro_monthly",
+    "name": "Pro (monthly)",
+    "description": "Pro plan billed monthly",
+    "price": "999.00",
+    "currency": "INR",
+    "tax_rate": "18",
+    "hsn_sac": "998314",
+    "is_active": true
+  }
+}

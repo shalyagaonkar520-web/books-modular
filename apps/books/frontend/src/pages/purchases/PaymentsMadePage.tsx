@@ -37,7 +37,7 @@ function monthStart(): string {
 export function PaymentsMadePage() {
   const { t } = useAppContent();
   const toast = useToast();
-  const { download } = useDownload();
+  const { download, downloading } = useDownload();
 
   const [vendorId, setVendorId] = useState('');
   const [startDate, setStartDate] = useState(monthStart);
@@ -130,7 +130,8 @@ export function PaymentsMadePage() {
             style={{ color: '#dc2626' }}
             aria-label={t('paymentsMade.aria.downloadPdf', { number: payment.paymentNumber })}
             title={t('paymentsMade.tip.downloadPdf')}
-            onClick={() => vendorPaymentsApi.downloadPdf(payment.id, payment.paymentNumber)}
+            disabled={downloading}
+            onClick={() => void download(() => vendorPaymentsApi.downloadPdf(payment.id, payment.paymentNumber))}
           >
             <FileDown size={15} />
           </button>

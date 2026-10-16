@@ -353,7 +353,9 @@ def test_super_admin_approves_request_with_override(client, tenant, platform_h):
 
     # An active org asking for a change keeps its plan until that is accepted.
     change = _request(client, h, ["payroll"], "monthly").json()
-    assert change["status"] == "active" and change["plan"]["modules"] == expected and change["pendingRequest"]["modules"] == _plan(["payroll"])
+    assert (
+        change["status"] == "active" and change["plan"]["modules"] == expected and change["pendingRequest"]["modules"] == _plan(["payroll"])
+    )
     assert client.post(f"/api/platform/organizations/{org_id}/subscription/approve", headers=platform_h).status_code == 200
     sub = client.get("/api/subscription", headers=h).json()
     assert sub["plan"] == {

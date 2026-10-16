@@ -54,7 +54,7 @@ export function InvoicesPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const toast = useToast();
-  const { download } = useDownload();
+  const { download, downloading } = useDownload();
   const { submitting, error: actionError, run, reset } = useSubmit();
 
   const [status, setStatus] = useState(searchParams.get('status') ?? 'all');
@@ -229,12 +229,13 @@ export function InvoicesPage() {
               variant="ghost"
               items={[
                 { key: 'mail', label: t('invoices.view.sendGmail'), icon: <Mail size={14} />, onSelect: () => setMailInvoice(row) },
-                { key: 'pdf', label: t('invoices.view.downloadPdf'), icon: <FileDown size={14} />, onSelect: () => void invoicesApi.downloadPdf(row.id, row.invoiceNumber) },
+                { key: 'pdf', label: t('invoices.view.downloadPdf'), icon: <FileDown size={14} />, disabled: downloading, onSelect: () => void download(() => invoicesApi.downloadPdf(row.id, row.invoiceNumber)) },
                 {
                   key: 'excel',
                   label: t('invoices.view.downloadExcel'),
                   icon: <FileSpreadsheet size={14} />,
-                  onSelect: () => void invoicesApi.downloadExcel(row.id, row.invoiceNumber),
+                  disabled: downloading,
+                  onSelect: () => void download(() => invoicesApi.downloadExcel(row.id, row.invoiceNumber)),
                 },
                 ...(canEdit(row)
                   ? [{ key: 'edit', label: t('invoices.view.edit'), icon: <Pencil size={14} />, onSelect: () => navigate(`/invoices/${row.id}/edit`) }]

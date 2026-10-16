@@ -63,7 +63,7 @@ async function loadRangeTotals(query: { customer_id?: string; start_date?: strin
 export function PaymentsReceivedPage() {
   const { t } = useAppContent();
   const toast = useToast();
-  const { download } = useDownload();
+  const { download, downloading } = useDownload();
 
   const [customerId, setCustomerId] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -142,7 +142,8 @@ export function PaymentsReceivedPage() {
             style={{ color: '#dc2626' }}
             aria-label={t('paymentsReceived.action.pdfAria', { number: row.paymentNumber })}
             title={t('paymentsReceived.action.pdfTitle')}
-            onClick={() => customerPaymentsApi.downloadPdf(row.id, row.paymentNumber)}
+            disabled={downloading}
+            onClick={() => void download(() => customerPaymentsApi.downloadPdf(row.id, row.paymentNumber))}
           >
             <FileDown size={15} />
           </button>

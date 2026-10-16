@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
+from backend.integrations import customers as customer_sync
+from backend.integrations.readonly import ensure_editable
 from backend.models import (
     Account,
     Bill,
@@ -243,21 +245,26 @@ def create_contact(payload: ContactCreate, user: User = Depends(require_write), 
     db.flush()
     audit.record(db, user, "create", "contact", contact.id, f"Created {contact.type} {contact.display_name}")
     db.commit()
+    # Rooman One: link to Core's shared customer record (no-op unless integration is on; never fails the request).
+    customer_sync.after_save(db, contact, created=True, user=user)
     return to_out(contact)
 
 
 @router.put("/{contact_id}", response_model=ContactOut)
 def update_contact(contact_id: str, payload: ContactUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)):
     contact = get_or_404(db, Contact, contact_id, user.organization_id, "Contact")
+    ensure_editable(contact)
     fields = payload.model_dump(exclude_unset=True)
     if fields.get("ledger_account_id") and fields["ledger_account_id"] != contact.ledger_account_id:
         _validate_ledger_account(db, user.organization_id, contact.type, fields["ledger_account_id"])
+    party_changes = customer_sync.party_changes(contact, fields)
     for field, value in fields.items():
         setattr(contact, field, value)
     if {"salutation", "first_name", "last_name"} & fields.keys():
         _sync_contact_person(contact)
     audit.record(db, user, "update", "contact", contact.id, f"Updated {contact.type} {contact.display_name}")
     db.commit()
+    customer_sync.after_save(db, contact, created=False, changed=party_changes, user=user)
     outstanding = _outstanding_map(db, user.organization_id, contact.type).get(contact.id)
     return to_out(contact, outstanding)
 
@@ -268,8 +275,11 @@ def bulk_delete_contacts(
     user: User = Depends(require_write),
     db: Session = Depends(get_db),
 ):
-    """Delete or deactivate multiple contacts across single or all pages."""
-    stmt = select(Contact).where(Contact.organization_id == user.organization_id)
+    """Delete or deactivate multiple contacts across single or all pages.
+
+    Contacts another app sent (Rooman Billing) are left alone: they are changed there.
+    """
+    stmt = select(Contact).where(Contact.organization_id == user.organization_id, Contact.source_app.is_(None))
     if payload.type:
         stmt = stmt.where(Contact.type == payload.type)
 
@@ -363,6 +373,7 @@ def bulk_delete_contacts(
 @router.delete("/{contact_id}", response_model=Message)
 def delete_contact(contact_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
     contact = get_or_404(db, Contact, contact_id, user.organization_id, "Contact")
+    ensure_editable(contact)
     has_docs = (
         db.execute(select(Invoice.id).where(Invoice.customer_id == contact.id).limit(1)).first()
         or db.execute(select(Bill.id).where(Bill.vendor_id == contact.id).limit(1)).first()
@@ -407,7 +418,7 @@ def send_contact_email(
         recipient_name=contact.display_name,
     )
     if not result.get("success"):
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Gmail SMTP error: {result.get('error')}")
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, result.get("error") or "The email could not be sent. Check the address, or ask your administrator to check the email settings.")
     audit.record(db, user, "email", "contact", contact.id, f"Sent email to {contact.display_name} ({recipient})")
     db.commit()
     return result

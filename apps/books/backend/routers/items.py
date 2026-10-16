@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
+from backend.integrations.readonly import ensure_editable
 from backend.models import Account, Bill, BillLine, Contact, InventoryAdjustment, Invoice, InvoiceLine, Item, User
 from backend.schemas.common import Message, Page
 from backend.schemas.items import (
@@ -170,6 +171,7 @@ def create_item(payload: ItemCreate, user: User = Depends(require_write), db: Se
 @router.put("/{item_id}", response_model=ItemOut)
 def update_item(item_id: str, payload: ItemUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)):
     item = get_or_404(db, Item, item_id, user.organization_id, "Item")
+    ensure_editable(item)
     data = payload.model_dump(exclude_unset=True)
     if "sku" in data:
         data["sku"] = data["sku"].upper()
@@ -230,6 +232,7 @@ def update_item(item_id: str, payload: ItemUpdate, user: User = Depends(require_
 @router.delete("/{item_id}", response_model=Message)
 def delete_item(item_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
     item = get_or_404(db, Item, item_id, user.organization_id, "Item")
+    ensure_editable(item)
     used = (
         db.execute(select(InvoiceLine.id).where(InvoiceLine.item_id == item.id).limit(1)).first()
         or db.execute(select(BillLine.id).where(BillLine.item_id == item.id).limit(1)).first()

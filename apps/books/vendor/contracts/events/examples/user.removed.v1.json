@@ -1,0 +1,15 @@
+{
+  "id": "evt_00000000000000000000000000000001",
+  "type": "user.removed",
+  "version": 1,
+  "org_id": "7b0c3a9e-6f0e-4d7a-9a51-3d2f4c1b8e01",
+  "actor": {
+    "type": "user",
+    "id": "u1"
+  },
+  "source": "core",
+  "occurred_at": "2026-10-09T10:00:00Z",
+  "data": {
+    "user_id": "3f2b8a1c-5d4e-4f6a-8b7c-9d0e1f2a3b4c"
+  }
+}
