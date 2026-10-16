@@ -51,6 +51,15 @@ class OrgScopedMixin:
     organization_id: Mapped[str] = mapped_column(String(32), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
 
 
+class SourceRefMixin:
+    """Set on records another Rooman app sent (e.g. Billing): which app, and the
+    record's id there. Such records are read-only in Books (changed at the
+    source) and never imported twice (unique per organization)."""
+
+    source_app: Mapped[Optional[str]] = mapped_column(String(20))
+    source_ref: Mapped[Optional[str]] = mapped_column(String(64))
+
+
 # --------------------------------------------------------------------------- #
 # Identity & tenancy
 # --------------------------------------------------------------------------- #
@@ -369,7 +378,7 @@ class JournalLine(Base):
 # --------------------------------------------------------------------------- #
 # Items & contacts
 # --------------------------------------------------------------------------- #
-class Item(TimestampMixin, OrgScopedMixin, Base):
+class Item(TimestampMixin, OrgScopedMixin, SourceRefMixin, Base):
     __tablename__ = "items"
     __table_args__ = (UniqueConstraint("organization_id", "sku", name="uq_item_org_sku"),)
 
@@ -405,7 +414,7 @@ class Item(TimestampMixin, OrgScopedMixin, Base):
     preferred_vendor: Mapped[Optional[Contact]] = relationship(foreign_keys=[preferred_vendor_id])
 
 
-class Contact(TimestampMixin, OrgScopedMixin, Base):
+class Contact(TimestampMixin, OrgScopedMixin, SourceRefMixin, Base):
     __tablename__ = "contacts"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
@@ -471,7 +480,7 @@ class InventoryAdjustment(TimestampMixin, OrgScopedMixin, Base):
 # --------------------------------------------------------------------------- #
 # Sales
 # --------------------------------------------------------------------------- #
-class Invoice(TimestampMixin, OrgScopedMixin, Base):
+class Invoice(TimestampMixin, OrgScopedMixin, SourceRefMixin, Base):
     __tablename__ = "invoices"
     __table_args__ = (UniqueConstraint("organization_id", "invoice_number", name="uq_invoice_org_number"),)
 
@@ -530,7 +539,7 @@ class InvoiceLine(Base):
     item: Mapped[Optional[Item]] = relationship()
 
 
-class CustomerPayment(TimestampMixin, OrgScopedMixin, Base):
+class CustomerPayment(TimestampMixin, OrgScopedMixin, SourceRefMixin, Base):
     __tablename__ = "customer_payments"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
@@ -1255,6 +1264,11 @@ class IdempotencyRecord(Base):
     content_type: Mapped[Optional[str]] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
 
+
+# One record per (organization, source app, source id): an event delivered
+# twice can never create a second copy.
+for _model in (Contact, Item, Invoice, CustomerPayment):
+    Index(f"uq_{_model.__tablename__}_source", _model.organization_id, _model.source_app, _model.source_ref, unique=True)
 
 # Rooman One outbox and processed-events tables, registered on the same metadata.
 from backend.integrations import tables as _integration_tables  # noqa: E402, F401

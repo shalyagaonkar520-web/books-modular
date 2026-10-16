@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
 from backend.integrations import customers as customer_sync
+from backend.integrations.readonly import ensure_editable
 from backend.models import (
     Account,
     Bill,
@@ -252,6 +253,7 @@ def create_contact(payload: ContactCreate, user: User = Depends(require_write), 
 @router.put("/{contact_id}", response_model=ContactOut)
 def update_contact(contact_id: str, payload: ContactUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)):
     contact = get_or_404(db, Contact, contact_id, user.organization_id, "Contact")
+    ensure_editable(contact)
     fields = payload.model_dump(exclude_unset=True)
     if fields.get("ledger_account_id") and fields["ledger_account_id"] != contact.ledger_account_id:
         _validate_ledger_account(db, user.organization_id, contact.type, fields["ledger_account_id"])
@@ -273,8 +275,11 @@ def bulk_delete_contacts(
     user: User = Depends(require_write),
     db: Session = Depends(get_db),
 ):
-    """Delete or deactivate multiple contacts across single or all pages."""
-    stmt = select(Contact).where(Contact.organization_id == user.organization_id)
+    """Delete or deactivate multiple contacts across single or all pages.
+
+    Contacts another app sent (Rooman Billing) are left alone: they are changed there.
+    """
+    stmt = select(Contact).where(Contact.organization_id == user.organization_id, Contact.source_app.is_(None))
     if payload.type:
         stmt = stmt.where(Contact.type == payload.type)
 
@@ -368,6 +373,7 @@ def bulk_delete_contacts(
 @router.delete("/{contact_id}", response_model=Message)
 def delete_contact(contact_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
     contact = get_or_404(db, Contact, contact_id, user.organization_id, "Contact")
+    ensure_editable(contact)
     has_docs = (
         db.execute(select(Invoice.id).where(Invoice.customer_id == contact.id).limit(1)).first()
         or db.execute(select(Bill.id).where(Bill.vendor_id == contact.id).limit(1)).first()

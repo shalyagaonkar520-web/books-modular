@@ -2,7 +2,6 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.rooman.one/events/payment.received.v1.schema.json",
   "title": "payment.received v1",
-  "x-source": "books",
   "allOf": [
     {
       "$ref": "envelope.schema.json"
@@ -29,7 +28,9 @@
       "properties": {
         "payment_id": {
           "type": "string",
-          "format": "uuid"
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "The record id inside the source app (any format)."
         },
         "party_id": {
           "oneOf": [
@@ -44,7 +45,9 @@
         },
         "customer_id": {
           "type": "string",
-          "format": "uuid"
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "The record id inside the source app (any format)."
         },
         "amount": {
           "type": "string",
@@ -74,7 +77,9 @@
             "properties": {
               "invoice_id": {
                 "type": "string",
-                "format": "uuid"
+                "minLength": 1,
+                "maxLength": 64,
+                "description": "The record id inside the source app (any format)."
               },
               "amount": {
                 "type": "string",
@@ -83,8 +88,19 @@
               }
             }
           }
+        },
+        "reference": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 120
         }
       }
     }
-  }
+  },
+  "x-sources": [
+    "books",
+    "billing"
+  ]
 }

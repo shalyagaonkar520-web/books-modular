@@ -2,7 +2,6 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.rooman.one/events/customer.created.v1.schema.json",
   "title": "customer.created v1",
-  "x-source": "books",
   "allOf": [
     {
       "$ref": "envelope.schema.json"
@@ -19,20 +18,27 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "party_id",
         "display_name",
         "type"
       ],
       "properties": {
         "party_id": {
-          "type": "string",
-          "format": "uuid"
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "app_local_id": {
           "type": [
             "string",
             "null"
           ],
+          "maxLength": 64,
           "description": "The record id inside the source app."
         },
         "display_name": {
@@ -61,8 +67,33 @@
             "vendor",
             "both"
           ]
+        },
+        "company_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 200
+        },
+        "gstin": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 20
+        },
+        "billing_address": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 1000
         }
       }
     }
-  }
+  },
+  "x-sources": [
+    "books",
+    "billing"
+  ]
 }

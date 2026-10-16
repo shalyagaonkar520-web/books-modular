@@ -36,8 +36,17 @@ CONSUMER = "books"
 MAX_BODY_BYTES = 1_000_000
 
 router = APIRouter(prefix="/internal", tags=["Rooman One (internal)"], include_in_schema=False)
+# The same endpoint under /api, which the public web server forwards (apps outside this
+# server, e.g. Rooman Billing, reach it there). The signature is what protects it.
+public_router = APIRouter(prefix="/api/internal", tags=["Rooman One (internal)"], include_in_schema=False)
 
 Handler = Callable[[Session, Any], None]
+
+
+class PermanentEventError(Exception):
+    """The event can never be applied as sent (answered 422, so the sender stops retrying)."""
+
+
 HANDLERS: dict[str, Handler] = {}
 
 
@@ -73,6 +82,7 @@ def _secrets() -> list[str]:
 
 
 @router.post("/events")
+@public_router.post("/events")
 async def receive_event(request: Request, db: Session = Depends(get_db)):
     from pydantic import ValidationError
     from rooman_sdk.events import EventEnvelope, verify
@@ -101,8 +111,15 @@ async def receive_event(request: Request, db: Session = Depends(get_db)):
     try:
         outcome = dispatch(db, event)
         db.commit()
-    except Exception:
+    except PermanentEventError as exc:
         db.rollback()
+        logger.warning("Event %s (%s) refused: %s", event.id, event.type, exc)
+        raise HTTPException(422, str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        if type(exc).__name__ == "RetryLater":
+            logger.info("Event %s (%s) not applied yet: %s", event.id, event.type, exc)
+            raise HTTPException(409, str(exc), headers={"Retry-After": "30"}) from exc
         logger.exception("Handling event %s (%s) failed; the sender will retry", event.id, event.type)
         raise
     return {"status": outcome, "eventId": event.id}

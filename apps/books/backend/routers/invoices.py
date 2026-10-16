@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
+from backend.integrations.readonly import ensure_editable
 from backend.models import (
     Contact,
     ExternalPaymentProof,
@@ -607,6 +608,7 @@ def create_invoice(payload: InvoiceCreate, user: User = Depends(require_write), 
 @router.put("/{invoice_id}", response_model=InvoiceOut)
 def update_invoice(invoice_id: str, payload: InvoiceUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)):
     inv = get_or_404(db, Invoice, invoice_id, user.organization_id, "Invoice")
+    ensure_editable(inv)
     if inv.status in ("paid", "partially_paid", "void") or inv.amount_paid > 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invoices with payments or voided invoices cannot be edited")
     was_posted = inv.status == "sent"
@@ -628,6 +630,7 @@ def update_invoice(invoice_id: str, payload: InvoiceUpdate, user: User = Depends
 @router.post("/{invoice_id}/status", response_model=InvoiceOut)
 def change_status(invoice_id: str, payload: InvoiceStatusUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)):
     inv = get_or_404(db, Invoice, invoice_id, user.organization_id, "Invoice")
+    ensure_editable(inv)
     target = payload.status
     if target == "sent":
         if inv.status != "draft":
@@ -659,6 +662,7 @@ def change_status(invoice_id: str, payload: InvoiceStatusUpdate, user: User = De
 @router.delete("/{invoice_id}", response_model=Message)
 def delete_invoice(invoice_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
     inv = get_or_404(db, Invoice, invoice_id, user.organization_id, "Invoice")
+    ensure_editable(inv)
     if inv.amount_paid > 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invoice has payments recorded. Delete recorded payments first.")
     if inv.status not in ("draft", "void"):

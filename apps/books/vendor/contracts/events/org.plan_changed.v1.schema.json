@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.rooman.one/events/org.plan_changed.v1.schema.json",
+  "title": "org.plan_changed v1",
+  "x-source": "core",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "type": {
+      "const": "org.plan_changed"
+    },
+    "version": {
+      "const": 1
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "apps",
+        "modules"
+      ],
+      "properties": {
+        "plan_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cycle": {
+          "enum": [
+            "monthly",
+            "yearly",
+            null
+          ]
+        },
+        "status": {
+          "enum": [
+            "trial",
+            "active",
+            "expired",
+            "cancelled"
+          ]
+        },
+        "apps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "modules": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

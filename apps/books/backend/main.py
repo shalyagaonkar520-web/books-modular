@@ -213,9 +213,11 @@ def create_app() -> FastAPI:
     # so with the flag off the API is exactly what it was.
     if get_settings().integration_enabled:
         from backend.integrations import admin as integration_admin
+        from backend.integrations import billing as _billing_handlers  # noqa: F401 - registers Billing's event handlers
         from backend.integrations import inbound
 
         app.include_router(inbound.router)
+        app.include_router(inbound.public_router)
         app.include_router(integration_admin.router, dependencies=[Depends(require_superuser)])
 
     @app.get("/api/health", tags=["Health"])

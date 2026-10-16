@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rooman-sdk"
+version = "0.1.0"
+description = "Shared helpers for Rooman One services: token checks, event envelope, outbox and consumer."
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.7,<3.0",
+  "PyJWT[crypto]>=2.8",
+  "sqlalchemy>=2.0,<3.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff==0.16.6", "mypy>=1.11", "jsonschema>=4.23"]
+
+[tool.setuptools]
+packages = ["rooman_sdk"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["rooman_sdk"]
+ignore_missing_imports = true
+check_untyped_defs = true

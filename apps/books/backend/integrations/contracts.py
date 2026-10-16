@@ -24,10 +24,11 @@ def contracts_dir() -> Optional[Path]:
     if configured:
         path = Path(configured)
         return path if (path / "envelope.schema.json").is_file() else None
+    # In the monorepo: <root>/contracts/events. In Books' image: the vendored copy.
     for parent in Path(__file__).resolve().parents:
-        candidate = parent / "contracts" / "events"
-        if (candidate / "envelope.schema.json").is_file():
-            return candidate
+        for candidate in (parent / "contracts" / "events", parent / "vendor" / "contracts" / "events"):
+            if (candidate / "envelope.schema.json").is_file():
+                return candidate
     return None
 
 

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.config import get_settings
 from backend.db import get_db
 from backend.deps import ROLE_ADMIN, require_full_app_access, require_module, require_write
+from backend.integrations.readonly import ensure_editable
 from backend.models import (
     BankAccount,
     Bill,
@@ -431,6 +432,7 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
 @router.delete("/customer-payments/{payment_id}", response_model=Message, dependencies=[Depends(require_module("paymentsReceived"))])
 def delete_customer_payment(payment_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
     payment = get_or_404(db, CustomerPayment, payment_id, user.organization_id, "Payment")
+    ensure_editable(payment)
     number = payment.payment_number
     ledger.reverse_entries_for_source(db, user.organization_id, "customer_payment", payment.id, date.today(), user.id, "Payment deleted")
     # Removing a receipt takes its deposit back out of the account; a cash
