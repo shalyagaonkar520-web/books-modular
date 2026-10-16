@@ -49,6 +49,14 @@ services:
       INTEGRATION_RATE_LIMIT_PER_MINUTE: ${INTEGRATION_RATE_LIMIT_PER_MINUTE:-300}
       WEBHOOKS_ENABLED: ${WEBHOOKS_ENABLED:-true}
       WEBHOOK_ALLOWED_HOSTS: ${WEBHOOK_ALLOWED_HOSTS:-}
+      # Rooman One: signed events from other apps (docs/billing-to-books.md) and links to Core
+      INTEGRATION_ENABLED: ${INTEGRATION_ENABLED:-false}
+      EVENT_SIGNING_SECRET: ${EVENT_SIGNING_SECRET:-}
+      EVENT_SIGNING_SECRET_PREVIOUS: ${EVENT_SIGNING_SECRET_PREVIOUS:-}
+      EVENT_SUBSCRIBERS: ${EVENT_SUBSCRIBERS:-}
+      CORE_API_URL: ${CORE_API_URL:-}
+      CORE_CLIENT_ID: ${CORE_CLIENT_ID:-}
+      CORE_CLIENT_SECRET: ${CORE_CLIENT_SECRET:-}
     volumes:
       - api_data:/app/data
     depends_on:
