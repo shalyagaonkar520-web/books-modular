@@ -10,7 +10,8 @@
 # CORES MEMORY DISK PUBLIC_HOST GIT_BRANCH
 set -euo pipefail
 
-GIT_URL="${GIT_URL:?set GIT_URL (include a read token if the repo is private)}"
+GIT_URL="${GIT_URL:?set GIT_URL}"
+GIT_SSH_KEY="${GIT_SSH_KEY:-}"
 GIT_BRANCH="${GIT_BRANCH:-main}"
 PUBLIC_HOST="${PUBLIC_HOST:-roomanone.futureacd.ae}"
 CTID="${CTID:-$(pvesh get /cluster/nextid)}"
@@ -43,6 +44,12 @@ pct create "$CTID" "$TEMPLATE_STORAGE:vztmpl/$TEMPLATE" \
 
 echo ">> Waiting for network"
 for i in $(seq 1 30); do pct exec "$CTID" -- getent hosts deb.debian.org >/dev/null 2>&1 && break; sleep 2; done
+
+if [ -n "$GIT_SSH_KEY" ]; then
+  pct exec "$CTID" -- bash -c 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq openssh-client && mkdir -p /root/.ssh && chmod 700 /root/.ssh'
+  pct push "$CTID" "$GIT_SSH_KEY" /root/.ssh/id_ed25519 --perms 600
+  pct exec "$CTID" -- bash -c 'ssh-keyscan -t ed25519,rsa github.com >> /root/.ssh/known_hosts 2>/dev/null'
+fi
 
 pct exec "$CTID" -- bash -s -- "$GIT_URL" "$GIT_BRANCH" "$PUBLIC_HOST" <<'INNER'
 set -euo pipefail
