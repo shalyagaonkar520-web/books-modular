@@ -29,7 +29,7 @@ x-postgres: &postgres
 
 services:
   gateway:
-    image: traefik:v3.1
+    image: traefik:latest
     restart: unless-stopped
     command:
       - --providers.docker=true
@@ -83,8 +83,8 @@ services:
       SECRET_KEY: ${BOOKS_SECRET_KEY:?set BOOKS_SECRET_KEY in infra/compose/.env}
       DATABASE_URL: postgresql+psycopg://${BOOKS_DB_USER:-roomanbooks}:${BOOKS_DB_PASSWORD}@books-db:5432/${BOOKS_DB_NAME:-roomanbooks}
       DATA_DIR: /app/data
-      CORS_ORIGINS: http://books.localhost
-      COOKIE_SECURE: 'false'
+      CORS_ORIGINS: ${PUBLIC_SCHEME:-http}://${BOOKS_HOST:-books.${DOMAIN:-localhost}}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       ALLOW_PUBLIC_SIGNUP: 'true'
       WEB_CONCURRENCY: '2'
       SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
@@ -112,7 +112,7 @@ services:
     networks: [edge, private]
     labels:
       - traefik.enable=true
-      - traefik.http.routers.books.rule=Host(`books.${DOMAIN:-localhost}`)
+      - traefik.http.routers.books.rule=Host(`${BOOKS_HOST:-books.${DOMAIN:-localhost}}`)
       - traefik.http.routers.books.entrypoints=web
       - traefik.http.routers.books.middlewares=secure-headers@docker,rate-limit@docker
       - traefik.http.services.books.loadbalancer.server.port=80
@@ -136,8 +136,8 @@ services:
       ENVIRONMENT: development
       RUN_MIGRATIONS: 'true'
       DATABASE_URL: postgresql+psycopg://${CORE_DB_USER:-rooman_core}:${CORE_DB_PASSWORD}@core-db:5432/${CORE_DB_NAME:-rooman_core}
-      PUBLIC_URL: http://id.${DOMAIN:-localhost}
-      CORS_ORIGINS: http://id.${DOMAIN:-localhost}
+      PUBLIC_URL: ${PUBLIC_SCHEME:-http}://${CORE_HOST:-id.${DOMAIN:-localhost}}
+      CORS_ORIGINS: ${PUBLIC_SCHEME:-http}://${CORE_HOST:-id.${DOMAIN:-localhost}}
     depends_on:
       core-db:
         condition: service_healthy
@@ -152,7 +152,7 @@ services:
     networks: [edge, private]
     labels:
       - traefik.enable=true
-      - traefik.http.routers.core.rule=Host(`id.${DOMAIN:-localhost}`)
+      - traefik.http.routers.core.rule=Host(`${CORE_HOST:-id.${DOMAIN:-localhost}}`)
       - traefik.http.routers.core.entrypoints=web
       - traefik.http.routers.core.middlewares=secure-headers@docker,rate-limit@docker
       - traefik.http.services.core.loadbalancer.server.port=80
@@ -175,14 +175,14 @@ services:
       ENVIRONMENT: development
       RUN_MIGRATIONS: 'true'
       DATABASE_URL: postgresql+psycopg://${BOOKINGS_DB_USER:-rooman_bookings}:${BOOKINGS_DB_PASSWORD}@bookings-db:5432/${BOOKINGS_DB_NAME:-rooman_bookings}
-      PUBLIC_URL: http://bookings.${DOMAIN:-localhost}
+      PUBLIC_URL: ${PUBLIC_SCHEME:-http}://${BOOKINGS_HOST:-bookings.${DOMAIN:-localhost}}
     depends_on:
       bookings-db:
         condition: service_healthy
     networks: [edge, private, egress]
     labels:
       - traefik.enable=true
-      - traefik.http.routers.bookings.rule=Host(`bookings.${DOMAIN:-localhost}`)
+      - traefik.http.routers.bookings.rule=Host(`${BOOKINGS_HOST:-bookings.${DOMAIN:-localhost}}`)
       - traefik.http.routers.bookings.entrypoints=web
       - traefik.http.routers.bookings.middlewares=secure-headers@docker,rate-limit@docker
       - traefik.http.services.bookings.loadbalancer.server.port=8000
