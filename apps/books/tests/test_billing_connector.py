@@ -195,3 +195,20 @@ def test_wrong_totals_are_recorded_not_retried(setup):
     assert _run(s).failed == 1
     assert _run(s).failed == 0  # not re-sent while unchanged
     assert s["state"].get("invoice", iid)["status"] == "failed"
+
+
+def test_sync_from_skips_old_invoices_but_not_their_customers(setup):
+    s = setup
+    cid, pid, iid, payid, _ = _seed(s)  # all created 2026-10-16 10:00
+    s["cfg"].sync_from = datetime(2026, 10, 17).date()
+    result = _run(s)
+    assert result.sent == 2  # the customer and the plan
+    assert _one(Contact, s["org_id"], cid) is not None and _one(Invoice, s["org_id"], iid) is None
+    new_iid = str(uuid.uuid4())
+    _insert(s, "invoices", id=new_iid, invoice_number="INV-B-0002", customer_id=cid, status="SENT", issue_date="2026-10-17",
+            due_date="2026-10-31", currency="INR", subtotal=100, discount_amount=0, tax_amount=18, total=118,
+            sent_at=datetime(2026, 10, 17, 9), created_at=datetime(2026, 10, 17, 9))
+    _insert(s, "invoice_items", id=str(uuid.uuid4()), invoice_id=new_iid, description="Add-on", plan_id=None, quantity=1,
+            unit_price=100, tax_rate_pct=18, position=0)
+    assert _run(s).sent == 1
+    assert _one(Invoice, s["org_id"], new_iid).reference == "INV-B-0002"

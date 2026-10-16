@@ -63,7 +63,7 @@ class Settings:
     org_map: dict[str, str]  # Billing organization id -> Books organization id
     state_path: str = "/data/state.db"
     poll_seconds: int = 30
-    sync_from: date | None = None  # only records created on/after this day
+    sync_from: date | None = None  # only invoices and payments created on/after this day (customers and plans always go)
     unallocated_wait_hours: int = 24  # a payment not yet matched to an invoice waits this long, then goes as an advance
     timeout_seconds: float = 15.0
 
@@ -253,10 +253,9 @@ def customers(conn: Connection, settings: Settings, org: str) -> Iterable[tuple[
         text(
             "select id, display_name, company_name, email, phone, gstin, billing_address_line1, billing_address_line2,"
             " billing_city, billing_state, billing_postal_code from customers c where c.organization_id = :org"
-            + _since(settings).format(t="c")
-            + " order by c.created_at, c.id"
+            " order by c.created_at, c.id"
         ),
-        _params(settings, org),
+        {"org": org},
     ).mappings()
     for r in rows:
         city_line = " ".join(p for p in (r["billing_city"], r["billing_postal_code"]) if p)
@@ -279,10 +278,9 @@ def plans(conn: Connection, settings: Settings, org: str) -> Iterable[tuple[str,
         text(
             "select p.id, p.name, p.description, p.unit_amount, p.currency, p.is_active, pr.tax_rate_pct, pr.hsn_sac_code, pr.name as product"
             " from plans p left join products pr on pr.id = p.product_id where p.organization_id = :org"
-            + _since(settings).format(t="p")
-            + " order by p.created_at, p.id"
+            " order by p.created_at, p.id"
         ),
-        _params(settings, org),
+        {"org": org},
     ).mappings()
     for r in rows:
         name = r["name"] if not r["product"] or r["product"] in r["name"] else f"{r['product']} - {r['name']}"

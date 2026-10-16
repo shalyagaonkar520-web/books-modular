@@ -3,7 +3,7 @@
 #   BOOKS_EVENTS_URL=https://books.futureacad.ae/api/internal/events
 #   EVENT_SIGNING_SECRET=<same as Books>
 #   ORG_MAP=<billing org id>=<books org id>
-#   SYNC_FROM=2026-10-16            (optional: only records created from this day)
+#   SYNC_FROM=2026-10-16            (optional: only invoices/payments from this day; customers and plans always go)
 services:
   connector:
     image: rooman-billing-connector:latest
