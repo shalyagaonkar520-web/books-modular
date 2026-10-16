@@ -1,6 +1,10 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
+// Node's `process` (this file runs in Node). Declared here so the type check needs no @types/node,
+// which the production image does not install.
+declare const process: { env: Record<string, string | undefined> };
+
 const apiProxy = {
   '/api': {
     target: process.env.VITE_API_PROXY ?? 'http://127.0.0.1:8001',
