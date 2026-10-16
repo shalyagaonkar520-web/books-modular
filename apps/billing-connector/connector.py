@@ -436,6 +436,9 @@ def run_once(engine: Engine, state: State, settings: Settings, sender: Sender, n
     result = Round()
     with engine.connect() as conn:
         for billing_org, books_org in settings.org_map.items():
+            if conn.dialect.name == "postgresql":
+                # Billing's row-level security shows a session only the organization it names.
+                conn.execute(text("select set_config('app.current_organization_id', :org, false)"), {"org": billing_org})
             _sync_kind(state, settings, sender, books_org, "customer", customers(conn, settings, billing_org), result)
             _sync_kind(state, settings, sender, books_org, "plan", plans(conn, settings, billing_org), result)
             _sync_kind(state, settings, sender, books_org, "invoice", invoices(conn, settings, billing_org), result)
