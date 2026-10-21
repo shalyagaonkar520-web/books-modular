@@ -12,6 +12,7 @@
 #   CORE_CENTRAL_DATABASE_URL=postgresql+psycopg://rooman_core_app:<password>@192.168.1.64:5432/rooman_core?sslmode=verify-ca&sslrootcert=/run/secrets/core-db.crt
 #   CORE_KEY_ENCRYPTION_KEYS=<the same keys the central database's signing keys are encrypted with>
 #   CORE_HOST=roomanone.futureacad.ae
+#   APP_LINKS=books=https://books.futureacad.ae/api/auth/rooman-one/start
 # and the central database's CA certificate at /etc/rooman/core-db.crt.
 #
 # Migrations do not run on start here: the central database is upgraded
@@ -26,6 +27,8 @@ services:
       PUBLIC_URL: https://${CORE_HOST:?set CORE_HOST in infra/compose/.env}
       CORS_ORIGINS: https://${CORE_HOST}
       COOKIE_SECURE: 'true'
+      # The app buttons on Rooman One's own page: key=start-URL pairs, comma-separated.
+      APP_LINKS: ${APP_LINKS:-}
     volumes:
       - ${CORE_DB_CA_CERT:-/etc/rooman/core-db.crt}:/run/secrets/core-db.crt:ro
 
