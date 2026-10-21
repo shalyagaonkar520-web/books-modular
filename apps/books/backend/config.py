@@ -111,6 +111,12 @@ class Settings(BaseSettings):
     core_client_id: str = Field(default="", description="CORE_CLIENT_ID")
     core_client_secret: str = Field(default="", description="CORE_CLIENT_SECRET")
     core_timeout_seconds: float = Field(default=3.0, gt=0, le=30, description="Per-request timeout for calls to Core")
+    # "Sign in with Rooman One" (OIDC code flow + PKCE against Core). Off until OIDC_ISSUER and OIDC_CLIENT_ID are set;
+    # Books' own email/password sign-in keeps working either way.
+    oidc_issuer: str = Field(default="", description="OIDC_ISSUER: Core's public URL, e.g. https://roomanone.futureacad.ae")
+    oidc_client_id: str = Field(default="", description="OIDC_CLIENT_ID (from Core: clients create-web --app books)")
+    oidc_client_secret: str = Field(default="", description="OIDC_CLIENT_SECRET (confidential web client)")
+    oidc_redirect_uri: str = Field(default="", description="OIDC_REDIRECT_URI; default <APP_URL>/api/auth/rooman-one/callback")
 
     @field_validator("event_subscribers", mode="before")
     @classmethod

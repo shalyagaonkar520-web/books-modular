@@ -2868,6 +2868,8 @@
     "auth.login.email": "Work email",
     "auth.login.password": "Password",
     "auth.login.forgot": "Forgot password?",
+    "auth.login.or": "or",
+    "auth.login.roomanOne": "Sign in with Rooman One",
     "auth.login.submit": "Sign in",
     "auth.login.newPrompt": "New to {appName}?",
     "auth.login.registerLink": "Create an organization",

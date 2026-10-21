@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Ban,
@@ -93,6 +93,24 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const accountState = parseAccountState(error);
+  // "Sign in with Rooman One": offered when Books is connected to Rooman One; errors come back as ?sso_error=.
+  const ssoError = new URLSearchParams(location.search).get('sso_error');
+  const [roomanOne, setRoomanOne] = useState(false);
+  useEffect(() => {
+    let live = true;
+    fetch('/api/auth/rooman-one', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { enabled: false }))
+      .then((body: { enabled?: boolean }) => live && setRoomanOne(Boolean(body.enabled)))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+  const signInWithRoomanOne = () => {
+    const from = (location.state as { from?: string } | null)?.from;
+    const next = from && from !== '/login' ? from : '/';
+    window.location.assign(`/api/auth/rooman-one/start?next=${encodeURIComponent(next)}`);
+  };
 
   // Forgot password state
   const [forgotOpen, setForgotOpen] = useState(false);
@@ -265,7 +283,7 @@ export function LoginPage() {
           <p className="auth-subtitle">{t('auth.login.subtitle')}</p>
 
           <form onSubmit={onSubmit} noValidate>
-            {accountState ? <AccountStateNotice kind={accountState.kind} text={accountState.text} /> : <FormError message={error} />}
+            {accountState ? <AccountStateNotice kind={accountState.kind} text={accountState.text} /> : <FormError message={error ?? ssoError} />}
 
             <TextField
               label={t('auth.login.email')}
@@ -327,6 +345,16 @@ export function LoginPage() {
             >
               {t('auth.login.submit')}
             </Button>
+            {roomanOne && (
+              <>
+                <div className="auth-divider" style={{ textAlign: 'center', margin: '12px 0', fontSize: '12.5px', color: 'var(--text-muted)' }}>
+                  {t('auth.login.or')}
+                </div>
+                <Button type="button" variant="secondary" size="md" icon={<ShieldCheck size={15} />} className="btn-block" onClick={signInWithRoomanOne}>
+                  {t('auth.login.roomanOne')}
+                </Button>
+              </>
+            )}
           </form>
 
           <p className="auth-footer">
