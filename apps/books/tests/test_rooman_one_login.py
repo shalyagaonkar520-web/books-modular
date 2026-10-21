@@ -143,3 +143,55 @@ def test_flow_cookie_cannot_be_forged():
     body, mac = sealed.rsplit(".", 1)
     assert sso.unseal(body + "." + mac[:-2] + "AA") is None
     assert sso.unseal("garbage") is None
+
+
+# --------------------------------------------------------------------------- #
+# First sign-in of an organization or person created on Rooman One
+# --------------------------------------------------------------------------- #
+def test_new_organization_from_rooman_one_is_set_up_on_first_sign_in(client, core):
+    from sqlalchemy import func, select
+
+    from backend.db import SessionLocal
+    from backend.models import Account, BankAccount, Organization, User
+
+    org_id, user_id = uuid.uuid4().hex, uuid.uuid4().hex
+    res = _sign_in(client, core, user_id, org_id, email="asha@newco.test", name="Asha Rao", org_name="NewCo Traders", role="admin")
+    assert res.status_code == 303 and res.headers["location"] == "https://books.example.test/invoices", res.headers["location"]
+    with SessionLocal() as db:
+        org = db.get(Organization, org_id)
+        user = db.get(User, user_id)
+        assert org.name == "NewCo Traders" and org.approval_status == "approved" and org.subscription_status == "trial"
+        assert user.email == "asha@newco.test" and user.role == "admin" and user.organization_id == org_id
+        assert db.scalar(select(func.count()).select_from(Account).where(Account.organization_id == org_id)) > 10  # chart of accounts
+        assert db.scalar(select(BankAccount.name).where(BankAccount.organization_id == org_id)) == "Petty Cash"
+    refreshed = client.post("/api/auth/refresh")
+    assert refreshed.status_code == 200, refreshed.text
+    me = client.get("/api/auth/me", headers=auth(refreshed.json()["accessToken"])).json()
+    assert me["organization"]["name"] == "NewCo Traders" and me["user"]["email"] == "asha@newco.test"
+
+    # A colleague added on Rooman One later joins the same organization with their role.
+    colleague = uuid.uuid4().hex
+    client.cookies.clear()
+    _sign_in(client, core, colleague, org_id, email="ravi@newco.test", name="Ravi", org_name="NewCo Traders", role="viewer")
+    with SessionLocal() as db:
+        assert db.get(User, colleague).role == "viewer"
+        assert db.scalar(select(func.count()).select_from(Organization).where(Organization.id == org_id)) == 1
+
+
+def test_an_email_with_its_own_books_account_is_not_duplicated(client, core):
+    ctx = register_org(client, "SsoDup")
+    res = _sign_in(client, core, uuid.uuid4().hex, uuid.uuid4().hex, email=ctx["email"], org_name="Elsewhere", role="admin")
+    assert _error(res) == sso.EMAIL_IN_USE
+
+
+def test_new_organizations_wait_for_approval_when_books_requires_it(client, core, monkeypatch):
+    from backend.db import SessionLocal
+    from backend.models import Organization
+    from backend.services import platform_settings
+
+    monkeypatch.setattr(platform_settings, "require_org_approval", lambda db: True)
+    org_id = uuid.uuid4().hex
+    res = _sign_in(client, core, uuid.uuid4().hex, org_id, email="pending@newco.test", org_name="Pending Co", role="admin")
+    assert "approv" in _error(res).lower()
+    with SessionLocal() as db:  # kept, so a super-admin can approve it
+        assert db.get(Organization, org_id).approval_status == "pending"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import secrets
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from backend.config import get_settings
 from backend.db import get_db
 from backend.deps import get_current_user, org_approval_error, subscription_sign_in_error
-from backend.models import BankAccount, EmailVerification, Organization, RefreshToken, User
+from backend.models import EmailVerification, RefreshToken, User
 from backend.schemas.auth import (
     AcceptInviteRequest,
     AuthResponse,
@@ -48,8 +48,8 @@ from backend.security import (
     verify_password,
 )
 from backend.services import audit, platform_settings, subscription
-from backend.services.chart_of_accounts import bootstrap_accounts
 from backend.services.email_service import send_password_reset_email, send_verification_email, smtp_configured
+from backend.services.org_setup import create_organization
 from backend.services.ratelimit import FailureCounter, RateLimiter, client_ip
 from backend.services.user_agent import parse_user_agent
 
@@ -377,37 +377,7 @@ def register(payload: RegisterRequest, request: Request, response: Response, db:
             detail="EMAIL_NOT_VERIFIED: Email verification has expired. Please verify your email again.",
         )
 
-    defaults = platform_settings.get_org_defaults(db)
-    needs_approval = platform_settings.require_org_approval(db)
-    org = Organization(
-        name=payload.organization_name,
-        gstin=payload.gstin or None,
-        currency=defaults.currency,
-        default_tax_rate=defaults.tax_rate,
-        default_payment_terms_days=defaults.payment_terms_days,
-        approval_status="pending" if needs_approval else "approved",
-        approved_at=None if needs_approval else datetime.now(UTC),
-        # Free trial of every module; it starts once the org is usable (now,
-        # or when a super-admin approves it).
-        subscription_status=subscription.STATUS_TRIAL,
-    )
-    if not needs_approval:
-        subscription.start_trial(db, org)
-    db.add(org)
-    db.flush()
-
-    accounts = bootstrap_accounts(db, org.id)
-    db.add(
-        BankAccount(
-            organization_id=org.id,
-            name="Petty Cash",
-            type="cash",
-            opening_balance=0,
-            opening_balance_date=date.today(),
-            ledger_account_id=accounts["1000"].id,
-            is_primary=True,
-        )
-    )
+    org, needs_approval = create_organization(db, payload.organization_name, gstin=payload.gstin)
 
     user = User(
         organization_id=org.id,

@@ -13,7 +13,10 @@ Flow:
                                         session from the refresh cookie as on any page load)
 
 Core's users and organizations carry the same ids as Books' (dashed vs. hex),
-so the id_token's ``sub``/``org_id`` point straight at the Books user. Every
+so the id_token's ``sub``/``org_id`` point straight at the Books user. Someone
+Books has not seen yet (an organization created on Rooman One, or a person
+added there) is set up on that first sign-in: the organization exactly as
+Books' own sign-up would, the user with Rooman One's role. Every
 check of the password sign-in applies here too (active, organization
 suspended / awaiting approval, subscription).
 """
@@ -37,13 +40,15 @@ from typing import Any, Optional
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.config import get_settings
 from backend.db import get_db
 from backend.deps import org_approval_error, subscription_sign_in_error
-from backend.models import User
+from backend.models import Organization, User
 from backend.services import audit
+from backend.services.org_setup import create_organization
 
 logger = logging.getLogger("roomanbooks.rooman_one")
 router = APIRouter(prefix="/api/auth/rooman-one", tags=["auth"])
@@ -58,6 +63,7 @@ TRY_AGAIN = "Your Rooman One sign-in expired or was started in another tab. Plea
 NO_ACCOUNT = "There's no Rooman Books account for this Rooman One login yet. Ask your organization's admin to invite you."
 OTHER_ORG = "This Rooman One login is for a different organization than your Rooman Books account."
 NOT_IN_PLAN = "Rooman Books isn't part of your organization's Rooman One plan."
+EMAIL_IN_USE = "This email already has its own Rooman Books account. Sign in to Books with your email and password."
 UNAVAILABLE = "Rooman One sign-in is unavailable right now. Please use your email and password."
 
 
@@ -268,6 +274,43 @@ def callback(
     return response
 
 
+# Rooman One roles -> Books roles; anything else gets the everyday role.
+ROLES = {"admin": "admin", "owner": "admin", "staff": "staff", "viewer": "viewer", "employee": "employee"}
+
+
+def _first_sign_in(db: Session, claims: dict, user_id: str, org_id: Optional[str]) -> User:
+    """Someone from Rooman One whom Books has not seen yet: set up their organization
+    (when it is new to Books, exactly as Books' own sign-up does) and their user,
+    with Rooman One's ids. Committed here, so an organization waiting for a
+    super-admin's approval is there to be approved."""
+    email = str(claims.get("email") or "").strip().lower()
+    if not org_id or not email:
+        raise SignInError(NO_ACCOUNT)
+    if db.execute(select(User.id).where(User.email == email)).first():
+        raise SignInError(EMAIL_IN_USE)
+    org = db.get(Organization, org_id)
+    created_org = org is None
+    if org is None:
+        org, _ = create_organization(db, str(claims.get("org_name") or email.split("@")[1])[:200], org_id=org_id)
+    role = ROLES.get(str(claims.get("role") or ""), "admin" if created_org else "staff")
+    user = User(
+        id=user_id,
+        organization_id=org.id,
+        name=str(claims.get("name") or email.split("@")[0])[:120],
+        email=email,
+        password_hash=None,  # signs in with Rooman One; "Forgot password" can add a Books password later
+        role=role,
+    )
+    db.add(user)
+    db.flush()
+    user.organization = org
+    if created_org:
+        audit.record(db, user, "register", "organization", org.id, f"Organization '{org.name}' set up from Rooman One")
+    audit.record(db, user, "create", "user", user.id, f"{email} joined from Rooman One as {role}")
+    db.commit()
+    return user
+
+
 def _user_from_core(db: Session, code: str, flow: dict) -> User:
     tokens = exchange(code, flow["verifier"])
     if "id_token" not in tokens:
@@ -297,9 +340,11 @@ def _user_from_core(db: Session, code: str, flow: dict) -> User:
     except ValueError as exc:
         raise SignInError(NO_ACCOUNT) from exc
     user = db.get(User, user_id)
-    if user is None or user.role == "integration":
+    if user is not None and user.role == "integration":
         raise SignInError(NO_ACCOUNT)
-    if org_id is not None and org_id != user.organization_id:
+    if user is None:
+        user = _first_sign_in(db, claims, user_id, org_id)
+    elif org_id is not None and org_id != user.organization_id:
         raise SignInError(OTHER_ORG)
     if not user.is_active:
         raise SignInError("This account has been deactivated")
