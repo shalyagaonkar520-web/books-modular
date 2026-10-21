@@ -47,6 +47,16 @@ class Settings(BaseSettings):
     # Where each app's "Sign in with Rooman One" starts, for the buttons on Core's own sign-in page:
     # "books=https://books.example/api/auth/rooman-one/start,billing=https://...". Apps without a link are not shown.
     app_links_raw: str = Field(default="", alias="APP_LINKS")
+    # Self-service sign-up on Core's page ("Create an organization"), and the apps a new organization gets.
+    allow_signup: bool = Field(default=False, alias="ALLOW_SIGNUP")
+    signup_apps_raw: str = Field(default="books", alias="SIGNUP_APPS")
+    # Outbound email (the sign-up verification code).
+    smtp_host: str = Field(default="", alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    smtp_user: str = Field(default="", alias="SMTP_USER")
+    smtp_password: str = Field(default="", alias="SMTP_PASSWORD")
+    smtp_from: str = Field(default="", alias="SMTP_FROM")
+    smtp_sender_name: str = Field(default="Rooman One", alias="SMTP_SENDER_NAME")
     cookie_secure: bool | None = None
 
     @property
@@ -66,6 +76,10 @@ class Settings(BaseSettings):
     @property
     def key_encryption_keys(self) -> list[str]:
         return [key.strip() for key in self.key_encryption_keys_raw.split(",") if key.strip()]
+
+    @property
+    def signup_apps(self) -> list[str]:
+        return [a.strip() for a in self.signup_apps_raw.split(",") if a.strip()]
 
     @property
     def app_links(self) -> dict[str, str]:

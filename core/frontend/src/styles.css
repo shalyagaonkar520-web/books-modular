@@ -171,3 +171,14 @@ body {
   margin-top: 1.25rem;
   font-size: 0.9rem;
 }
+
+/* A link-styled button (Create an organization / Sign in) */
+.signin-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}

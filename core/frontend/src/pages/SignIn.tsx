@@ -11,16 +11,18 @@
  * own front door: sign in here once, then open any of your apps from the list -
  * each app's "Sign in with Rooman One" then goes straight through, no password.
  */
-import { useEffect, useState, type FormEvent } from 'react';
-import { ThemeToggle } from '@rooman/shell';
+import { useEffect, useState, type FormEvent } from "react";
+import { ThemeToggle } from "@rooman/shell";
 
-type Status = 'checking' | 'healthy' | 'degraded' | 'unreachable';
+type Status = "checking" | "healthy" | "degraded" | "unreachable";
 
 const STATUS_TEXT: Record<Status, string> = {
-  checking: 'Checking the identity service…',
-  healthy: 'The identity service is running.',
-  degraded: 'The identity service is running, but its database is not reachable. Try again in a minute.',
-  unreachable: 'The identity service cannot be reached. Check that it is running, then reload this page.',
+  checking: "Checking the identity service…",
+  healthy: "The identity service is running.",
+  degraded:
+    "The identity service is running, but its database is not reachable. Try again in a minute.",
+  unreachable:
+    "The identity service cannot be reached. Check that it is running, then reload this page.",
 };
 
 interface Org {
@@ -46,15 +48,27 @@ interface AppLink {
 
 interface Home {
   signedIn: boolean;
+  signupAllowed?: boolean;
   user?: { email: string; name: string };
   apps?: AppLink[];
 }
 
 // Every sign-in call carries this header; Core refuses the calls without it.
-const PAGE_HEADERS = { 'Content-Type': 'application/json', 'X-Rooman-Signin': '1' };
+const PAGE_HEADERS = {
+  "Content-Type": "application/json",
+  "X-Rooman-Signin": "1",
+};
 
-async function post(path: string, body: unknown): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> {
-  const response = await fetch(path, { method: 'POST', headers: PAGE_HEADERS, credentials: 'same-origin', body: JSON.stringify(body) });
+async function post(
+  path: string,
+  body: unknown,
+): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: PAGE_HEADERS,
+    credentials: "same-origin",
+    body: JSON.stringify(body),
+  });
   let data: Record<string, unknown> = {};
   try {
     data = (await response.json()) as Record<string, unknown>;
@@ -65,27 +79,31 @@ async function post(path: string, body: unknown): Promise<{ ok: boolean; status:
 }
 
 function messageFor(status: number, data: Record<string, unknown>): string {
-  if (typeof data.detail === 'string' && data.detail) return data.detail;
-  if (status === 429) return 'Too many attempts. Wait a few minutes and try again.';
-  if (status >= 500) return 'Sign-in is not available right now. Please try again in a moment.';
-  return 'Sign-in failed. Please try again.';
+  if (typeof data.detail === "string" && data.detail) return data.detail;
+  if (status === 429)
+    return "Too many attempts. Wait a few minutes and try again.";
+  if (status >= 500)
+    return "Sign-in is not available right now. Please try again in a moment.";
+  return "Sign-in failed. Please try again.";
 }
 
 function HealthStatus() {
-  const [status, setStatus] = useState<Status>('checking');
+  const [status, setStatus] = useState<Status>("checking");
   const [requestId, setRequestId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/health')
+    fetch("/api/health")
       .then(async (response) => {
         const body = (await response.json()) as { status?: string };
         if (cancelled) return;
-        setRequestId(response.headers.get('X-Request-ID'));
-        setStatus(response.ok && body.status === 'healthy' ? 'healthy' : 'degraded');
+        setRequestId(response.headers.get("X-Request-ID"));
+        setStatus(
+          response.ok && body.status === "healthy" ? "healthy" : "degraded",
+        );
       })
       .catch(() => {
-        if (!cancelled) setStatus('unreachable');
+        if (!cancelled) setStatus("unreachable");
       });
     return () => {
       cancelled = true;
@@ -95,19 +113,38 @@ function HealthStatus() {
   return (
     <p className={`signin-status signin-status-${status}`} role="status">
       {STATUS_TEXT[status]}
-      {requestId && status !== 'healthy' && <span className="signin-ref"> Reference: {requestId}</span>}
+      {requestId && status !== "healthy" && (
+        <span className="signin-ref"> Reference: {requestId}</span>
+      )}
     </p>
   );
 }
 
-function OrgPicker({ orgs, busy, onPick }: { orgs: Org[]; busy: boolean; onPick: (id: string) => void }) {
+function OrgPicker({
+  orgs,
+  busy,
+  onPick,
+}: {
+  orgs: Org[];
+  busy: boolean;
+  onPick: (id: string) => void;
+}) {
   return (
-    <div className="signin-orgs" role="group" aria-labelledby="signin-orgs-title">
+    <div
+      className="signin-orgs"
+      role="group"
+      aria-labelledby="signin-orgs-title"
+    >
       <h2 id="signin-orgs-title">Choose an organization</h2>
       <ul>
         {orgs.map((org) => (
           <li key={org.id}>
-            <button type="button" className="signin-org" disabled={busy} onClick={() => onPick(org.id)}>
+            <button
+              type="button"
+              className="signin-org"
+              disabled={busy}
+              onClick={() => onPick(org.id)}
+            >
               <span className="signin-org-name">{org.name}</span>
               <span className="signin-org-meta">
                 {org.code} · {org.role}
@@ -126,7 +163,9 @@ function Apps({ home }: { home: Home }) {
     <>
       <p className="signin-lead">
         Signed in as <strong>{home.user?.name || home.user?.email}</strong>
-        {home.user?.name && <span className="signin-org-meta"> ({home.user.email})</span>}
+        {home.user?.name && (
+          <span className="signin-org-meta"> ({home.user.email})</span>
+        )}
       </p>
       {apps.length ? (
         <ul className="signin-apps" aria-label="Your apps">
@@ -134,13 +173,17 @@ function Apps({ home }: { home: Home }) {
             <li key={app.key}>
               <a className="signin-org" href={app.url}>
                 <span className="signin-org-name">Open {app.name}</span>
-                <span className="signin-org-meta">{app.organizations.join(', ')}</span>
+                <span className="signin-org-meta">
+                  {app.organizations.join(", ")}
+                </span>
               </a>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="signin-note">No apps are switched on for your organization yet.</p>
+        <p className="signin-note">
+          No apps are switched on for your organization yet.
+        </p>
       )}
       <p className="signin-signout">
         <a href="/api/oauth/logout">Sign out</a>
@@ -149,17 +192,181 @@ function Apps({ home }: { home: Home }) {
   );
 }
 
+/** Create an organization: details, then the code emailed to prove the address. */
+function CreateOrganization({
+  onDone,
+  onCancel,
+}: {
+  onDone: (home: Home) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [organization, setOrganization] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [ticket, setTicket] = useState<string | null>(null);
+  const [sentTo, setSentTo] = useState("");
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async (
+    path: string,
+    body: unknown,
+    then: (data: Record<string, unknown>) => void,
+  ) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { ok, status, data } = await post(path, body);
+      if (ok) then(data);
+      else setError(messageFor(status, data));
+    } catch {
+      setError(
+        "Sign-up is not available right now. Check your connection and try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const details = (event: FormEvent) => {
+    event.preventDefault();
+    void run(
+      "/api/oauth/signup",
+      {
+        name: name.trim(),
+        organization: organization.trim(),
+        email: email.trim(),
+        password,
+      },
+      (data) => {
+        setTicket(String(data.ticket));
+        setSentTo(String(data.email ?? email));
+        setPassword("");
+      },
+    );
+  };
+
+  const confirm = (event: FormEvent) => {
+    event.preventDefault();
+    void run(
+      "/api/oauth/signup/confirm",
+      { ticket, code: code.trim() },
+      (data) => onDone(data as unknown as Home),
+    );
+  };
+
+  return (
+    <>
+      {ticket ? (
+        <form className="signin-form" onSubmit={confirm} noValidate>
+          <p className="signin-lead">
+            We sent a 6-digit code to <strong>{sentTo}</strong>. Enter it to
+            create your organization.
+          </p>
+          <label htmlFor="signup-code">Verification code</label>
+          <input
+            id="signup-code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            required
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+            disabled={busy}
+          />
+          <button
+            type="submit"
+            className="signin-submit"
+            disabled={busy || code.length !== 6}
+          >
+            {busy ? "Creating…" : "Create organization"}
+          </button>
+        </form>
+      ) : (
+        <form className="signin-form" onSubmit={details} noValidate>
+          <p className="signin-lead">
+            One organization for Books, Billing and every other Rooman app.
+          </p>
+          <label htmlFor="signup-name">Your name</label>
+          <input
+            id="signup-name"
+            autoComplete="name"
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={busy}
+          />
+          <label htmlFor="signup-organization">Organization name</label>
+          <input
+            id="signup-organization"
+            autoComplete="organization"
+            required
+            value={organization}
+            onChange={(e) => setOrganization(e.target.value)}
+            disabled={busy}
+          />
+          <label htmlFor="signup-email">Work email</label>
+          <input
+            id="signup-email"
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={busy}
+          />
+          <label htmlFor="signup-password">Password</label>
+          <input
+            id="signup-password"
+            type="password"
+            autoComplete="new-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={busy}
+          />
+          <p className="signin-org-meta">
+            At least 8 characters, with upper- and lower-case letters and a
+            number.
+          </p>
+          <button
+            type="submit"
+            className="signin-submit"
+            disabled={busy || !name || !organization || !email || !password}
+          >
+            {busy ? "Sending code…" : "Continue"}
+          </button>
+        </form>
+      )}
+      {error && (
+        <p className="signin-error" role="alert">
+          {error}
+        </p>
+      )}
+      <p className="signin-signout">
+        <button type="button" className="signin-link" onClick={onCancel}>
+          Already have an account? Sign in
+        </button>
+      </p>
+    </>
+  );
+}
+
 /** Core's own page: sign in once, then pick an app. */
 function HomeSignIn({ signedOut }: { signedOut: boolean }) {
   const [home, setHome] = useState<Home | null>(null);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/oauth/me', { credentials: 'same-origin' })
+    fetch("/api/oauth/me", { credentials: "same-origin" })
       .then(async (response) => {
         const data = (await response.json()) as Home;
         if (!cancelled) setHome(response.ok ? data : { signedIn: false });
@@ -178,25 +385,49 @@ function HomeSignIn({ signedOut }: { signedOut: boolean }) {
     setBusy(true);
     setError(null);
     try {
-      const { ok, status, data } = await post('/api/oauth/login', { email: email.trim(), password });
+      const { ok, status, data } = await post("/api/oauth/login", {
+        email: email.trim(),
+        password,
+      });
       if (ok && data.signedIn === true) setHome(data as unknown as Home);
       else setError(messageFor(status, data));
     } catch {
-      setError('Sign-in is not available right now. Check your connection and try again.');
+      setError(
+        "Sign-in is not available right now. Check your connection and try again.",
+      );
     } finally {
-      setPassword('');
+      setPassword("");
       setBusy(false);
     }
   };
 
   if (home?.signedIn) return <Apps home={home} />;
+  if (creating)
+    return (
+      <CreateOrganization
+        onDone={setHome}
+        onCancel={() => setCreating(false)}
+      />
+    );
   return (
     <>
-      {signedOut && <p className="signin-note">You have signed out of every Rooman app.</p>}
-      <p className="signin-lead">One login for Books, Billing and every other Rooman app.</p>
+      {signedOut && (
+        <p className="signin-note">You have signed out of every Rooman app.</p>
+      )}
+      <p className="signin-lead">
+        One login for Books, Billing and every other Rooman app.
+      </p>
       <form className="signin-form" onSubmit={submit} noValidate>
         <label htmlFor="signin-email">Email</label>
-        <input id="signin-email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
+        <input
+          id="signin-email"
+          type="email"
+          autoComplete="username"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          disabled={busy}
+        />
         <label htmlFor="signin-password">Password</label>
         <input
           id="signin-password"
@@ -207,8 +438,12 @@ function HomeSignIn({ signedOut }: { signedOut: boolean }) {
           onChange={(e) => setPassword(e.target.value)}
           disabled={busy}
         />
-        <button type="submit" className="signin-submit" disabled={busy || !email || !password}>
-          {busy ? 'Signing in…' : 'Sign in'}
+        <button
+          type="submit"
+          className="signin-submit"
+          disabled={busy || !email || !password}
+        >
+          {busy ? "Signing in…" : "Sign in"}
         </button>
       </form>
       {error && (
@@ -216,40 +451,71 @@ function HomeSignIn({ signedOut }: { signedOut: boolean }) {
           {error}
         </p>
       )}
+      {home?.signupAllowed && (
+        <p className="signin-signout">
+          New to Rooman One?{" "}
+          <button
+            type="button"
+            className="signin-link"
+            onClick={() => setCreating(true)}
+          >
+            Create an organization
+          </button>
+        </p>
+      )}
       <HealthStatus />
     </>
   );
 }
 
-export function SignIn({ search = window.location.search }: { search?: string }) {
+export function SignIn({
+  search = window.location.search,
+}: {
+  search?: string;
+}) {
   const params = new URLSearchParams(search);
-  const requestId = params.get('request');
-  const signedOut = params.get('signed_out') === '1';
+  const requestId = params.get("request");
+  const signedOut = params.get("signed_out") === "1";
 
   const [info, setInfo] = useState<RequestInfo | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [orgs, setOrgs] = useState<Org[] | null>(null);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!requestId) return;
     let cancelled = false;
-    fetch(`/api/oauth/requests/${encodeURIComponent(requestId)}`, { credentials: 'same-origin' })
+    fetch(`/api/oauth/requests/${encodeURIComponent(requestId)}`, {
+      credentials: "same-origin",
+    })
       .then(async (response) => {
-        const data = (await response.json()) as RequestInfo & { detail?: string };
+        const data = (await response.json()) as RequestInfo & {
+          detail?: string;
+        };
         if (cancelled) return;
         if (!response.ok) {
-          setLoadError(data.detail || 'This sign-in link is no longer valid. Go back to the app and sign in again.');
+          setLoadError(
+            data.detail ||
+              "This sign-in link is no longer valid. Go back to the app and sign in again.",
+          );
           return;
         }
         setInfo(data);
-        if (data.signedIn && data.organizations && data.organizations.length > 1) setOrgs(data.organizations);
+        if (
+          data.signedIn &&
+          data.organizations &&
+          data.organizations.length > 1
+        )
+          setOrgs(data.organizations);
       })
       .catch(() => {
-        if (!cancelled) setLoadError('Sign-in is not available right now. Please try again in a moment.');
+        if (!cancelled)
+          setLoadError(
+            "Sign-in is not available right now. Please try again in a moment.",
+          );
       });
     return () => {
       cancelled = true;
@@ -257,7 +523,7 @@ export function SignIn({ search = window.location.search }: { search?: string })
   }, [requestId]);
 
   const finish = (data: Record<string, unknown>) => {
-    if (typeof data.redirect === 'string') {
+    if (typeof data.redirect === "string") {
       window.location.assign(data.redirect);
       return true;
     }
@@ -274,12 +540,18 @@ export function SignIn({ search = window.location.search }: { search?: string })
     setBusy(true);
     setError(null);
     try {
-      const { ok, status, data } = await post('/api/oauth/login', { request_id: requestId, email: email.trim(), password });
+      const { ok, status, data } = await post("/api/oauth/login", {
+        request_id: requestId,
+        email: email.trim(),
+        password,
+      });
       if (!(ok && finish(data))) setError(messageFor(status, data));
     } catch {
-      setError('Sign-in is not available right now. Check your connection and try again.');
+      setError(
+        "Sign-in is not available right now. Check your connection and try again.",
+      );
     } finally {
-      setPassword('');
+      setPassword("");
       setBusy(false);
     }
   };
@@ -289,16 +561,21 @@ export function SignIn({ search = window.location.search }: { search?: string })
     setBusy(true);
     setError(null);
     try {
-      const { ok, status, data } = await post('/api/oauth/choose-org', { request_id: requestId, org_id: orgId });
+      const { ok, status, data } = await post("/api/oauth/choose-org", {
+        request_id: requestId,
+        org_id: orgId,
+      });
       if (!(ok && finish(data))) setError(messageFor(status, data));
     } catch {
-      setError('Sign-in is not available right now. Check your connection and try again.');
+      setError(
+        "Sign-in is not available right now. Check your connection and try again.",
+      );
     } finally {
       setBusy(false);
     }
   };
 
-  const appName = info?.app?.name ?? 'your Rooman app';
+  const appName = info?.app?.name ?? "your Rooman app";
 
   return (
     <main className="signin">
@@ -319,7 +596,9 @@ export function SignIn({ search = window.location.search }: { search?: string })
           </p>
         ) : orgs ? (
           <>
-            <p className="signin-lead">Which organization do you want to open in {appName}?</p>
+            <p className="signin-lead">
+              Which organization do you want to open in {appName}?
+            </p>
             <OrgPicker orgs={orgs} busy={busy} onPick={pick} />
           </>
         ) : (
@@ -346,8 +625,12 @@ export function SignIn({ search = window.location.search }: { search?: string })
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={busy || !info}
               />
-              <button type="submit" className="signin-submit" disabled={busy || !info || !email || !password}>
-                {busy ? 'Signing in…' : 'Sign in'}
+              <button
+                type="submit"
+                className="signin-submit"
+                disabled={busy || !info || !email || !password}
+              >
+                {busy ? "Signing in…" : "Sign in"}
               </button>
             </form>
           </>

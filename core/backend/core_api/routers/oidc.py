@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from core_api import keys, signin
+from core_api import keys, signin, signup
 from core_api.config import get_settings
 from core_api.db import get_db
 from core_api.models import App, Organization, User
@@ -26,6 +26,7 @@ router = APIRouter(prefix="/api/oauth", tags=["Sign-in (OIDC)"])
 
 COOKIE = "rooman_sid"
 _login_failures = FailureLimiter(limit=20, window_seconds=300)
+_signup_starts = FailureLimiter(limit=10, window_seconds=900)
 SUPPORTED_SCOPES = {"openid", "profile", "email", "offline_access"}
 
 
@@ -210,8 +211,66 @@ def me(request: Request, db: Session = Depends(get_db)):
     """Core's own page: who is signed in here, and which apps they can open."""
     found = signin.session_for(db, request.cookies.get(COOKIE))
     if found is None:
-        return {"signedIn": False}
+        return {"signedIn": False, "signupAllowed": get_settings().allow_signup}
     return _home(db, found[1])
+
+
+class SignupIn(BaseModel):
+    name: str = Field(max_length=120)
+    email: str = Field(max_length=255)
+    password: str = Field(max_length=200)
+    organization: str = Field(max_length=200)
+
+
+class SignupConfirmIn(BaseModel):
+    ticket: str = Field(max_length=4000)
+    code: str = Field(max_length=12)
+
+
+def _signup_error(exc: signup.SignupError) -> JSONResponse:
+    return JSONResponse(status_code=exc.status, content={"code": exc.code, "detail": exc.message})
+
+
+@router.post("/signup")
+def signup_start(body: SignupIn, request: Request, db: Session = Depends(get_db), x_rooman_signin: str | None = Header(default=None)):
+    """Create an organization, step 1: check the details and email a code."""
+    _require_page_header(x_rooman_signin)
+    if not get_settings().allow_signup:
+        return JSONResponse(
+            status_code=403, content={"code": "signup_closed", "detail": "Sign-up is not open. Ask your administrator for an invite."}
+        )
+    ip = _ip(request)
+    if _signup_starts.blocked(f"signup:{ip}"):
+        return JSONResponse(
+            status_code=429, content={"code": "slow_down", "detail": "Too many sign-ups from here. Wait a few minutes and try again."}
+        )
+    _signup_starts.record(f"signup:{ip}")
+    try:
+        ticket = signup.start(db, body.name, body.email, body.password, body.organization)
+    except signup.SignupError as exc:
+        return _signup_error(exc)
+    return {"ticket": ticket, "email": body.email.strip().lower()}
+
+
+@router.post("/signup/confirm")
+def signup_confirm(
+    body: SignupConfirmIn, request: Request, db: Session = Depends(get_db), x_rooman_signin: str | None = Header(default=None)
+):
+    """Create an organization, step 2: the emailed code; creates it all and signs the person in."""
+    _require_page_header(x_rooman_signin)
+    if not get_settings().allow_signup:
+        return JSONResponse(
+            status_code=403, content={"code": "signup_closed", "detail": "Sign-up is not open. Ask your administrator for an invite."}
+        )
+    ip = _ip(request)
+    try:
+        user = signup.confirm(db, body.ticket, body.code, ip)
+    except signup.SignupError as exc:
+        return _signup_error(exc)
+    _session, token = signin.open_session(db, user, ip, request.headers.get("user-agent"))
+    response = JSONResponse(_home(db, user))
+    _set_session_cookie(response, token)
+    return response
 
 
 @router.post("/choose-org")

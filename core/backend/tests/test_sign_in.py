@@ -411,7 +411,7 @@ def links(monkeypatch):
 
 def test_direct_sign_in_opens_the_session_and_lists_the_apps(api, links):
     _user()
-    assert api.get("/api/oauth/me").json() == {"signedIn": False}
+    assert api.get("/api/oauth/me").json()["signedIn"] is False
     res = api.post("/api/oauth/login", headers=PAGE, json={"email": "ravi@acme.test", "password": PASSWORD})
     assert res.status_code == 200, res.text
     body = res.json()
@@ -436,14 +436,14 @@ def test_direct_sign_in_refuses_wrong_passwords_and_needs_the_page_header(api, l
     _user()
     assert api.post("/api/oauth/login", headers=PAGE, json={"email": "ravi@acme.test", "password": "nope"}).status_code == 401
     assert api.post("/api/oauth/login", json={"email": "ravi@acme.test", "password": PASSWORD}).status_code == 403
-    assert api.get("/api/oauth/me").json() == {"signedIn": False}
+    assert api.get("/api/oauth/me").json()["signedIn"] is False
 
 
 def test_signing_out_ends_the_rooman_one_session(api, links):
     _user()
     api.post("/api/oauth/login", headers=PAGE, json={"email": "ravi@acme.test", "password": PASSWORD})
     api.get("/api/oauth/logout")
-    assert api.get("/api/oauth/me").json() == {"signedIn": False}
+    assert api.get("/api/oauth/me").json()["signedIn"] is False
 
 
 def test_no_apps_without_links(api):

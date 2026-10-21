@@ -343,7 +343,15 @@ def _issue(
     access = keys.sign(db, {**claims, "aud": client.app_key, "typ": "access", "client_id": client.client_id, "scope": scope}, ttl)
     id_token = None
     if "openid" in scope.split():
-        id_claims = {"sub": str(user.id), "aud": client.client_id, "org_id": str(org.id), "auth_time": int(now().timestamp())}
+        id_claims = {
+            "sub": str(user.id),
+            "aud": client.client_id,
+            "org_id": str(org.id),
+            # So an app can set up an organization or user it has not seen yet (first sign-in from Rooman One).
+            "org_name": org.name,
+            "role": claims["role"],
+            "auth_time": int(now().timestamp()),
+        }
         if nonce:
             id_claims["nonce"] = nonce
         if "email" in scope.split():
