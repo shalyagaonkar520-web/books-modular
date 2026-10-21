@@ -46,7 +46,7 @@ describe('Sign-in without an app request', () => {
     routes({ 'GET /api/health': { body: { status: 'healthy' } } });
     render(<SignIn search="" />);
     expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
-    expect(screen.getByText(/Open the app you want to use/)).toBeInTheDocument();
+    expect(await screen.findByLabelText('Email')).toBeInTheDocument();
     expect(await screen.findByText('The identity service is running.')).toBeInTheDocument();
   });
 
@@ -136,5 +136,57 @@ describe('Sign-in for an app', () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('offline'))));
     render(<SignIn search={REQUEST} />);
     expect(await screen.findByRole('alert')).toHaveTextContent('not available right now');
+  });
+});
+
+describe('Rooman One own page', () => {
+  const ME = {
+    signedIn: true,
+    user: { email: 'ravi@acme.test', name: 'Ravi Kumar' },
+    apps: [{ key: 'books', name: 'Rooman Books', url: 'https://books.test/api/auth/rooman-one/start', organizations: ['Acme Traders'] }],
+  };
+
+  it('signs in here and then lists the apps to open', async () => {
+    const calls = routes({
+      'GET /api/health': { body: { status: 'healthy' } },
+      'GET /api/oauth/me': { body: { signedIn: false } },
+      'POST /api/oauth/login': { body: ME },
+    });
+    render(<SignIn search="" />);
+    fireEvent.change(await screen.findByLabelText('Email'), { target: { value: 'ravi@acme.test' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'Str0ngPass!' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    const open = await screen.findByRole('link', { name: /Open Rooman Books/ });
+    expect(open).toHaveAttribute('href', 'https://books.test/api/auth/rooman-one/start');
+    const login = calls.find((c) => c.url === '/api/oauth/login');
+    expect(JSON.parse(String(login?.init?.body))).toEqual({ email: 'ravi@acme.test', password: 'Str0ngPass!' });
+    expect((login?.init?.headers as Record<string, string>)['X-Rooman-Signin']).toBe('1');
+  });
+
+  it('goes straight to the apps when already signed in', async () => {
+    routes({ 'GET /api/health': { body: { status: 'healthy' } }, 'GET /api/oauth/me': { body: ME } });
+    render(<SignIn search="" />);
+    expect(await screen.findByRole('link', { name: /Open Rooman Books/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Sign out' })).toHaveAttribute('href', '/api/oauth/logout');
+    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
+  });
+
+  it('shows the reason a sign-in failed', async () => {
+    routes({
+      'GET /api/health': { body: { status: 'healthy' } },
+      'GET /api/oauth/me': { body: { signedIn: false } },
+      'POST /api/oauth/login': { status: 401, body: { detail: 'Wrong email or password.' } },
+    });
+    render(<SignIn search="" />);
+    fireEvent.change(await screen.findByLabelText('Email'), { target: { value: 'ravi@acme.test' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'nope' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(await screen.findByText('Wrong email or password.')).toBeInTheDocument();
+  });
+
+  it('says so when no apps are switched on', async () => {
+    routes({ 'GET /api/health': { body: { status: 'healthy' } }, 'GET /api/oauth/me': { body: { ...ME, apps: [] } } });
+    render(<SignIn search="" />);
+    expect(await screen.findByText(/No apps are switched on/)).toBeInTheDocument();
   });
 });

@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     max_failed_logins: int = Field(default=5, ge=3, le=20)
     lockout_minutes: int = Field(default=15, ge=1, le=1440)
     # Secure cookies need https; on by default except in development and tests.
+    # Where each app's "Sign in with Rooman One" starts, for the buttons on Core's own sign-in page:
+    # "books=https://books.example/api/auth/rooman-one/start,billing=https://...". Apps without a link are not shown.
+    app_links_raw: str = Field(default="", alias="APP_LINKS")
     cookie_secure: bool | None = None
 
     @property
@@ -63,6 +66,15 @@ class Settings(BaseSettings):
     @property
     def key_encryption_keys(self) -> list[str]:
         return [key.strip() for key in self.key_encryption_keys_raw.split(",") if key.strip()]
+
+    @property
+    def app_links(self) -> dict[str, str]:
+        links: dict[str, str] = {}
+        for pair in filter(None, (p.strip() for p in self.app_links_raw.split(","))):
+            key, _, url = pair.partition("=")
+            if key.strip() and url.strip().startswith(("https://", "http://localhost", "http://127.0.0.1")):
+                links[key.strip()] = url.strip()
+        return links
 
     @property
     def issuer(self) -> str:
