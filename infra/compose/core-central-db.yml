@@ -1,0 +1,43 @@
+# Production override: Rooman One (Core) on the central database.
+#
+# The base docker-compose.yml runs a self-contained development stack: Core
+# with its own empty core-db. In production Core must use the central
+# database (CT104), which holds every organization, user, membership, plan and
+# Core's signing keys. Apply this file on top of the base one:
+#
+#   cd /opt/rooman-one/infra/compose
+#   docker compose -p rooman-one -f docker-compose.yml -f core-central-db.yml up -d core-api core-web gateway
+#
+# Settings it needs in infra/compose/.env (root-only, never committed):
+#   CORE_CENTRAL_DATABASE_URL=postgresql+psycopg://rooman_core_app:<password>@192.168.1.64:5432/rooman_core?sslmode=verify-ca&sslrootcert=/run/secrets/core-db.crt
+#   CORE_KEY_ENCRYPTION_KEYS=<the same keys the central database's signing keys are encrypted with>
+#   CORE_HOST=roomanone.futureacad.ae
+# and the central database's CA certificate at /etc/rooman/core-db.crt.
+#
+# Migrations do not run on start here: the central database is upgraded
+# deliberately (docs/runbooks), never as a side effect of a restart.
+services:
+  core-api:
+    environment:
+      ENVIRONMENT: production
+      RUN_MIGRATIONS: 'false'
+      DATABASE_URL: ${CORE_CENTRAL_DATABASE_URL:?set CORE_CENTRAL_DATABASE_URL in infra/compose/.env}
+      KEY_ENCRYPTION_KEYS: ${CORE_KEY_ENCRYPTION_KEYS:?set CORE_KEY_ENCRYPTION_KEYS in infra/compose/.env}
+      PUBLIC_URL: https://${CORE_HOST:?set CORE_HOST in infra/compose/.env}
+      CORS_ORIGINS: https://${CORE_HOST}
+      COOKIE_SECURE: 'true'
+    volumes:
+      - ${CORE_DB_CA_CERT:-/etc/rooman/core-db.crt}:/run/secrets/core-db.crt:ro
+
+  gateway:
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedByDefault=false
+      - --providers.docker.network=rooman-one_edge
+      - --entrypoints.web.address=:80
+      # The public reverse proxy (CT101) terminates HTTPS; believe its X-Forwarded-* headers only.
+      - --entrypoints.web.forwardedHeaders.trustedIPs=${GATEWAY_TRUSTED_PROXIES:-192.168.1.52/32}
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --accesslog=true
+      - --ping=true
