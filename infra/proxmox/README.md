@@ -9,12 +9,12 @@ with random secrets and lives only at `/opt/rooman-one/infra/compose/.env`.
 
 | Public name | Service |
 |---|---|
-| `roomanone.futureacd.ae` | Core (sign-in, `/api`) |
-| `books.roomanone.futureacd.ae` | Books |
-| `bookings.roomanone.futureacd.ae` | Bookings API |
+| `roomanone.futureacad.ae` | Core (sign-in, `/api`) |
+| `books.roomanone.futureacad.ae` | Books |
+| `bookings.roomanone.futureacad.ae` | Bookings API |
 
 Create DNS records for each name on your existing proxy's public IP (a
-wildcard `*.roomanone.futureacd.ae` also works).
+wildcard `*.roomanone.futureacad.ae` also works).
 
 ## Existing reverse proxy
 
@@ -24,7 +24,7 @@ Forward each name to `http://<CT-IP>:80` and **preserve the Host header**
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name roomanone.futureacd.ae books.roomanone.futureacd.ae bookings.roomanone.futureacd.ae;
+    server_name roomanone.futureacad.ae books.roomanone.futureacad.ae bookings.roomanone.futureacad.ae;
     # ssl_certificate ... (cert must cover all three names)
 
     location / {

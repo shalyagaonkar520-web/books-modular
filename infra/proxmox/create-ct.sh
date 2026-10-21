@@ -13,7 +13,7 @@ set -euo pipefail
 GIT_URL="${GIT_URL:?set GIT_URL}"
 GIT_SSH_KEY="${GIT_SSH_KEY:-}"
 GIT_BRANCH="${GIT_BRANCH:-main}"
-PUBLIC_HOST="${PUBLIC_HOST:-roomanone.futureacd.ae}"
+PUBLIC_HOST="${PUBLIC_HOST:-roomanone.futureacad.ae}"
 CTID="${CTID:-$(pvesh get /cluster/nextid)}"
 HOSTNAME="${HOSTNAME_CT:-roomanone}"
 STORAGE="${STORAGE:-local-lvm}"
