@@ -304,3 +304,41 @@ describe('RegisterPage', () => {
     });
   });
 });
+
+
+describe('Sign in with Rooman One', () => {
+  const notSignedIn = () => new Response(JSON.stringify({ detail: 'Not authenticated' }), { status: 401, headers: { 'content-type': 'application/json' } });
+  const realLocation = window.location;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    Object.defineProperty(window, 'location', { value: realLocation, configurable: true, writable: true });
+  });
+
+  it('is not offered until Books is connected to Rooman One', async () => {
+    const { calls } = installMockApi({ 'GET /api/auth/me': notSignedIn() });
+    renderWithProviders(<LoginPage />, { route: '/login' });
+    await waitFor(() => expect(calls.some((call) => call.path === '/api/auth/rooman-one')).toBe(true));
+    expect(screen.queryByRole('button', { name: /rooman one/i })).not.toBeInTheDocument();
+  });
+
+  it('sends the browser to Rooman One, coming back to the page the user wanted', async () => {
+    installMockApi({
+      'GET /api/auth/me': notSignedIn(),
+      'GET /api/auth/rooman-one': new Response(JSON.stringify({ enabled: true }), { status: 200, headers: { 'content-type': 'application/json' } }),
+    });
+    const assign = vi.fn();
+    Object.defineProperty(window, 'location', { value: { ...realLocation, assign }, configurable: true, writable: true });
+
+    renderWithProviders(<LoginPage />, { route: '/login' });
+    fireEvent.click(await screen.findByRole('button', { name: /sign in with rooman one/i }));
+
+    expect(assign).toHaveBeenCalledWith('/api/auth/rooman-one/start?next=%2F');
+  });
+
+  it('shows why a Rooman One sign-in did not go through', async () => {
+    installMockApi({ 'GET /api/auth/me': notSignedIn() });
+    renderWithProviders(<LoginPage />, { route: "/login?sso_error=Rooman%20Books%20isn't%20part%20of%20your%20organization's%20Rooman%20One%20plan." });
+    expect(await screen.findByText("Rooman Books isn't part of your organization's Rooman One plan.")).toBeInTheDocument();
+  });
+});

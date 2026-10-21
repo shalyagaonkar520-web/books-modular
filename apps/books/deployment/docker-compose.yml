@@ -57,6 +57,11 @@ services:
       CORE_API_URL: ${CORE_API_URL:-}
       CORE_CLIENT_ID: ${CORE_CLIENT_ID:-}
       CORE_CLIENT_SECRET: ${CORE_CLIENT_SECRET:-}
+      # "Sign in with Rooman One" (off until OIDC_ISSUER and OIDC_CLIENT_ID are set)
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
     volumes:
       - api_data:/app/data
     depends_on:
