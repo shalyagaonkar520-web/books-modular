@@ -394,3 +394,59 @@ def test_web_clients_cannot_take_service_tokens(api):
 def test_redirect_uris_must_be_https(api):
     with SessionLocal() as s, pytest.raises(ValueError):
         clients.create_web(s, "books", ["http://books.example.com/cb"], public=True)
+
+
+# --------------------------------------------------------------------------- #
+# Signing in on Core's own page (no app waiting): the person's apps are offered
+# --------------------------------------------------------------------------- #
+BOOKS_START = "https://books.test.rooman/api/auth/rooman-one/start"
+
+
+@pytest.fixture
+def links(monkeypatch):
+    from core_api.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "app_links_raw", f"books={BOOKS_START},bookings=https://bookings.test.rooman/start")
+
+
+def test_direct_sign_in_opens_the_session_and_lists_the_apps(api, links):
+    _user()
+    assert api.get("/api/oauth/me").json() == {"signedIn": False}
+    res = api.post("/api/oauth/login", headers=PAGE, json={"email": "ravi@acme.test", "password": PASSWORD})
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["signedIn"] is True and body["user"]["email"] == "ravi@acme.test"
+    # Only the apps the organization has (books), not every linked app (bookings).
+    assert body["apps"] == [{"key": "books", "name": "Rooman Books", "url": BOOKS_START, "organizations": ["Acme Traders"]}]
+    assert oidc.COOKIE in res.cookies
+    assert api.get("/api/oauth/me").json()["apps"][0]["key"] == "books"
+
+
+def test_after_a_direct_sign_in_apps_open_without_a_password(api, links):
+    _user()
+    api.post("/api/oauth/login", headers=PAGE, json={"email": "ravi@acme.test", "password": PASSWORD})
+    client_id, _ = _web_client()
+    verifier, challenge = _pkce()
+    res = _authorize(api, client_id, challenge)
+    assert res.headers["location"].startswith(CALLBACK)  # straight back to the app with a code
+    assert _exchange(api, client_id, _code_from(res.headers["location"]), verifier).status_code == 200
+
+
+def test_direct_sign_in_refuses_wrong_passwords_and_needs_the_page_header(api, links):
+    _user()
+    assert api.post("/api/oauth/login", headers=PAGE, json={"email": "ravi@acme.test", "password": "nope"}).status_code == 401
+    assert api.post("/api/oauth/login", json={"email": "ravi@acme.test", "password": PASSWORD}).status_code == 403
+    assert api.get("/api/oauth/me").json() == {"signedIn": False}
+
+
+def test_signing_out_ends_the_rooman_one_session(api, links):
+    _user()
+    api.post("/api/oauth/login", headers=PAGE, json={"email": "ravi@acme.test", "password": PASSWORD})
+    api.get("/api/oauth/logout")
+    assert api.get("/api/oauth/me").json() == {"signedIn": False}
+
+
+def test_no_apps_without_links(api):
+    _user()
+    body = api.post("/api/oauth/login", headers=PAGE, json={"email": "ravi@acme.test", "password": PASSWORD}).json()
+    assert body["signedIn"] is True and body["apps"] == []

@@ -126,7 +126,9 @@ def authorize(
 # What the sign-in page calls
 # --------------------------------------------------------------------------- #
 class LoginIn(BaseModel):
-    request_id: str = Field(max_length=64)
+    # Without a request_id this is a sign-in on Core's own page (no app waiting):
+    # it only opens the Rooman One session; the page then offers the person's apps.
+    request_id: str | None = Field(default=None, max_length=64)
     email: str = Field(max_length=255)
     password: str = Field(max_length=200)
 
@@ -172,7 +174,7 @@ def login(body: LoginIn, request: Request, db: Session = Depends(get_db), x_room
             status_code=429, content={"code": "slow_down", "detail": "Too many attempts. Wait a few minutes and try again."}
         )
     try:
-        pending = signin.pending_request(db, body.request_id)
+        pending = signin.pending_request(db, body.request_id) if body.request_id else None
         user = signin.authenticate(db, body.email, body.password, ip)
     except signin.SignInError as exc:
         if exc.code == "invalid_credentials":
@@ -184,12 +186,32 @@ def login(body: LoginIn, request: Request, db: Session = Depends(get_db), x_room
         response = JSONResponse(
             status_code=403, content={"code": "no_organization", "detail": "Your account is not active in any organization."}
         )
+    elif pending is None:
+        response = JSONResponse(_home(db, user))
     elif len(orgs) == 1:
         response = JSONResponse(_finish(db, pending, user, orgs[0][1], session))
     else:
         response = JSONResponse({"chooseOrganization": _orgs_json(db, user)})
     _set_session_cookie(response, token)
     return response
+
+
+def _home(db: Session, user: User) -> dict:
+    return {
+        "signedIn": True,
+        "user": {"email": user.email, "name": user.name},
+        "organizations": _orgs_json(db, user),
+        "apps": signin.launcher(db, user),
+    }
+
+
+@router.get("/me")
+def me(request: Request, db: Session = Depends(get_db)):
+    """Core's own page: who is signed in here, and which apps they can open."""
+    found = signin.session_for(db, request.cookies.get(COOKIE))
+    if found is None:
+        return {"signedIn": False}
+    return _home(db, found[1])
 
 
 @router.post("/choose-org")

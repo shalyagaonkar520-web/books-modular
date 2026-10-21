@@ -135,6 +135,29 @@ def organizations(db: Session, user: User) -> list[tuple[Membership, Organizatio
     return [(m, o) for m, o in rows]
 
 
+def launcher(db: Session, user: User) -> list[dict[str, Any]]:
+    """The apps to offer on Core's own page: switched on for one of the user's organizations and linked in APP_LINKS."""
+    from core_api.models import App
+
+    links = get_settings().app_links
+    orgs = organizations(db, user)
+    if not orgs or not links:
+        return []
+    names = {o.id: o.name for _, o in orgs}
+    rows = db.execute(
+        select(OrgApp.app_key, OrgApp.org_id).where(OrgApp.org_id.in_(list(names)), OrgApp.status == "active").order_by(OrgApp.app_key)
+    ).all()
+    by_app: dict[str, list[str]] = {}
+    for key, org_id in rows:
+        by_app.setdefault(key, []).append(names[org_id])
+    result = []
+    for key, org_names in by_app.items():
+        app = db.get(App, key)
+        if key in links and (app is None or app.status == "active"):
+            result.append({"key": key, "name": app.name if app else key.title(), "url": links[key], "organizations": sorted(org_names)})
+    return result
+
+
 # --------------------------------------------------------------------------- #
 # Browser sessions at Core
 # --------------------------------------------------------------------------- #

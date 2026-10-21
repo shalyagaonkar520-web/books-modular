@@ -154,3 +154,20 @@ body {
   font-size: 13px;
   color: var(--text-muted);
 }
+
+/* Core's own page: the apps to open once signed in */
+.signin-apps {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.signin-apps .signin-org {
+  text-decoration: none;
+  color: inherit;
+}
+.signin-signout {
+  margin-top: 1.25rem;
+  font-size: 0.9rem;
+}

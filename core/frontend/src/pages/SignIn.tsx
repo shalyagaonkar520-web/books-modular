@@ -7,8 +7,9 @@
  * belong to several); Core then answers with the app's return address, which
  * carries a one-time code. Passwords are only ever sent to Core.
  *
- * Without a request (someone opened /signin directly) the page explains how to
- * sign in and shows whether the identity service is reachable.
+ * Without a request (someone opened /signin directly) the page is Rooman One's
+ * own front door: sign in here once, then open any of your apps from the list -
+ * each app's "Sign in with Rooman One" then goes straight through, no password.
  */
 import { useEffect, useState, type FormEvent } from 'react';
 import { ThemeToggle } from '@rooman/shell';
@@ -34,6 +35,19 @@ interface RequestInfo {
   signedIn: boolean;
   user?: { email: string; name: string };
   organizations?: Org[];
+}
+
+interface AppLink {
+  key: string;
+  name: string;
+  url: string;
+  organizations: string[];
+}
+
+interface Home {
+  signedIn: boolean;
+  user?: { email: string; name: string };
+  apps?: AppLink[];
 }
 
 // Every sign-in call carries this header; Core refuses the calls without it.
@@ -103,6 +117,107 @@ function OrgPicker({ orgs, busy, onPick }: { orgs: Org[]; busy: boolean; onPick:
         ))}
       </ul>
     </div>
+  );
+}
+
+function Apps({ home }: { home: Home }) {
+  const apps = home.apps ?? [];
+  return (
+    <>
+      <p className="signin-lead">
+        Signed in as <strong>{home.user?.name || home.user?.email}</strong>
+        {home.user?.name && <span className="signin-org-meta"> ({home.user.email})</span>}
+      </p>
+      {apps.length ? (
+        <ul className="signin-apps" aria-label="Your apps">
+          {apps.map((app) => (
+            <li key={app.key}>
+              <a className="signin-org" href={app.url}>
+                <span className="signin-org-name">Open {app.name}</span>
+                <span className="signin-org-meta">{app.organizations.join(', ')}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="signin-note">No apps are switched on for your organization yet.</p>
+      )}
+      <p className="signin-signout">
+        <a href="/api/oauth/logout">Sign out</a>
+      </p>
+    </>
+  );
+}
+
+/** Core's own page: sign in once, then pick an app. */
+function HomeSignIn({ signedOut }: { signedOut: boolean }) {
+  const [home, setHome] = useState<Home | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/oauth/me', { credentials: 'same-origin' })
+      .then(async (response) => {
+        const data = (await response.json()) as Home;
+        if (!cancelled) setHome(response.ok ? data : { signedIn: false });
+      })
+      .catch(() => {
+        if (!cancelled) setHome({ signedIn: false });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { ok, status, data } = await post('/api/oauth/login', { email: email.trim(), password });
+      if (ok && data.signedIn === true) setHome(data as unknown as Home);
+      else setError(messageFor(status, data));
+    } catch {
+      setError('Sign-in is not available right now. Check your connection and try again.');
+    } finally {
+      setPassword('');
+      setBusy(false);
+    }
+  };
+
+  if (home?.signedIn) return <Apps home={home} />;
+  return (
+    <>
+      {signedOut && <p className="signin-note">You have signed out of every Rooman app.</p>}
+      <p className="signin-lead">One login for Books, Billing and every other Rooman app.</p>
+      <form className="signin-form" onSubmit={submit} noValidate>
+        <label htmlFor="signin-email">Email</label>
+        <input id="signin-email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
+        <label htmlFor="signin-password">Password</label>
+        <input
+          id="signin-password"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          disabled={busy}
+        />
+        <button type="submit" className="signin-submit" disabled={busy || !email || !password}>
+          {busy ? 'Signing in…' : 'Sign in'}
+        </button>
+      </form>
+      {error && (
+        <p className="signin-error" role="alert">
+          {error}
+        </p>
+      )}
+      <HealthStatus />
+    </>
   );
 }
 
@@ -197,11 +312,7 @@ export function SignIn({ search = window.location.search }: { search?: string })
         <h1 id="signin-title">Sign in</h1>
 
         {!requestId ? (
-          <>
-            {signedOut && <p className="signin-note">You have signed out of every Rooman app.</p>}
-            <p className="signin-lead">One login for Books, Bookings and every other Rooman app. Open the app you want to use and choose Sign in.</p>
-            <HealthStatus />
-          </>
+          <HomeSignIn signedOut={signedOut} />
         ) : loadError ? (
           <p className="signin-error" role="alert">
             {loadError}
