@@ -129,7 +129,7 @@ def create_app() -> FastAPI:
         )
 
     from backend.deps import require_full_app_access, require_module, require_subscription
-    from backend.routers import auth, employee_portal, org_admin, payments, razorpay, subscription
+    from backend.routers import auth, employee_portal, org_admin, payments, razorpay, rooman_one_login, subscription
 
     # auth (login, /me, change-password, sessions) and the employee portal
     # stay reachable by every role, including the restricted "employee"
@@ -154,6 +154,7 @@ def create_app() -> FastAPI:
     # organization's admin chooses a plan) stay reachable while locked; the
     # employee portal is locked as well.
     app.include_router(auth.router)
+    app.include_router(rooman_one_login.router)  # "Sign in with Rooman One"; off until OIDC_* is set
     app.include_router(subscription.router)
     app.include_router(employee_portal.router, dependencies=[Depends(require_subscription)])
     # Every feature is declared once in backend/features.py: mounted here behind
