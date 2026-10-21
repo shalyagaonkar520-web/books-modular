@@ -29,6 +29,15 @@ services:
       COOKIE_SECURE: 'true'
       # The app buttons on Rooman One's own page: key=start-URL pairs, comma-separated.
       APP_LINKS: ${APP_LINKS:-}
+      # "Create an organization" on Rooman One's page, and the email that sends its code.
+      ALLOW_SIGNUP: ${CORE_ALLOW_SIGNUP:-false}
+      SIGNUP_APPS: ${CORE_SIGNUP_APPS:-books}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_SENDER_NAME: ${SMTP_SENDER_NAME:-Rooman One}
     volumes:
       - ${CORE_DB_CA_CERT:-/etc/rooman/core-db.crt}:/run/secrets/core-db.crt:ro
 
