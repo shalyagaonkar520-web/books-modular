@@ -110,7 +110,7 @@ def _upsert_customer(db: Session, event) -> None:
     if "gstin" in d:
         contact.gstin = (d.get("gstin") or "").upper() or None
         if contact.gstin:
-            contact.gst_treatment = "registered"
+            contact.gst_treatment = "registered_business"
     if "billing_address" in d:
         contact.billing_address = d.get("billing_address") or None
     if d.get("party_id"):

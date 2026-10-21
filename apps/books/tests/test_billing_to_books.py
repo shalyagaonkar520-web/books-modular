@@ -133,7 +133,7 @@ def test_customer_created_then_updated(books, tenant):
     assert customer(books, tenant, cid, gstin="29abcde1234f1z5", billing_address="12 MG Road, Bengaluru").status_code == 200
     contact = _one(Contact, tenant["org_id"], cid)
     assert contact.source_app == "billing" and contact.type == "customer" and contact.gstin == "29ABCDE1234F1Z5"
-    assert contact.gst_treatment == "registered" and contact.billing_address == "12 MG Road, Bengaluru"
+    assert contact.gst_treatment == "registered_business" and contact.billing_address == "12 MG Road, Bengaluru"
     res = send(
         books,
         tenant,
@@ -286,3 +286,12 @@ def test_reachable_through_the_public_api_path(books, tenant):
     res = books.post("/api/internal/events", content=body, headers={"X-Rooman-Signature": sign(body, SECRET)})
     assert res.status_code == 200
     assert books.post("/api/internal/events", content=body).status_code == 401
+
+
+def test_imported_records_show_in_the_books_lists(books, tenant, client):
+    """Every value Billing sets must be one Books' own screens accept."""
+    customer(books, tenant, ref(), gstin="29ABCDE1234F1Z5", company_name="Asha Traders Pvt Ltd", billing_address="12 MG Road")
+    plan(books, tenant, ref())
+    for path in ("/api/contacts", "/api/contacts?type=customer", "/api/items"):
+        res = client.get(path, headers=tenant["h"])
+        assert res.status_code == 200, (path, res.text)
