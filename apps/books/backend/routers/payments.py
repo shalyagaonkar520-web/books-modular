@@ -41,16 +41,18 @@ from backend.services.email_service import (
     send_vendor_payment_email,
 )
 from backend.services.money import money
+from backend.services.receipts import (
+    HALF_PAISA,
+    PAYABLE_INVOICE_STATUSES,
+    apply_invoice_payment,
+    receivable_account_id,
+    record_customer_payment,
+    remove_invoice_payment,
+)
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
 router = APIRouter(prefix="/api", tags=["Payments"])
 
-# Tolerance for comparing money columns in SQL. PostgreSQL stores exact
-# NUMERIC(14, 2) values, where ">= amount - half a paisa" is identical to
-# ">= amount"; SQLite computes total - amount_paid in floating point, where an
-# exact full payment can otherwise miss by 1e-12 and be refused.
-_HALF_PAISA = Decimal("0.005")
-_PAYABLE_INVOICE_STATUSES = ("sent", "partially_paid")
 _PAYABLE_BILL_STATUSES = ("open", "partially_paid")
 
 
@@ -60,67 +62,20 @@ class SendPaymentEmailRequest(APIModel):
     attach_pdf: bool = True
 
 
-def _receivable_account_id(db: Session, org_id: str, customer: Contact) -> str:
-    """The AR account the customer's invoices were posted to (see post_invoice)."""
-    return customer.ledger_account_id or get_account_by_code(db, org_id, "1100").id
-
-
 def _payable_account_id(db: Session, org_id: str, vendor: Contact) -> str:
     """The AP account the vendor's bills were posted to (see post_bill)."""
     return vendor.ledger_account_id or get_account_by_code(db, org_id, "2000").id
 
 
-def _apply_invoice_payment(db: Session, invoice: Invoice, amount: Decimal) -> None:
-    """Add a payment to an invoice atomically, or raise 400 if it no longer fits.
-
-    The balance check and the increment are one UPDATE, so two requests racing
-    to pay the same invoice cannot both pass a stale "balance is enough" read:
-    the database serialises them on the row (PostgreSQL) or the write lock
-    (SQLite) and the loser's WHERE clause no longer matches. Call this before
-    posting anything, so a refused payment leaves no ledger entries behind.
-    """
-    result = db.execute(
-        update(Invoice)
-        .where(
-            Invoice.id == invoice.id,
-            Invoice.organization_id == invoice.organization_id,
-            Invoice.status.in_(_PAYABLE_INVOICE_STATUSES),
-            Invoice.total - Invoice.amount_paid >= amount - _HALF_PAISA,
-        )
-        .values(amount_paid=func.round(Invoice.amount_paid + amount, 2))
-        .execution_options(synchronize_session=False)
-    )
-    db.refresh(invoice)
-    if result.rowcount != 1:
-        if invoice.status not in _PAYABLE_INVOICE_STATUSES:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, f"Payments can only be applied to sent invoices (current status: {invoice.status})"
-            )
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the invoice balance of {money(invoice.balance_due)}")
-    _refresh_invoice_status(invoice)
-
-
-def _remove_invoice_payment(db: Session, invoice: Invoice, amount: Decimal) -> None:
-    """Take a deleted payment back off an invoice, atomically."""
-    db.execute(
-        update(Invoice)
-        .where(Invoice.id == invoice.id, Invoice.organization_id == invoice.organization_id)
-        .values(amount_paid=func.round(Invoice.amount_paid - amount, 2))
-        .execution_options(synchronize_session=False)
-    )
-    db.refresh(invoice)
-    _refresh_invoice_status(invoice)
-
-
 def _apply_bill_payment(db: Session, bill: Bill, amount: Decimal) -> None:
-    """Bill counterpart of _apply_invoice_payment."""
+    """Bill counterpart of apply_invoice_payment."""
     result = db.execute(
         update(Bill)
         .where(
             Bill.id == bill.id,
             Bill.organization_id == bill.organization_id,
             Bill.status.in_(_PAYABLE_BILL_STATUSES),
-            Bill.total - Bill.amount_paid >= amount - _HALF_PAISA,
+            Bill.total - Bill.amount_paid >= amount - HALF_PAISA,
         )
         .values(amount_paid=func.round(Bill.amount_paid + amount, 2))
         .execution_options(synchronize_session=False)
@@ -154,18 +109,6 @@ def _check_cash_withdrawal(db: Session, bank_acct: BankAccount, amount: Decimal)
     if db.bind is not None and db.bind.dialect.name != "sqlite":
         db.execute(select(BankAccount.id).where(BankAccount.id == bank_acct.id).with_for_update())
     bank.check_cash_overdraft(db, bank_acct, amount)
-
-
-def _refresh_invoice_status(inv: Invoice) -> None:
-    if inv.status == "void":
-        return
-    paid = money(inv.amount_paid)
-    if paid <= 0:
-        inv.status = "sent" if inv.status in ("paid", "partially_paid") else inv.status
-    elif paid >= money(inv.total):
-        inv.status = "paid"
-    else:
-        inv.status = "partially_paid"
 
 
 def _refresh_bill_status(bill: Bill) -> None:
@@ -292,68 +235,6 @@ def export_customer_payments_excel(
     )
 
 
-def _record_customer_payment(
-    db: Session,
-    org_id: str,
-    user: User,
-    customer: Contact,
-    bank_acct: BankAccount,
-    invoice: Optional[Invoice],
-    amount: Decimal,
-    payload: CustomerPaymentCreate,
-    notes: Optional[str],
-) -> CustomerPayment:
-    """One receipt: against ``invoice`` (already applied by the caller), or a customer advance when None."""
-    payment = CustomerPayment(
-        organization_id=org_id,
-        payment_number=numbering.next_number(db, org_id, "customer_payment"),
-        customer_id=customer.id,
-        invoice_id=invoice.id if invoice else None,
-        bank_account_id=bank_acct.id,
-        date=payload.date,
-        amount=amount,
-        mode=payload.mode,
-        reference=payload.reference,
-        notes=notes,
-        created_by=user.id,
-    )
-    db.add(payment)
-    db.flush()
-
-    if invoice:
-        # Clear the same receivables account the invoice was posted to.
-        credit_account = _receivable_account_id(db, org_id, customer)
-    else:
-        credit_account = get_account_by_code(db, org_id, "2400").id  # unapplied payments sit as customer advances
-    desc = f"Payment {payment.payment_number} from {customer.display_name}" + (f" for {invoice.invoice_number}" if invoice else "")
-    entry = ledger.post_entry(
-        db,
-        org_id,
-        payment.date,
-        [(bank_acct.ledger_account_id, amount, Decimal("0"), desc, customer.id), (credit_account, Decimal("0"), amount, desc, customer.id)],
-        "customer_payment",
-        payment.id,
-        reference=payment.reference or payment.payment_number,
-        created_by=user.id,
-    )
-    bank.record_movement(
-        db,
-        bank_acct,
-        payment.date,
-        "deposit",
-        amount,
-        desc,
-        "customer_payment",
-        payment.id,
-        user.id,
-        payment.reference,
-        credit_account,
-        entry.id,
-    )
-    audit.record(db, user, "create", "customer_payment", payment.id, desc)
-    return payment
-
-
 @router.post(
     "/customer-payments",
     response_model=CustomerPaymentOut,
@@ -378,7 +259,7 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
         invoice = get_or_404(db, Invoice, payload.invoice_id, org_id, "Invoice")
         if invoice.customer_id != customer.id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invoice belongs to a different customer")
-        if invoice.status not in _PAYABLE_INVOICE_STATUSES:
+        if invoice.status not in PAYABLE_INVOICE_STATUSES:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, f"Payments can only be applied to sent invoices (current status: {invoice.status})"
             )
@@ -386,8 +267,8 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the invoice balance of {invoice.balance_due}")
         # The checks above are a friendly early answer; this is the one that
         # holds under concurrency. It must run first, before anything is posted.
-        _apply_invoice_payment(db, invoice, amount)
-        first = _record_customer_payment(db, org_id, user, customer, bank_acct, invoice, amount, payload, payload.notes)
+        apply_invoice_payment(db, invoice, amount)
+        first = record_customer_payment(db, org_id, user, customer, bank_acct, invoice, amount, payload, payload.notes)
     else:
         open_invoices = (
             db.execute(
@@ -395,7 +276,7 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
                 .where(
                     Invoice.organization_id == org_id,
                     Invoice.customer_id == customer.id,
-                    Invoice.status.in_(_PAYABLE_INVOICE_STATUSES),
+                    Invoice.status.in_(PAYABLE_INVOICE_STATUSES),
                     Invoice.date <= payload.date,
                 )
                 .order_by(Invoice.due_date, Invoice.date, Invoice.invoice_number)
@@ -416,12 +297,12 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
             portion = min(remaining, money(inv.balance_due))
             if portion <= 0:
                 continue
-            _apply_invoice_payment(db, inv, portion)
-            receipts.append(_record_customer_payment(db, org_id, user, customer, bank_acct, inv, portion, payload, note))
+            apply_invoice_payment(db, inv, portion)
+            receipts.append(record_customer_payment(db, org_id, user, customer, bank_acct, inv, portion, payload, note))
             remaining = money(remaining - portion)
         if remaining > 0:
             # Nothing (more) is owed: the rest is held as the customer's advance.
-            receipts.append(_record_customer_payment(db, org_id, user, customer, bank_acct, None, remaining, payload, note))
+            receipts.append(record_customer_payment(db, org_id, user, customer, bank_acct, None, remaining, payload, note))
         first = receipts[0]
 
     db.commit()
@@ -441,7 +322,7 @@ def delete_customer_payment(payment_id: str, user: User = Depends(require_write)
     _check_cash_withdrawal(db, payment.bank_account, money(payment.amount))
     bank.remove_movements(db, "customer_payment", payment.id)
     if payment.invoice:
-        _remove_invoice_payment(db, payment.invoice, money(payment.amount))
+        remove_invoice_payment(db, payment.invoice, money(payment.amount))
     # A payment recorded from an approved external payment is still referenced
     # by it (foreign key). Unlink it and mark the external payment reversed so
     # its history stays visible and the same UTR can be recorded again.
@@ -1026,7 +907,7 @@ def process_approved_external_payment(
     # 3. Apply to the invoice atomically before anything is posted (status
     # must be sent/partially_paid and the amount must fit the balance).
     if invoice:
-        _apply_invoice_payment(db, invoice, amount)
+        apply_invoice_payment(db, invoice, amount)
 
     # 4. Resolve Bank Account
     bank_acct = None
@@ -1081,7 +962,7 @@ def process_approved_external_payment(
 
     # 6. Post Ledger & Bank Movement
     if invoice:
-        credit_account = _receivable_account_id(db, org_id, customer)
+        credit_account = receivable_account_id(db, org_id, customer)
     else:
         credit_account = get_account_by_code(db, org_id, "2400").id
     desc = f"Payment {payment.payment_number} ({ext_pay.platform.upper()}) from {customer.display_name}" + (
@@ -1160,7 +1041,7 @@ def receive_external_payment(
     if invoice:
         if customer and invoice.customer_id != customer.id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invoice belongs to a different customer")
-        if invoice.status not in _PAYABLE_INVOICE_STATUSES:
+        if invoice.status not in PAYABLE_INVOICE_STATUSES:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, f"Payments can only be applied to sent invoices (current status: {invoice.status})"
             )

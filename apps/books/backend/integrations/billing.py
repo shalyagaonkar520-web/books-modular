@@ -151,9 +151,9 @@ def _upsert_plan(db: Session, event) -> None:
 def _create_invoice(db: Session, event) -> None:
     if not _from_billing(event):
         return
-    from backend.routers.invoices import post_invoice
     from backend.schemas.sales import LineInput
     from backend.services.documents import compute_lines
+    from backend.services.invoicing import post_invoice
 
     org = _org(db, event)
     d = event.data
@@ -234,9 +234,9 @@ def _create_invoice(db: Session, event) -> None:
 def _record_payment(db: Session, event) -> None:
     if not _from_billing(event):
         return
-    from backend.routers.payments import _apply_invoice_payment, _record_customer_payment
     from backend.schemas.sales import CustomerPaymentCreate
     from backend.services.razorpay_posting import default_bank_account
+    from backend.services.receipts import apply_invoice_payment, record_customer_payment
 
     org = _org(db, event)
     d = event.data
@@ -280,8 +280,8 @@ def _record_payment(db: Session, event) -> None:
             mode=mode,
             reference=d.get("reference"),
         )
-        _apply_invoice_payment(db, inv, amount)
-        payment = _record_customer_payment(db, org.id, actor, customer, bank_acct, inv, amount, payload, "Received in Rooman Billing")
+        apply_invoice_payment(db, inv, amount)
+        payment = record_customer_payment(db, org.id, actor, customer, bank_acct, inv, amount, payload, "Received in Rooman Billing")
         payment.source_app, payment.source_ref = SOURCE, f"{d['payment_id']}" if index == 0 else f"{d['payment_id']}#{index}"
         remaining = money(remaining - amount)
     if remaining > 0:
@@ -289,7 +289,7 @@ def _record_payment(db: Session, event) -> None:
         payload = CustomerPaymentCreate(
             customer_id=customer.id, bank_account_id=bank_acct.id, date=received, amount=remaining, mode=mode, reference=d.get("reference")
         )
-        payment = _record_customer_payment(
+        payment = record_customer_payment(
             db, org.id, actor, customer, bank_acct, None, remaining, payload, "Advance received in Rooman Billing"
         )
         payment.source_app, payment.source_ref = SOURCE, f"{d['payment_id']}#advance"

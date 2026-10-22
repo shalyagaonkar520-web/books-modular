@@ -79,8 +79,8 @@ def get_user_dashboard(
     user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    from backend.routers.payroll import employee_out, payslip_out
-    from backend.routers.projects import entry_out
+    from backend.services.payroll import employee_out, payslip_out
+    from backend.services.timesheets import entry_out
 
     target = db.get(User, user_id)
     if target is None or target.organization_id != user.organization_id or target.role == "integration":

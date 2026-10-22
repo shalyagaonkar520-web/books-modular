@@ -35,6 +35,8 @@ from backend.models import (
 from backend.schemas.common import Message, Page
 from backend.schemas.documents import DocumentOut, DocumentUpdate
 from backend.services import audit, excel_import, numbering
+from backend.services.invoicing import post_invoice
+from backend.services.purchasing import post_bill
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
 settings = get_settings()
@@ -376,11 +378,6 @@ def import_excel_commit(
     invented amount, date or email - importing a spreadsheet must never
     fabricate accounting data.
     """
-    # Imported late: the routers import each other's services, and importing at
-    # module level here would create a circular import.
-    from backend.routers.bills import post_bill
-    from backend.routers.invoices import post_invoice
-
     org_id = user.organization_id
     counts: Dict[str, int] = {"customers": 0, "vendors": 0, "invoices": 0, "bills": 0, "expenses": 0}
     skipped: List[str] = []

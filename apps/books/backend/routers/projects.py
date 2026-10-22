@@ -25,8 +25,10 @@ from backend.schemas.timetracking import (
     TimeEntryUpdate,
 )
 from backend.services import audit, numbering
+from backend.services.invoicing import invoice_out, post_invoice
 from backend.services.money import money
 from backend.services.tenancy import Pagination, get_or_404, paginate
+from backend.services.timesheets import entry_out
 
 router = APIRouter(prefix="/api", tags=["Time Tracking"])
 
@@ -63,23 +65,6 @@ def project_out(p: Project, summary: Optional[dict] = None) -> ProjectOut:
         unbilled_hours=s["unbilled"],
         unbilled_amount=money(s["unbilled"] * p.hourly_rate) if p.billing_method == "hourly" else Decimal("0"),
         created_at=p.created_at,
-    )
-
-
-def entry_out(e: TimeEntry) -> TimeEntryOut:
-    return TimeEntryOut(
-        id=e.id,
-        project_id=e.project_id,
-        project_name=e.project.name,
-        customer_name=e.project.customer.display_name if e.project.customer else None,
-        user_id=e.user_id,
-        user_name=e.user.name,
-        date=e.date,
-        hours=e.hours,
-        description=e.description,
-        is_billable=e.is_billable,
-        invoice_id=e.invoice_id,
-        created_at=e.created_at,
     )
 
 
@@ -238,8 +223,6 @@ def delete_time_entry(entry_id: str, user: User = Depends(require_write), db: Se
 def invoice_unbilled_time(
     payload: InvoiceFromTimeRequest, request: Request, user: User = Depends(require_write), db: Session = Depends(get_db)
 ):
-    from backend.routers.invoices import get_invoice, post_invoice  # local import to avoid cycle
-
     # This creates an invoice: it needs Invoices access, not only Time tracking.
     error = module_write_error(user, ("invoices",), request)
     if error:
@@ -296,4 +279,4 @@ def invoice_unbilled_time(
     post_invoice(db, inv, user)
     audit.record(db, user, "create", "invoice", inv.id, f"Invoiced {hours}h on {project.name} as {inv.invoice_number}")
     db.commit()
-    return get_invoice(inv.id, user, db)
+    return invoice_out(db, org_id, inv.id)

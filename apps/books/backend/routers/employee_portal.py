@@ -18,10 +18,10 @@ from sqlalchemy.orm import Session, selectinload
 from backend.db import get_db
 from backend.deps import get_current_user
 from backend.models import Employee, LeaveRecord, PayRun, Payslip, Project, TimeEntry, User
-from backend.routers.payroll import employee_out, leave_out, payslip_out
-from backend.routers.projects import entry_out
 from backend.schemas.payroll import EmployeeOut, LeaveRecordOut, PayslipOut
 from backend.schemas.timetracking import TimeEntryOut
+from backend.services.payroll import employee_out, leave_out, payslip_out
+from backend.services.timesheets import entry_out
 
 router = APIRouter(prefix="/api/me", tags=["Employee Portal"])
 

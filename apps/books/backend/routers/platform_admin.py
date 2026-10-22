@@ -41,7 +41,6 @@ from backend.models import (
     User,
     VendorPayment,
 )
-from backend.routers import razorpay as rzp
 from backend.schemas.app_content import PanelContentAccessIn, PanelContentAccessOut
 from backend.schemas.common import Page
 from backend.schemas.org_admin import (
@@ -93,7 +92,7 @@ from backend.security import (
     hash_token,
     verify_password,
 )
-from backend.services import audit, module_pricing, panel_content, platform_settings
+from backend.services import audit, module_pricing, panel_content, platform_settings, razorpay_credentials
 from backend.services import subscription as subs
 from backend.services.app_content import delete_org_app_content
 from backend.services.chart_of_accounts import bootstrap_accounts
@@ -1831,9 +1830,9 @@ def razorpay_keys_status(admin: PlatformAdmin = Depends(get_current_superuser)):
 
 @router.post("/integrations/razorpay/connect")
 def razorpay_keys_connect(
-    payload: rzp.ConnectRazorpayRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
+    payload: razorpay_credentials.ConnectRazorpayRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
 ):
-    result = rzp.connect_credentials(payload)
+    result = razorpay_credentials.connect_credentials(payload)
     audit.record(db, admin, "update", "integration", "razorpay", result.pop("audit_summary"))
     db.commit()
     return result
@@ -1841,7 +1840,7 @@ def razorpay_keys_connect(
 
 @router.post("/integrations/razorpay/disconnect")
 def razorpay_keys_disconnect(db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
-    result = rzp.disconnect_credentials()
+    result = razorpay_credentials.disconnect_credentials()
     audit.record(db, admin, "delete", "integration", "razorpay", "Disconnected Razorpay credentials")
     db.commit()
     return result
