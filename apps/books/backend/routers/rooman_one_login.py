@@ -4,6 +4,12 @@ Off until OIDC_ISSUER and OIDC_CLIENT_ID are set. Books' own email/password
 sign-in is untouched; this is a second way in that ends in the same Books
 session (access token + rb_refresh cookie, via auth._issue_tokens).
 
+Every product (services/products) signs in as its own Rooman One app: the
+request's host picks the product, the product picks the Core client (Books:
+OIDC_CLIENT_ID; any other: OIDC_PRODUCT_CLIENT_IDS), and the callback and the
+page the user lands on are on the product's own address. Core refuses the
+sign-in when the organization's plan does not include that app.
+
 Flow:
   GET /api/auth/rooman-one/start     -> Core's sign-in page (state, nonce and the
                                         PKCE verifier kept in a sealed, 10-minute cookie)
@@ -47,8 +53,9 @@ from backend.config import get_settings
 from backend.db import get_db
 from backend.deps import org_approval_error, subscription_sign_in_error
 from backend.models import Organization, User
-from backend.services import audit
+from backend.services import audit, products
 from backend.services.org_setup import create_organization
+from backend.services.products import Product
 
 logger = logging.getLogger("roomanbooks.rooman_one")
 router = APIRouter(prefix="/api/auth/rooman-one", tags=["auth"])
@@ -62,7 +69,7 @@ SCOPES = "openid profile email"
 TRY_AGAIN = "Your Rooman One sign-in expired or was started in another tab. Please try again."
 NO_ACCOUNT = "There's no Rooman Books account for this Rooman One login yet. Ask your organization's admin to invite you."
 OTHER_ORG = "This Rooman One login is for a different organization than your Rooman Books account."
-NOT_IN_PLAN = "Rooman Books isn't part of your organization's Rooman One plan."
+NOT_IN_PLAN = "{product} isn't part of your organization's Rooman One plan."
 EMAIL_IN_USE = "This email already has its own Rooman Books account. Sign in to Books with your email and password."
 UNAVAILABLE = "Rooman One sign-in is unavailable right now. Please use your email and password."
 
@@ -74,18 +81,38 @@ class SignInError(Exception):
 # --------------------------------------------------------------------------- #
 # Settings and Core
 # --------------------------------------------------------------------------- #
-def enabled() -> bool:
+def _pairs(raw: str) -> dict[str, str]:
+    """``"a=x,b=y"`` -> ``{"a": "x", "b": "y"}``."""
+    pairs = {}
+    for item in filter(None, (part.strip() for part in raw.split(","))):
+        key, _, value = item.partition("=")
+        if key.strip() and value.strip():
+            pairs[key.strip()] = value.strip()
+    return pairs
+
+
+def client_for(product: Optional[Product] = None) -> tuple[str, str]:
+    """The product's Core client: (client_id, client_secret); empty when it has none."""
     settings = get_settings()
-    return bool(settings.oidc_issuer.strip() and settings.oidc_client_id.strip())
+    product = product or products.fallback()
+    if product.key == products.fallback().key:
+        return settings.oidc_client_id.strip(), settings.oidc_client_secret
+    return _pairs(settings.oidc_product_client_ids).get(product.key, ""), _pairs(settings.oidc_product_client_secrets).get(product.key, "")
+
+
+def enabled(product: Optional[Product] = None) -> bool:
+    return bool(get_settings().oidc_issuer.strip() and client_for(product)[0])
 
 
 def _issuer() -> str:
     return get_settings().oidc_issuer.strip().rstrip("/")
 
 
-def _redirect_uri() -> str:
-    settings = get_settings()
-    return settings.oidc_redirect_uri.strip() or settings.app_url.rstrip("/") + "/api/auth/rooman-one/callback"
+def _redirect_uri(product: Optional[Product] = None) -> str:
+    product = product or products.fallback()
+    if product.key == products.fallback().key and get_settings().oidc_redirect_uri.strip():
+        return get_settings().oidc_redirect_uri.strip()
+    return product.app_url() + "/api/auth/rooman-one/callback"
 
 
 def _http_json(url: str, form: Optional[dict] = None) -> dict:
@@ -135,17 +162,17 @@ def signing_key(token: str):
     return client.get_signing_key_from_jwt(token).key
 
 
-def exchange(code: str, verifier: str) -> dict:
-    settings = get_settings()
+def exchange(code: str, verifier: str, product: Optional[Product] = None) -> dict:
+    client_id, client_secret = client_for(product)
     form = {
         "grant_type": "authorization_code",
         "code": code,
-        "redirect_uri": _redirect_uri(),
+        "redirect_uri": _redirect_uri(product),
         "code_verifier": verifier,
-        "client_id": settings.oidc_client_id.strip(),
+        "client_id": client_id,
     }
-    if settings.oidc_client_secret:
-        form["client_secret"] = settings.oidc_client_secret
+    if client_secret:
+        form["client_secret"] = client_secret
     try:
         return _http_json(discovery()["token_endpoint"], form)
     except (urllib.error.URLError, TimeoutError, ValueError) as exc:
@@ -189,12 +216,12 @@ def _safe_next(value: Optional[str]) -> str:
     return value[:500]
 
 
-def _app(path: str) -> str:
-    return get_settings().app_url.rstrip("/") + path
+def _app(path: str, product: Optional[Product] = None) -> str:
+    return (product or products.fallback()).app_url() + path
 
 
-def _to_login(message: str) -> RedirectResponse:
-    response = RedirectResponse(_app("/login?" + urllib.parse.urlencode({"sso_error": message})), status_code=303)
+def _to_login(message: str, product: Optional[Product] = None) -> RedirectResponse:
+    response = RedirectResponse(_app("/login?" + urllib.parse.urlencode({"sso_error": message}), product), status_code=303)
     response.delete_cookie(FLOW_COOKIE, path=FLOW_PATH, domain=get_settings().cookie_domain)
     return response
 
@@ -203,24 +230,31 @@ def _to_login(message: str) -> RedirectResponse:
 # Endpoints
 # --------------------------------------------------------------------------- #
 @router.get("")
-def status():
-    """Whether the login page should offer "Sign in with Rooman One"."""
-    return {"enabled": enabled()}
+def status(request: Request):
+    """Whether the login page should offer "Sign in with Rooman One" (for this host's product)."""
+    return {"enabled": enabled(products.current(request))}
 
 
 @router.get("/start")
-def start(next: Optional[str] = None):
-    if not enabled():
+def start(request: Request, next: Optional[str] = None):
+    product = products.current(request)
+    if not enabled(product):
         raise HTTPException(404, "Rooman One sign-in is not set up.")
     try:
         endpoint = discovery()["authorization_endpoint"]
     except SignInError as exc:
-        return _to_login(str(exc))
+        return _to_login(str(exc), product)
     verifier = secrets.token_urlsafe(48)
-    flow = {"state": secrets.token_urlsafe(24), "nonce": secrets.token_urlsafe(24), "verifier": verifier, "next": _safe_next(next)}
+    flow = {
+        "state": secrets.token_urlsafe(24),
+        "nonce": secrets.token_urlsafe(24),
+        "verifier": verifier,
+        "next": _safe_next(next),
+        "product": product.key,
+    }
     query = {
-        "client_id": get_settings().oidc_client_id.strip(),
-        "redirect_uri": _redirect_uri(),
+        "client_id": client_for(product)[0],
+        "redirect_uri": _redirect_uri(product),
         "response_type": "code",
         "scope": SCOPES,
         "state": flow["state"],
@@ -251,21 +285,25 @@ def callback(
     error: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    if not enabled():
+    product = products.current(request)
+    if not enabled(product):
         raise HTTPException(404, "Rooman One sign-in is not set up.")
     flow = unseal(request.cookies.get(FLOW_COOKIE))
     if flow is None or not state or not hmac.compare_digest(str(state), str(flow["state"])):
-        return _to_login(TRY_AGAIN)
+        return _to_login(TRY_AGAIN, product)
+    # Started on another product's address: its code belongs to another Core client.
+    if flow.get("product", products.fallback().key) != product.key:
+        return _to_login(TRY_AGAIN, product)
     if error or not code:
-        return _to_login("Rooman One sign-in was cancelled." if error == "access_denied" else TRY_AGAIN)
+        return _to_login("Rooman One sign-in was cancelled." if error == "access_denied" else TRY_AGAIN, product)
     try:
-        user = _user_from_core(db, code, flow)
+        user = _user_from_core(db, code, flow, product)
     except SignInError as exc:
-        return _to_login(str(exc))
+        return _to_login(str(exc), product)
 
     from backend.routers.auth import _issue_tokens  # the same session as a password sign-in
 
-    response = RedirectResponse(_app(flow.get("next") or "/"), status_code=303)
+    response = RedirectResponse(_app(flow.get("next") or "/", product), status_code=303)
     response.delete_cookie(FLOW_COOKIE, path=FLOW_PATH, domain=get_settings().cookie_domain)
     user.last_login_at = datetime.now(UTC)
     _issue_tokens(db, user, response, request)
@@ -311,19 +349,20 @@ def _first_sign_in(db: Session, claims: dict, user_id: str, org_id: Optional[str
     return user
 
 
-def _user_from_core(db: Session, code: str, flow: dict) -> User:
-    tokens = exchange(code, flow["verifier"])
+def _user_from_core(db: Session, code: str, flow: dict, product: Optional[Product] = None) -> User:
+    product = product or products.fallback()
+    tokens = exchange(code, flow["verifier"], product)
     if "id_token" not in tokens:
         problem = f"{tokens.get('error', '')} {tokens.get('error_description', '')}"
         logger.warning("Rooman One token exchange refused: %s", problem.strip())
-        raise SignInError(NOT_IN_PLAN if "app_not_in_plan" in problem else TRY_AGAIN)
+        raise SignInError(NOT_IN_PLAN.format(product=product.name) if "app_not_in_plan" in problem else TRY_AGAIN)
     id_token = tokens["id_token"]
     try:
         claims = jwt.decode(
             id_token,
             signing_key(id_token),
             algorithms=["RS256"],
-            audience=get_settings().oidc_client_id.strip(),
+            audience=client_for(product)[0],
             issuer=_issuer(),
             leeway=60,
             options={"require": ["exp", "iat", "sub", "iss", "aud"]},

@@ -62,6 +62,9 @@ services:
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
       OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
+      # The other products' own Core clients (docs/books-products.md): product=client_id,... and product=secret,...
+      OIDC_PRODUCT_CLIENT_IDS: ${OIDC_PRODUCT_CLIENT_IDS:-}
+      OIDC_PRODUCT_CLIENT_SECRETS: ${OIDC_PRODUCT_CLIENT_SECRETS:-}
     volumes:
       - api_data:/app/data
     depends_on:

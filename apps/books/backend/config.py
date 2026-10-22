@@ -117,6 +117,11 @@ class Settings(BaseSettings):
     oidc_client_id: str = Field(default="", description="OIDC_CLIENT_ID (from Core: clients create-web --app books)")
     oidc_client_secret: str = Field(default="", description="OIDC_CLIENT_SECRET (confidential web client)")
     oidc_redirect_uri: str = Field(default="", description="OIDC_REDIRECT_URI; default <APP_URL>/api/auth/rooman-one/callback")
+    # The other products (content/products.json) each sign in with their own Core client (their own app key):
+    # "expenses=expenses-web-1a2b3c4d" and "expenses=<secret>", comma-separated like APP_LINKS. The fallback
+    # product (Rooman Books) keeps OIDC_CLIENT_ID / OIDC_CLIENT_SECRET.
+    oidc_product_client_ids: str = Field(default="", description="OIDC_PRODUCT_CLIENT_IDS: product=client_id,...")
+    oidc_product_client_secrets: str = Field(default="", description="OIDC_PRODUCT_CLIENT_SECRETS: product=secret,...")
 
     @field_validator("event_subscribers", mode="before")
     @classmethod

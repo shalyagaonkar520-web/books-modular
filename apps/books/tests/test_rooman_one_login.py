@@ -41,29 +41,32 @@ def core(monkeypatch):
     )
     monkeypatch.setattr(sso, "signing_key", lambda token: KEY.public_key())
 
-    def exchange(code, verifier):
+    def exchange(code, verifier, product=None):
         fake["exchanged"].append((code, verifier))
         if fake["token_reply"] is not None:
             return fake["token_reply"]
         now = int(time.time())
-        claims = {"iss": ISSUER, "aud": CLIENT_ID, "iat": now, "exp": now + 300, **fake["claims"]}
+        # Core addresses the id_token to the client that asked: the product's own.
+        claims = {"iss": ISSUER, "aud": sso.client_for(product)[0], "iat": now, "exp": now + 300, **fake["claims"]}
         return {"id_token": jwt.encode(claims, fake["key"], algorithm="RS256"), "access_token": "x", "token_type": "Bearer"}
 
     monkeypatch.setattr(sso, "exchange", exchange)
     return fake
 
 
-def _start(client, next_path="/invoices"):
-    res = client.get("/api/auth/rooman-one/start", params={"next": next_path}, follow_redirects=False)
+def _start(client, next_path="/invoices", headers=None):
+    res = client.get("/api/auth/rooman-one/start", params={"next": next_path}, headers=headers, follow_redirects=False)
     assert res.status_code == 303, res.text
     query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(res.headers["location"]).query))
     return res, query
 
 
-def _sign_in(client, core, user_id: str, org_id: str, next_path="/invoices", **claims):
-    _, query = _start(client, next_path)
+def _sign_in(client, core, user_id: str, org_id: str, next_path="/invoices", headers=None, **claims):
+    _, query = _start(client, next_path, headers)
     core["claims"] = {"sub": str(uuid.UUID(user_id)), "org_id": str(uuid.UUID(org_id)), "nonce": query["nonce"], **claims}
-    return client.get("/api/auth/rooman-one/callback", params={"code": "abc", "state": query["state"]}, follow_redirects=False)
+    return client.get(
+        "/api/auth/rooman-one/callback", params={"code": "abc", "state": query["state"]}, headers=headers, follow_redirects=False
+    )
 
 
 def _error(res) -> str:
@@ -127,7 +130,7 @@ def test_state_must_match_the_browser_that_started(client, core):
 def test_books_not_in_plan(client, core):
     ctx = register_org(client, "SsoPlan")
     core["token_reply"] = {"error": "invalid_grant", "error_description": "app_not_in_plan"}
-    assert _error(_sign_in(client, core, ctx["user"]["id"], ctx["org"]["id"])) == sso.NOT_IN_PLAN
+    assert _error(_sign_in(client, core, ctx["user"]["id"], ctx["org"]["id"])) == sso.NOT_IN_PLAN.format(product="Rooman Books")
 
 
 def test_next_stays_inside_books(client, core):
@@ -195,3 +198,52 @@ def test_new_organizations_wait_for_approval_when_books_requires_it(client, core
     assert "approv" in _error(res).lower()
     with SessionLocal() as db:  # kept, so a super-admin can approve it
         assert db.get(Organization, org_id).approval_status == "pending"
+
+
+# --------------------------------------------------------------------------- #
+# Products: each signs in as its own Rooman One app, on its own address
+# --------------------------------------------------------------------------- #
+EXPENSES = {"Host": "expenses.futureacad.ae"}
+EXPENSES_CLIENT = "expenses-web-test"
+
+
+@pytest.fixture
+def expenses_client(core, monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "oidc_product_client_ids", f"expenses={EXPENSES_CLIENT}")
+    monkeypatch.setattr(settings, "oidc_product_client_secrets", "expenses=expenses-secret")
+    return core
+
+
+def test_a_product_is_off_until_it_has_its_own_client(client, core):
+    assert client.get("/api/auth/rooman-one").json() == {"enabled": True}
+    assert client.get("/api/auth/rooman-one", headers=EXPENSES).json() == {"enabled": False}
+    assert client.get("/api/auth/rooman-one/start", headers=EXPENSES, follow_redirects=False).status_code == 404
+
+
+def test_a_product_signs_in_with_its_own_client_and_lands_on_its_own_address(client, expenses_client):
+    assert sso.client_for(sso.products.get("expenses")) == (EXPENSES_CLIENT, "expenses-secret")
+    _, query = _start(client, "/expenses", EXPENSES)
+    assert query["client_id"] == EXPENSES_CLIENT
+    assert query["redirect_uri"] == "https://expenses.futureacad.ae/api/auth/rooman-one/callback"
+
+    ctx = register_org(client, "SsoExpenses")
+    res = _sign_in(client, expenses_client, ctx["user"]["id"], ctx["org"]["id"], next_path="/expenses", headers=EXPENSES)
+    assert res.status_code == 303 and res.headers["location"] == "https://expenses.futureacad.ae/expenses"
+    # Rooman Books is untouched.
+    _, books_query = _start(client)
+    assert books_query["client_id"] == CLIENT_ID and books_query["redirect_uri"] == "https://books.example.test/api/auth/rooman-one/callback"
+
+
+def test_a_product_not_in_the_plan_names_the_product(client, expenses_client):
+    ctx = register_org(client, "SsoExpensesPlan")
+    expenses_client["token_reply"] = {"error": "invalid_grant", "error_description": "app_not_in_plan"}
+    res = _sign_in(client, expenses_client, ctx["user"]["id"], ctx["org"]["id"], headers=EXPENSES)
+    assert res.headers["location"].startswith("https://expenses.futureacad.ae/login?")
+    assert _error(res) == "Rooman Expenses isn't part of your organization's Rooman One plan."
+
+
+def test_a_sign_in_started_on_one_product_cannot_finish_on_another(client, expenses_client):
+    _, query = _start(client, "/expenses", EXPENSES)
+    res = client.get("/api/auth/rooman-one/callback", params={"code": "abc", "state": query["state"]}, follow_redirects=False)
+    assert _error(res) == sso.TRY_AGAIN and expenses_client["exchanged"] == []
