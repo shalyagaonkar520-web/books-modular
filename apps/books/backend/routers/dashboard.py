@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Dict, List
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -42,12 +42,47 @@ from backend.schemas.dashboard import (
     RecentActivity,
     TopCustomer,
 )
-from backend.services import bank
+from backend.services import bank, products
 from backend.services.money import money
 from backend.services.periods import resolve_period
 
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 PERIODS = ("this_fiscal_year", "last_fiscal_year", "this_quarter", "this_month", "last_month")
+
+# The dashboard is core (every product has one), but shows only the modules of
+# the request's product: a section, activity or notification of a module the
+# product leaves out is blanked, not just hidden by the page.
+_ACTIVITY_MODULE = {
+    "invoice": "invoices",
+    "bill": "bills",
+    "customer_payment": "paymentsReceived",
+    "vendor_payment": "paymentsMade",
+    "expense": "expenses",
+}
+_NOTIFICATION_MODULE = {"overdue_invoice": "invoices", "overdue_bill": "bills", "low_stock": "items", "unreconciled": "banking"}
+
+
+def _within_product(summary: DashboardSummary, product: products.Product) -> DashboardSummary:
+    if product.is_full:
+        return summary
+    zero = Decimal("0")
+    if not product.has("invoices"):
+        summary.receivables = ReceivablesSummary(total_unpaid_invoices=0, current_amount=zero, overdue_amount=zero, total_receivables=zero)
+        summary.top_customers = []
+    if not product.has("bills"):
+        summary.payables = PayablesSummary(total_unpaid_bills=0, current_amount=zero, overdue_amount=zero, total_payables=zero)
+    if not product.has("banking"):
+        summary.cash_flow = None
+        summary.bank_balances = None
+        summary.total_cash = None
+    if not product.has("items"):
+        summary.inventory = InventorySummary(
+            total_items_count=0, goods_count=0, service_count=0, tracked_count=0, total_inventory_valuation=zero, low_stock_items_count=0
+        )
+    if not product.has("timeTracking"):
+        summary.unbilled_hours = zero
+        summary.unbilled_amount = zero
+    return summary
 
 
 def _receivables(db: Session, org_id: str, today: date) -> ReceivablesSummary:
@@ -181,10 +216,12 @@ def _inventory(db: Session, org_id: str) -> InventorySummary:
 
 @router.get("/summary", response_model=DashboardSummary)
 def summary(
+    request: Request,
     period: str = Query("this_fiscal_year", pattern="^(this_fiscal_year|last_fiscal_year|this_quarter|this_month|last_month)$"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    product = products.current(request)
     org_id = user.organization_id
     today = date.today()
     fiscal_start = user.organization.fiscal_year_start_month
@@ -290,6 +327,7 @@ def summary(
         recent.append(
             RecentActivity(id=e.id, type="expense", number=e.expense_number, contact_name=e.account.name, date=e.date, amount=e.total)
         )
+    recent = [r for r in recent if product.has(_ACTIVITY_MODULE[r.type])]
     recent.sort(key=lambda r: r.date, reverse=True)
 
     unbilled = db.execute(
@@ -300,7 +338,7 @@ def summary(
     unbilled_hours = sum((t.hours for t, _ in unbilled), Decimal("0"))
     unbilled_amount = sum((t.hours * p.hourly_rate for t, p in unbilled if p.billing_method == "hourly"), Decimal("0"))
 
-    return DashboardSummary(
+    summary = DashboardSummary(
         receivables=_receivables(db, org_id, today),
         payables=_payables(db, org_id, today),
         cash_flow=_cash_flow(db, org_id, period, today, fiscal_start) if can_see_banking else None,
@@ -313,10 +351,11 @@ def summary(
         unbilled_hours=unbilled_hours,
         unbilled_amount=money(unbilled_amount),
     )
+    return _within_product(summary, product)
 
 
 @router.get("/notifications", response_model=Notifications)
-def notifications(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def notifications(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     org_id = user.organization_id
     today = date.today()
     items: List[NotificationItem] = []
@@ -413,4 +452,6 @@ def notifications(user: User = Depends(get_current_user), db: Session = Depends(
                 severity="info",
             )
         )
+    product = products.current(request)
+    items = [item for item in items if product.has(_NOTIFICATION_MODULE[item.kind])]
     return Notifications(items=items, count=len(items))

@@ -15,8 +15,9 @@ from typing import Any, Dict, Iterable
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from backend.schemas.app_content import AppContent, default_document
+from backend.schemas.app_content import AppContent, ProductAppContent, ProductInfo, default_document
 from backend.services import platform_settings
+from backend.services.products import Product
 
 logger = logging.getLogger("roomanbooks.app_content")
 
@@ -111,6 +112,28 @@ def get_org_app_content(db: Session, org_id: str) -> AppContent:
     except ValidationError:
         logger.warning("Stored app content for org %s no longer validates; serving the shared content", org_id)
         return shared
+
+
+def product_app_content(db: Session, product: Product, org_id: str | None = None) -> ProductAppContent:
+    """The content as ``product`` shows it to an organization (or, signed out, to everyone).
+
+    Rooman Books (every module) is served exactly as stored, without a
+    ``product``. Any other product
+    switches off the modules it leaves out and carries its own name; its logo
+    and colour apply unless the organization chose its own (an organization's
+    app name is for Books, never shown as another product's name).
+    """
+    content = get_org_app_content(db, org_id) if org_id else get_app_content(db)
+    doc = content.model_dump(by_alias=True)
+    if product.is_full:
+        return ProductAppContent.model_validate(doc)
+    own = get_org_overrides(db, org_id)["branding"] if org_id else {}
+    doc["modules"] = {key: on and product.has(key) for key, on in doc["modules"].items()}
+    doc["branding"]["appName"] = product.name
+    doc["branding"]["logoUrl"] = own.get("logoUrl") or product.logo_url or doc["branding"]["logoUrl"]
+    doc["branding"]["primaryColor"] = own.get("primaryColor") or product.primary_color or doc["branding"]["primaryColor"]
+    doc["product"] = ProductInfo(key=product.key, name=product.name, modules=list(product.modules)).model_dump(by_alias=True)
+    return ProductAppContent.model_validate(doc)
 
 
 def save_org_app_content(db: Session, org_id: str, content: AppContent) -> Dict[str, Any]:

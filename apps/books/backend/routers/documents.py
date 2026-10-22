@@ -34,7 +34,7 @@ from backend.models import (
 )
 from backend.schemas.common import Message, Page
 from backend.schemas.documents import DocumentOut, DocumentUpdate
-from backend.services import audit, excel_import, numbering
+from backend.services import audit, excel_import, numbering, products
 from backend.services.invoicing import post_invoice
 from backend.services.purchasing import post_bill
 from backend.services.tenancy import Pagination, get_or_404, paginate
@@ -383,11 +383,11 @@ def import_excel_commit(
     skipped: List[str] = []
 
     # The import creates records of other modules (invoices, bills...): each
-    # needs the same access as creating it by hand - plan, the user's module
-    # access, a connected app's scope - not just access to Documents.
+    # needs the same access as creating it by hand - the product, the plan, the
+    # user's module access, a connected app's scope - not just access to Documents.
     wanted = {sec.category.lower() for sec in payload.sections or []} | {i.category.lower() for i in payload.items or []}
     for category in sorted(wanted & set(counts)):
-        error = module_write_error(user, (category,), request)
+        error = products.current(request).module_error(category) or module_write_error(user, (category,), request)
         if error:
             raise HTTPException(status.HTTP_403_FORBIDDEN, f"You can't import {category}: {error}")
 

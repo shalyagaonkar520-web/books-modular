@@ -130,6 +130,13 @@ def create_app() -> FastAPI:
 
     from backend.deps import require_full_app_access, require_module, require_subscription
     from backend.routers import auth, employee_portal, org_admin, payments, razorpay, rooman_one_login, subscription
+    from backend.services.products import require_product_access
+
+    # The product (backend/services/products.py, chosen by the request's host)
+    # comes first on every module router: a module that is not part of the
+    # product answers 403 whoever asks, whatever the UI shows. Rooman Books,
+    # the fallback product, has every module, so this never refuses it.
+    product = Depends(require_product_access)
 
     # auth (login, /me, change-password, sessions) and the employee portal
     # stay reachable by every role, including the restricted "employee"
@@ -156,20 +163,21 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(rooman_one_login.router)  # "Sign in with Rooman One"; off until OIDC_* is set
     app.include_router(subscription.router)
-    app.include_router(employee_portal.router, dependencies=[Depends(require_subscription)])
+    app.include_router(employee_portal.router, dependencies=[product, Depends(require_subscription)])
     # Every feature is declared once in backend/features.py: mounted here behind
-    # require_full_app_access, plus require_module when it is sold in a plan
-    # (writes outside the organization's accepted plan answer 403).
+    # the product, require_full_app_access, plus require_module when it is sold
+    # in a plan (writes outside the organization's accepted plan answer 403).
+    # Which module owns which API path is declared in content/modules.json.
     from backend import features
 
     for feature in features.FEATURES:
-        guards = [Depends(require_full_app_access)]
+        guards = [product, Depends(require_full_app_access)]
         if feature.plan_keys:
             guards.append(Depends(require_module(*feature.plan_keys)))
         for router in feature.load_routers():
             app.include_router(router, dependencies=guards)
-    app.include_router(payments.router)
-    app.include_router(razorpay.router)
+    app.include_router(payments.router, dependencies=[product])
+    app.include_router(razorpay.router, dependencies=[product])
     from backend.routes import email
 
     app.include_router(email.router)

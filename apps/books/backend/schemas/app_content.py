@@ -62,6 +62,24 @@ class AppContent(APIModel):
         return value
 
 
+class ProductInfo(APIModel):
+    """The product the app is served as (see services/products): its name and modules."""
+
+    key: str
+    name: str
+    modules: List[str]
+
+
+class ProductAppContent(AppContent):
+    """What the tenant app renders: the content as the request's product shows it.
+
+    ``product`` is left out for Rooman Books (every module), so its answer is
+    exactly what it always was; the app reads "no product" as Rooman Books.
+    """
+
+    product: Optional[ProductInfo] = None
+
+
 class AppContentOverrides(APIModel):
     """Which fields an organization has customized (everything else follows the shared content)."""
 

@@ -1,0 +1,190 @@
+{
+  "coreApi": [
+    "/api/accounting/account-options",
+    "/api/banking/account-options",
+    "/api/razorpay/webhook",
+    "/api/payments/external/confirm"
+  ],
+  "modules": [
+    {
+      "key": "items",
+      "label": "Items",
+      "dependsOn": [],
+      "uses": ["accounting", "vendors", "reports"],
+      "api": ["/api/items", "/api/inventory-adjustments", "/api/reports/inventory-summary"],
+      "routes": ["/items"],
+      "menu": { "group": "main", "label": "sidebar.items", "icon": "Package" },
+      "roles": []
+    },
+    {
+      "key": "customers",
+      "label": "Customers",
+      "dependsOn": [],
+      "uses": ["accounting"],
+      "api": ["/api/contacts"],
+      "routes": ["/customers"],
+      "menu": { "group": "sales", "label": "sidebar.customers", "icon": "Users" },
+      "roles": []
+    },
+    {
+      "key": "invoices",
+      "label": "Invoices",
+      "dependsOn": ["customers"],
+      "uses": ["items", "paymentsReceived"],
+      "api": ["/api/invoices", "/api/reports/receivables-aging", "/api/reports/sales-by-customer"],
+      "routes": ["/invoices"],
+      "menu": { "group": "sales", "label": "sidebar.invoices", "icon": "FileText" },
+      "roles": []
+    },
+    {
+      "key": "paymentsReceived",
+      "label": "Payments received",
+      "dependsOn": ["invoices", "customers"],
+      "uses": ["banking"],
+      "api": ["/api/customer-payments", "/api/payments/external"],
+      "routes": ["/payments-received"],
+      "menu": { "group": "sales", "label": "sidebar.paymentsReceived", "icon": "Wallet" },
+      "roles": []
+    },
+    {
+      "key": "expenseDashboard",
+      "label": "Expense dashboard",
+      "dependsOn": ["expenses"],
+      "uses": ["accounting", "banking", "vendors"],
+      "api": [],
+      "routes": ["/expense-dashboard"],
+      "menu": { "group": "purchases", "label": "sidebar.expenseDashboard", "icon": "BarChart3" },
+      "roles": []
+    },
+    {
+      "key": "vendors",
+      "label": "Vendors",
+      "dependsOn": [],
+      "uses": ["accounting"],
+      "api": ["/api/contacts"],
+      "routes": ["/vendors"],
+      "menu": { "group": "purchases", "label": "sidebar.vendors", "icon": "Building2" },
+      "roles": []
+    },
+    {
+      "key": "bills",
+      "label": "Bills",
+      "dependsOn": ["vendors"],
+      "uses": ["items", "accounting", "paymentsMade"],
+      "api": ["/api/bills", "/api/reports/payables-aging", "/api/reports/purchases-by-vendor"],
+      "routes": ["/bills"],
+      "menu": { "group": "purchases", "label": "sidebar.bills", "icon": "Receipt" },
+      "roles": []
+    },
+    {
+      "key": "expenses",
+      "label": "Expenses",
+      "dependsOn": [],
+      "uses": ["accounting", "banking", "vendors", "customers"],
+      "api": ["/api/expenses", "/api/reports/expenses-by-category"],
+      "routes": ["/expenses"],
+      "menu": { "group": "purchases", "label": "sidebar.expenses", "icon": "CreditCard" },
+      "roles": []
+    },
+    {
+      "key": "paymentsMade",
+      "label": "Payments made",
+      "dependsOn": ["bills", "vendors"],
+      "uses": ["banking"],
+      "api": ["/api/vendor-payments"],
+      "routes": ["/payments-made"],
+      "menu": { "group": "purchases", "label": "sidebar.paymentsMade", "icon": "Wallet" },
+      "roles": []
+    },
+    {
+      "key": "financialHub",
+      "label": "Financial Hub",
+      "dependsOn": ["razorpay"],
+      "uses": [],
+      "api": ["/api/razorpay/financial-dashboard"],
+      "routes": ["/financial-dashboard"],
+      "menu": { "group": "lower", "label": "sidebar.financialHub", "icon": "CreditCard" },
+      "roles": ["admin", "viewer"]
+    },
+    {
+      "key": "receivablesPayables",
+      "label": "Receivables & Payables",
+      "dependsOn": ["invoices", "bills"],
+      "uses": ["reports"],
+      "api": [],
+      "routes": ["/receivables-payables"],
+      "menu": { "group": "lower", "label": "sidebar.receivablesPayables", "icon": "ArrowLeftRight" },
+      "roles": []
+    },
+    {
+      "key": "banking",
+      "label": "Banking",
+      "dependsOn": [],
+      "uses": ["accounting"],
+      "api": ["/api/banking"],
+      "routes": ["/banking"],
+      "menu": { "group": "lower", "label": "sidebar.banking", "icon": "Landmark" },
+      "roles": ["admin", "viewer"]
+    },
+    {
+      "key": "razorpay",
+      "label": "Razorpay payments",
+      "dependsOn": ["invoices"],
+      "uses": ["banking", "accounting"],
+      "api": ["/api/razorpay"],
+      "routes": ["/razorpay-payments"],
+      "menu": { "group": "lower", "label": "sidebar.razorpay", "icon": "IndianRupee" },
+      "roles": ["admin", "viewer"]
+    },
+    {
+      "key": "timeTracking",
+      "label": "Time tracking",
+      "dependsOn": [],
+      "uses": ["customers"],
+      "api": ["/api/projects", "/api/time-entries", "/api/me/time-entries"],
+      "routes": ["/time-tracking"],
+      "menu": { "group": "lower", "label": "sidebar.timeTracking", "icon": "FolderOpen" },
+      "roles": []
+    },
+    {
+      "key": "accounting",
+      "label": "Accountant",
+      "dependsOn": [],
+      "uses": [],
+      "api": ["/api/accounting"],
+      "routes": ["/accounting"],
+      "menu": { "group": "lower", "label": "sidebar.accounting", "icon": "BarChart3" },
+      "roles": ["admin", "viewer"]
+    },
+    {
+      "key": "reports",
+      "label": "Reports",
+      "dependsOn": [],
+      "uses": [],
+      "api": ["/api/reports"],
+      "routes": ["/reports"],
+      "menu": { "group": "lower", "label": "sidebar.reports", "icon": "BarChart3" },
+      "roles": []
+    },
+    {
+      "key": "documents",
+      "label": "Documents",
+      "dependsOn": [],
+      "uses": [],
+      "api": ["/api/documents"],
+      "routes": ["/documents"],
+      "menu": { "group": "lower", "label": "sidebar.documents", "icon": "FolderOpen" },
+      "roles": []
+    },
+    {
+      "key": "payroll",
+      "label": "Payroll",
+      "dependsOn": [],
+      "uses": ["banking"],
+      "api": ["/api/payroll", "/api/me/employee", "/api/me/payslips", "/api/me/leaves"],
+      "routes": ["/payroll"],
+      "menu": { "group": "lower", "label": "sidebar.payroll", "icon": "Users" },
+      "roles": ["admin", "viewer"]
+    }
+  ]
+}

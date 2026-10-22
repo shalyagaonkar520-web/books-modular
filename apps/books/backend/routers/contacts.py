@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
@@ -33,7 +33,7 @@ from backend.models import (
 )
 from backend.schemas.common import Message, Page
 from backend.schemas.contacts import ContactCreate, ContactOut, ContactSummary, ContactUpdate
-from backend.services import audit, export_service
+from backend.services import audit, export_service, products
 from backend.services.email_service import send_custom_message_email
 from backend.services.money import money
 from backend.services.tenancy import Pagination, get_or_404, paginate
@@ -122,6 +122,32 @@ def _linked_contact_ids(db: Session, contact_ids: List[str]) -> set:
     return linked
 
 
+# Customers and vendors are two modules sharing this API. A product with only
+# one of them (Rooman Expenses has vendors) reaches only that type: reads also
+# the types its modules look up (an expense's customer), writes only its own.
+_TYPE_MODULES = {"customer": "customers", "vendor": "vendors"}
+
+
+def _contact_types(request: Request, write: bool = False) -> List[str]:
+    product = products.current(request)
+    reach = product.module_set if write else product.module_set | product.uses
+    return [contact_type for contact_type, key in _TYPE_MODULES.items() if key in reach]
+
+
+def _check_type(request: Request, contact_type: Optional[str], write: bool = False) -> None:
+    if contact_type and contact_type not in _contact_types(request, write):
+        products.ensure_module(request, _TYPE_MODULES[contact_type])
+
+
+def _filter_types(request: Request, stmt, contact_type: Optional[str], write: bool = False):
+    """``stmt`` limited to ``contact_type`` (refused when outside the product), or to the product's types."""
+    if contact_type:
+        _check_type(request, contact_type, write)
+        return stmt.where(Contact.type == contact_type)
+    allowed = _contact_types(request, write)
+    return stmt if len(allowed) == len(_TYPE_MODULES) else stmt.where(Contact.type.in_(allowed))
+
+
 def to_out(contact: Contact, outstanding: Optional[Decimal] = None) -> ContactOut:
     data = ContactOut.model_validate(contact)
     data.outstanding_balance = money(outstanding or 0)
@@ -130,6 +156,7 @@ def to_out(contact: Contact, outstanding: Optional[Decimal] = None) -> ContactOu
 
 @router.get("", response_model=Page[ContactOut])
 def list_contacts(
+    request: Request,
     type: Optional[str] = Query(None, pattern="^(customer|vendor)$"),
     search: Optional[str] = None,
     include_inactive: bool = False,
@@ -137,9 +164,7 @@ def list_contacts(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    stmt = select(Contact).where(Contact.organization_id == user.organization_id)
-    if type:
-        stmt = stmt.where(Contact.type == type)
+    stmt = _filter_types(request, select(Contact).where(Contact.organization_id == user.organization_id), type)
     if not include_inactive:
         stmt = stmt.where(Contact.is_active.is_(True))
     if search and search.strip():
@@ -163,14 +188,14 @@ def list_contacts(
 
 @router.get("/export/pdf")
 def export_contacts_pdf(
+    request: Request,
     type: Optional[str] = Query(None, pattern="^(customer|vendor)$"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Export Contacts / Customers directory to PDF."""
     stmt = select(Contact).where(Contact.organization_id == user.organization_id, Contact.is_active.is_(True))
-    if type:
-        stmt = stmt.where(Contact.type == type)
+    stmt = _filter_types(request, stmt, type)
     stmt = stmt.order_by(Contact.display_name)
     contacts = db.execute(stmt).scalars().all()
     org = db.get(Organization, user.organization_id)
@@ -185,14 +210,14 @@ def export_contacts_pdf(
 
 @router.get("/export/excel")
 def export_contacts_excel(
+    request: Request,
     type: Optional[str] = Query(None, pattern="^(customer|vendor)$"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Export Contacts / Customers directory to Excel."""
     stmt = select(Contact).where(Contact.organization_id == user.organization_id, Contact.is_active.is_(True))
-    if type:
-        stmt = stmt.where(Contact.type == type)
+    stmt = _filter_types(request, stmt, type)
     stmt = stmt.order_by(Contact.display_name)
     contacts = db.execute(stmt).scalars().all()
     org = db.get(Organization, user.organization_id)
@@ -206,15 +231,17 @@ def export_contacts_excel(
 
 
 @router.get("/{contact_id}", response_model=ContactOut)
-def get_contact(contact_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_contact(contact_id: str, request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     contact = get_or_404(db, Contact, contact_id, user.organization_id, "Contact")
+    _check_type(request, contact.type)
     outstanding = _outstanding_map(db, user.organization_id, contact.type).get(contact.id)
     return to_out(contact, outstanding)
 
 
 @router.get("/{contact_id}/summary", response_model=ContactSummary)
-def contact_summary(contact_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def contact_summary(contact_id: str, request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     contact = get_or_404(db, Contact, contact_id, user.organization_id, "Contact")
+    _check_type(request, contact.type)
     today = date.today()
     if contact.type == "customer":
         docs = db.execute(select(Invoice).where(Invoice.customer_id == contact.id, Invoice.status != "void")).scalars().all()
@@ -237,7 +264,8 @@ def contact_summary(contact_id: str, user: User = Depends(get_current_user), db:
 
 
 @router.post("", response_model=ContactOut, status_code=status.HTTP_201_CREATED)
-def create_contact(payload: ContactCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def create_contact(payload: ContactCreate, request: Request, user: User = Depends(require_write), db: Session = Depends(get_db)):
+    _check_type(request, payload.type, write=True)
     _validate_ledger_account(db, user.organization_id, payload.type, payload.ledger_account_id)
     contact = Contact(organization_id=user.organization_id, **payload.model_dump())
     _sync_contact_person(contact)
@@ -251,8 +279,11 @@ def create_contact(payload: ContactCreate, user: User = Depends(require_write), 
 
 
 @router.put("/{contact_id}", response_model=ContactOut)
-def update_contact(contact_id: str, payload: ContactUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def update_contact(
+    contact_id: str, payload: ContactUpdate, request: Request, user: User = Depends(require_write), db: Session = Depends(get_db)
+):
     contact = get_or_404(db, Contact, contact_id, user.organization_id, "Contact")
+    _check_type(request, contact.type, write=True)
     ensure_editable(contact)
     fields = payload.model_dump(exclude_unset=True)
     if fields.get("ledger_account_id") and fields["ledger_account_id"] != contact.ledger_account_id:
@@ -272,6 +303,7 @@ def update_contact(contact_id: str, payload: ContactUpdate, user: User = Depends
 @router.post("/bulk-delete")
 def bulk_delete_contacts(
     payload: BulkDeleteContactsRequest,
+    request: Request,
     user: User = Depends(require_write),
     db: Session = Depends(get_db),
 ):
@@ -280,8 +312,7 @@ def bulk_delete_contacts(
     Contacts another app sent (Rooman Billing) are left alone: they are changed there.
     """
     stmt = select(Contact).where(Contact.organization_id == user.organization_id, Contact.source_app.is_(None))
-    if payload.type:
-        stmt = stmt.where(Contact.type == payload.type)
+    stmt = _filter_types(request, stmt, payload.type, write=True)
 
     if not payload.all_matching:
         if not payload.ids:
@@ -371,8 +402,9 @@ def bulk_delete_contacts(
 
 
 @router.delete("/{contact_id}", response_model=Message)
-def delete_contact(contact_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def delete_contact(contact_id: str, request: Request, user: User = Depends(require_write), db: Session = Depends(get_db)):
     contact = get_or_404(db, Contact, contact_id, user.organization_id, "Contact")
+    _check_type(request, contact.type, write=True)
     ensure_editable(contact)
     has_docs = (
         db.execute(select(Invoice.id).where(Invoice.customer_id == contact.id).limit(1)).first()
@@ -402,11 +434,13 @@ def delete_contact(contact_id: str, user: User = Depends(require_write), db: Ses
 def send_contact_email(
     contact_id: str,
     payload: SendContactEmailRequest,
+    request: Request,
     user: User = Depends(require_write),
     db: Session = Depends(get_db),
 ):
     """Send direct communication/statement message to Customer/Vendor via Gmail SMTP."""
     contact = get_or_404(db, Contact, contact_id, user.organization_id, "Contact")
+    _check_type(request, contact.type, write=True)
     recipient = payload.to_email or contact.email
     if not recipient or not recipient.strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No email address found for this contact")

@@ -1,0 +1,21 @@
+{
+  "fallback": "books",
+  "products": [
+    {
+      "key": "books",
+      "name": "Rooman Books",
+      "appKey": "books",
+      "domains": ["books.futureacad.ae"],
+      "modules": "all"
+    },
+    {
+      "key": "expenses",
+      "name": "Rooman Expenses",
+      "appKey": "expenses",
+      "domains": ["expenses.futureacad.ae"],
+      "logoUrl": "/rooman-logo.png",
+      "primaryColor": "#0f766e",
+      "modules": ["expenses", "bills", "vendors", "reports"]
+    }
+  ]
+}

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -23,7 +23,7 @@ from backend.schemas.auth import (
     UserStats,
 )
 from backend.schemas.common import Message, Page
-from backend.services import export_service, org_users
+from backend.services import export_service, org_users, products
 from backend.services.tenancy import Pagination
 
 router = APIRouter(prefix="/api", tags=["Organization"])
@@ -73,9 +73,20 @@ def reset_password(
     return org_users.reset_user_password(db, user.organization_id, user, user_id, payload)
 
 
+def _within_product(request: Request, employee, payslips, time_entries):
+    """A user's overview shows payroll and time entries only in a product that includes them."""
+    product = products.current(request)
+    if not product.has("payroll"):
+        employee, payslips = None, []
+    if not product.has("timeTracking"):
+        time_entries = []
+    return employee, payslips, time_entries
+
+
 @router.get("/users/{user_id}/dashboard", response_model=UserDashboardOut)
 def get_user_dashboard(
     user_id: str,
+    request: Request,
     user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -118,6 +129,8 @@ def get_user_dashboard(
         .order_by(TimeEntry.date.desc(), TimeEntry.created_at.desc())
     )
     time_entries = db.execute(time_stmt).scalars().all()
+    employee, payslips_data, time_entries = _within_product(request, employee, payslips_data, time_entries)
+    emp_data = emp_data if employee else None
     time_data = [entry_out(t).model_dump() for t in time_entries]
 
     audit_stmt = (
@@ -152,6 +165,7 @@ def get_user_dashboard(
 @router.get("/users/{user_id}/pdf")
 def export_user_dashboard_pdf(
     user_id: str,
+    request: Request,
     user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -188,6 +202,7 @@ def export_user_dashboard_pdf(
         .order_by(TimeEntry.date.desc(), TimeEntry.created_at.desc())
     )
     time_entries = db.execute(time_stmt).scalars().all()
+    employee, payslips, time_entries = _within_product(request, employee, payslips, time_entries)
 
     audit_stmt = (
         select(AuditLog)

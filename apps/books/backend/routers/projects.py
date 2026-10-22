@@ -24,7 +24,7 @@ from backend.schemas.timetracking import (
     TimeEntryOut,
     TimeEntryUpdate,
 )
-from backend.services import audit, numbering
+from backend.services import audit, numbering, products
 from backend.services.invoicing import invoice_out, post_invoice
 from backend.services.money import money
 from backend.services.tenancy import Pagination, get_or_404, paginate
@@ -223,7 +223,9 @@ def delete_time_entry(entry_id: str, user: User = Depends(require_write), db: Se
 def invoice_unbilled_time(
     payload: InvoiceFromTimeRequest, request: Request, user: User = Depends(require_write), db: Session = Depends(get_db)
 ):
-    # This creates an invoice: it needs Invoices access, not only Time tracking.
+    # This creates an invoice: it needs Invoices in the product and Invoices
+    # access, not only Time tracking.
+    products.ensure_module(request, "invoices")
     error = module_write_error(user, ("invoices",), request)
     if error:
         raise HTTPException(status.HTTP_403_FORBIDDEN, error)
