@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Printer } from 'lucide-react';
 
+import type { AppModuleKey } from '@/api/appContent';
 import { Button } from '@/components/ui/Button';
 import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -37,17 +38,19 @@ interface ReportMeta {
   /** Built from ledger balances; the API restricts these to admin/viewer. */
   financialOnly?: boolean;
   range: RangeKind;
+  /** The module whose records it reports on; shown only in a product that includes it. */
+  module?: AppModuleKey;
 }
 
 const REPORTS: ReportMeta[] = [
   { id: 'profit_and_loss', textKey: 'reports.profitAndLoss', range: 'period', financialOnly: true },
   { id: 'balance_sheet', textKey: 'reports.balanceSheet', range: 'as_of', financialOnly: true },
-  { id: 'receivables_ageing', textKey: 'reports.receivablesAgeing', range: 'as_of' },
-  { id: 'payables_ageing', textKey: 'reports.payablesAgeing', range: 'as_of' },
-  { id: 'sales_by_customer', textKey: 'reports.salesByCustomer', range: 'period' },
-  { id: 'purchases_by_vendor', textKey: 'reports.purchasesByVendor', range: 'period' },
-  { id: 'expenses_by_category', textKey: 'reports.expensesByCategory', range: 'period' },
-  { id: 'inventory_summary', textKey: 'reports.inventorySummary', range: 'none' },
+  { id: 'receivables_ageing', textKey: 'reports.receivablesAgeing', range: 'as_of', module: 'invoices' },
+  { id: 'payables_ageing', textKey: 'reports.payablesAgeing', range: 'as_of', module: 'bills' },
+  { id: 'sales_by_customer', textKey: 'reports.salesByCustomer', range: 'period', module: 'invoices' },
+  { id: 'purchases_by_vendor', textKey: 'reports.purchasesByVendor', range: 'period', module: 'bills' },
+  { id: 'expenses_by_category', textKey: 'reports.expensesByCategory', range: 'period', module: 'expenses' },
+  { id: 'inventory_summary', textKey: 'reports.inventorySummary', range: 'none', module: 'items' },
   { id: 'tax_summary', textKey: 'reports.taxSummary', range: 'period' },
 ];
 
@@ -60,15 +63,22 @@ function fiscalYearStartIso(fiscalStartMonth: number): string {
 }
 
 export function ReportsPage() {
-  const { t } = useAppContent();
+  const { t, isInProduct } = useAppContent();
   const { organization, can } = useAuth();
   const fiscalStartMonth = organization?.fiscalYearStartMonth ?? 4;
   const defaultStart = useMemo(() => fiscalYearStartIso(fiscalStartMonth), [fiscalStartMonth]);
 
   // Profit & Loss and the Balance Sheet read ledger balances, which the API
   // serves only to admin and viewer; hide them from staff so they don't land
-  // on a report that 403s.
-  const visibleReports = useMemo(() => REPORTS.filter((report) => !report.financialOnly || can('admin', 'viewer')), [can]);
+  // on a report that 403s. A report on a module outside the product is not
+  // offered either (the API refuses it there).
+  const visibleReports = useMemo(
+    () =>
+      REPORTS.filter(
+        (report) => (!report.financialOnly || can('admin', 'viewer')) && (!report.module || isInProduct(report.module)),
+      ),
+    [can, isInProduct],
+  );
 
   const [activeId, setActiveId] = useState<ReportId>(() => (can('admin', 'viewer') ? 'profit_and_loss' : 'receivables_ageing'));
   const [startDate, setStartDate] = useState(defaultStart);

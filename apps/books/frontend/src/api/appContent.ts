@@ -7,6 +7,7 @@
  * (and still renders when the API is unreachable).
  */
 import defaultContentJson from '@/content/appContentDefault.json';
+import moduleRegistryJson from '@/content/modules.json';
 
 import { isSafeLogoUrl } from './siteContent';
 import { api } from './client';
@@ -37,10 +38,20 @@ export interface AppBranding {
   primaryColor: string;
 }
 
+/** The product the app is served as (chosen by the server from the web address): Rooman Books, Rooman Expenses, … */
+export interface AppProduct {
+  key: string;
+  name: string;
+  /** Its modules, dependencies included; anything else is not part of the product. */
+  modules: AppModuleKey[];
+}
+
 export interface AppContent {
   branding: AppBranding;
   modules: Record<AppModuleKey, boolean>;
   texts: Record<string, string>;
+  /** Absent in the bundled defaults and from older servers: then every module is in (Rooman Books). */
+  product?: AppProduct;
 }
 
 /** The bundled defaults (identical to the backend's default document). */
@@ -54,34 +65,33 @@ export const APP_CONTENT_LIMITS = {
   text: 300,
 } as const;
 
+export interface AppModuleMenu {
+  /** Where the sidebar shows it: on its own near the top, under Sales or Purchases, or below. */
+  group: 'main' | 'sales' | 'purchases' | 'lower';
+  /** Text key of the sidebar label. */
+  label: string;
+  /** lucide-react icon name (see components/layout/Sidebar.tsx). */
+  icon: string;
+}
+
 export interface AppModuleMeta {
   key: AppModuleKey;
   label: string;
-  /** Route prefixes owned by the module (the prefix itself and anything below it). */
+  /** Route prefixes owned by the module (the prefix itself and anything below it); the first is its page. */
   routes: string[];
+  menu: AppModuleMenu;
+  /** Roles the sidebar shows it to; empty = every role of the main app. The API checks roles itself. */
+  roles: string[];
+  dependsOn: AppModuleKey[];
+  uses: AppModuleKey[];
 }
 
-/** Every module that can be switched off, in sidebar order. Dashboard and Settings are always on. */
-export const APP_MODULES: AppModuleMeta[] = [
-  { key: 'items', label: 'Items', routes: ['/items'] },
-  { key: 'customers', label: 'Customers', routes: ['/customers'] },
-  { key: 'invoices', label: 'Invoices', routes: ['/invoices'] },
-  { key: 'paymentsReceived', label: 'Payments received', routes: ['/payments-received'] },
-  { key: 'expenseDashboard', label: 'Expense dashboard', routes: ['/expense-dashboard'] },
-  { key: 'vendors', label: 'Vendors', routes: ['/vendors'] },
-  { key: 'bills', label: 'Bills', routes: ['/bills'] },
-  { key: 'expenses', label: 'Expenses', routes: ['/expenses'] },
-  { key: 'paymentsMade', label: 'Payments made', routes: ['/payments-made'] },
-  { key: 'financialHub', label: 'Financial Hub', routes: ['/financial-dashboard'] },
-  { key: 'receivablesPayables', label: 'Receivables & Payables', routes: ['/receivables-payables'] },
-  { key: 'banking', label: 'Banking', routes: ['/banking'] },
-  { key: 'razorpay', label: 'Razorpay payments', routes: ['/razorpay-payments'] },
-  { key: 'timeTracking', label: 'Time tracking', routes: ['/time-tracking'] },
-  { key: 'accounting', label: 'Accountant', routes: ['/accounting'] },
-  { key: 'reports', label: 'Reports', routes: ['/reports'] },
-  { key: 'documents', label: 'Documents', routes: ['/documents'] },
-  { key: 'payroll', label: 'Payroll', routes: ['/payroll'] },
-];
+/**
+ * Every module that can be switched off, in sidebar order, from the module
+ * registry (content/modules.json, a byte-for-byte copy of the backend's).
+ * Dashboard and Settings are core: always on.
+ */
+export const APP_MODULES = moduleRegistryJson.modules as AppModuleMeta[];
 
 /** The module that owns a pathname, or null for always-on pages (dashboard, settings, profile…). */
 export function moduleForPath(pathname: string): AppModuleKey | null {
@@ -163,7 +173,16 @@ export function normalizeAppContent(raw: unknown): AppContent {
     if (typeof value === 'string' && value !== '') texts[key] = value;
   });
 
-  return { branding, modules, texts };
+  const product = normalizeProduct(raw.product);
+  return product ? { branding, modules, texts, product } : { branding, modules, texts };
+}
+
+const MODULE_KEYS = new Set<string>(APP_MODULES.map((module) => module.key));
+
+function normalizeProduct(raw: unknown): AppProduct | undefined {
+  if (!isRecord(raw) || typeof raw.key !== 'string' || typeof raw.name !== 'string' || !Array.isArray(raw.modules)) return undefined;
+  const modules = raw.modules.filter((key): key is AppModuleKey => typeof key === 'string' && MODULE_KEYS.has(key));
+  return { key: raw.key, name: raw.name, modules };
 }
 
 /**

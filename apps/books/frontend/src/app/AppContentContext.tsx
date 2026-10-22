@@ -1,6 +1,7 @@
 /**
  * Serves the tenant app's editable content (see api/appContent.ts) to every
- * component: `t(key, vars)` for texts, `branding`, and `isModuleEnabled(key)`.
+ * component: `t(key, vars)` for texts, `branding`, `isModuleEnabled(key)` and
+ * the `product` the app is served as (`isInProduct(key)`).
  *
  * The bundled defaults render immediately (no flash of empty labels); the
  * published document is fetched on mount and swapped in when it arrives.
@@ -21,6 +22,7 @@ import {
   type AppBranding,
   type AppContent,
   type AppModuleKey,
+  type AppProduct,
 } from '@/api/appContent';
 import { useTheme, type ThemeMode } from './theme';
 import { useOptionalAuth } from '@/auth/AuthContext';
@@ -31,7 +33,12 @@ export interface AppContentValue {
   content: AppContent;
   branding: AppBranding;
   t: (key: string, vars?: TextVars) => string;
+  /** In the product and switched on for the organization: what the sidebar and routes show. */
   isModuleEnabled: (key: AppModuleKey) => boolean;
+  /** In the product the app is served as (Rooman Books has every module), whatever the organization switched off. */
+  isInProduct: (key: AppModuleKey) => boolean;
+  /** Undefined until the server says (then the app is Rooman Books, with every module). */
+  product: AppProduct | undefined;
   /** Re-fetch the published document (e.g. after the admin saves it). */
   reload: () => Promise<void>;
 }
@@ -41,11 +48,14 @@ function buildValue(content: AppContent, reload: () => Promise<void>): AppConten
     const text = content.texts[key] || DEFAULT_APP_CONTENT.texts[key] || key;
     return interpolate(text, { appName: content.branding.appName, ...vars });
   };
+  const isInProduct = (key: AppModuleKey) => !content.product || content.product.modules.includes(key);
   return {
     content,
     branding: content.branding,
     t,
-    isModuleEnabled: (key) => content.modules[key] !== false,
+    isModuleEnabled: (key) => content.modules[key] !== false && isInProduct(key),
+    isInProduct,
+    product: content.product,
     reload,
   };
 }

@@ -19,7 +19,7 @@ import {
   Wallet,
 } from 'lucide-react';
 
-import type { AppModuleKey } from '@/api/appContent';
+import { APP_MODULES, type AppModuleKey, type AppModuleMenu } from '@/api/appContent';
 import { useAppContent } from '@/app/AppContentContext';
 import { useAuth } from '@/auth/AuthContext';
 
@@ -42,47 +42,41 @@ interface NavGroup {
   entries: NavEntry[];
 }
 
+/** The icons the module registry (content/modules.json) may name. */
+const ICONS: Record<string, typeof Home> = {
+  ArrowLeftRight,
+  BarChart3,
+  Building2,
+  CreditCard,
+  FileText,
+  FolderOpen,
+  IndianRupee,
+  Landmark,
+  Package,
+  Receipt,
+  Users,
+  Wallet,
+};
+
+/** The sidebar entries of one registry group, in registry order. */
+function moduleLinks(group: AppModuleMenu['group']): NavEntry[] {
+  return APP_MODULES.filter((module) => module.menu.group === group).map((module) => ({
+    to: module.routes[0],
+    label: module.menu.label,
+    icon: ICONS[module.menu.icon] ?? FolderOpen,
+    module: module.key,
+    staffBlocked: module.roles.length > 0 && !module.roles.includes('staff'),
+  }));
+}
+
 const GROUPS: NavGroup[] = [
-  {
-    id: 'sales',
-    label: 'sidebar.sales',
-    icon: ShoppingCart,
-    entries: [
-      { to: '/customers', label: 'sidebar.customers', icon: Users, module: 'customers' },
-      { to: '/invoices', label: 'sidebar.invoices', icon: FileText, module: 'invoices' },
-      { to: '/payments-received', label: 'sidebar.paymentsReceived', icon: Wallet, module: 'paymentsReceived' },
-    ],
-  },
-  {
-    id: 'purchases',
-    label: 'sidebar.purchases',
-    icon: ShoppingBag,
-    entries: [
-      { to: '/expense-dashboard', label: 'sidebar.expenseDashboard', icon: BarChart3, module: 'expenseDashboard' },
-      { to: '/vendors', label: 'sidebar.vendors', icon: Building2, module: 'vendors' },
-      { to: '/bills', label: 'sidebar.bills', icon: Receipt, module: 'bills' },
-      { to: '/expenses', label: 'sidebar.expenses', icon: CreditCard, module: 'expenses' },
-      { to: '/payments-made', label: 'sidebar.paymentsMade', icon: Wallet, module: 'paymentsMade' },
-    ],
-  },
+  { id: 'sales', label: 'sidebar.sales', icon: ShoppingCart, entries: moduleLinks('sales') },
+  { id: 'purchases', label: 'sidebar.purchases', icon: ShoppingBag, entries: moduleLinks('purchases') },
 ];
 
-const SINGLE_LINKS: NavEntry[] = [
-  { to: '/dashboard', label: 'sidebar.dashboard', icon: Home },
-  { to: '/items', label: 'sidebar.items', icon: Package, module: 'items' },
-];
+const SINGLE_LINKS: NavEntry[] = [{ to: '/dashboard', label: 'sidebar.dashboard', icon: Home }, ...moduleLinks('main')];
 
-const LOWER_LINKS: NavEntry[] = [
-  { to: '/financial-dashboard', label: 'sidebar.financialHub', icon: CreditCard, staffBlocked: true, module: 'financialHub' },
-  { to: '/receivables-payables', label: 'sidebar.receivablesPayables', icon: ArrowLeftRight, module: 'receivablesPayables' },
-  { to: '/banking', label: 'sidebar.banking', icon: Landmark, staffBlocked: true, module: 'banking' },
-  { to: '/razorpay-payments', label: 'sidebar.razorpay', icon: IndianRupee, staffBlocked: true, module: 'razorpay' },
-  { to: '/time-tracking', label: 'sidebar.timeTracking', icon: FolderOpen, module: 'timeTracking' },
-  { to: '/accounting', label: 'sidebar.accounting', icon: BarChart3, staffBlocked: true, module: 'accounting' },
-  { to: '/reports', label: 'sidebar.reports', icon: BarChart3, module: 'reports' },
-  { to: '/documents', label: 'sidebar.documents', icon: FolderOpen, module: 'documents' },
-  { to: '/payroll', label: 'sidebar.payroll', icon: Users, staffBlocked: true, module: 'payroll' },
-];
+const LOWER_LINKS: NavEntry[] = moduleLinks('lower');
 
 export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () => void }) {
   const { isAdmin, isStaff } = useAuth();

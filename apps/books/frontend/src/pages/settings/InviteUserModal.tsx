@@ -21,11 +21,15 @@ interface InviteUserModalProps {
 }
 
 export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
-  const { t } = useAppContent();
+  const { t, isInProduct } = useAppContent();
   const toast = useToast();
   const orgApi = useScopedOrgApi();
-  // The org admin panel has no payroll, so it cannot link a portal-only employee.
-  const { employeeInvites, customInvites } = useApiScope().capabilities;
+  // The org admin panel has no payroll, so it cannot link a portal-only employee;
+  // nor can a product without Payroll (Rooman Expenses).
+  const capabilities = useApiScope().capabilities;
+  const customInvites = capabilities.customInvites;
+  const employeeInvites = capabilities.employeeInvites && isInProduct('payroll');
+  const editableModules = EDITABLE_MODULES.filter((module) => isInProduct(module.key));
   const { submitting, error, fieldErrors, run, setError } = useSubmit();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -48,7 +52,7 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
       else next.delete(key);
       return next;
     });
-  const chosenKeys = EDITABLE_MODULES.map((module) => module.key).filter((key) => chosen.has(key) && inPlan(key));
+  const chosenKeys = editableModules.map((module) => module.key).filter((key) => chosen.has(key) && inPlan(key));
 
   const unlinkedEmployees = useAsync<EmployeeOption[]>(
     () => (employeeInvites ? payrollApi.unlinkedEmployees() : Promise.resolve([])),
@@ -143,7 +147,7 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
               later from their user window.
             </p>
             <div className="form-grid-3" role="group" aria-label="Modules they can edit">
-              {EDITABLE_MODULES.map((module) => {
+              {editableModules.map((module) => {
                 const available = inPlan(module.key);
                 return (
                   <label

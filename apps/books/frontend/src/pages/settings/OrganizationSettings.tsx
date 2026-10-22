@@ -57,7 +57,7 @@ function toForm(org: Organization): FormState {
 }
 
 export function OrganizationSettings() {
-  const { t } = useAppContent();
+  const { t, isInProduct } = useAppContent();
   const toast = useToast();
   const { refreshOrganization } = useAuth();
   const { actor, onOrganizationSaved } = useApiScope();
@@ -204,20 +204,25 @@ export function OrganizationSettings() {
               hint={t('settings.org.defaultPaymentTermsHint')}
             />
           </div>
-          <TextAreaField
-            label={t('settings.org.invoiceTerms')}
-            value={form.invoiceTerms}
-            rows={3}
-            onChange={set('invoiceTerms')}
-            error={fieldErrors.invoiceTerms}
-          />
-          <TextAreaField
-            label={t('settings.org.invoiceNotes')}
-            value={form.invoiceNotes}
-            rows={3}
-            onChange={set('invoiceNotes')}
-            error={fieldErrors.invoiceNotes}
-          />
+          {/* Invoice defaults only in a product with Invoices; the values are kept either way. */}
+          {isInProduct('invoices') ? (
+            <>
+              <TextAreaField
+                label={t('settings.org.invoiceTerms')}
+                value={form.invoiceTerms}
+                rows={3}
+                onChange={set('invoiceTerms')}
+                error={fieldErrors.invoiceTerms}
+              />
+              <TextAreaField
+                label={t('settings.org.invoiceNotes')}
+                value={form.invoiceNotes}
+                rows={3}
+                onChange={set('invoiceNotes')}
+                error={fieldErrors.invoiceNotes}
+              />
+            </>
+          ) : null}
         </div>
       </div>
     </Card>
