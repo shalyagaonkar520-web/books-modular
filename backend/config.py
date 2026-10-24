@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     smtp_from: str = Field(default="", description="SMTP_FROM email address")
     app_url: str = Field(default="http://localhost:3000", description="Frontend application URL")
 
+    # AI assistant (Claude API). The key is read from the environment only; with
+    # no key the AI features answer 503 and the rest of the app is unaffected.
+    anthropic_api_key: str = Field(default="", description="ANTHROPIC_API_KEY")
+    ai_model: str = Field(default="claude-opus-5-5", description="Claude model used by the AI assistant")
+
     # Razorpay gateway
     # Credentials are read from the environment only. Never hardcode them here:
     # this file is committed to Git, so a default value is a leaked secret.

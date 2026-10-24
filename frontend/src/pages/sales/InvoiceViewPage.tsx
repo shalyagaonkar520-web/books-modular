@@ -22,6 +22,7 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { documentCurrency, formatCurrency, formatDate, formatPercent, formatQuantity } from '@/utils/format';
 import { paymentModeLabel, type Translate, statusLabel, statusTone } from '@/utils/status';
 
+import { ApprovalBanner, CustomFieldsCard, ShareLinkCard } from '@/pages/automation/DocumentExtrasCards';
 import { InvoiceCreditsCard } from '@/pages/docflow/InvoiceCreditsCard';
 
 import { InvoiceGstCard } from './InvoiceGstCard';
@@ -183,6 +184,7 @@ export function InvoiceViewPage() {
           </>
         }
       />
+      <ApprovalBanner kind="invoice" id={data.id} status={data.status} total={data.total} approvalStatus={data.approvalStatus} approvalNote={data.approvalNote} onChanged={refresh} />
 
       <div className="stack printable">
         <Card>
@@ -350,6 +352,10 @@ export function InvoiceViewPage() {
         <InvoiceCreditsCard invoice={data} onChanged={refresh} />
 
         <InvoiceGstCard invoice={data} onChanged={refresh} />
+
+        <ShareLinkCard kind="invoice" id={data.id} status={data.status} />
+
+        <CustomFieldsCard entity="invoice" entityId={data.id} />
       </div>
 
       <RecordPaymentModal open={payingOpen} invoice={paymentContext} onClose={() => setPayingOpen(false)} onSaved={refresh} />

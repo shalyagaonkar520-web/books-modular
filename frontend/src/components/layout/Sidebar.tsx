@@ -19,12 +19,14 @@ import {
   PiggyBank,
   Receipt,
   Repeat,
+  Sparkles,
   ShoppingBag,
   ShoppingCart,
   Undo2,
   Users,
   Wallet,
   Warehouse,
+  Zap,
 } from 'lucide-react';
 
 import type { AppModuleKey } from '@/api/appContent';
@@ -85,6 +87,7 @@ const GROUPS: NavGroup[] = [
 
 const SINGLE_LINKS: NavEntry[] = [
   { to: '/dashboard', label: 'sidebar.dashboard', icon: Home },
+  { to: '/ai-assistant', label: 'sidebar.aiAssistant', icon: Sparkles },
   { to: '/items', label: 'sidebar.items', icon: Package, module: 'items' },
   { to: '/inventory', label: 'sidebar.inventory', icon: Warehouse, module: 'items' },
 ];
@@ -158,6 +161,12 @@ export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () =>
             </NavLink>
           ))}
 
+          {isAdmin ? (
+            <NavLink to="/automation" className="nav-link" onClick={onNavigate}>
+              <Zap size={17} aria-hidden="true" />
+              <span>{t('sidebar.automation')}</span>
+            </NavLink>
+          ) : null}
           {isAdmin ? (
             <NavLink to="/settings" className="nav-link" onClick={onNavigate}>
               <Building2 size={17} aria-hidden="true" />

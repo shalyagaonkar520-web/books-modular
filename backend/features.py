@@ -200,6 +200,19 @@ FEATURES: Tuple[Feature, ...] = (
     ),
     Feature("reports", "Reports", ("reports:router",), (), ("/api/reports",), "Profit and loss, balance sheet, GST and more."),
     # Mounted for the app, never offered to connected apps.
+    Feature("portal", "Share links", ("portal:share_router",), ("invoices",)),
+    Feature(
+        "automation",
+        "Automation",
+        (
+            "automation:custom_fields_router",
+            "automation:workflow_router",
+            "automation:approvals_router",
+            "automation:branding_router",
+            "automation:schedules_router",
+        ),
+    ),
+    Feature("ai", "AI assistant", ("ai:router",)),
     Feature("dashboard", "Dashboard", ("dashboard:router",)),
     Feature("organization", "Organization settings", ("organization:router",)),
     Feature("currencies", "Currencies", ("currencies:router",)),

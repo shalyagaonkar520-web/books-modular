@@ -261,6 +261,8 @@ export interface Invoice {
   fcAmountPaid?: number | null;
   fcBalanceDue?: number | null;
   warehouseId?: string | null;
+  approvalStatus?: string | null;
+  approvalNote?: string | null;
   lines: DocumentLine[];
   createdAt: string;
   updatedAt: string;
@@ -348,6 +350,8 @@ export interface Bill {
   fcAmountPaid?: number | null;
   fcBalanceDue?: number | null;
   warehouseId?: string | null;
+  approvalStatus?: string | null;
+  approvalNote?: string | null;
   lines: DocumentLine[];
   createdAt: string;
   updatedAt: string;

@@ -99,6 +99,24 @@ transactions they recorded themselves.
 
 A marketing landing page with pricing, driven by content that super-admins edit from the platform panel.
 
+### 2.8 Advanced accounting, compliance and automation
+
+| Area | What it does |
+| --- | --- |
+| **Sales documents** | Quotes (accept / decline, expiry) -> sales orders -> invoices in one click; credit notes that reverse income, GST and stock, applied to invoices or refunded; customer advances applied to invoices or refunded |
+| **Purchase documents** | Purchase orders -> bills; vendor credits applied to bills or refunded; vendor advances |
+| **Recurring** | Recurring invoices, bills and journals on weekly / monthly / quarterly / yearly schedules, with catch-up, pause and an hourly runner |
+| **Books lock** | A lock date after which nothing can be posted, edited, voided or deleted (enforced in the ledger) |
+| **India compliance** | Place of supply with CGST + SGST / IGST split; TCS on invoices; TDS and reverse charge on bills; GSTR-1 (B2B, B2CL, B2CS, exports, credit notes, HSN) and GSTR-3B with statutory ITC set-off as JSON and Excel; TDS / TCS register; e-invoice (IRP 1.1) and e-way bill JSON with IRN recording |
+| **Multi-currency** | Invoices, bills and payments in the contact's currency, booked in INR at the document rate; realised exchange gain / loss on payment; currency rate table |
+| **Fixed assets** | Asset register with straight-line or declining-balance depreciation posted monthly; disposal with gain / loss |
+| **Budgets** | Monthly budgets per income / expense account and budget vs actual |
+| **Inventory control** | Warehouses with per-warehouse stock, transfer orders, batches with expiry, composite items (bill of materials + assembly), price lists, stock ledger with running balance |
+| **Reports** | Adds the cash-flow statement (indirect method) and a 13-week cash forecast |
+| **Automation** | Workflow rules (email / signed webhook on create, update, delete, overdue), custom fields, approval limits for invoices and bills, scheduled report emails, document branding |
+| **Customer portal** | Private share links to view / download invoices and accept or decline quotes without logging in |
+| **AI assistant** | Scan a bill or receipt into a draft bill; suggest ledger accounts for bank lines; answer questions about the books using read-only tools (Claude API; off unless `ANTHROPIC_API_KEY` is set) |
+
 ---
 
 ## 3. Tech stack
@@ -175,9 +193,10 @@ the journal, and the system refuses any journal entry where debits ≠ credits.
 
 ## 5. AI tools: where AI can be used
 
-The current product contains **no AI features**. Every calculation is deterministic accounting
-logic, which is correct for financial data. AI fits in two places: **building** the product
-faster, and **adding smart features** for customers.
+Every calculation in the books stays deterministic accounting logic. The **AI assistant**
+(section 2.8; `backend/services/ai.py`, model set by `AI_MODEL`, default `claude-opus-5-5`)
+only reads data or returns drafts and suggestions a person reviews; it never posts. AI also
+helps with **building** the product faster.
 
 ### 5.1 AI tools for building and maintaining the project
 

@@ -19,6 +19,8 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatDate, formatQuantity } from '@/utils/format';
 import { paymentModeLabel } from '@/utils/status';
 
+import { CustomFieldsCard, ShareLinkCard } from '@/pages/automation/DocumentExtrasCards';
+
 import { DOC_CONFIGS } from './config';
 import { ApplyCreditModal, RefundModal } from './CreditModals';
 import { flowStatusLabel, flowStatusTone } from './status';
@@ -329,6 +331,9 @@ export function DocumentViewPage({ kind }: { kind: DocKindKey }) {
             </div>
           </Card>
         ) : null}
+
+        {kind === 'estimate' ? <ShareLinkCard kind="estimate" id={d.id} status={d.status} /> : null}
+        <CustomFieldsCard entity={kind} entityId={d.id} />
 
         {d.notes || d.terms ? (
           <Card title={t('docflow.form.notesSection')}>

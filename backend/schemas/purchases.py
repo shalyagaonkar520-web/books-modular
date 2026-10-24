@@ -84,6 +84,8 @@ class BillOut(APIModel):
     tds_rate: Decimal = Decimal("0")
     tds_amount: Decimal = Decimal("0")
     warehouse_id: Optional[str] = None
+    approval_status: Optional[str] = None
+    approval_note: Optional[str] = None
     currency: Optional[str] = None
     exchange_rate: Decimal = Decimal("1")
     fc_subtotal: Optional[Decimal] = None

@@ -20,7 +20,7 @@ from backend.routers.invoices import fc_fields
 from backend.schemas.common import Message, Page
 from backend.schemas.purchases import BillCreate, BillListItem, BillOut, BillStats, BillStatusUpdate, BillUpdate
 from backend.schemas.sales import LineOut
-from backend.services import audit, doc_flow, export_service, fx, inventory, ledger, numbering, stock
+from backend.services import approvals, audit, doc_flow, export_service, fx, inventory, ledger, numbering, stock
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.documents import compute_lines, group_by_account, totals
 from backend.services.email_service import get_smtp_connection, sender_identity
@@ -85,6 +85,8 @@ def to_out(bill: Bill) -> BillOut:
         tds_rate=bill.tds_rate,
         tds_amount=bill.tds_amount,
         warehouse_id=bill.warehouse_id,
+        approval_status=bill.approval_status,
+        approval_note=bill.approval_note,
         **fc_fields(bill),
         created_at=bill.created_at,
         updated_at=bill.updated_at,
@@ -203,6 +205,7 @@ def _unreceive_at_average_cost(item: Item, on_hand: Decimal, quantity: Decimal, 
 
 def post_bill(db: Session, bill: Bill, user: User) -> None:
     """Journal: Dr expense/inventory accounts, Dr Input GST; Cr AP total, Cr Purchase Discounts."""
+    approvals.ensure_approved(db, bill, "bill", user)
     org_id = bill.organization_id
     # As with invoices, a vendor may be pointed at its own payables account.
     ap = bill.vendor.ledger_account or get_account_by_code(db, org_id, "2000")

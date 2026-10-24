@@ -36,7 +36,7 @@ from backend.schemas.sales import (
     InvoiceUpdate,
     LineOut,
 )
-from backend.services import audit, doc_flow, export_service, fx, inventory, ledger, numbering, stock
+from backend.services import approvals, audit, doc_flow, export_service, fx, inventory, ledger, numbering, stock
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.documents import compute_lines, group_by_account, totals
 from backend.services.email_service import send_due_reminder_email, send_invoice_email
@@ -128,6 +128,8 @@ def to_out(inv: Invoice) -> InvoiceOut:
         irn_ack_date=inv.irn_ack_date,
         eway_bill_no=inv.eway_bill_no,
         warehouse_id=inv.warehouse_id,
+        approval_status=inv.approval_status,
+        approval_note=inv.approval_note,
         **fc_fields(inv),
         created_at=inv.created_at,
         updated_at=inv.updated_at,
@@ -217,6 +219,7 @@ def _apply_payload(db: Session, inv: Invoice, payload: InvoiceCreate, org_id: st
 
 def post_invoice(db: Session, inv: Invoice, user: User) -> None:
     """Journal: Dr AR total, Dr Discount; Cr income accounts, Cr Output GST. Plus COGS for tracked goods."""
+    approvals.ensure_approved(db, inv, "invoice", user)
     org_id = inv.organization_id
     # A customer can be pointed at its own receivables account; most are not,
     # and fall back to the org-wide one.

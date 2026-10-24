@@ -143,6 +143,16 @@ def _in_document_currency(invoice):
     )
 
 
+def _org_lines(address: str, city_state: str, gstin: str, email: str) -> str:
+    """The supplier block of a PDF, leaving out whatever the organization has not filled in."""
+    lines = [x for x in (address, city_state) if x]
+    if gstin:
+        lines.append(f"GSTIN: {gstin}")
+    if email:
+        lines.append(f"Email: {email}")
+    return "<br/>".join(lines)
+
+
 def _fmt_date(d: Optional[date | datetime]) -> str:
     if not d:
         return "-"
@@ -163,6 +173,7 @@ def generate_invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -
 
 
 def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
+    accent = (org.brand_color if org and org.brand_color else None) or "#2563eb"
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -188,7 +199,7 @@ def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
         fontName="Helvetica-Bold",
         fontSize=12,
         leading=16,
-        textColor=colors.HexColor("#2563eb"),
+        textColor=colors.HexColor(accent),
     )
     bold_label = ParagraphStyle(
         "BoldLabel",
@@ -232,12 +243,10 @@ def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
 
     # Org Info & Header
     org_name = (org.name if org else None) or "Rooman Technologies Pvt Ltd"
-    org_addr = (org.address if org else None) or "Rooman House, #12 Rajajinagar"
-    org_city_state = ", ".join(
-        filter(None, [org.city if org else "Bengaluru", org.state if org else "Karnataka", org.postal_code if org else "560010"])
-    )
-    org_gstin = (org.gstin if org else None) or "29AABCR1234F1Z5"
-    org_email = (org.email if org else None) or "shalya@rooman.com"
+    org_addr = (org.address if org else None) or ""
+    org_city_state = ", ".join(filter(None, [org.city if org else None, org.state if org else None, org.postal_code if org else None]))
+    org_gstin = (org.gstin if org else None) or ""
+    org_email = (org.email if org else None) or ""
 
     header_table_data = [
         [
@@ -245,7 +254,7 @@ def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
             Paragraph("<b>TAX INVOICE</b>", subtitle_style),
         ],
         [
-            Paragraph(f"{org_addr}<br/>{org_city_state}<br/>GSTIN: {org_gstin}<br/>Email: {org_email}", value_style),
+            Paragraph(_org_lines(org_addr, org_city_state, org_gstin, org_email), value_style),
             Paragraph(
                 f"<b>Invoice #:</b> {invoice.invoice_number}<br/>"
                 f"<b>Date:</b> {_fmt_date(invoice.date)}<br/>"
@@ -337,7 +346,7 @@ def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
     t_lines.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(accent if org and org.brand_color else "#1e293b")),
                 ("ALIGN", (0, 0), (0, -1), "CENTER"),
                 ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -398,16 +407,24 @@ def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
     t_wrap.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
     story.append(t_wrap)
 
+    if org and org.signature_label:
+        story.append(Spacer(1, 18))
+        story.append(
+            Paragraph(
+                f"For <b>{_text(org.legal_name or org.name)}</b><br/><br/><br/>{_text(org.signature_label)}",
+                ParagraphStyle("Signature", parent=styles["Normal"], fontSize=9, leading=12, alignment=2),
+            )
+        )
     story.append(Spacer(1, 25))
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cbd5e1"), spaceAfter=10))
-    story.append(
-        Paragraph(
-            "<i>This is a computer-generated GST Tax Invoice issued by Rooman Technologies Pvt Ltd. For inquiries, email shalya@rooman.com</i>",
-            ParagraphStyle(
-                "Footnote", parent=styles["Normal"], fontSize=7.5, leading=10, textColor=colors.HexColor("#64748b"), alignment=1
-            ),
-        )
+    footnote = ParagraphStyle(
+        "Footnote", parent=styles["Normal"], fontSize=7.5, leading=10, textColor=colors.HexColor("#64748b"), alignment=1
     )
+    if org and org.document_footer:
+        story.append(Paragraph(_text(org.document_footer).replace("\n", "<br/>"), footnote))
+    issuer = _text(org.legal_name or org.name) if org else "the supplier"
+    contact = f" For inquiries, email {_text(org.email)}" if org and org.email else ""
+    story.append(Paragraph(f"<i>This is a computer-generated GST Tax Invoice issued by {issuer}.{contact}</i>", footnote))
 
     doc.build(story)
     return buffer.getvalue()
@@ -720,7 +737,7 @@ def generate_bill_pdf(bill: Bill, org: Optional[Organization] = None) -> bytes:
             [
                 [Paragraph(f"<b>{org_name}</b>", title_style), Paragraph("<b>PURCHASE BILL VOUCHER</b>", sub_style)],
                 [
-                    Paragraph(f"Accounts Payable Dept<br/>GSTIN: {(org.gstin if org else None) or '29AABCR1234F1Z5'}", val_style),
+                    Paragraph("Accounts Payable Dept" + (f"<br/>GSTIN: {org.gstin}" if org and org.gstin else ""), val_style),
                     Paragraph(
                         f"<b>Bill #:</b> {bill.bill_number}<br/><b>Vendor Ref:</b> {getattr(bill, 'vendor_bill_number', None) or 'N/A'}<br/><b>Date:</b> {_fmt_date(bill.date)}<br/><b>Due:</b> {_fmt_date(bill.due_date)}<br/><b>Status:</b> {bill.status.upper()}",
                         val_style,
@@ -1520,12 +1537,10 @@ def generate_overall_dashboard_report_pdf(
     story = []
 
     org_name = (org.name if org else None) or "Rooman Technologies Pvt Ltd"
-    org_addr = (org.address if org else None) or "Rooman House, #12 Rajajinagar"
-    org_city_state = ", ".join(
-        filter(None, [org.city if org else "Bengaluru", org.state if org else "Karnataka", org.postal_code if org else "560010"])
-    )
-    org_gstin = (org.gstin if org else None) or "29AABCR1234F1Z5"
-    org_email = (org.email if org else None) or "shalya@rooman.com"
+    org_addr = (org.address if org else None) or ""
+    org_city_state = ", ".join(filter(None, [org.city if org else None, org.state if org else None, org.postal_code if org else None]))
+    org_gstin = (org.gstin if org else None) or ""
+    org_email = (org.email if org else None) or ""
 
     header_table_data = [
         [
@@ -1533,7 +1548,7 @@ def generate_overall_dashboard_report_pdf(
             Paragraph("<b>OVERALL FINANCIAL REPORT</b>", subtitle_style),
         ],
         [
-            Paragraph(f"{org_addr}<br/>{org_city_state}<br/>GSTIN: {org_gstin}<br/>Email: {org_email}", value_style),
+            Paragraph(_org_lines(org_addr, org_city_state, org_gstin, org_email), value_style),
             Paragraph(
                 f"<b>Period:</b> {period_label}<br/>"
                 f"<b>Generated:</b> {datetime.now().strftime('%d %b %Y, %I:%M %p')}<br/>"

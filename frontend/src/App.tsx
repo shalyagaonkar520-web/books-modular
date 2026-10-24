@@ -47,6 +47,9 @@ import { GstFilingPage } from '@/pages/gst/GstFilingPage';
 import { BudgetsPage } from '@/pages/accounting/BudgetsPage';
 import { FixedAssetsPage } from '@/pages/accounting/FixedAssetsPage';
 import { InventoryPage } from '@/pages/inventory/InventoryPage';
+import { AutomationPage } from '@/pages/automation/AutomationPage';
+import { AiAssistantPage } from '@/pages/ai/AiAssistantPage';
+import { DocumentPortalPage } from '@/pages/portal/DocumentPortalPage';
 import { SubscriptionPage } from '@/pages/subscription/SubscriptionPage';
 
 export function App() {
@@ -84,6 +87,8 @@ export function App() {
 
         {/* Always public — the landing page */}
         <Route path="/" element={<LandingPage />} />
+        {/* Customer portal: a shared invoice or quote, opened without logging in */}
+        <Route path="/p/:token" element={<DocumentPortalPage />} />
 
         {/* Auth pages — only for guests (redirect to /dashboard if already logged in) */}
         <Route element={<RequireGuest />}>
@@ -181,6 +186,15 @@ export function App() {
             />
             <Route path="/time-tracking" element={<TimeTrackingPage />} />
             <Route path="/gst-filing" element={<GstFilingPage />} />
+            <Route path="/ai-assistant" element={<AiAssistantPage />} />
+            <Route
+              path="/automation"
+              element={
+                <RequireRole roles={['admin', 'viewer']}>
+                  <AutomationPage />
+                </RequireRole>
+              }
+            />
             <Route
               path="/fixed-assets"
               element={

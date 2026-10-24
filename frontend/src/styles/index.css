@@ -3777,3 +3777,64 @@ input[type='password']::-ms-clear {
   padding: 4px 8px;
   font-size: 0.8rem;
 }
+
+/* Customer portal (shared invoice / quote links). */
+.portal-shell {
+  min-height: 100vh;
+  padding: 32px 16px;
+  background: var(--bg, #f1f5f9);
+}
+.portal-card {
+  max-width: 860px;
+  margin: 0 auto 16px;
+  padding: 28px;
+  background: var(--surface, #fff);
+  border-radius: 12px;
+  border-top: 5px solid var(--primary);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+}
+.portal-logo {
+  max-height: 48px;
+  margin-bottom: 8px;
+}
+.card-inset {
+  padding: 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+}
+.plain-list {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0;
+}
+.plain-list li {
+  padding: 3px 0;
+}
+
+/* AI assistant. */
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 460px;
+  overflow-y: auto;
+}
+.chat-bubble {
+  max-width: 80%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--surface-muted, #f1f5f9);
+}
+.chat-bubble p {
+  margin: 0;
+}
+.chat-bubble.is-user {
+  align-self: flex-end;
+  background: var(--primary-soft, #dbeafe);
+}
+.forecast-bar {
+  height: 10px;
+  border-radius: 5px;
+  min-width: 2px;
+}

@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 from backend.config import get_settings
 from backend.db import SessionLocal, create_all
-from backend.services import idempotency, razorpay_scheduler, recurring, webhook_dispatcher
+from backend.services import idempotency, razorpay_scheduler, recurring, webhook_dispatcher, workflows
 
 settings = get_settings()
 logger = logging.getLogger("roomanbooks")
@@ -32,9 +32,11 @@ async def lifespan(_app: FastAPI):
     razorpay_scheduler.start()
     webhook_dispatcher.start()
     recurring.start()
+    workflows.start()
     try:
         yield
     finally:
+        await workflows.stop()
         await recurring.stop()
         await webhook_dispatcher.stop()
         await razorpay_scheduler.stop()
@@ -200,6 +202,10 @@ def create_app() -> FastAPI:
     from backend.routers import platform_site, public_site
 
     app.include_router(public_site.router)
+    # Customer portal: opened from a shared link with no login (token-guarded).
+    from backend.routers import portal
+
+    app.include_router(portal.public_router)
     app.include_router(public_site.tenant_router)
     app.include_router(platform_site.router, dependencies=[Depends(require_superuser)])
 
