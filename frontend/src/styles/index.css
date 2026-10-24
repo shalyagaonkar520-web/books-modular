@@ -2108,6 +2108,13 @@ th.sortable {
   position: relative;
 }
 
+/* Edge/IE draw their own reveal (eye) and clear buttons in password fields,
+   which doubled up with the app's show/hide toggle. */
+input[type='password']::-ms-reveal,
+input[type='password']::-ms-clear {
+  display: none;
+}
+
 .password-toggle {
   position: absolute;
   right: 8px;
@@ -3617,4 +3624,115 @@ th.sortable {
   .lock-screen-hero h1 {
     font-size: 17px;
   }
+}
+
+/* ==========================================================================
+   Dark mode (html[data-theme='dark'], set by app/theme.tsx)
+   The app is built on the variables above, so most of it follows the palette;
+   the rules below cover the few places that used fixed light colours.
+   ========================================================================== */
+:root[data-theme='dark'] {
+  --bg: #0b1220;
+  --surface: #111a2b;
+  --surface-alt: #172235;
+  --surface-hover: #1b2840;
+  --border: #243249;
+  --border-strong: #33445f;
+
+  --text: #e5ebf4;
+  --text-muted: #a5b1c4;
+  --text-subtle: #6f7d93;
+  --text-inverse: #0b1220;
+
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --primary-soft: rgba(59, 130, 246, 0.16);
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.14);
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.14);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.14);
+  --info: #38bdf8;
+  --info-soft: rgba(56, 189, 248, 0.14);
+
+  --chart-in: #34d399;
+  --chart-out: #fbbf24;
+  --chart-grid: #1b2840;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow: 0 4px 10px -2px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 20px 30px -8px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
+}
+
+[data-theme='dark'] body {
+  background-color: var(--bg);
+}
+
+[data-theme='dark'] .sidebar {
+  background: var(--surface);
+  border-right-color: var(--border);
+}
+
+[data-theme='dark'] .nav-link:hover,
+[data-theme='dark'] .nav-group-toggle:hover,
+[data-theme='dark'] .nav-sublink:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+[data-theme='dark'] .nav-link.active {
+  background: var(--primary-soft);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+[data-theme='dark'] .card-header {
+  background: var(--surface);
+  border-bottom-color: var(--border);
+}
+
+[data-theme='dark'] .card-footer {
+  background: var(--surface-alt);
+  border-top-color: var(--border);
+}
+
+[data-theme='dark'] .stat-icon,
+[data-theme='dark'] .split-bar {
+  background: var(--surface-alt);
+}
+
+[data-theme='dark'] .skeleton-cell {
+  background: linear-gradient(90deg, #172235 25%, #1f2d44 37%, #172235 63%);
+  background-size: 400% 100%;
+}
+
+[data-theme='dark'] .auth-shell {
+  background: radial-gradient(circle at 50% 0%, #13213a 0%, #0b1220 60%, #070d18 100%);
+}
+
+/* Form controls follow the palette (some set a fixed white background). */
+[data-theme='dark'] input:not([type='checkbox']):not([type='radio']),
+[data-theme='dark'] select,
+[data-theme='dark'] textarea {
+  background-color: var(--surface);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+[data-theme='dark'] input::placeholder,
+[data-theme='dark'] textarea::placeholder {
+  color: var(--text-subtle);
+}
+
+.theme-toggle {
+  flex-shrink: 0;
+}
+
+/* The sign-in card on the dark hero is translucent white in light mode. */
+[data-theme='dark'] .auth-card-3d {
+  background: rgba(17, 26, 43, 0.96);
+  border-color: rgba(148, 163, 184, 0.25);
 }

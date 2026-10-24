@@ -53,7 +53,7 @@ def _raise_if_failed(result: dict) -> dict:
     if not result.get("success"):
         # email_service already logged the underlying exception and only
         # returns a client-safe message here.
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=result.get("error") or GENERIC_SEND_ERROR)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=result.get("error") or GENERIC_SEND_ERROR)
     return result
 
 

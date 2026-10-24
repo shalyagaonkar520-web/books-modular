@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import html
 import io
+import re
 from datetime import date, datetime
 from typing import List, Optional
 
@@ -12,7 +14,8 @@ from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import HRFlowable, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Paragraph as _RLParagraph
 
 from backend.models import (
     AuditLog,
@@ -28,6 +31,55 @@ from backend.models import (
     User,
     VendorPayment,
 )
+
+# The PDFs below put user text (names, addresses, notes, line descriptions)
+# inside ReportLab's mini-markup. Text such as "a<b" or "R&D;" breaks the
+# parser (a 500 on every PDF download and "email with PDF"), and tags such as
+# <img src=...> would be obeyed. So every paragraph goes through Paragraph()
+# below: only the formatting tags this module writes itself (b, i, br, font
+# color) stay markup; everything else is shown as text.
+_OWN_TAGS = re.compile(r"</?[bi]>|<br\s*/?>|<font color=(?:'[#\w]+'|\"[#\w]+\")>|</font>", re.IGNORECASE)
+_BARE_AMP = re.compile(r"&(?!(?:#\d+|#x[0-9a-f]+|[a-z]+);)", re.IGNORECASE)
+
+
+def _text(value: str) -> str:
+    return _BARE_AMP.sub("&amp;", value).replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _safe_markup(text: str) -> str:
+    out, pos = [], 0
+    for match in _OWN_TAGS.finditer(text):
+        out.append(_text(text[pos : match.start()]))
+        out.append(match.group())
+        pos = match.end()
+    out.append(_text(text[pos:]))
+    return "".join(out)
+
+
+def Paragraph(text, *args, **kwargs):  # noqa: N802 - drop-in for reportlab's Paragraph
+    text = "" if text is None else str(text)
+    try:
+        return _RLParagraph(_safe_markup(text), *args, **kwargs)
+    except ValueError:
+        # Unbalanced user text that looks like one of our tags (e.g. "x <b>y"):
+        # print the whole paragraph as plain text rather than fail the PDF.
+        plain = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+        return _RLParagraph(html.escape(_OWN_TAGS.sub("", plain)).replace("\n", "<br/>"), *args, **kwargs)
+
+
+# Our own totals rows are the only formulas these workbooks may contain.
+_OWN_FORMULA = re.compile(r"^=SUM\([A-Z]+\d+:[A-Z]+\d+\)$")
+
+
+def _save(wb: Workbook, buf: io.BytesIO) -> None:
+    """Save, storing any user text that starts with "=" as text, not a formula
+    (a contact named =HYPERLINK(...) must not run when the export is opened)."""
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for cell in row:
+                if cell.data_type == "f" and not (isinstance(cell.value, str) and _OWN_FORMULA.match(cell.value)):
+                    cell.data_type = "s"
+    wb.save(buf)
 
 
 def _fmt_curr(val: Optional[float]) -> str:
@@ -482,7 +534,7 @@ def generate_invoice_excel(invoice: Invoice, org: Optional[Organization] = None)
         ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
 
     buf = io.BytesIO()
-    wb.save(buf)
+    _save(wb, buf)
     return buf.getvalue()
 
 
@@ -568,7 +620,7 @@ def generate_invoices_list_excel(invoices: List[Invoice], org: Optional[Organiza
         ws.column_dimensions[col_letter].width = max(max_len + 3, 14)
 
     buf = io.BytesIO()
-    wb.save(buf)
+    _save(wb, buf)
     return buf.getvalue()
 
 
@@ -799,7 +851,7 @@ def generate_bills_list_excel(bills: List[Bill], org: Optional[Organization] = N
         ws.column_dimensions[col_letter].width = max(max_len + 3, 14)
 
     buf = io.BytesIO()
-    wb.save(buf)
+    _save(wb, buf)
     return buf.getvalue()
 
 
@@ -914,7 +966,7 @@ def generate_customer_payments_list_excel(payments: List[CustomerPayment], org: 
         ws.column_dimensions[col_letter].width = max(max_len + 3, 14)
 
     buf = io.BytesIO()
-    wb.save(buf)
+    _save(wb, buf)
     return buf.getvalue()
 
 
@@ -1074,7 +1126,7 @@ def generate_vendor_payments_list_excel(payments: List[VendorPayment], org: Opti
         ws.column_dimensions[col_letter].width = max(max_len + 3, 14)
 
     buf = io.BytesIO()
-    wb.save(buf)
+    _save(wb, buf)
     return buf.getvalue()
 
 
@@ -1222,7 +1274,7 @@ def generate_expenses_list_excel(expenses: List[Expense], org: Optional[Organiza
         ws.column_dimensions[col_letter].width = max(max_len + 3, 14)
 
     buf = io.BytesIO()
-    wb.save(buf)
+    _save(wb, buf)
     return buf.getvalue()
 
 
@@ -1313,7 +1365,7 @@ def generate_contacts_list_excel(contacts: List[Contact], contact_type: str = "c
         ws.column_dimensions[col_letter].width = max(max_len + 3, 14)
 
     buf = io.BytesIO()
-    wb.save(buf)
+    _save(wb, buf)
     return buf.getvalue()
 
 

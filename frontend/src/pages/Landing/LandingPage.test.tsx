@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -68,7 +68,8 @@ describe('LandingPage', () => {
     document.title = 'Before';
     const { unmount } = renderLanding();
 
-    expect(await screen.findByText('Ledgerly')).toBeInTheDocument();
+    // Generous wait: under a loaded machine the content fetch and render can take over the 1s default.
+    expect(await screen.findByText('Ledgerly', undefined, { timeout: 5000 })).toBeInTheDocument();
     for (const name of ['Tools', 'Plans', 'Reviews', 'Help']) {
       expect(screen.getByRole('link', { name })).toBeInTheDocument();
     }
@@ -78,7 +79,7 @@ describe('LandingPage', () => {
     expect(screen.getByText('Everything you wanted to know.')).toBeInTheDocument();
     expect(screen.getByAltText('Rooman')).toHaveAttribute('src', 'https://cdn.example.com/l.png');
     expect(screen.getByAltText('Rooman Books')).toHaveAttribute('src', 'https://cdn.example.com/l.png');
-    expect(document.title).toBe('Ledgerly - Cloud Accounting');
+    await waitFor(() => expect(document.title).toBe('Ledgerly - Cloud Accounting'));
     expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute('content', 'GST-ready cloud accounting.');
 
     unmount();

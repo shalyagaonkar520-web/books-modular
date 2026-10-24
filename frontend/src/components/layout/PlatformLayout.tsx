@@ -17,8 +17,10 @@ import {
   Users,
 } from 'lucide-react';
 
+import { PageErrorBoundary } from '@/components/ErrorBoundary';
 import { platformApi } from '@/api/platform';
 import { usePlatformAuth } from '@/auth/PlatformAuthContext';
+import { ThemeToggle } from '@/app/theme';
 import { initials } from '@/utils/format';
 
 import { ChangePasswordModal } from '@/pages/platform/ChangePasswordModal';
@@ -109,6 +111,7 @@ export function PlatformLayout() {
 
         <div className="header-right" style={{ gap: 12 }}>
           <PlatformGlobalSearch />
+          <ThemeToggle onDark />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span
               className="avatar"
@@ -174,7 +177,9 @@ export function PlatformLayout() {
         </aside>
 
         <main className="app-main" id="main-content">
-          <Outlet />
+          <PageErrorBoundary>
+            <Outlet />
+          </PageErrorBoundary>
         </main>
       </div>
     </div>

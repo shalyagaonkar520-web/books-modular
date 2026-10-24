@@ -108,9 +108,14 @@ export function ExpensesPage() {
     const expenseId = searchParams.get('expense');
     if (!expenseId) return;
     let cancelled = false;
-    void expensesApi.get(expenseId).then((expense) => {
-      if (!cancelled) setEditing(expense);
-    });
+    void expensesApi
+      .get(expenseId)
+      .then((expense) => {
+        if (!cancelled) setEditing(expense);
+      })
+      .catch(() => {
+        if (!cancelled) toast.error('That expense could not be opened. It may have been deleted.');
+      });
     const next = new URLSearchParams(searchParams);
     next.delete('expense');
     setSearchParams(next, { replace: true });

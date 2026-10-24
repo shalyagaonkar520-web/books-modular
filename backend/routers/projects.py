@@ -6,12 +6,12 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
-from backend.deps import get_current_user, require_write
+from backend.deps import get_current_user, module_write_error, require_write
 from backend.models import Contact, Invoice, InvoiceLine, Project, TimeEntry, User
 from backend.schemas.common import Message, Page
 from backend.schemas.sales import InvoiceOut
@@ -235,8 +235,15 @@ def delete_time_entry(entry_id: str, user: User = Depends(require_write), db: Se
 
 
 @router.post("/time-entries/invoice", response_model=InvoiceOut, status_code=status.HTTP_201_CREATED)
-def invoice_unbilled_time(payload: InvoiceFromTimeRequest, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def invoice_unbilled_time(
+    payload: InvoiceFromTimeRequest, request: Request, user: User = Depends(require_write), db: Session = Depends(get_db)
+):
     from backend.routers.invoices import get_invoice, post_invoice  # local import to avoid cycle
+
+    # This creates an invoice: it needs Invoices access, not only Time tracking.
+    error = module_write_error(user, ("invoices",), request)
+    if error:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, error)
 
     org_id = user.organization_id
     project = get_or_404(db, Project, payload.project_id, org_id, "Project")

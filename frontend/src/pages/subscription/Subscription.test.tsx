@@ -26,6 +26,9 @@ const TRIAL = {
 };
 
 const STARTER = ['items', 'customers', 'invoices', 'paymentsReceived'];
+/** Included in every plan: 199 + 99 + 299 + 149 + 299 + 199 = ₹1,244 a month. */
+const CORE = ['items', 'customers', 'invoices', 'paymentsReceived', 'accounting', 'reports'];
+const CORE_LABELS = ['Items', 'Customers', 'Invoices', 'Payments received', 'Accountant', 'Reports'];
 
 function LocationProbe() {
   return <span data-testid="location">{useLocation().pathname}</span>;
@@ -113,35 +116,35 @@ describe('Subscription page', () => {
         const body = JSON.parse(String(init.body)) as { modules: string[]; billingCycle: string };
         return json({
           ...TRIAL,
-          pendingRequest: { ...body, monthlyPrice: 1245, planPrice: 12450, requestedAt: '2026-09-30T08:00:00Z' },
+          pendingRequest: { ...body, monthlyPrice: 2142, planPrice: 21420, requestedAt: '2026-09-30T08:00:00Z' },
         });
       },
       'DELETE /api/subscription/request': { ...TRIAL },
     });
 
     expect(await screen.findByText('Free trial · 2 days left')).toBeInTheDocument();
-    // Starter set: 499 base + 199 + 99 + 299 + 149 = 1,245 a month.
+    // Core modules: 499 base + 1,244 = 1,743 a month.
     await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Invoices' })).toBeChecked());
     expect(screen.getByRole('radio', { name: 'Monthly' })).toBeChecked();
-    expect(screen.getByTestId('plan-monthly')).toHaveTextContent('₹1,245/mo');
-    expect(screen.getByTestId('plan-price')).toHaveTextContent('₹1,245/mo');
-    expect(screen.getByTestId('plan-saving')).toHaveTextContent('Switch to yearly billing and save ₹2,490 a year.');
+    expect(screen.getByTestId('plan-monthly')).toHaveTextContent('₹1,743/mo');
+    expect(screen.getByTestId('plan-price')).toHaveTextContent('₹1,743/mo');
+    expect(screen.getByTestId('plan-saving')).toHaveTextContent('Switch to yearly billing and save ₹3,486 a year.');
     expect(screen.getByText(/includes Dashboard & Settings/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('radio', { name: /Yearly/ }));
     expect(screen.getByRole('radio', { name: /Yearly/ })).toHaveTextContent('2 months free');
-    expect(screen.getByTestId('plan-monthly')).toHaveTextContent('₹1,245/mo');
-    expect(screen.getByTestId('plan-price')).toHaveTextContent('₹12,450/yr');
-    expect(screen.getByTestId('plan-saving')).toHaveTextContent('You save ₹2,490 a year compared with monthly billing.');
+    expect(screen.getByTestId('plan-monthly')).toHaveTextContent('₹1,743/mo');
+    expect(screen.getByTestId('plan-price')).toHaveTextContent('₹17,430/yr');
+    expect(screen.getByTestId('plan-saving')).toHaveTextContent('You save ₹3,486 a year compared with monthly billing.');
 
     // Payroll adds ₹399 a month.
     fireEvent.click(screen.getByRole('checkbox', { name: 'Payroll' }));
-    expect(screen.getByTestId('plan-price')).toHaveTextContent('₹16,440/yr');
+    expect(screen.getByTestId('plan-price')).toHaveTextContent('₹21,420/yr');
 
     fireEvent.click(screen.getByRole('button', { name: 'Send request to administrator' }));
     await waitFor(() =>
       expect(calls.find((call) => call.method === 'POST' && call.path === '/api/subscription/request')?.body).toEqual({
-        modules: [...STARTER, 'payroll'],
+        modules: [...CORE, 'payroll'],
         billingCycle: 'yearly',
       }),
     );
@@ -153,12 +156,49 @@ describe('Subscription page', () => {
     expect(await screen.findByRole('button', { name: 'Send request to administrator' })).toBeInTheDocument();
   });
 
-  it('asks for at least one module', async () => {
-    const { calls } = renderPage({ 'GET /api/subscription': TRIAL });
-    fireEvent.click(await screen.findByRole('button', { name: 'Clear' }));
+  it('always includes the core modules', async () => {
+    const { calls } = renderPage({
+      'GET /api/subscription': TRIAL,
+      'POST /api/subscription/request': (_url: URL, init: RequestInit) => {
+        const body = JSON.parse(String(init.body)) as { modules: string[]; billingCycle: string };
+        return json({ ...TRIAL, pendingRequest: { ...body, monthlyPrice: 1743, planPrice: 1743, requestedAt: '2026-09-30T08:00:00Z' } });
+      },
+    });
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Invoices' })).toBeChecked());
+
+    // Core modules are ticked and locked; unticking one does nothing.
+    for (const name of CORE_LABELS) {
+      const box = screen.getByRole('checkbox', { name });
+      expect(box).toBeChecked();
+      expect(box).toBeDisabled();
+    }
+    expect(screen.getAllByText('Included in every plan')).toHaveLength(CORE.length);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Items' }));
+    expect(screen.getByRole('checkbox', { name: 'Items' })).toBeChecked();
+
+    // Only core selected: nothing to clear.
+    const clear = screen.getByRole('button', { name: 'Clear' });
+    expect(clear).toBeDisabled();
+
+    // Clear removes the extras but keeps the core modules.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Payroll' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Banking' }));
+    expect(screen.getByTestId('plan-monthly')).toHaveTextContent('₹2,391/mo');
+    expect(clear).toBeEnabled();
+    fireEvent.click(clear);
+    expect(screen.getByRole('checkbox', { name: 'Payroll' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Banking' })).not.toBeChecked();
+    for (const name of CORE_LABELS) expect(screen.getByRole('checkbox', { name })).toBeChecked();
+    expect(clear).toBeDisabled();
+    expect(screen.getByTestId('plan-monthly')).toHaveTextContent('₹1,743/mo');
+
     fireEvent.click(screen.getByRole('button', { name: 'Send request to administrator' }));
-    expect(await screen.findByText('Choose at least one module.')).toBeInTheDocument();
-    expect(calls.some((call) => call.path === '/api/subscription/request')).toBe(false);
+    await waitFor(() =>
+      expect(calls.find((call) => call.method === 'POST' && call.path === '/api/subscription/request')?.body).toEqual({
+        modules: CORE,
+        billingCycle: 'monthly',
+      }),
+    );
   });
 
   it('is read-only for users who are not admins', async () => {
@@ -217,7 +257,7 @@ describe('Locked app', () => {
           ...subscription,
           status: 'expired',
           locked: true,
-          pendingRequest: { ...body, monthlyPrice: 1245, planPrice: 1245, requestedAt: '2026-09-30T08:00:00Z' },
+          pendingRequest: { ...body, monthlyPrice: 1743, planPrice: 1743, requestedAt: '2026-09-30T08:00:00Z' },
         };
         return subscription;
       },
@@ -239,7 +279,7 @@ describe('Locked app', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Send request to administrator' }));
     await waitFor(() =>
       expect(calls.find((call) => call.method === 'POST' && call.path === '/api/subscription/request')?.body).toEqual({
-        modules: STARTER,
+        modules: CORE,
         billingCycle: 'monthly',
       }),
     );
@@ -254,7 +294,7 @@ describe('Locked app', () => {
       status: 'active',
       locked: false,
       pendingRequest: null,
-      plan: { modules: STARTER, billingCycle: 'monthly', monthlyPrice: 1245, planPrice: 1245 },
+      plan: { modules: CORE, billingCycle: 'monthly', monthlyPrice: 1743, planPrice: 1743 },
     };
     unlocked = true;
     fireEvent.click(screen.getByRole('button', { name: 'Check again' }));

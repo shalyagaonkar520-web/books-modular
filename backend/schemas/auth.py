@@ -244,6 +244,9 @@ class InviteUserRequest(APIModel):
     # login belongs to. That employee will then see only their own payslips
     # and profile - never anyone else's, and nothing else in the app.
     employee_id: Optional[str] = None
+    # Staff only: the modules this user may edit (a "custom" invite). Omitted =
+    # every module of the organization's plan. See User.module_access.
+    module_access: Optional[List[str]] = None
 
 
 class InviteInfo(APIModel):
@@ -324,6 +327,13 @@ class SmtpSettingsUpdate(APIModel):
     # retype the app password; blank means "keep the stored one".
     password: Optional[str] = Field(default=None, max_length=255)
     sender_name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("host", "password", "sender_name")
+    @classmethod
+    def _single_line(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and any(ch in value for ch in ("\r", "\n", "\x00")):
+            raise ValueError("Must be a single line.")
+        return value
 
 
 class SmtpTestRequest(APIModel):

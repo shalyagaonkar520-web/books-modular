@@ -36,6 +36,7 @@ from backend.services import razorpay_matching, razorpay_posting
 from backend.services.money import money
 from backend.services.razorpay_categorize import apply_categorisation, categorise
 from backend.services.razorpay_service import (
+    MSG_UNEXPECTED,
     RazorpayNotConfigured,
     RazorpayUnavailable,
     get_razorpay_service,
@@ -162,12 +163,17 @@ class SyncOutcome:
 
 
 def last_successful_sync(db: Session, org_id: str) -> Optional[RazorpaySyncLog]:
+    """The latest run that imported its whole window.
+
+    A "partial" run is deliberately not counted: records it failed to import
+    lie inside its window, so the next incremental run must cover it again.
+    """
     return (
         db.execute(
             select(RazorpaySyncLog)
             .where(
                 RazorpaySyncLog.organization_id == org_id,
-                RazorpaySyncLog.status.in_(("completed", "partial")),
+                RazorpaySyncLog.status == "completed",
             )
             .order_by(RazorpaySyncLog.started_at.desc())
             .limit(1)
@@ -208,6 +214,15 @@ def _upsert_payment(
     if not payment_id:
         outcome.failed += 1
         outcome.errors.append("Payment entity arrived without an id")
+        return
+
+    # The Razorpay keys are platform-wide, so the account holds every tenant's
+    # payments. Only a payment tagged with this organisation (the checkout puts
+    # organization_id in the order notes) belongs to it; anything else is
+    # skipped rather than exposing another tenant's customers.
+    raw_notes = entity.get("notes")
+    if not isinstance(raw_notes, dict) or raw_notes.get("organization_id") != org_id:
+        outcome.skipped += 1
         return
 
     existing = db.execute(select(PaymentRecord).where(PaymentRecord.razorpay_payment_id == payment_id)).scalars().first()
@@ -279,15 +294,16 @@ def _upsert_payment(
     if not record.customer_name:
         record.customer_name = (notes.get("customer_name") if notes else None) or record.customer_email
 
-    if is_new:
-        db.add(record)
-
     try:
-        db.flush()
+        # A savepoint, so a clash undoes only this payment and never the rest
+        # of the page that is still waiting to be committed.
+        with db.begin_nested():
+            if is_new:
+                db.add(record)
+            db.flush()
     except IntegrityError:
         # A concurrent run inserted the same payment first. That is exactly what
         # the unique constraint is for; treat it as a duplicate and carry on.
-        db.rollback()
         outcome.skipped += 1
         return
 
@@ -414,10 +430,13 @@ def sync_organization(
             outcome.fetched += len(items)
             for entity in items:
                 try:
-                    _upsert_payment(db, org_id, entity, outcome, user_id)
-                except Exception as exc:  # one bad record must not lose the page
+                    # Each payment in its own savepoint: one bad record rolls
+                    # back only itself, never the rest of the page.
+                    with db.begin_nested():
+                        _upsert_payment(db, org_id, entity, outcome, user_id)
+                except Exception:  # one bad record must not lose the page
                     outcome.failed += 1
-                    outcome.errors.append(f"{entity.get('id', 'unknown')}: {exc}")
+                    outcome.errors.append(f"Payment {entity.get('id', 'unknown')} could not be imported.")
                     logger.exception("Failed to import Razorpay payment %s", entity.get("id"))
             # Commit page by page so an interruption keeps everything imported so far.
             db.commit()
@@ -426,7 +445,7 @@ def sync_organization(
             _sync_refunds(db, org_id, from_ts, to_ts, outcome)
             db.commit()
         except RazorpayUnavailable as exc:
-            outcome.errors.append(f"Refund sync skipped: {exc}")
+            outcome.errors.append(f"Refunds were not imported: {exc}")
             db.rollback()
 
         log = db.get(RazorpaySyncLog, log.id)
@@ -437,13 +456,14 @@ def sync_organization(
         db.rollback()
         log = db.get(RazorpaySyncLog, log.id)
         log.status = "failed"
+        # Our own exceptions carry fixed, readable messages (never raw SDK text).
         log.error_message = str(exc)[:2000]
         logger.warning("Razorpay sync failed for org %s: %s", org_id, exc)
-    except Exception as exc:  # pragma: no cover - unexpected failures
+    except Exception:  # pragma: no cover - unexpected failures
         db.rollback()
         log = db.get(RazorpaySyncLog, log.id)
         log.status = "failed"
-        log.error_message = f"Unexpected error: {exc}"[:2000]
+        log.error_message = f"Synchronisation stopped unexpectedly. {MSG_UNEXPECTED}"
         logger.exception("Razorpay sync crashed for org %s", org_id)
 
     log.completed_at = utcnow()

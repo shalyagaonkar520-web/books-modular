@@ -1,6 +1,7 @@
 import html
 import logging
 import smtplib
+import ssl
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -69,7 +70,7 @@ def get_smtp_connection():
     if not settings.smtp_configured:
         raise SmtpNotConfigured("Email is not configured. Set SMTP_USER and SMTP_PASSWORD in the server environment.")
     server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30)
-    server.starttls()
+    server.starttls(context=ssl.create_default_context())
     server.login(settings.smtp_user, settings.smtp_password)
     return server
 
@@ -926,7 +927,7 @@ def verify_smtp_credentials(host: str, port: int, username: str, password: str) 
     """Log in to the mail server with these details. Raises if they are rejected."""
     server = smtplib.SMTP(host, port, timeout=20)
     try:
-        server.starttls()
+        server.starttls(context=ssl.create_default_context())
         server.login(username, password)
     finally:
         try:

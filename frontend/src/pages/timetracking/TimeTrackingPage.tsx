@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { projectsApi } from '@/api/endpoints';
 import { useAppContent } from '@/app/AppContentContext';
+import { ErrorBlock } from '@/components/ui/Feedback';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Tabs } from '@/components/ui/Toolbar';
 import { useAsync } from '@/hooks/useAsync';
@@ -27,7 +28,13 @@ export function TimeTrackingPage() {
       <Tabs tabs={TABS.map((entry) => ({ ...entry, label: t(entry.label) }))} active={tab} onChange={setTab} />
 
       {tab === 'projects' ? <ProjectsTab onProjectsChanged={projects.reload} /> : null}
-      {tab === 'timesheets' ? <TimesheetsTab projects={projects.data ?? []} onEntriesChanged={projects.reload} /> : null}
+      {tab === 'timesheets' ? (
+        projects.error ? (
+          <ErrorBlock message={projects.error} onRetry={projects.reload} />
+        ) : (
+          <TimesheetsTab projects={projects.data ?? []} onEntriesChanged={projects.reload} />
+        )
+      ) : null}
     </>
   );
 }

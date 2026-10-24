@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react';
 
+import { ThemeToggle } from '@/app/theme';
 import { dashboardApi } from '@/api/endpoints';
 import type { NotificationItem } from '@/api/types';
 import type { AppModuleKey } from '@/api/appContent';
@@ -198,6 +199,8 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
             ) : null}
           </>
         ) : null}
+
+        <ThemeToggle />
 
         <div className="menu-anchor">
           <button

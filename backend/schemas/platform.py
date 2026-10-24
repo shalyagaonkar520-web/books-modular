@@ -112,6 +112,10 @@ class PlatformDashboard(APIModel):
 class OrgSummary(APIModel):
     id: str
     name: str
+    # Short unique code; the default admin-panel login is admin@<code>.
+    code: Optional[str] = None
+    # Whether an admin-panel login exists (the "Create admin login" button).
+    has_panel_admin: bool = False
     is_suspended: bool
     is_archived: bool = False
     deleted_at: Optional[datetime] = None
@@ -142,6 +146,7 @@ class OrgSummary(APIModel):
 class OrgDetail(APIModel):
     id: str
     name: str
+    code: Optional[str] = None
     legal_name: Optional[str] = None
     gstin: Optional[str] = None
     email: Optional[str] = None

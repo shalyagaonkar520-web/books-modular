@@ -12,6 +12,8 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import secrets
+import string
 from datetime import UTC, date, datetime, timedelta
 from typing import List, Optional
 
@@ -40,11 +42,14 @@ from backend.models import (
     VendorPayment,
 )
 from backend.routers import razorpay as rzp
+from backend.schemas.app_content import PanelContentAccessIn, PanelContentAccessOut
 from backend.schemas.common import Page
 from backend.schemas.org_admin import (
     ApproveOrganizationRequest,
     CreateOrgPanelAdminRequest,
     OrgPanelAdminOut,
+    PanelResetRequestOut,
+    PanelTempCredentialsOut,
     UpdateOrgPanelAdminRequest,
 )
 from backend.schemas.platform import (
@@ -88,7 +93,7 @@ from backend.security import (
     hash_token,
     verify_password,
 )
-from backend.services import audit, module_pricing, platform_settings
+from backend.services import audit, module_pricing, panel_content, platform_settings
 from backend.services import subscription as subs
 from backend.services.app_content import delete_org_app_content
 from backend.services.chart_of_accounts import bootstrap_accounts
@@ -323,7 +328,11 @@ def _org_summaries(db: Session, orgs: List[Organization]) -> List[OrgSummary]:
     ids = [o.id for o in orgs]
     users_by_org = (
         dict(
-            db.execute(select(User.organization_id, func.count()).where(User.organization_id.in_(ids)).group_by(User.organization_id)).all()
+            db.execute(
+                select(User.organization_id, func.count())
+                .where(User.organization_id.in_(ids), User.role != "integration")
+                .group_by(User.organization_id)
+            ).all()
         )
         if ids
         else {}
@@ -363,10 +372,17 @@ def _org_summaries(db: Session, orgs: List[Organization]) -> List[OrgSummary]:
     )
     last_login = _last_login_map(db, ids)
     admin_emails = _admin_email_map(db, ids)
+    with_panel = (
+        set(db.execute(select(OrgPanelAdmin.organization_id).where(OrgPanelAdmin.organization_id.in_(ids)).distinct()).scalars())
+        if ids
+        else set()
+    )
     return [
         OrgSummary(
             id=o.id,
             name=o.name,
+            code=o.code,
+            has_panel_admin=o.id in with_panel,
             is_suspended=o.is_suspended,
             is_archived=o.is_archived,
             deleted_at=o.deleted_at,
@@ -387,7 +403,7 @@ def _org_summaries(db: Session, orgs: List[Organization]) -> List[OrgSummary]:
 
 
 def _org_detail(db: Session, org: Organization) -> OrgDetail:
-    user_count = db.scalar(select(func.count()).select_from(User).where(User.organization_id == org.id)) or 0
+    user_count = db.scalar(select(func.count()).select_from(User).where(User.organization_id == org.id, User.role != "integration")) or 0
     invoice_count = (
         db.scalar(
             select(func.count()).select_from(Invoice).where(Invoice.organization_id == org.id, Invoice.status.in_(_LIVE_INVOICE_STATUSES))
@@ -411,6 +427,7 @@ def _org_detail(db: Session, org: Organization) -> OrgDetail:
     return OrgDetail(
         id=org.id,
         name=org.name,
+        code=org.code,
         legal_name=org.legal_name,
         gstin=org.gstin,
         email=org.email,
@@ -459,7 +476,12 @@ def platform_login(payload: PlatformLoginRequest, request: Request, response: Re
     email = payload.email.lower().strip()
     admin = db.execute(select(PlatformAdmin).where(PlatformAdmin.email == email)).scalar_one_or_none()
     # Constant-ish work whether or not the account exists, to blunt enumeration.
-    ok = bool(admin) and admin.is_active and verify_password(payload.password, admin.password_hash)
+    # Like the tenant login: a space pasted or autofilled around the password is forgiven.
+    ok = (
+        bool(admin)
+        and admin.is_active
+        and (verify_password(payload.password, admin.password_hash) or verify_password(payload.password.strip(), admin.password_hash))
+    )
     if not ok:
         # Burn a hash even on unknown email so timing does not leak existence.
         if not admin:
@@ -652,8 +674,8 @@ def platform_dashboard(db: Session = Depends(get_db), admin: PlatformAdmin = Dep
     pending_orgs = (
         db.execute(select(Organization).where(*pending_filter).order_by(Organization.created_at.desc()).limit(10)).scalars().all()
     )
-    total_users = db.scalar(select(func.count()).select_from(User)) or 0
-    active_users = db.scalar(select(func.count()).select_from(User).where(User.is_active.is_(True))) or 0
+    total_users = db.scalar(select(func.count()).select_from(User).where(User.role != "integration")) or 0
+    active_users = db.scalar(select(func.count()).select_from(User).where(User.is_active.is_(True), User.role != "integration")) or 0
     total_invoices = db.scalar(select(func.count()).select_from(Invoice).where(Invoice.status.in_(_LIVE_INVOICE_STATUSES))) or 0
     invoiced = db.scalar(select(func.coalesce(func.sum(Invoice.total), 0)).where(Invoice.status.in_(_LIVE_INVOICE_STATUSES)))
     collected = db.scalar(select(func.coalesce(func.sum(CustomerPayment.amount), 0)))
@@ -711,7 +733,7 @@ def platform_dashboard(db: Session = Depends(get_db), admin: PlatformAdmin = Dep
             org = orgs.get(org_id)
             if not org:
                 continue
-            uc = db.scalar(select(func.count()).select_from(User).where(User.organization_id == org_id)) or 0
+            uc = db.scalar(select(func.count()).select_from(User).where(User.organization_id == org_id, User.role != "integration")) or 0
             ic = (
                 db.scalar(
                     select(func.count())
@@ -852,7 +874,7 @@ def organization_users(
     org = db.get(Organization, org_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
-    stmt = select(User).where(User.organization_id == org_id)
+    stmt = select(User).where(User.organization_id == org_id, User.role != "integration")
     total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
     users = db.execute(stmt.order_by(User.created_at.desc()).offset(pagination.offset).limit(pagination.page_size)).scalars().all()
     items = [_user_out(u, org.name) for u in users]
@@ -1013,15 +1035,12 @@ def approve_organization(
 ):
     """Let a pending (or previously rejected) sign-up's users sign in.
 
-    Starts the organization's free trial (if it has not started yet).
-    Optionally creates the organization's first admin-panel login in the same
-    transaction; if that login cannot be created the org is not approved.
+    Starts the organization's free trial (if it has not started yet). The
+    admin-panel login is created separately ("Create admin login").
     """
     org = db.get(Organization, org_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
-    if payload is not None and payload.panel_admin is not None:
-        _add_panel_admin(db, org, payload.panel_admin, admin)
     org.approval_status = "approved"
     org.approved_at = datetime.now(UTC)
     org.rejection_reason = None
@@ -1319,6 +1338,144 @@ def create_panel_admin(
     return OrgPanelAdminOut.model_validate(panel_admin)
 
 
+def _temp_password() -> str:
+    """16 characters with upper and lower case, digits and a symbol (meets the password policy)."""
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*-_=+?"
+    while True:
+        pw = "".join(secrets.choice(alphabet) for _ in range(16))
+        if any(c.islower() for c in pw) and any(c.isupper() for c in pw) and any(c.isdigit() for c in pw):
+            return pw
+
+
+@router.get("/organizations/{org_id}/panel-content-access", response_model=PanelContentAccessOut)
+def get_panel_content_access(org_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    """What the organization's admin panel may edit in its app content."""
+    org = db.get(Organization, org_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    return PanelContentAccessOut(**panel_content.access_out(org))
+
+
+@router.put("/organizations/{org_id}/panel-content-access", response_model=PanelContentAccessOut)
+def set_panel_content_access(
+    org_id: str, payload: PanelContentAccessIn, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
+):
+    """Grant the admin panel modules ("items", ...) plus "branding" / "general"; null = the plan's modules."""
+    org = db.get(Organization, org_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    if payload.keys is not None:
+        unknown = panel_content.known_keys_check(payload.keys)
+        if unknown:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Unknown option(s): {', '.join(unknown)}")
+    panel_content.set_access(org, payload.keys)
+    out = panel_content.access_out(org)
+    summary = (
+        "the subscription plan's modules"
+        if payload.keys is None
+        else ", ".join(out["modules"] + [k for k in ("branding", "general") if out[k]]) or "nothing"
+    )
+    audit.record(db, admin, "update", "organization", org.id, f"Admin panel may edit: {summary}", organization_id=org.id)
+    db.commit()
+    return PanelContentAccessOut(**out)
+
+
+@router.post("/organizations/{org_id}/panel-admins/default", response_model=PanelTempCredentialsOut, status_code=status.HTTP_201_CREATED)
+def create_default_panel_admin(org_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    """Create the organization's admin-panel login: ID admin@<code>, a random temporary password.
+
+    The password is returned once, for the platform admin to hand over. On first
+    sign-in the organization's admin must choose their own ID and password.
+    """
+    org = db.get(Organization, org_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    if db.execute(select(OrgPanelAdmin.id).where(OrgPanelAdmin.organization_id == org.id)).first():
+        raise HTTPException(status.HTTP_409_CONFLICT, "This organization already has an admin login. Reset its password instead.")
+    login_id = f"admin@{org.code}"
+    if db.execute(select(OrgPanelAdmin.id).where(OrgPanelAdmin.email == login_id)).first():
+        raise HTTPException(status.HTTP_409_CONFLICT, f"The login ID {login_id} is already taken")
+    password = _temp_password()
+    panel_admin = OrgPanelAdmin(
+        organization_id=org.id,
+        name="Admin",
+        email=login_id,
+        password_hash=hash_password(password),
+        is_active=True,
+        created_by=admin.email,
+        must_change_credentials=True,
+    )
+    db.add(panel_admin)
+    db.flush()
+    audit.record(
+        db, admin, "create", "org_panel_admin", panel_admin.id, f"Admin login {login_id} created for '{org.name}'", organization_id=org.id
+    )
+    db.commit()
+    db.refresh(panel_admin)
+    return PanelTempCredentialsOut(admin=OrgPanelAdminOut.model_validate(panel_admin), login_id=login_id, password=password)
+
+
+@router.post("/panel-admins/{panel_admin_id}/reset-password", response_model=PanelTempCredentialsOut)
+def reset_panel_admin_password(panel_admin_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    """Give an admin-panel login a new random temporary password (e.g. approving a forgot-password request).
+
+    Ends its sessions; on the next sign-in the admin chooses their own password again.
+    """
+    target = db.get(OrgPanelAdmin, panel_admin_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Admin-panel login not found")
+    password = _temp_password()
+    had_request = target.reset_requested_at is not None
+    target.password_hash = hash_password(password)
+    target.must_change_credentials = True
+    target.reset_requested_at = None
+    _revoke_panel_sessions(db, target.id)
+    summary = f"Temporary password issued for admin login {target.email}" + (" (reset request approved)" if had_request else "")
+    audit.record(db, admin, "update", "org_panel_admin", target.id, summary, organization_id=target.organization_id)
+    db.commit()
+    db.refresh(target)
+    return PanelTempCredentialsOut(admin=OrgPanelAdminOut.model_validate(target), login_id=target.email, password=password)
+
+
+@router.post("/panel-admins/{panel_admin_id}/dismiss-reset", response_model=OrgPanelAdminOut)
+def dismiss_panel_reset_request(panel_admin_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    """Decline a forgot-password request (the current password keeps working)."""
+    target = db.get(OrgPanelAdmin, panel_admin_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Admin-panel login not found")
+    if target.reset_requested_at is not None:
+        target.reset_requested_at = None
+        audit.record(
+            db,
+            admin,
+            "update",
+            "org_panel_admin",
+            target.id,
+            f"Password reset request declined for {target.email}",
+            organization_id=target.organization_id,
+        )
+        db.commit()
+        db.refresh(target)
+    return OrgPanelAdminOut.model_validate(target)
+
+
+@router.get("/panel-reset-requests", response_model=List[PanelResetRequestOut])
+def list_panel_reset_requests(db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    """Admin-panel logins waiting for a new password, oldest request first."""
+    rows = db.execute(
+        select(OrgPanelAdmin, Organization)
+        .join(Organization, Organization.id == OrgPanelAdmin.organization_id)
+        .where(OrgPanelAdmin.reset_requested_at.is_not(None))
+        .order_by(OrgPanelAdmin.reset_requested_at)
+    ).all()
+    return [
+        PanelResetRequestOut(
+            admin=OrgPanelAdminOut.model_validate(a), organization_id=o.id, organization_name=o.name, organization_code=o.code
+        )
+        for a, o in rows
+    ]
+
+
 @router.patch("/panel-admins/{panel_admin_id}", response_model=OrgPanelAdminOut)
 def update_panel_admin(
     panel_admin_id: str,
@@ -1400,7 +1557,7 @@ def list_users(
     search: Optional[str] = Query(None, max_length=200),
     organization_id: Optional[str] = Query(None),
 ):
-    stmt = select(User)
+    stmt = select(User).where(User.role != "integration")
     if organization_id:
         stmt = stmt.where(User.organization_id == organization_id)
     if search:
@@ -1457,7 +1614,7 @@ def update_user(
     user_id: str, payload: UpdatePlatformUserRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
 ):
     user = db.get(User, user_id)
-    if user is None:
+    if user is None or user.role == "integration":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     data = payload.model_dump(exclude_unset=True)
 
@@ -1514,7 +1671,7 @@ def reset_user_password(
     user_id: str, payload: ResetUserPasswordRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
 ):
     user = db.get(User, user_id)
-    if user is None:
+    if user is None or user.role == "integration":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     user.password_hash = hash_password(payload.new_password)
     audit.record(
@@ -1527,7 +1684,7 @@ def reset_user_password(
 @router.delete("/users/{user_id}")
 def delete_user(user_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
     user = db.get(User, user_id)
-    if user is None:
+    if user is None or user.role == "integration":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     if _would_orphan_org(db, user):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, _ORPHAN_MSG)
@@ -1547,7 +1704,7 @@ def export_users(
     organization_id: Optional[str] = Query(None),
 ):
     # Same query/joins as list_users, without pagination.
-    stmt = select(User)
+    stmt = select(User).where(User.role != "integration")
     if organization_id:
         stmt = stmt.where(User.organization_id == organization_id)
     if search:
@@ -1577,7 +1734,7 @@ def impersonate_user(user_id: str, db: Session = Depends(get_db), admin: Platfor
     when the access token expires and cannot be silently extended.
     """
     user = db.get(User, user_id)
-    if user is None:
+    if user is None or user.role == "integration":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     if user.role not in ("admin", "staff", "viewer"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This user's role cannot be impersonated")
@@ -1629,7 +1786,12 @@ def platform_search(
     org_out = _org_summaries(db, orgs)
 
     users = (
-        db.execute(select(User).where(User.name.ilike(like) | User.email.ilike(like)).order_by(User.created_at.desc()).limit(10))
+        db.execute(
+            select(User)
+            .where(User.role != "integration", User.name.ilike(like) | User.email.ilike(like))
+            .order_by(User.created_at.desc())
+            .limit(10)
+        )
         .scalars()
         .all()
     )

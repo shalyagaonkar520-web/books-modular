@@ -12,6 +12,7 @@ actor is a tenant user; the panel admin has no tenant account.
 
 from __future__ import annotations
 
+import json
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import List, Optional, Union
@@ -33,7 +34,7 @@ from backend.schemas.auth import (
 )
 from backend.schemas.common import Message, Page
 from backend.security import hash_password, hash_token
-from backend.services import audit
+from backend.services import audit, module_pricing, subscription
 from backend.services.email_service import send_invite_email, smtp_configured
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
@@ -59,7 +60,7 @@ def _get_org(db: Session, org_id: str) -> Organization:
 
 def _get_user(db: Session, org_id: str, user_id: str) -> User:
     target = db.get(User, user_id)
-    if target is None or target.organization_id != org_id:
+    if target is None or target.organization_id != org_id or target.role == "integration":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     return target
 
@@ -93,8 +94,29 @@ def update_organization(db: Session, org_id: str, actor: Actor, payload: Organiz
 # Users
 # --------------------------------------------------------------------------- #
 def list_users(db: Session, org_id: str) -> List[UserOut]:
-    rows = db.execute(select(User).where(User.organization_id == org_id).order_by(User.created_at)).scalars().all()
+    rows = (
+        db.execute(select(User).where(User.organization_id == org_id, User.role != "integration").order_by(User.created_at)).scalars().all()
+    )
     return [UserOut.model_validate(u) for u in rows]
+
+
+def _invite_module_access(org: Organization, payload: InviteUserRequest) -> Optional[str]:
+    """The stored module_access for a custom invite (JSON list), or None for every plan module."""
+    if payload.module_access is None:
+        return None
+    if payload.role != "staff":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choosing modules applies to staff users only.")
+    known = module_pricing.module_keys()
+    unknown = sorted(set(payload.module_access) - set(known))
+    if unknown:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Unknown module(s): {', '.join(unknown)}")
+    if not payload.module_access:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose at least one module this user can edit.")
+    plan = subscription.paid_modules(org)
+    outside = sorted(set(payload.module_access) - plan) if plan is not None else []
+    if outside:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Not in your subscription plan: {', '.join(outside)}")
+    return json.dumps([key for key in known if key in set(payload.module_access)])
 
 
 def invite_user(db: Session, org_id: str, actor: Actor, payload: InviteUserRequest) -> UserOut:
@@ -117,6 +139,8 @@ def invite_user(db: Session, org_id: str, actor: Actor, payload: InviteUserReque
         if employee.user_id:
             raise HTTPException(status.HTTP_409_CONFLICT, "This employee already has portal access.")
 
+    module_access = _invite_module_access(org, payload)
+
     raw_token = secrets.token_urlsafe(32)
     new_user = User(
         organization_id=org_id,
@@ -127,6 +151,7 @@ def invite_user(db: Session, org_id: str, actor: Actor, payload: InviteUserReque
         is_active=True,
         invite_token_hash=hash_token(raw_token),
         invite_token_expires_at=datetime.now(UTC) + timedelta(days=INVITE_TOKEN_EXPIRE_DAYS),
+        module_access=module_access,
     )
     db.add(new_user)
     db.flush()

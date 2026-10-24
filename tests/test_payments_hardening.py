@@ -216,7 +216,7 @@ def test_confirm_page_escapes_transaction_id(mock_smtp, client, org):
     assert res.status_code == 201, res.text
     token = _token_from_smtp(mock_server)
 
-    confirm = client.get(f"/api/payments/external/confirm?token={token}&decision=yes")
+    confirm = client.post("/api/payments/external/confirm", data={"token": token, "decision": "yes"})
     assert confirm.status_code == 200
     assert "<script>alert('xss')</script>" not in confirm.text
     assert "&lt;script&gt;" in confirm.text

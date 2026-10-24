@@ -23,6 +23,8 @@ export interface PricedModule {
   price: number;
   /** Modules this one needs; selecting it selects them too. */
   requires: AppModuleKey[];
+  /** Needed to run Books: every plan includes it and it cannot be unticked. */
+  core?: boolean;
 }
 
 export interface ModulePricing {
@@ -58,7 +60,7 @@ export interface ModuleQuote {
 /** The bundled catalog (mirrors the backend's placeholder pricing). */
 export const DEFAULT_MODULE_PRICING = defaultPricingJson as ModulePricing;
 
-/** A plan with nothing chosen yet starts with a useful sales starter set. */
+/** A plan with nothing chosen yet starts with the core modules (see `withCore`). */
 export const DEFAULT_SELECTED_MODULES: AppModuleKey[] = ['items', 'customers', 'invoices', 'paymentsReceived'];
 
 export interface ModuleGroup {
@@ -103,6 +105,7 @@ export function normalizeModulePricing(raw: unknown): ModulePricing {
       description: typeof entry.description === 'string' ? entry.description : (known?.description ?? ''),
       price: entry.price,
       requires: Array.isArray(entry.requires) ? (entry.requires.filter((key) => typeof key === 'string') as AppModuleKey[]) : [],
+      core: typeof entry.core === 'boolean' ? entry.core : Boolean(known?.core),
     });
   });
   if (!modules.length) return fallback;
@@ -150,6 +153,16 @@ export function resolveModules(selected: Iterable<string>, catalog: ModulePricin
   return catalog.modules.filter((module) => chosen.has(module.key)).map((module) => module.key);
 }
 
+/** The modules every plan includes (what Books needs to run), in catalog order. */
+export function coreModules(catalog: ModulePricing): AppModuleKey[] {
+  return catalog.modules.filter((module) => module.core).map((module) => module.key);
+}
+
+/** The selection with the core modules (and everything required) added, in catalog order. */
+export function withCore(selected: Iterable<string>, catalog: ModulePricing): AppModuleKey[] {
+  return resolveModules([...coreModules(catalog), ...selected], catalog);
+}
+
 /** Every selected module that (transitively) depends on `key`, i.e. what removing `key` must also remove. */
 export function dependentsOf(key: string, selected: Iterable<string>, catalog: ModulePricing): AppModuleKey[] {
   const remaining = new Set(selected);
@@ -172,11 +185,11 @@ export function dependentsOf(key: string, selected: Iterable<string>, catalog: M
 const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
 
 /**
- * Price a selection for a billing cycle: requirements are added first, so the
- * quote matches what the server will store.
+ * Price a selection for a billing cycle: the core modules and requirements are
+ * added first, so the quote matches what the server will store.
  */
 export function quote(selected: Iterable<string>, catalog: ModulePricing, billingCycle: BillingCycle = 'monthly'): ModuleQuote {
-  const modules = resolveModules(selected, catalog);
+  const modules = withCore(selected, catalog);
   const prices = new Map(catalog.modules.map((module) => [module.key, module.price]));
   const modulesTotal = roundMoney(modules.reduce((sum, key) => sum + (prices.get(key) ?? 0), 0));
   const monthlyPrice = roundMoney(catalog.basePrice + modulesTotal);

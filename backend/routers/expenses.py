@@ -301,7 +301,7 @@ def send_expense_via_gmail(
         pdf_filename=f"Expense_{e.expense_number}.pdf",
     )
     if not result.get("success"):
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Gmail SMTP error: {result.get('error')}")
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, result.get("error") or "The email could not be sent. Check the address, or ask your administrator to check the email settings.")
     audit.record(db, user, "email", "expense", e.id, f"Emailed expense {e.expense_number} to {payload.to_email}")
     db.commit()
     return result

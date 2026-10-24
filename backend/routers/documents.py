@@ -1,15 +1,17 @@
 import csv
 import hashlib
 import io
+import logging
 import os
 import re
 import uuid
+import zipfile
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 import openpyxl
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -17,7 +19,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.config import get_settings
 from backend.db import get_db
-from backend.deps import get_current_user, require_write
+from backend.deps import get_current_user, module_write_error, require_write
 from backend.models import (
     Account,
     BankAccount,
@@ -36,6 +38,7 @@ from backend.services import audit, excel_import, numbering
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
 settings = get_settings()
+logger = logging.getLogger("roomanbooks.documents")
 router = APIRouter(prefix="/api/documents", tags=["Documents"])
 
 ALLOWED_TYPES = {
@@ -267,6 +270,22 @@ def _jsonable(data: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+# An .xlsx is a zip: a small upload can expand to gigabytes ("zip bomb").
+MAX_XLSX_UNCOMPRESSED = 200 * 1024 * 1024
+
+
+def _check_xlsx_size(contents: bytes) -> None:
+    try:
+        with zipfile.ZipFile(io.BytesIO(contents)) as archive:
+            total = sum(info.file_size for info in archive.infolist())
+    except zipfile.BadZipFile as e:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "This file isn't a valid Excel (.xlsx) workbook. Save it as .xlsx or .csv and try again."
+        ) from e
+    if total > MAX_XLSX_UNCOMPRESSED:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "This workbook is too large to import. Split it into smaller files.")
+
+
 @router.post("/import-excel-categorize", response_model=ExcelCategorizeResponse)
 async def import_excel_categorize(
     file: UploadFile = File(...),
@@ -279,9 +298,12 @@ async def import_excel_categorize(
     not be read - so the user reviews a real preview before committing.
     """
     filename = file.filename or "import.xlsx"
-    contents = await file.read()
+    limit = get_settings().max_upload_size_mb * 1024 * 1024
+    contents = await file.read(limit + 1)
     if not contents:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File is empty")
+    if len(contents) > limit:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, f"The file is larger than {get_settings().max_upload_size_mb} MB.")
 
     sections: List[ExcelCategorizeSection] = []
 
@@ -296,10 +318,15 @@ async def import_excel_categorize(
         if section:
             sections.append(section)
     else:
+        _check_xlsx_size(contents)
         try:
-            wb = openpyxl.load_workbook(io.BytesIO(contents), data_only=True)
+            # read_only streams the sheets instead of building them all in memory.
+            wb = openpyxl.load_workbook(io.BytesIO(contents), data_only=True, read_only=True)
         except Exception as e:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Failed to parse Excel workbook: {e}") from e
+            logger.info("Excel import: unreadable workbook %r: %r", filename, e)
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "This file isn't a valid Excel (.xlsx) workbook. Save it as .xlsx or .csv and try again."
+            ) from e
         for sheet_name in wb.sheetnames:
             s_lower = sheet_name.strip().lower()
             if any(x in s_lower for x in ["overview", "guide", "readme", "instruction", "legend"]):
@@ -338,6 +365,7 @@ async def import_excel_categorize(
 @router.post("/import-excel-commit", response_model=ExcelCommitResponse)
 def import_excel_commit(
     payload: ExcelCommitPayload,
+    request: Request,
     user: User = Depends(require_write),
     db: Session = Depends(get_db),
 ):
@@ -356,6 +384,15 @@ def import_excel_commit(
     org_id = user.organization_id
     counts: Dict[str, int] = {"customers": 0, "vendors": 0, "invoices": 0, "bills": 0, "expenses": 0}
     skipped: List[str] = []
+
+    # The import creates records of other modules (invoices, bills...): each
+    # needs the same access as creating it by hand - plan, the user's module
+    # access, a connected app's scope - not just access to Documents.
+    wanted = {sec.category.lower() for sec in payload.sections or []} | {i.category.lower() for i in payload.items or []}
+    for category in sorted(wanted & set(counts)):
+        error = module_write_error(user, (category,), request)
+        if error:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, f"You can't import {category}: {error}")
 
     expense_acct = db.execute(select(Account).where(Account.organization_id == org_id, Account.type == "expense")).scalars().first()
     bank_acct = db.execute(select(BankAccount).where(BankAccount.organization_id == org_id)).scalars().first()
@@ -440,6 +477,9 @@ def import_excel_commit(
             if amount is None or when is None:
                 skipped.append(f"Row {index} (expense): missing {'amount' if amount is None else 'date'}")
                 continue
+            if amount <= 0:
+                skipped.append(f"Row {index} (expense): the amount must be more than zero")
+                continue
             if not expense_acct or not bank_acct:
                 skipped.append(f"Row {index} (expense): no expense or bank account set up yet")
                 continue
@@ -471,6 +511,9 @@ def import_excel_commit(
             if not name or amount is None or when is None:
                 missing = "customer/vendor name" if not name else ("amount" if amount is None else "date")
                 skipped.append(f"Row {index} ({cat[:-1]}): missing {missing}")
+                continue
+            if amount <= 0:
+                skipped.append(f"Row {index} ({cat[:-1]}): the amount must be more than zero")
                 continue
             # due_date is NOT NULL on the model; with no Due Date column the
             # document's own date is the only non-invented value available.

@@ -14,6 +14,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import {
   DEFAULT_APP_CONTENT,
   brandPalette,
+  shadeColor,
   fetchMyAppContent,
   fetchPublicAppContent,
   interpolate,
@@ -21,6 +22,7 @@ import {
   type AppContent,
   type AppModuleKey,
 } from '@/api/appContent';
+import { useTheme, type ThemeMode } from './theme';
 import { useOptionalAuth } from '@/auth/AuthContext';
 
 type TextVars = Record<string, string | number | null | undefined>;
@@ -54,12 +56,37 @@ const AppContentContext = createContext<AppContentValue>(DEFAULT_VALUE);
 
 const BRAND_VARS = ['--primary', '--primary-hover', '--primary-soft'] as const;
 
-/** Point the stylesheet's brand variables at the configured colour (or back to the stylesheet's own). */
-function applyBrandColor(color: string) {
+function luminance(hex: string): number {
+  const n = parseInt(hex.slice(1), 16);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function rgba(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+/**
+ * Point the stylesheet's brand variables at the configured colour (or back to
+ * the stylesheet's own). In dark mode a very dark brand colour is lightened so
+ * buttons and links stay readable on the dark surfaces.
+ */
+function applyBrandColor(color: string, mode: ThemeMode) {
   const style = document.documentElement.style;
   if (color.toLowerCase() === DEFAULT_APP_CONTENT.branding.primaryColor.toLowerCase()) {
-    // The default colour is what index.css already declares, hand-tuned hover/tint included.
+    // The default colour is what index.css already declares (light and dark), hand-tuned hover/tint included.
     BRAND_VARS.forEach((name) => style.removeProperty(name));
+    return;
+  }
+  if (mode === 'dark') {
+    const base = luminance(color) < 0.12 ? shadeColor(color, 0.4) : color;
+    style.setProperty('--primary', base);
+    style.setProperty('--primary-hover', shadeColor(base, 0.15));
+    style.setProperty('--primary-soft', rgba(base, 0.18));
     return;
   }
   const palette = brandPalette(color);
@@ -89,9 +116,10 @@ export function AppContentProvider({ children, initialContent }: { children: Rea
     };
   }, [reload]);
 
+  const [themeMode] = useTheme();
   useEffect(() => {
-    applyBrandColor(content.branding.primaryColor);
-  }, [content.branding.primaryColor]);
+    applyBrandColor(content.branding.primaryColor, themeMode);
+  }, [content.branding.primaryColor, themeMode]);
 
   const value = useMemo(() => buildValue(content, reload), [content, reload]);
   return <AppContentContext.Provider value={value}>{children}</AppContentContext.Provider>;

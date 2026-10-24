@@ -23,6 +23,8 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -57,6 +59,13 @@ class Organization(TimestampMixin, Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Short unique code derived from the name ("rooman", "rooman-2"); the
+    # default admin-panel login is admin@<code>. Assigned on insert.
+    code: Mapped[Optional[str]] = mapped_column(String(40), unique=True, index=True)
+    # Which parts of the app content its admin panel may edit (JSON list of
+    # module keys plus "branding" / "general"); NULL = the plan's modules.
+    # See services/panel_content.
+    panel_content_access: Mapped[Optional[str]] = mapped_column(Text)
     legal_name: Mapped[Optional[str]] = mapped_column(String(200))
     gstin: Mapped[Optional[str]] = mapped_column(String(20))
     pan: Mapped[Optional[str]] = mapped_column(String(20))
@@ -205,7 +214,8 @@ class OrgPanelAdmin(TimestampMixin, OrgScopedMixin, Base):
     sign-up). Deliberately NOT a tenant ``User``: it has its own auth and token
     type, can only use the org admin panel, and only for its own organization.
     Its email is a separate namespace, so the same address may also belong to
-    a tenant user or a platform admin.
+    a tenant user or a platform admin. The ``email`` column holds the login ID,
+    which is an email or an ID such as ``admin@rooman``.
     """
 
     __tablename__ = "org_panel_admins"
@@ -218,6 +228,12 @@ class OrgPanelAdmin(TimestampMixin, OrgScopedMixin, Base):
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     # Email of the platform admin who created this login.
     created_by: Mapped[Optional[str]] = mapped_column(String(255))
+    # Set for a default login (admin@<code>, random password) and after a
+    # password reset: the admin must choose their own ID and password before
+    # using the panel.
+    must_change_credentials: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # When the admin asked the platform admin for a password reset (pending).
+    reset_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     organization: Mapped[Organization] = relationship()
 
@@ -1119,3 +1135,117 @@ class ExternalPayment(TimestampMixin, OrgScopedMixin, Base):
 
 
 ExternalPaymentProof = ExternalPayment
+
+
+def org_code_base(name: str) -> str:
+    """Lower-case letters and digits from the name, joined by hyphens ("Rooman Tech" -> "rooman-tech")."""
+    import re
+
+    base = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")[:30].strip("-")
+    return base or "org"
+
+
+@event.listens_for(Organization, "before_insert")
+def _assign_org_code(mapper, connection, target: Organization) -> None:  # noqa: ARG001
+    if target.code:
+        return
+    base = org_code_base(target.name)
+    taken = {
+        row[0]
+        for row in connection.execute(
+            text("SELECT code FROM organizations WHERE code = :base OR code LIKE :pattern"),
+            {"base": base, "pattern": f"{base}-%"},
+        )
+    }
+    code, n = base, 1
+    while code in taken:
+        n += 1
+        code = f"{base}-{n}"
+    target.code = code
+
+
+# --------------------------------------------------------------------------- #
+# Connected apps: other Rooman apps (or a customer's own system) using Books
+# features through the API with a scoped key, and receiving its events
+# (services/integrations.py, docs/INTEGRATIONS.md)
+# --------------------------------------------------------------------------- #
+
+
+class AppConnection(TimestampMixin, OrgScopedMixin, Base):
+    """One app connected to one organization's Books, created by a platform admin.
+
+    The app calls the normal Books API with ``Authorization: Bearer rbk_...``.
+    It acts as ``service_user`` (role ``integration``: never signs in, not
+    listed with the organization's users), limited to ``scopes`` - feature
+    keys of backend/features.py with ``:read`` or ``:write`` - and to the
+    organization's plan. Only the SHA-256 of the key is stored.
+    """
+
+    __tablename__ = "app_connections"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    key_prefix: Mapped[str] = mapped_column(String(24), nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    # JSON lists: ["invoices:write", "contacts:read"] and ["invoice.created", ...].
+    scopes: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    events: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    webhook_url: Mapped[Optional[str]] = mapped_column(String(500))
+    # Bumped on "rotate secret"; the signing secret is derived from it (never stored).
+    secret_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    service_user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by: Mapped[Optional[str]] = mapped_column(String(120))
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    service_user: Mapped[User] = relationship()
+
+
+class IntegrationEvent(Base):
+    """Something that happened in Books (outbox), written in the same transaction as the change."""
+
+    __tablename__ = "integration_events"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    organization_id: Mapped[str] = mapped_column(String(32), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    type: Mapped[str] = mapped_column(String(60), nullable=False)
+    entity_id: Mapped[Optional[str]] = mapped_column(String(32))
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class WebhookDelivery(Base):
+    """One event to one connected app's webhook, retried with backoff until delivered or dead."""
+
+    __tablename__ = "webhook_deliveries"
+    __table_args__ = (Index("ix_webhook_deliveries_due", "status", "next_attempt_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    event_id: Mapped[str] = mapped_column(String(32), ForeignKey("integration_events.id", ondelete="CASCADE"), nullable=False, index=True)
+    connection_id: Mapped[str] = mapped_column(String(32), ForeignKey("app_connections.id", ondelete="CASCADE"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)  # pending | delivered | dead
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    last_status_code: Mapped[Optional[int]] = mapped_column(Integer)
+    last_error: Mapped[Optional[str]] = mapped_column(String(500))
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    event: Mapped[IntegrationEvent] = relationship()
+
+
+class IdempotencyRecord(Base):
+    """The first response to a connected app's write with an ``Idempotency-Key``, replayed on a retry."""
+
+    __tablename__ = "idempotency_records"
+    __table_args__ = (UniqueConstraint("connection_id", "key", name="uq_idempotency_connection_key"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    connection_id: Mapped[str] = mapped_column(String(32), ForeignKey("app_connections.id", ondelete="CASCADE"), nullable=False)
+    key: Mapped[str] = mapped_column(String(120), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status_code: Mapped[Optional[int]] = mapped_column(Integer)  # NULL while the first request is running
+    response_body: Mapped[Optional[str]] = mapped_column(Text)
+    content_type: Mapped[Optional[str]] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)

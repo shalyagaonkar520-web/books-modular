@@ -44,7 +44,7 @@ export function BillsPage() {
   const { t } = useAppContent();
   const navigate = useNavigate();
   const toast = useToast();
-  const { download } = useDownload();
+  const { download, downloading } = useDownload();
   const { canWrite } = useAuth();
   const [searchParams] = useSearchParams();
 
@@ -200,7 +200,8 @@ export function BillsPage() {
             style={{ color: '#dc2626' }}
             aria-label={t('bills.aria.downloadPdf', { number: bill.billNumber })}
             title={t('bills.tip.pdf')}
-            onClick={() => billsApi.downloadPdf(bill.id, bill.billNumber)}
+            disabled={downloading}
+            onClick={() => void download(() => billsApi.downloadPdf(bill.id, bill.billNumber))}
           >
             <FileDown size={15} />
           </button>
@@ -210,7 +211,8 @@ export function BillsPage() {
             style={{ color: '#15803d' }}
             aria-label={t('bills.aria.downloadExcel', { number: bill.billNumber })}
             title={t('bills.tip.excel')}
-            onClick={() => billsApi.downloadExcel(bill.id, bill.billNumber)}
+            disabled={downloading}
+            onClick={() => void download(() => billsApi.downloadExcel(bill.id, bill.billNumber))}
           >
             <FileSpreadsheet size={15} />
           </button>

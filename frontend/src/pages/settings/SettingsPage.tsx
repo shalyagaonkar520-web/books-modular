@@ -4,7 +4,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { OrganizationSettings } from './OrganizationSettings';
 
 /**
- * The organization profile. Users, integrations and the activity log are
+ * The organization profile. Users and the activity log are
  * managed in the organization admin panel (/org-admin), not in the app.
  */
 export function SettingsPage() {
