@@ -21,7 +21,7 @@ from backend.schemas.items import (
     ItemOut,
     ItemUpdate,
 )
-from backend.services import audit, inventory, ledger, numbering
+from backend.services import audit, inventory, ledger, numbering, stock
 from backend.services.money import money, qty
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
@@ -302,11 +302,22 @@ def create_adjustment(payload: InventoryAdjustmentCreate, user: User = Depends(r
         reason=payload.reason,
         notes=payload.notes,
         created_by=user.id,
+        warehouse_id=stock.resolve_warehouse(db, user.organization_id, payload.warehouse_id).id if payload.warehouse_id else None,
     )
     db.add(adj)
     db.flush()
     inventory.adjust_stock(
-        db, item, adj.quantity_delta, adj.date, "inventory_adjustment", adj.id, f"{adj.reason} ({adj.adjustment_number})", user.id
+        db,
+        item,
+        adj.quantity_delta,
+        adj.date,
+        "inventory_adjustment",
+        adj.id,
+        f"{adj.reason} ({adj.adjustment_number})",
+        user.id,
+        warehouse_id=adj.warehouse_id,
+        batch_number=payload.batch_number,
+        expiry_date=payload.expiry_date,
     )
     audit.record(db, user, "create", "inventory_adjustment", adj.id, f"{adj.adjustment_number}: {item.name} {adj.quantity_delta:+}")
     db.commit()

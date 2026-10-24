@@ -36,7 +36,7 @@ from backend.schemas.sales import (
     InvoiceUpdate,
     LineOut,
 )
-from backend.services import audit, doc_flow, export_service, fx, inventory, ledger, numbering
+from backend.services import audit, doc_flow, export_service, fx, inventory, ledger, numbering, stock
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.documents import compute_lines, group_by_account, totals
 from backend.services.email_service import send_due_reminder_email, send_invoice_email
@@ -70,6 +70,7 @@ def line_out(line: InvoiceLine) -> LineOut:
         item_name=line.item.name if line.item else None,
         fc_rate=line.fc_rate if line.fc_rate is not None else line.rate,
         fc_amount=line.fc_amount if line.fc_amount is not None else line.amount,
+        batch_number=line.batch_number,
     )
 
 
@@ -126,6 +127,7 @@ def to_out(inv: Invoice) -> InvoiceOut:
         irn_ack_no=inv.irn_ack_no,
         irn_ack_date=inv.irn_ack_date,
         eway_bill_no=inv.eway_bill_no,
+        warehouse_id=inv.warehouse_id,
         **fc_fields(inv),
         created_at=inv.created_at,
         updated_at=inv.updated_at,
@@ -178,6 +180,7 @@ def _apply_payload(db: Session, inv: Invoice, payload: InvoiceCreate, org_id: st
     inv.salesperson = payload.salesperson
     inv.notes = payload.notes
     inv.terms = payload.terms
+    inv.warehouse_id = stock.resolve_warehouse(db, org_id, payload.warehouse_id).id if payload.warehouse_id else None
     inv.place_of_supply = payload.place_of_supply
     inv.tcs_rate = payload.tcs_rate
     # Lines are entered in the customer's currency; the books get base amounts.
@@ -207,6 +210,7 @@ def _apply_payload(db: Session, inv: Invoice, payload: InvoiceCreate, org_id: st
                 tax_amount=base_line.tax_amount,
                 fc_rate=line.rate,
                 fc_amount=line.amount,
+                batch_number=(line.spec.batch_number or "").strip() or None,
             )
         )
 
@@ -245,7 +249,17 @@ def post_invoice(db: Session, inv: Invoice, user: User) -> None:
         item = line.item
         if item and item.track_inventory:
             inventory.adjust_stock(
-                db, item, -line.quantity, inv.date, "invoice_stock", inv.id, f"Sold on {inv.invoice_number}", user.id, rate=Decimal("0")
+                db,
+                item,
+                -line.quantity,
+                inv.date,
+                "invoice_stock",
+                inv.id,
+                f"Sold on {inv.invoice_number}",
+                user.id,
+                rate=Decimal("0"),
+                warehouse_id=inv.warehouse_id,
+                batch_number=line.batch_number,
             )
             cost = money(line.quantity * money(item.cost_price))
             if cost > 0:
@@ -263,7 +277,17 @@ def unpost_invoice(db: Session, inv: Invoice, user: User, reason: str) -> None:
     for line in inv.lines:
         if line.item and line.item.track_inventory:
             inventory.adjust_stock(
-                db, line.item, line.quantity, today, "invoice_stock", inv.id, f"{reason} {inv.invoice_number}", user.id, rate=Decimal("0")
+                db,
+                line.item,
+                line.quantity,
+                today,
+                "invoice_stock",
+                inv.id,
+                f"{reason} {inv.invoice_number}",
+                user.id,
+                rate=Decimal("0"),
+                warehouse_id=inv.warehouse_id,
+                batch_number=line.batch_number,
             )
 
 

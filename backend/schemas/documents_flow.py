@@ -56,6 +56,8 @@ class CreditNoteCreate(_DocumentBody):
     customer_id: str
     invoice_id: Optional[str] = None
     reason: Optional[str] = Field(default=None, max_length=120)
+    # Warehouse returned goods go back into (or leave from); null = the default.
+    warehouse_id: Optional[str] = None
     status: Literal["draft", "open"] = "open"
 
 
@@ -74,6 +76,8 @@ class VendorCreditCreate(_DocumentBody):
     vendor_id: str
     bill_id: Optional[str] = None
     reason: Optional[str] = Field(default=None, max_length=120)
+    # Warehouse returned goods go back into (or leave from); null = the default.
+    warehouse_id: Optional[str] = None
     status: Literal["draft", "open"] = "open"
 
 

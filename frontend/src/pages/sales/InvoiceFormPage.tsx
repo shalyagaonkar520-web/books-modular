@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Trash2 } from 'lucide-react';
 
 import { currenciesApi } from '@/api/advancedAccounting';
+import { priceListsApi, warehousesApi } from '@/api/inventoryOps';
 import { contactsApi, invoicesApi, itemsApi } from '@/api/endpoints';
 import type { Contact, Invoice, Item } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
@@ -29,6 +30,7 @@ interface LineDraft {
   quantity: string;
   rate: string;
   taxRate: string;
+  batchNumber: string;
 }
 
 let lineCounter = 0;
@@ -42,6 +44,7 @@ const newLine = (taxRate: string = FALLBACK_LINE_TAX_RATE): LineDraft => ({
   quantity: '1',
   rate: '0',
   taxRate,
+  batchNumber: '',
 });
 
 // Match the backend, which rounds quantity to 3dp and rate to 2dp before
@@ -78,9 +81,13 @@ export function InvoiceFormPage() {
   const [placeOfSupply, setPlaceOfSupply] = useState('');
   const [tcsRate, setTcsRate] = useState('0');
   const [exchangeRate, setExchangeRate] = useState('');
+  const [warehouseId, setWarehouseId] = useState('');
 
   const customers = useAsync((signal) => contactsApi.list({ type: 'customer', page_size: 200 }, signal), []);
   const currencies = useAsync(() => currenciesApi.list(), []);
+  const warehouses = useAsync(() => warehousesApi.list(), []);
+  const priceListId = useMemo(() => customers.data?.items.find((c) => c.id === customerId)?.priceListId ?? null, [customers.data, customerId]);
+  const priceList = useAsync(async () => (priceListId ? priceListsApi.prices(priceListId) : []), [priceListId]);
   const items = useAsync((signal) => itemsApi.list({ page_size: 200 }, signal), []);
   const existing = useAsync(async () => (invoiceId ? invoicesApi.get(invoiceId) : null), [invoiceId]);
 
@@ -101,12 +108,13 @@ export function InvoiceFormPage() {
     setSalesperson(loaded.salesperson ?? '');
     setNotes(loaded.notes ?? '');
     setTerms(loaded.terms ?? '');
-    setDiscountAmount(String(loaded.discountAmount));
+    setDiscountAmount(String(loaded.fcDiscountAmount ?? loaded.discountAmount));
     setKeepSent(loaded.status === 'sent' || loaded.status === 'overdue');
     setProjectId(loaded.projectId ?? '');
     setPlaceOfSupply(loaded.placeOfSupply ?? '');
     setTcsRate(String(loaded.tcsRate ?? 0));
     setExchangeRate(loaded.exchangeRate && loaded.exchangeRate !== 1 ? String(loaded.exchangeRate) : '');
+    setWarehouseId(loaded.warehouseId ?? '');
     setLines(
       loaded.lines.length
         ? loaded.lines.map((line) => ({
@@ -115,8 +123,10 @@ export function InvoiceFormPage() {
             accountId: line.accountId ?? '',
             description: line.description,
             quantity: String(line.quantity),
-            rate: String(line.rate),
+            // In the invoice's own currency (equal to rate for base-currency invoices).
+            rate: String(line.fcRate ?? line.rate),
             taxRate: String(line.taxRate),
+            batchNumber: line.batchNumber ?? '',
           }))
         : [newLine()],
     );
@@ -141,7 +151,7 @@ export function InvoiceFormPage() {
     updateLine(key, {
       itemId,
       description: item.salesDescription || item.description || item.name,
-      rate: String(item.sellingPrice),
+      rate: String(priceList.data?.find((p) => p.itemId === item.id)?.rate ?? item.sellingPrice),
       taxRate: String(item.taxRate),
     });
   };
@@ -195,6 +205,7 @@ export function InvoiceFormPage() {
       placeOfSupply: placeOfSupply || null,
       tcsRate: parseNumber(tcsRate),
       exchangeRate: foreign && parseNumber(exchangeRate) > 0 ? parseNumber(exchangeRate) : null,
+      warehouseId: warehouseId || null,
       lines: lines.map((line) => ({
         itemId: line.itemId || null,
         accountId: line.accountId || null,
@@ -202,6 +213,7 @@ export function InvoiceFormPage() {
         quantity: parseNumber(line.quantity),
         rate: round2(parseNumber(line.rate)),
         taxRate: parseNumber(line.taxRate),
+        batchNumber: line.batchNumber.trim() || null,
       })),
     };
     const saved = await run<Invoice>(() => (invoiceId ? invoicesApi.update(invoiceId, payload) : invoicesApi.create(payload)));
@@ -341,6 +353,15 @@ export function InvoiceFormPage() {
               error={fieldErrors.subject}
               onChange={(event) => setSubject(event.target.value)}
             />
+            {(warehouses.data?.length ?? 0) > 1 ? (
+              <SelectField
+                label={t('docflow.form.warehouse')}
+                value={warehouseId}
+                placeholder={t('docflow.form.warehouseDefault')}
+                options={(warehouses.data ?? []).filter((w) => w.isActive).map((w) => ({ value: w.id, label: w.name }))}
+                onChange={(event) => setWarehouseId(event.target.value)}
+              />
+            ) : null}
             <SelectField
               label={t('invoices.form.placeOfSupply')}
               value={placeOfSupply}
@@ -401,6 +422,15 @@ export function InvoiceFormPage() {
                           <small className={item.stockOnHand > 0 ? 'text-subtle' : 'text-danger'}>
                             {t('invoices.form.line.inStock', { quantity: formatQuantity(item.stockOnHand), unit: item.unit })}
                           </small>
+                        ) : null}
+                        {item?.trackInventory ? (
+                          <input
+                            className="input input-sm"
+                            placeholder={t('docflow.lines.batch')}
+                            aria-label={t('docflow.lines.batch')}
+                            value={line.batchNumber}
+                            onChange={(event) => updateLine(line.key, { batchNumber: event.target.value })}
+                          />
                         ) : null}
                       </td>
                       <td>

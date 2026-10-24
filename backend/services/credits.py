@@ -87,7 +87,16 @@ def post_credit_note(db: Session, cn: CreditNote, user: User) -> None:
         item = line.item
         if item and item.track_inventory:
             inventory.adjust_stock(
-                db, item, line.quantity, cn.date, "credit_note_stock", cn.id, f"Returned on {number}", user.id, rate=Decimal("0")
+                db,
+                item,
+                line.quantity,
+                cn.date,
+                "credit_note_stock",
+                cn.id,
+                f"Returned on {number}",
+                user.id,
+                rate=Decimal("0"),
+                warehouse_id=cn.warehouse_id,
             )
             cost = money(line.quantity * money(item.cost_price))
             if cost > 0:
@@ -116,6 +125,7 @@ def unpost_credit_note(db: Session, cn: CreditNote, user: User, reason: str) -> 
                 user.id,
                 rate=Decimal("0"),
                 allow_negative=True,
+                warehouse_id=cn.warehouse_id,
             )
 
 
@@ -137,7 +147,16 @@ def post_vendor_credit(db: Session, vc: VendorCredit, user: User) -> None:
             on_hand = _stock_on_hand(db, item)
             _unreceive_at_average_cost(item, on_hand, qty(line.quantity), money(line.rate))
             inventory.adjust_stock(
-                db, item, -line.quantity, vc.date, "vendor_credit_stock", vc.id, f"Returned on {number}", user.id, rate=Decimal("0")
+                db,
+                item,
+                -line.quantity,
+                vc.date,
+                "vendor_credit_stock",
+                vc.id,
+                f"Returned on {number}",
+                user.id,
+                rate=Decimal("0"),
+                warehouse_id=vc.warehouse_id,
             )
         else:
             account_id = line.account_id or (item.purchase_account_id if item and item.purchase_account_id else default_expense.id)
@@ -169,6 +188,7 @@ def unpost_vendor_credit(db: Session, vc: VendorCredit, user: User, reason: str)
                 f"{reason} {vc.vendor_credit_number}",
                 user.id,
                 rate=Decimal("0"),
+                warehouse_id=vc.warehouse_id,
             )
             _receive_at_average_cost(item, on_hand, qty(line.quantity), money(line.rate))
 

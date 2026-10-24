@@ -20,7 +20,7 @@ from backend.routers.invoices import fc_fields
 from backend.schemas.common import Message, Page
 from backend.schemas.purchases import BillCreate, BillListItem, BillOut, BillStats, BillStatusUpdate, BillUpdate
 from backend.schemas.sales import LineOut
-from backend.services import audit, doc_flow, export_service, fx, inventory, ledger, numbering
+from backend.services import audit, doc_flow, export_service, fx, inventory, ledger, numbering, stock
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.documents import compute_lines, group_by_account, totals
 from backend.services.email_service import get_smtp_connection, sender_identity
@@ -54,6 +54,8 @@ def line_out(line: BillLine) -> LineOut:
         item_name=line.item.name if line.item else None,
         fc_rate=line.fc_rate if line.fc_rate is not None else line.rate,
         fc_amount=line.fc_amount if line.fc_amount is not None else line.amount,
+        batch_number=line.batch_number,
+        expiry_date=line.expiry_date,
     )
 
 
@@ -82,6 +84,7 @@ def to_out(bill: Bill) -> BillOut:
         tds_section=bill.tds_section,
         tds_rate=bill.tds_rate,
         tds_amount=bill.tds_amount,
+        warehouse_id=bill.warehouse_id,
         **fc_fields(bill),
         created_at=bill.created_at,
         updated_at=bill.updated_at,
@@ -121,6 +124,7 @@ def _apply_payload(db: Session, bill: Bill, payload: BillCreate, org_id: str) ->
     bill.date = payload.date
     bill.due_date = payload.due_date or (payload.date + timedelta(days=vendor.payment_terms_days))
     bill.notes = payload.notes
+    bill.warehouse_id = stock.resolve_warehouse(db, org_id, payload.warehouse_id).id if payload.warehouse_id else None
     bill.place_of_supply = payload.place_of_supply
     bill.reverse_charge = payload.reverse_charge
     bill.tds_section = payload.tds_section if payload.tds_rate > 0 else None
@@ -154,6 +158,8 @@ def _apply_payload(db: Session, bill: Bill, payload: BillCreate, org_id: str) ->
                 tax_amount=base_line.tax_amount,
                 fc_rate=line.rate,
                 fc_amount=line.amount,
+                batch_number=(line.spec.batch_number or "").strip() or None,
+                expiry_date=line.spec.expiry_date,
             )
         )
 
@@ -212,7 +218,18 @@ def post_bill(db: Session, bill: Bill, user: User) -> None:
             debit_pairs.append((inventory_acct.id, line.amount))
             on_hand = _stock_on_hand(db, item)
             inventory.adjust_stock(
-                db, item, line.quantity, bill.date, "bill_stock", bill.id, f"Received on {bill.bill_number}", user.id, rate=Decimal("0")
+                db,
+                item,
+                line.quantity,
+                bill.date,
+                "bill_stock",
+                bill.id,
+                f"Received on {bill.bill_number}",
+                user.id,
+                rate=Decimal("0"),
+                warehouse_id=bill.warehouse_id,
+                batch_number=line.batch_number,
+                expiry_date=line.expiry_date,
             )
             _receive_at_average_cost(item, on_hand, qty(line.quantity), money(line.rate))
         else:
@@ -255,6 +272,8 @@ def unpost_bill(db: Session, bill: Bill, user: User, reason: str) -> None:
                 user.id,
                 rate=Decimal("0"),
                 allow_negative=True,
+                warehouse_id=bill.warehouse_id,
+                batch_number=line.batch_number,
             )
 
 

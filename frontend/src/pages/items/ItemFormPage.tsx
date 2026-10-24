@@ -15,6 +15,7 @@ import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { parseNumber } from '@/utils/format';
 import { taxRatesWith, UNITS } from '@/utils/status';
+import { CompositeItemCard } from './CompositeItemCard';
 
 const UNIT_OPTIONS = UNITS.map((unit) => ({ value: unit, label: unit }));
 
@@ -105,13 +106,20 @@ export function ItemFormPage() {
   if (isEdit && existing.error) return <ErrorBlock message={existing.error} onRetry={existing.reload} />;
 
   return (
-    <ItemForm
-      key={existing.data?.id ?? 'new'}
-      item={existing.data ?? null}
-      options={refs.data ?? null}
-      optionsError={refs.error}
-      onDone={() => navigate('/items')}
-    />
+    <>
+      <ItemForm
+        key={existing.data?.id ?? 'new'}
+        item={existing.data ?? null}
+        options={refs.data ?? null}
+        optionsError={refs.error}
+        onDone={() => navigate('/items')}
+      />
+      {existing.data?.trackInventory ? (
+        <div className="form-section">
+          <CompositeItemCard itemId={existing.data.id} onChanged={existing.reload} />
+        </div>
+      ) : null}
+    </>
   );
 }
 

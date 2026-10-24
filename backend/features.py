@@ -99,6 +99,20 @@ FEATURES: Tuple[Feature, ...] = (
         ("/api/credit-notes",),
         "Sales returns and allowances, applied to invoices or refunded.",
     ),
+    Feature(
+        "inventoryOps",
+        "Inventory control",
+        (
+            "inventory_ops:warehouses_router",
+            "inventory_ops:transfers_router",
+            "inventory_ops:composites_router",
+            "inventory_ops:price_lists_router",
+            "inventory_ops:stock_router",
+        ),
+        ("items",),
+        ("/api/warehouses", "/api/transfer-orders", "/api/composite-items", "/api/price-lists", "/api/stock"),
+        "Warehouses, transfers, batches, composite items, price lists and the stock ledger.",
+    ),
     Feature("bills", "Bills", ("bills:router",), ("bills",), ("/api/bills",), "Vendor bills and due dates."),
     Feature(
         "purchaseOrders",

@@ -46,6 +46,7 @@ import { RefundsPage } from '@/pages/docflow/RefundsPage';
 import { GstFilingPage } from '@/pages/gst/GstFilingPage';
 import { BudgetsPage } from '@/pages/accounting/BudgetsPage';
 import { FixedAssetsPage } from '@/pages/accounting/FixedAssetsPage';
+import { InventoryPage } from '@/pages/inventory/InventoryPage';
 import { SubscriptionPage } from '@/pages/subscription/SubscriptionPage';
 
 export function App() {
@@ -108,6 +109,7 @@ export function App() {
             <Route path="/items" element={<ItemsPage />} />
             <Route path="/items/new" element={<ItemFormPage />} />
             <Route path="/items/:itemId/edit" element={<ItemFormPage />} />
+            <Route path="/inventory" element={<InventoryPage />} />
 
             <Route path="/customers" element={<ContactsPage type="customer" />} />
             <Route path="/customers/new" element={<ContactFormPage type="customer" />} />

@@ -38,6 +38,8 @@ class BillCreate(APIModel):
     tds_section: Optional[str] = Field(default=None, max_length=20)
     tds_rate: Decimal = Field(default=Decimal("0"), ge=0, le=30)
     exchange_rate: Optional[Decimal] = Field(default=None, gt=0, le=Decimal("1000000"))
+    # Warehouse goods are received into; null = the default warehouse.
+    warehouse_id: Optional[str] = None
 
     @model_validator(mode="after")
     def _due_after_date(self):
@@ -81,6 +83,7 @@ class BillOut(APIModel):
     tds_section: Optional[str] = None
     tds_rate: Decimal = Decimal("0")
     tds_amount: Decimal = Decimal("0")
+    warehouse_id: Optional[str] = None
     currency: Optional[str] = None
     exchange_rate: Decimal = Decimal("1")
     fc_subtotal: Optional[Decimal] = None

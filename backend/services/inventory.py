@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
 
 from backend.models import Item
-from backend.services import ledger
+from backend.services import ledger, stock
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.money import money, qty
 
@@ -28,8 +28,11 @@ def adjust_stock(
     created_by: Optional[str],
     rate: Optional[Decimal] = None,
     allow_negative: bool = False,
+    warehouse_id: Optional[str] = None,
+    batch_number: Optional[str] = None,
+    expiry_date: Optional[date] = None,
 ) -> None:
-    """Change stock on hand and post the inventory asset movement."""
+    """Change stock on hand, log the movement (warehouse, batch) and post the inventory asset movement."""
     if not item.track_inventory:
         return
     delta = qty(delta)
@@ -58,6 +61,20 @@ def adjust_stock(
             status.HTTP_400_BAD_REQUEST,
             f"Insufficient stock for '{item.name}': {qty(current)} {item.unit} available",
         )
+    stock.record(
+        db,
+        item,
+        delta,
+        entry_date,
+        source_type,
+        source_id,
+        description,
+        created_by,
+        warehouse_id=warehouse_id,
+        batch_number=batch_number,
+        expiry_date=expiry_date,
+        allow_negative=allow_negative,
+    )
     unit_rate = money(rate if rate is not None else item.cost_price)
     value = money(delta * unit_rate)
     if value == 0:

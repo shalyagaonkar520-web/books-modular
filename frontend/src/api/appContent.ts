@@ -63,7 +63,7 @@ export interface AppModuleMeta {
 
 /** Every module that can be switched off, in sidebar order. Dashboard and Settings are always on. */
 export const APP_MODULES: AppModuleMeta[] = [
-  { key: 'items', label: 'Items', routes: ['/items'] },
+  { key: 'items', label: 'Items', routes: ['/items', '/inventory'] },
   { key: 'customers', label: 'Customers', routes: ['/customers'] },
   { key: 'invoices', label: 'Invoices', routes: ['/invoices', '/quotes', '/sales-orders', '/credit-notes', '/recurring-invoices'] },
   { key: 'paymentsReceived', label: 'Payments received', routes: ['/payments-received', '/refunds'] },
@@ -98,6 +98,7 @@ export const TEXT_GROUP_LABELS: Record<string, string> = {
   header: 'Header',
   dashboard: 'Dashboard',
   items: 'Items',
+  inventory: 'Inventory control',
   customers: 'Customers',
   vendors: 'Vendors',
   invoices: 'Invoices',

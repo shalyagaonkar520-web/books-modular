@@ -10,7 +10,7 @@ from backend.deps import require_write
 from backend.models import Bill, User, VendorCredit
 from backend.routers.doc_routes import DocHooks, load, register_document_routes
 from backend.schemas.documents_flow import ApplyCreditRequest, DocumentOut, RefundCreate, RefundOut, StatusChange, VendorCreditCreate
-from backend.services import audit, credits, doc_flow
+from backend.services import audit, credits, doc_flow, stock
 from backend.services.doc_flow import VENDOR_CREDIT
 from backend.services.tenancy import get_or_404
 
@@ -30,6 +30,7 @@ def _edit_error(vc: VendorCredit) -> str | None:
 
 
 def _validate(db: Session, vc: VendorCredit, payload: VendorCreditCreate, org_id: str) -> None:
+    vc.warehouse_id = stock.resolve_warehouse(db, org_id, payload.warehouse_id).id if payload.warehouse_id else None
     vc.bill_id = None
     if not payload.bill_id:
         return

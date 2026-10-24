@@ -122,6 +122,8 @@ class ContactBase(APIModel):
     place_of_supply: Optional[str] = Field(default=None, max_length=2)
     # ISO currency code for this contact's invoices / bills; null = base currency.
     currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
+    # Price list suggested on this contact's documents.
+    price_list_id: Optional[str] = None
     language: Optional[str] = Field(default=None, max_length=40)
     # Overrides the org-wide receivables/payables account for this contact.
     ledger_account_id: Optional[str] = None
@@ -155,6 +157,7 @@ class ContactUpdate(_ContactFieldRules, APIModel):
     gst_treatment: Optional[GstTreatment] = None
     place_of_supply: Optional[str] = Field(default=None, max_length=2)
     currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
+    price_list_id: Optional[str] = None
     language: Optional[str] = Field(default=None, max_length=40)
     ledger_account_id: Optional[str] = None
     billing_address: Optional[str] = None

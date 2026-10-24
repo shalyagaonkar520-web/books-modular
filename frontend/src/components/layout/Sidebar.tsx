@@ -24,6 +24,7 @@ import {
   Undo2,
   Users,
   Wallet,
+  Warehouse,
 } from 'lucide-react';
 
 import type { AppModuleKey } from '@/api/appContent';
@@ -85,6 +86,7 @@ const GROUPS: NavGroup[] = [
 const SINGLE_LINKS: NavEntry[] = [
   { to: '/dashboard', label: 'sidebar.dashboard', icon: Home },
   { to: '/items', label: 'sidebar.items', icon: Package, module: 'items' },
+  { to: '/inventory', label: 'sidebar.inventory', icon: Warehouse, module: 'items' },
 ];
 
 const LOWER_LINKS: NavEntry[] = [

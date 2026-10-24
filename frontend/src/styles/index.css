@@ -3770,3 +3770,10 @@ input[type='password']::-ms-clear {
   border-color: var(--warning);
   color: var(--text);
 }
+
+/* Compact secondary input under a line's item picker (batch, expiry). */
+.input.input-sm {
+  margin-top: 4px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+}

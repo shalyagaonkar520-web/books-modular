@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Trash2 } from 'lucide-react';
 
 import { currenciesApi } from '@/api/advancedAccounting';
+import { warehousesApi } from '@/api/inventoryOps';
 import { accountingApi, billsApi, contactsApi, itemsApi } from '@/api/endpoints';
 import type { Contact, Item } from '@/api/types';
 import { Button } from '@/components/ui/Button';
@@ -27,6 +28,8 @@ interface LineDraft {
   quantity: string;
   rate: string;
   taxRate: string;
+  batchNumber: string;
+  expiryDate: string;
 }
 
 let nextLineKey = 1;
@@ -35,7 +38,7 @@ let nextLineKey = 1;
 const FALLBACK_LINE_TAX_RATE = '0';
 
 function emptyLine(taxRate: string = FALLBACK_LINE_TAX_RATE): LineDraft {
-  return { key: `line-${nextLineKey++}`, itemId: '', accountId: '', description: '', quantity: '1', rate: '0', taxRate };
+  return { key: `line-${nextLineKey++}`, itemId: '', accountId: '', description: '', quantity: '1', rate: '0', taxRate, batchNumber: '', expiryDate: '' };
 }
 
 
@@ -91,6 +94,8 @@ export function BillFormPage() {
   const [tdsRate, setTdsRate] = useState('0');
   const [reverseCharge, setReverseCharge] = useState(false);
   const [exchangeRate, setExchangeRate] = useState('');
+  const [warehouseId, setWarehouseId] = useState('');
+  const warehouses = useAsync(() => warehousesApi.list(), []);
   const currencies = useAsync(() => currenciesApi.list(), []);
   const [lines, setLines] = useState<LineDraft[]>(() => [emptyLine(defaultLineTaxRate)]);
   const [loadedId, setLoadedId] = useState<string | null>(null);
@@ -109,12 +114,13 @@ export function BillFormPage() {
     setDate(bill.date);
     setDueDate(bill.dueDate);
     setDueDateTouched(true);
-    setDiscountAmount(String(bill.discountAmount));
+    setDiscountAmount(String(bill.fcDiscountAmount ?? bill.discountAmount));
     setNotes(bill.notes ?? '');
     setTdsSection(bill.tdsSection ?? '');
     setTdsRate(String(bill.tdsRate ?? 0));
     setReverseCharge(Boolean(bill.reverseCharge));
     setExchangeRate(bill.exchangeRate && bill.exchangeRate !== 1 ? String(bill.exchangeRate) : '');
+    setWarehouseId(bill.warehouseId ?? '');
     setLines(
       bill.lines.length > 0
         ? bill.lines.map((line) => ({
@@ -123,8 +129,11 @@ export function BillFormPage() {
             accountId: line.accountId ?? '',
             description: line.description,
             quantity: String(line.quantity),
-            rate: String(line.rate),
+            // In the bill's own currency (equal to rate for base-currency bills).
+            rate: String(line.fcRate ?? line.rate),
             taxRate: String(line.taxRate),
+            batchNumber: line.batchNumber ?? '',
+            expiryDate: line.expiryDate ?? '',
           }))
         : [emptyLine()],
     );
@@ -195,6 +204,7 @@ export function BillFormPage() {
       status,
       reverseCharge,
       exchangeRate: foreign && parseNumber(exchangeRate, 0) > 0 ? parseNumber(exchangeRate, 0) : null,
+      warehouseId: warehouseId || null,
       tdsSection: parseNumber(tdsRate, 0) > 0 ? tdsSection || null : null,
       tdsRate: parseNumber(tdsRate, 0),
       lines: lines.map((line) => ({
@@ -204,6 +214,8 @@ export function BillFormPage() {
         quantity: parseNumber(line.quantity, 0),
         rate: parseNumber(line.rate, 0),
         taxRate: parseNumber(line.taxRate, 0),
+        batchNumber: line.batchNumber.trim() || null,
+        expiryDate: line.expiryDate || null,
       })),
     };
     const result = await run(() => (billId ? billsApi.update(billId, body) : billsApi.create(body)));
@@ -278,6 +290,15 @@ export function BillFormPage() {
                 setExchangeRate(saved ? String(saved) : '');
               }}
             />
+            {(warehouses.data?.length ?? 0) > 1 ? (
+              <SelectField
+                label={t('docflow.form.warehouse')}
+                value={warehouseId}
+                placeholder={t('docflow.form.warehouseDefault')}
+                options={(warehouses.data ?? []).filter((w) => w.isActive).map((w) => ({ value: w.id, label: w.name }))}
+                onChange={(event) => setWarehouseId(event.target.value)}
+              />
+            ) : null}
             {foreign ? (
               <TextField
                 label={`${t('bills.form.exchangeRate')} (${vendorCurrency})`}
@@ -378,6 +399,25 @@ export function BillFormPage() {
                         ))}
                       </select>
                       {item?.trackInventory ? <small className="text-muted">{t('bills.form.line.stockHint')}</small> : null}
+                      {item?.trackInventory ? (
+                        <div className="row">
+                          <input
+                            className="input input-sm"
+                            placeholder={t('docflow.lines.batch')}
+                            aria-label={t('docflow.lines.batch')}
+                            value={line.batchNumber}
+                            onChange={(event) => updateLine(line.key, { batchNumber: event.target.value })}
+                          />
+                          <input
+                            className="input input-sm"
+                            type="date"
+                            aria-label={t('docflow.lines.expiry')}
+                            title={t('docflow.lines.expiry')}
+                            value={line.expiryDate}
+                            onChange={(event) => updateLine(line.key, { expiryDate: event.target.value })}
+                          />
+                        </div>
+                      ) : null}
                     </td>
                     <td>
                       <select

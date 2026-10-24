@@ -29,6 +29,9 @@ class LineInput(APIModel):
     quantity: Decimal = Field(default=Decimal("1"), gt=0, le=MAX_QUANTITY)
     rate: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
     tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    # Goods tracked in batches: the batch sold (invoices) or received (bills, with expiry).
+    batch_number: Optional[str] = Field(default=None, max_length=60)
+    expiry_date: Optional[date] = None
 
 
 class LineOut(LineInput):
@@ -68,6 +71,8 @@ class InvoiceCreate(APIModel):
     tcs_rate: Decimal = Field(default=Decimal("0"), ge=0, le=10)
     # Base currency per unit of the customer's currency; null = the saved rate.
     exchange_rate: Optional[Decimal] = Field(default=None, gt=0, le=Decimal("1000000"))
+    # Warehouse goods ship from; null = the default warehouse.
+    warehouse_id: Optional[str] = None
 
     @model_validator(mode="after")
     def _due_after_date(self):
@@ -118,6 +123,7 @@ class InvoiceOut(APIModel):
     irn_ack_no: Optional[str] = None
     irn_ack_date: Optional[datetime] = None
     eway_bill_no: Optional[str] = None
+    warehouse_id: Optional[str] = None
     currency: Optional[str] = None
     exchange_rate: Decimal = Decimal("1")
     fc_subtotal: Optional[Decimal] = None

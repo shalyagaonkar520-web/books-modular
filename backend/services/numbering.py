@@ -24,6 +24,8 @@ PREFIXES = {
     "vendor_credit": "VC",
     "refund": "RFD",
     "fixed_asset": "FA",
+    "transfer_order": "TO",
+    "assembly": "ASM",
 }
 
 

@@ -10,7 +10,7 @@ from backend.deps import require_write
 from backend.models import CreditNote, Invoice, User
 from backend.routers.doc_routes import DocHooks, load, register_document_routes
 from backend.schemas.documents_flow import ApplyCreditRequest, CreditNoteCreate, DocumentOut, RefundCreate, RefundOut, StatusChange
-from backend.services import audit, credits, doc_flow
+from backend.services import audit, credits, doc_flow, stock
 from backend.services.doc_flow import CREDIT_NOTE
 from backend.services.tenancy import get_or_404
 
@@ -30,6 +30,7 @@ def _edit_error(cn: CreditNote) -> str | None:
 
 
 def _validate(db: Session, cn: CreditNote, payload: CreditNoteCreate, org_id: str) -> None:
+    cn.warehouse_id = stock.resolve_warehouse(db, org_id, payload.warehouse_id).id if payload.warehouse_id else None
     cn.invoice_id = None
     if not payload.invoice_id:
         return

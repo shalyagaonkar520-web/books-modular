@@ -122,6 +122,9 @@ class InventoryAdjustmentCreate(APIModel):
     quantity_delta: Decimal = Field(ge=-MAX_QUANTITY, le=MAX_QUANTITY)
     reason: str = Field(min_length=1, max_length=120)
     notes: Optional[str] = None
+    warehouse_id: Optional[str] = None
+    batch_number: Optional[str] = Field(default=None, max_length=60)
+    expiry_date: Optional[date] = None
 
 
 class InventoryAdjustmentOut(APIModel):

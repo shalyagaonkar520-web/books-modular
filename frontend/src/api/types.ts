@@ -185,6 +185,7 @@ export interface Contact {
   placeOfSupply?: string | null;
   /** ISO code its invoices / bills are raised in; null = the base currency. */
   currency?: string | null;
+  priceListId?: string | null;
 }
 
 export interface ContactSummary {
@@ -212,6 +213,8 @@ export interface DocumentLine {
   /** The line in the document's own currency. */
   fcRate?: number | null;
   fcAmount?: number | null;
+  batchNumber?: string | null;
+  expiryDate?: string | null;
 }
 
 export type InvoiceStatus = 'draft' | 'sent' | 'partially_paid' | 'paid' | 'void' | 'overdue';
@@ -257,6 +260,7 @@ export interface Invoice {
   fcTotal?: number | null;
   fcAmountPaid?: number | null;
   fcBalanceDue?: number | null;
+  warehouseId?: string | null;
   lines: DocumentLine[];
   createdAt: string;
   updatedAt: string;
@@ -343,6 +347,7 @@ export interface Bill {
   fcTotal?: number | null;
   fcAmountPaid?: number | null;
   fcBalanceDue?: number | null;
+  warehouseId?: string | null;
   lines: DocumentLine[];
   createdAt: string;
   updatedAt: string;
