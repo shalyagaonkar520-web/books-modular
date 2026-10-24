@@ -87,7 +87,13 @@ def test_only_active_admin_cannot_be_deleted_but_can_once_another_exists(client,
     created = client.post(
         "/api/platform/users",
         headers=ph,
-        json={"organizationId": ctx["org"]["id"], "name": "Second Admin", "email": f"second-{uuid.uuid4().hex[:6]}@soledel.example.com", "password": "SecondAdmin1!", "role": "admin"},
+        json={
+            "organizationId": ctx["org"]["id"],
+            "name": "Second Admin",
+            "email": f"second-{uuid.uuid4().hex[:6]}@soledel.example.com",
+            "password": "SecondAdmin1!",
+            "role": "admin",
+        },
     )
     assert created.status_code == 201, created.text
     assert client.patch(f"/api/platform/users/{uid}", headers=ph, json={"role": "staff"}).status_code == 200
@@ -98,7 +104,9 @@ def test_employee_portal_user_cannot_be_moved(client, ph):
     other = register_org(client, "EmpMoveDst")
     h = auth(ctx["token"])
     email = f"emp-{uuid.uuid4().hex[:6]}@empmove.example.com"
-    emp = client.post("/api/payroll/employees", headers=h, json={"name": "Emp Loyee", "email": email, "dateOfJoining": "2026-01-01", "basicSalary": 30000}).json()
+    emp = client.post(
+        "/api/payroll/employees", headers=h, json={"name": "Emp Loyee", "email": email, "dateOfJoining": "2026-01-01", "basicSalary": 30000}
+    ).json()
     invite_and_accept(client, h, "Emp Loyee", email, "employee", "EmpLoyee1!", employee_id=emp["id"])
     uid = client.post("/api/auth/login", json={"email": email, "password": "EmpLoyee1!"}).json()["user"]["id"]
     res = client.patch(f"/api/platform/users/{uid}", headers=ph, json={"organizationId": other["org"]["id"]})

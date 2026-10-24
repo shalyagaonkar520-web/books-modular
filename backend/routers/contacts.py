@@ -407,7 +407,10 @@ def send_contact_email(
         recipient_name=contact.display_name,
     )
     if not result.get("success"):
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, result.get("error") or "The email could not be sent. Check the address, or ask your administrator to check the email settings.")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            result.get("error") or "The email could not be sent. Check the address, or ask your administrator to check the email settings.",
+        )
     audit.record(db, user, "email", "contact", contact.id, f"Sent email to {contact.display_name} ({recipient})")
     db.commit()
     return result

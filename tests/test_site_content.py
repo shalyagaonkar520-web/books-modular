@@ -56,7 +56,16 @@ def test_edit_pricing_shows_on_public_site(client, admin_h):
     body["pricing"]["plans"][0]["monthlyPrice"] = 777
     body["pricing"]["plans"][0]["annualPrice"] = 555
     body["pricing"]["plans"].append(
-        {"name": "Mega", "description": "", "monthlyPrice": 9999, "annualPrice": 8888, "features": ["All the things"], "ctaLabel": "Talk to us", "ctaTarget": "login", "popular": False}
+        {
+            "name": "Mega",
+            "description": "",
+            "monthlyPrice": 9999,
+            "annualPrice": 8888,
+            "features": ["All the things"],
+            "ctaLabel": "Talk to us",
+            "ctaTarget": "login",
+            "popular": False,
+        }
     )
     body["hero"]["titleLine1"] = "<b>Books</b> & more"  # stored as plain text
     body["sections"]["showFaq"] = False

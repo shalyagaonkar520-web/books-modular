@@ -63,7 +63,11 @@ def test_normal_tenant_actions_are_not_annotated(client):
     h = auth(ctx["token"])
     assert "imp" not in _claims(ctx["token"])
     assert "imp" not in _claims(client.get("/api/auth/me", headers=h).json()["accessToken"])
-    item = client.post("/api/items", headers=h, json={"name": "Plain item", "sku": f"PL-{uuid.uuid4().hex[:5]}", "type": "service", "sellingPrice": 50, "taxRate": 0})
+    item = client.post(
+        "/api/items",
+        headers=h,
+        json={"name": "Plain item", "sku": f"PL-{uuid.uuid4().hex[:5]}", "type": "service", "sellingPrice": 50, "taxRate": 0},
+    )
     assert item.status_code == 201
     logs = client.get("/api/audit-logs", headers=h).json()["items"]
     entry = next(log for log in logs if log.get("entityId") == item.json()["id"])
