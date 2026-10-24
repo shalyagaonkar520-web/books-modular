@@ -233,8 +233,8 @@ def get_journal(entry_id: str, user: User = Depends(require_financial_read), db:
     return journal_out(entry)
 
 
-@router.post("/journals", response_model=JournalOut, status_code=status.HTTP_201_CREATED)
-def create_journal(payload: JournalCreate, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
+def create_journal_record(db: Session, user: User, payload: JournalCreate, recurring_profile_id: Optional[str] = None) -> JournalEntry:
+    """Validate and post a manual journal without committing (shared with recurring profiles)."""
     org_id = user.organization_id
     account_ids = {ln.account_id for ln in payload.lines}
     accounts = {
@@ -265,7 +265,14 @@ def create_journal(payload: JournalCreate, user: User = Depends(require_financia
         db, user.organization_id, payload.date, lines, "manual", None, reference=payload.reference, notes=payload.notes, created_by=user.id
     )
     entry.source_id = entry.id
+    entry.recurring_profile_id = recurring_profile_id
     audit.record(db, user, "create", "journal", entry.id, f"Manual journal {entry.entry_number} for {entry.total}")
+    return entry
+
+
+@router.post("/journals", response_model=JournalOut, status_code=status.HTTP_201_CREATED)
+def create_journal(payload: JournalCreate, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
+    entry = create_journal_record(db, user, payload)
     db.commit()
     db.refresh(entry)
     return journal_out(entry)

@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, status
 from fastapi.responses import HTMLResponse, Response
 from pydantic import Field
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from backend.config import get_settings
@@ -32,7 +32,7 @@ from backend.models import (
 from backend.schemas.common import MAX_MONEY, APIModel, Message, Page
 from backend.schemas.purchases import VendorPaymentCreate, VendorPaymentOut
 from backend.schemas.sales import CustomerPaymentCreate, CustomerPaymentOut
-from backend.services import audit, bank, export_service, ledger, numbering
+from backend.services import audit, bank, export_service, fx, ledger, numbering
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.email_service import (
     send_customer_payment_email,
@@ -69,7 +69,7 @@ def _payable_account_id(db: Session, org_id: str, vendor: Contact) -> str:
     return vendor.ledger_account_id or get_account_by_code(db, org_id, "2000").id
 
 
-def _apply_invoice_payment(db: Session, invoice: Invoice, amount: Decimal) -> None:
+def _apply_invoice_payment(db: Session, invoice: Invoice, amount: Decimal, fc_amount: Optional[Decimal] = None) -> None:
     """Add a payment to an invoice atomically, or raise 400 if it no longer fits.
 
     The balance check and the increment are one UPDATE, so two requests racing
@@ -86,7 +86,11 @@ def _apply_invoice_payment(db: Session, invoice: Invoice, amount: Decimal) -> No
             Invoice.status.in_(_PAYABLE_INVOICE_STATUSES),
             Invoice.total - Invoice.amount_paid >= amount - _HALF_PAISA,
         )
-        .values(amount_paid=func.round(Invoice.amount_paid + amount, 2))
+        .values(
+            amount_paid=func.round(Invoice.amount_paid + amount, 2),
+            # In the invoice's own currency; the same as amount for base-currency invoices.
+            fc_amount_paid=func.round(Invoice.fc_amount_paid + (amount if fc_amount is None else fc_amount), 2),
+        )
         .execution_options(synchronize_session=False)
     )
     db.refresh(invoice)
@@ -99,19 +103,22 @@ def _apply_invoice_payment(db: Session, invoice: Invoice, amount: Decimal) -> No
     _refresh_invoice_status(invoice)
 
 
-def _remove_invoice_payment(db: Session, invoice: Invoice, amount: Decimal) -> None:
+def _remove_invoice_payment(db: Session, invoice: Invoice, amount: Decimal, fc_amount: Optional[Decimal] = None) -> None:
     """Take a deleted payment back off an invoice, atomically."""
     db.execute(
         update(Invoice)
         .where(Invoice.id == invoice.id, Invoice.organization_id == invoice.organization_id)
-        .values(amount_paid=func.round(Invoice.amount_paid - amount, 2))
+        .values(
+            amount_paid=func.round(Invoice.amount_paid - amount, 2),
+            fc_amount_paid=func.round(Invoice.fc_amount_paid - (amount if fc_amount is None else fc_amount), 2),
+        )
         .execution_options(synchronize_session=False)
     )
     db.refresh(invoice)
     _refresh_invoice_status(invoice)
 
 
-def _apply_bill_payment(db: Session, bill: Bill, amount: Decimal) -> None:
+def _apply_bill_payment(db: Session, bill: Bill, amount: Decimal, fc_amount: Optional[Decimal] = None) -> None:
     """Bill counterpart of _apply_invoice_payment."""
     result = db.execute(
         update(Bill)
@@ -121,7 +128,10 @@ def _apply_bill_payment(db: Session, bill: Bill, amount: Decimal) -> None:
             Bill.status.in_(_PAYABLE_BILL_STATUSES),
             Bill.total - Bill.amount_paid >= amount - _HALF_PAISA,
         )
-        .values(amount_paid=func.round(Bill.amount_paid + amount, 2))
+        .values(
+            amount_paid=func.round(Bill.amount_paid + amount, 2),
+            fc_amount_paid=func.round(Bill.fc_amount_paid + (amount if fc_amount is None else fc_amount), 2),
+        )
         .execution_options(synchronize_session=False)
     )
     db.refresh(bill)
@@ -132,15 +142,42 @@ def _apply_bill_payment(db: Session, bill: Bill, amount: Decimal) -> None:
     _refresh_bill_status(bill)
 
 
-def _remove_bill_payment(db: Session, bill: Bill, amount: Decimal) -> None:
+def _remove_bill_payment(db: Session, bill: Bill, amount: Decimal, fc_amount: Optional[Decimal] = None) -> None:
     db.execute(
         update(Bill)
         .where(Bill.id == bill.id, Bill.organization_id == bill.organization_id)
-        .values(amount_paid=func.round(Bill.amount_paid - amount, 2))
+        .values(
+            amount_paid=func.round(Bill.amount_paid - amount, 2),
+            fc_amount_paid=func.round(Bill.fc_amount_paid - (amount if fc_amount is None else fc_amount), 2),
+        )
         .execution_options(synchronize_session=False)
     )
     db.refresh(bill)
     _refresh_bill_status(bill)
+
+
+def _fx_settlement(db: Session, org_id: str, doc, fc: Decimal, given_rate: Optional[Decimal]) -> tuple:
+    """For a foreign-currency invoice or bill: (base cleared off the document,
+    base moved through the bank, payment rate). The final payment clears exactly
+    the base balance left, so rounding never leaves a paisa behind."""
+    balance_fc = money(doc.fc_total - doc.fc_amount_paid)
+    if fc > balance_fc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the balance of {doc.currency} {balance_fc}")
+    pay_rate = fx.rate(given_rate) if given_rate else fx.stored_rate(db, org_id, doc.currency)
+    if not pay_rate:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Enter today's exchange rate for {doc.currency}")
+    applied = money(doc.balance_due) if fc == balance_fc else fx.to_base(fc, doc.exchange_rate)
+    return applied, fx.to_base(fc, pay_rate), pay_rate
+
+
+def _fx_line(db: Session, org_id: str, difference: Decimal, desc: str, contact_id: str) -> list:
+    """The exchange gain (credit) or loss (debit) that balances a settlement."""
+    if difference == 0:
+        return []
+    account = get_account_by_code(db, org_id, fx.EXCHANGE_GAIN_LOSS).id
+    if difference > 0:
+        return [(account, Decimal("0"), difference, f"Exchange gain - {desc}", contact_id)]
+    return [(account, -difference, Decimal("0"), f"Exchange loss - {desc}", contact_id)]
 
 
 def _check_cash_withdrawal(db: Session, bank_acct: BankAccount, amount: Decimal) -> None:
@@ -197,6 +234,9 @@ def cp_out(p: CustomerPayment) -> CustomerPaymentOut:
         mode=p.mode,
         reference=p.reference,
         notes=p.notes,
+        currency=p.currency,
+        exchange_rate=p.exchange_rate or 1,
+        fc_amount=p.fc_amount,
         created_at=p.created_at,
     )
 
@@ -301,8 +341,13 @@ def _record_customer_payment(
     amount: Decimal,
     payload: CustomerPaymentCreate,
     notes: Optional[str],
+    fx_details: Optional[tuple] = None,
 ) -> CustomerPayment:
-    """One receipt: against ``invoice`` (already applied by the caller), or a customer advance when None."""
+    """One receipt: against ``invoice`` (already applied by the caller), or a customer advance when None.
+
+    ``fx_details`` = (fc amount, rate, base cleared off the invoice) for a
+    foreign-currency invoice; ``amount`` is then what the bank received.
+    """
     payment = CustomerPayment(
         organization_id=org_id,
         payment_number=numbering.next_number(db, org_id, "customer_payment"),
@@ -316,6 +361,11 @@ def _record_customer_payment(
         notes=notes,
         created_by=user.id,
     )
+    applied = amount
+    if fx_details:
+        payment.fc_amount, payment.exchange_rate, applied = fx_details
+        payment.currency = invoice.currency
+        payment.applied_amount = applied
     db.add(payment)
     db.flush()
 
@@ -329,7 +379,11 @@ def _record_customer_payment(
         db,
         org_id,
         payment.date,
-        [(bank_acct.ledger_account_id, amount, Decimal("0"), desc, customer.id), (credit_account, Decimal("0"), amount, desc, customer.id)],
+        [
+            (bank_acct.ledger_account_id, amount, Decimal("0"), desc, customer.id),
+            (credit_account, Decimal("0"), applied, desc, customer.id),
+            *_fx_line(db, org_id, money(amount - applied), desc, customer.id),
+        ],
         "customer_payment",
         payment.id,
         reference=payment.reference or payment.payment_number,
@@ -381,6 +435,16 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, f"Payments can only be applied to sent invoices (current status: {invoice.status})"
             )
+        if fx.is_foreign(db, org_id, invoice.currency):
+            # amount is in the invoice's currency; the bank gets it at today's rate.
+            applied, banked, pay_rate = _fx_settlement(db, org_id, invoice, amount, payload.exchange_rate)
+            _apply_invoice_payment(db, invoice, applied, amount)
+            first = _record_customer_payment(
+                db, org_id, user, customer, bank_acct, invoice, banked, payload, payload.notes, (amount, pay_rate, applied)
+            )
+            db.commit()
+            db.refresh(first)
+            return cp_out(first)
         if amount > money(invoice.balance_due):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the invoice balance of {invoice.balance_due}")
         # The checks above are a friendly early answer; this is the one that
@@ -388,6 +452,8 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
         _apply_invoice_payment(db, invoice, amount)
         first = _record_customer_payment(db, org_id, user, customer, bank_acct, invoice, amount, payload, payload.notes)
     else:
+        if fx.is_foreign(db, org_id, customer.currency):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose the invoice this foreign-currency payment is for")
         open_invoices = (
             db.execute(
                 select(Invoice)
@@ -396,6 +462,8 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
                     Invoice.customer_id == customer.id,
                     Invoice.status.in_(_PAYABLE_INVOICE_STATUSES),
                     Invoice.date <= payload.date,
+                    # Foreign-currency invoices are only ever paid one by one.
+                    or_(Invoice.exchange_rate == 1, Invoice.currency.is_(None)),
                 )
                 .order_by(Invoice.due_date, Invoice.date, Invoice.invoice_number)
             )
@@ -439,7 +507,8 @@ def delete_customer_payment(payment_id: str, user: User = Depends(require_write)
     _check_cash_withdrawal(db, payment.bank_account, money(payment.amount))
     bank.remove_movements(db, "customer_payment", payment.id)
     if payment.invoice:
-        _remove_invoice_payment(db, payment.invoice, money(payment.amount))
+        applied = payment.applied_amount if payment.applied_amount is not None else payment.amount
+        _remove_invoice_payment(db, payment.invoice, money(applied), payment.fc_amount)
     # A payment recorded from an approved external payment is still referenced
     # by it (foreign key). Unlink it and mark the external payment reversed so
     # its history stays visible and the same UTR can be recorded again.
@@ -538,6 +607,9 @@ def vp_out(p: VendorPayment) -> VendorPaymentOut:
         mode=p.mode,
         reference=p.reference,
         notes=p.notes,
+        currency=p.currency,
+        exchange_rate=p.exchange_rate or 1,
+        fc_amount=p.fc_amount,
         created_at=p.created_at,
     )
 
@@ -646,16 +718,25 @@ def create_vendor_payment(payload: VendorPaymentCreate, user: User = Depends(req
     bank_acct = get_or_404(db, BankAccount, payload.bank_account_id, org_id, "Bank account")
     amount = money(payload.amount)
     bill = None
+    fx_details = None
     if payload.bill_id:
         bill = get_or_404(db, Bill, payload.bill_id, org_id, "Bill")
         if bill.vendor_id != vendor.id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Bill belongs to a different vendor")
         if bill.status not in _PAYABLE_BILL_STATUSES:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payments can only be applied to open bills (current status: {bill.status})")
-        if amount > money(bill.balance_due):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the bill balance of {bill.balance_due}")
-        # Authoritative, race-free check-and-apply; runs before anything is posted.
-        _apply_bill_payment(db, bill, amount)
+        if fx.is_foreign(db, org_id, bill.currency):
+            applied, banked, pay_rate = _fx_settlement(db, org_id, bill, amount, payload.exchange_rate)
+            fx_details = (amount, pay_rate, applied)
+            _apply_bill_payment(db, bill, applied, amount)
+            amount = banked
+        else:
+            if amount > money(bill.balance_due):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the bill balance of {bill.balance_due}")
+            # Authoritative, race-free check-and-apply; runs before anything is posted.
+            _apply_bill_payment(db, bill, amount)
+    elif fx.is_foreign(db, org_id, vendor.currency):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose the bill this foreign-currency payment is for")
     payment = VendorPayment(
         organization_id=org_id,
         payment_number=numbering.next_number(db, org_id, "vendor_payment"),
@@ -669,6 +750,11 @@ def create_vendor_payment(payload: VendorPaymentCreate, user: User = Depends(req
         notes=payload.notes,
         created_by=user.id,
     )
+    applied = amount
+    if bill and fx_details:
+        payment.fc_amount, payment.exchange_rate, applied = fx_details
+        payment.currency = bill.currency
+        payment.applied_amount = applied
     db.add(payment)
     db.flush()
 
@@ -682,7 +768,12 @@ def create_vendor_payment(payload: VendorPaymentCreate, user: User = Depends(req
         db,
         org_id,
         payment.date,
-        [(debit_account, amount, Decimal("0"), desc, vendor.id), (bank_acct.ledger_account_id, Decimal("0"), amount, desc, vendor.id)],
+        [
+            (debit_account, applied, Decimal("0"), desc, vendor.id),
+            (bank_acct.ledger_account_id, Decimal("0"), amount, desc, vendor.id),
+            # Paying more base currency than the payable was booked at is a loss.
+            *_fx_line(db, org_id, money(applied - amount), desc, vendor.id),
+        ],
         "vendor_payment",
         payment.id,
         reference=payment.reference or payment.payment_number,
@@ -717,7 +808,8 @@ def delete_vendor_payment(payment_id: str, user: User = Depends(require_write), 
     ledger.reverse_entries_for_source(db, user.organization_id, "vendor_payment", payment.id, date.today(), user.id, "Payment deleted")
     bank.remove_movements(db, "vendor_payment", payment.id)
     if payment.bill:
-        _remove_bill_payment(db, payment.bill, money(payment.amount))
+        applied = payment.applied_amount if payment.applied_amount is not None else payment.amount
+        _remove_bill_payment(db, payment.bill, money(applied), payment.fc_amount)
     number = payment.payment_number
     db.delete(payment)
     audit.record(db, user, "delete", "vendor_payment", payment_id, f"Deleted payment {number}")

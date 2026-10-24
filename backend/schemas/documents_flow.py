@@ -227,7 +227,7 @@ Frequency = Literal["weekly", "monthly", "quarterly", "yearly"]
 
 class RecurringProfileCreate(APIModel):
     name: str = Field(min_length=1, max_length=120)
-    kind: Literal["invoice", "bill"]
+    kind: Literal["invoice", "bill", "journal"]
     frequency: Frequency = "monthly"
     interval_count: int = Field(default=1, ge=1, le=12)
     start_date: date
@@ -252,8 +252,8 @@ class RecurringProfileOut(APIModel):
     id: str
     name: str
     kind: str
-    contact_id: str
-    contact_name: str
+    contact_id: Optional[str] = None
+    contact_name: str = ""
     frequency: str
     interval_count: int
     start_date: date

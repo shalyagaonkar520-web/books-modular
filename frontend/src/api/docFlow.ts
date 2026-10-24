@@ -165,7 +165,7 @@ export const creditApplicationsApi = {
 // ---------------------------------------------------------------------------
 // Recurring profiles
 // ---------------------------------------------------------------------------
-export type RecurringKind = 'invoice' | 'bill';
+export type RecurringKind = 'invoice' | 'bill' | 'journal';
 export type Frequency = 'weekly' | 'monthly' | 'quarterly' | 'yearly';
 
 export interface TemplateLine {
@@ -192,7 +192,7 @@ export interface RecurringProfile {
   id: string;
   name: string;
   kind: RecurringKind;
-  contactId: string;
+  contactId?: string | null;
   contactName: string;
   frequency: Frequency;
   intervalCount: number;

@@ -183,6 +183,8 @@ export interface Contact {
   updatedAt: string;
   /** GST state code of the place of supply; null = from the GSTIN. */
   placeOfSupply?: string | null;
+  /** ISO code its invoices / bills are raised in; null = the base currency. */
+  currency?: string | null;
 }
 
 export interface ContactSummary {
@@ -207,6 +209,9 @@ export interface DocumentLine {
   taxAmount?: number;
   itemName?: string | null;
   accountName?: string | null;
+  /** The line in the document's own currency. */
+  fcRate?: number | null;
+  fcAmount?: number | null;
 }
 
 export type InvoiceStatus = 'draft' | 'sent' | 'partially_paid' | 'paid' | 'void' | 'overdue';
@@ -244,6 +249,14 @@ export interface Invoice {
   irnAckNo?: string | null;
   irnAckDate?: string | null;
   ewayBillNo?: string | null;
+  currency?: string | null;
+  exchangeRate?: number;
+  fcSubtotal?: number | null;
+  fcDiscountAmount?: number | null;
+  fcTaxTotal?: number | null;
+  fcTotal?: number | null;
+  fcAmountPaid?: number | null;
+  fcBalanceDue?: number | null;
   lines: DocumentLine[];
   createdAt: string;
   updatedAt: string;
@@ -261,6 +274,9 @@ export interface InvoiceListItem {
   amountPaid: number;
   balanceDue: number;
   reference?: string | null;
+  currency?: string | null;
+  fcTotal?: number | null;
+  fcBalanceDue?: number | null;
 }
 
 export interface DocumentStats {
@@ -289,6 +305,9 @@ export interface CustomerPayment {
   reference?: string | null;
   notes?: string | null;
   createdAt: string;
+  currency?: string | null;
+  exchangeRate?: number;
+  fcAmount?: number | null;
 }
 
 export type BillStatus = 'draft' | 'open' | 'partially_paid' | 'paid' | 'void' | 'overdue';
@@ -316,6 +335,14 @@ export interface Bill {
   tdsSection?: string | null;
   tdsRate?: number;
   tdsAmount?: number;
+  currency?: string | null;
+  exchangeRate?: number;
+  fcSubtotal?: number | null;
+  fcDiscountAmount?: number | null;
+  fcTaxTotal?: number | null;
+  fcTotal?: number | null;
+  fcAmountPaid?: number | null;
+  fcBalanceDue?: number | null;
   lines: DocumentLine[];
   createdAt: string;
   updatedAt: string;
@@ -333,6 +360,9 @@ export interface BillListItem {
   total: number;
   amountPaid: number;
   balanceDue: number;
+  currency?: string | null;
+  fcTotal?: number | null;
+  fcBalanceDue?: number | null;
 }
 
 export interface VendorPayment {
@@ -350,6 +380,9 @@ export interface VendorPayment {
   reference?: string | null;
   notes?: string | null;
   createdAt: string;
+  currency?: string | null;
+  exchangeRate?: number;
+  fcAmount?: number | null;
 }
 
 export interface Expense {

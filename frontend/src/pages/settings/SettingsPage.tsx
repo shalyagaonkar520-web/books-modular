@@ -1,6 +1,7 @@
 import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 
+import { CurrencySettings } from './CurrencySettings';
 import { LockDateSettings } from './LockDateSettings';
 import { OrganizationSettings } from './OrganizationSettings';
 
@@ -16,6 +17,7 @@ export function SettingsPage() {
       <PageHeader title={t('settings.title')} subtitle={t('settings.subtitle')} />
       <OrganizationSettings />
       <LockDateSettings />
+      <CurrencySettings />
     </div>
   );
 }

@@ -8,6 +8,7 @@ reloaded.
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { currenciesApi } from '@/api/advancedAccounting';
 import { accountingApi, contactsApi } from '@/api/endpoints';
 import type { Contact, ContactKind, ContactType, GstTreatment } from '@/api/types';
 import { Button } from '@/components/ui/Button';
@@ -51,6 +52,7 @@ interface FormState {
   bankIfsc: string;
   gstTreatment: GstTreatment;
   placeOfSupply: string;
+  currency: string;
   language: string;
   ledgerAccountId: string;
   paymentTermsDays: string;
@@ -87,6 +89,7 @@ function initialForm(contact: Contact | null, type: ContactType, defaultPaymentT
     ledgerAccountId: contact?.ledgerAccountId ?? '',
     gstTreatment: contact?.gstTreatment ?? 'unregistered',
     placeOfSupply: contact?.placeOfSupply ?? '',
+    currency: contact?.currency ?? '',
     paymentTermsDays: String(contact ? contact.paymentTermsDays : (defaultPaymentTermsDays ?? FALLBACK_PAYMENT_TERMS_DAYS)),
     billingAddress: contact?.billingAddress ?? '',
     shippingAddress: contact?.shippingAddress ?? '',
@@ -139,6 +142,7 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
     () => (canChooseAccount ? accountingApi.accounts({ type: type === 'customer' ? 'asset' : 'liability' }) : Promise.resolve([])),
     [type, canChooseAccount],
   );
+  const currencies = useAsync(() => currenciesApi.list(), []);
   const [phoneError, setPhoneError] = useState<string | undefined>();
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((current) => ({ ...current, [key]: value }));
@@ -216,6 +220,7 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
       ledgerAccountId: form.ledgerAccountId || null,
       gstTreatment: form.gstTreatment,
       placeOfSupply: form.placeOfSupply || null,
+      currency: form.currency || null,
       paymentTermsDays: Number.parseInt(form.paymentTermsDays, 10) || 0,
       billingAddress: form.billingAddress.trim() || null,
       shippingAddress: form.shippingAddress.trim() || null,
@@ -384,6 +389,15 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
             hint={t('customers.form.placeOfSupplyHint')}
             error={fieldErrors.placeOfSupply}
             onChange={(event) => set('placeOfSupply', event.target.value)}
+          />
+          <SelectField
+            label={t('customers.form.currency')}
+            value={form.currency}
+            placeholder={currencies.data?.find((c) => c.isBase)?.code ?? 'INR'}
+            options={(currencies.data ?? []).filter((c) => !c.isBase).map((c) => ({ value: c.code, label: `${c.code} - ${c.name}` }))}
+            hint={t('customers.form.currencyHint')}
+            error={fieldErrors.currency}
+            onChange={(event) => set('currency', event.target.value)}
           />
           <TextField
             label={t('customers.form.paymentTerms')}

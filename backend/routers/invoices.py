@@ -36,7 +36,7 @@ from backend.schemas.sales import (
     InvoiceUpdate,
     LineOut,
 )
-from backend.services import audit, doc_flow, export_service, inventory, ledger, numbering
+from backend.services import audit, doc_flow, export_service, fx, inventory, ledger, numbering
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.documents import compute_lines, group_by_account, totals
 from backend.services.email_service import send_due_reminder_email, send_invoice_email
@@ -68,7 +68,28 @@ def line_out(line: InvoiceLine) -> LineOut:
         amount=line.amount,
         tax_amount=line.tax_amount,
         item_name=line.item.name if line.item else None,
+        fc_rate=line.fc_rate if line.fc_rate is not None else line.rate,
+        fc_amount=line.fc_amount if line.fc_amount is not None else line.amount,
     )
+
+
+def fc_fields(doc) -> dict:
+    """The document's own-currency figures. Documents from before multi-currency
+    have none stored and are in the base currency, so the base figures stand in."""
+    foreign = doc.exchange_rate is not None and doc.exchange_rate != 1
+    stored = foreign or (doc.fc_total or 0) > 0
+    total = doc.fc_total if stored else doc.total
+    paid = doc.fc_amount_paid if stored else doc.amount_paid
+    return {
+        "currency": doc.currency,
+        "exchange_rate": doc.exchange_rate or 1,
+        "fc_subtotal": doc.fc_subtotal if stored else doc.subtotal,
+        "fc_discount_amount": doc.fc_discount_amount if stored else doc.discount_amount,
+        "fc_tax_total": doc.fc_tax_total if stored else doc.tax_total,
+        "fc_total": total,
+        "fc_amount_paid": paid,
+        "fc_balance_due": money(total - paid),
+    }
 
 
 def to_out(inv: Invoice) -> InvoiceOut:
@@ -105,6 +126,7 @@ def to_out(inv: Invoice) -> InvoiceOut:
         irn_ack_no=inv.irn_ack_no,
         irn_ack_date=inv.irn_ack_date,
         eway_bill_no=inv.eway_bill_no,
+        **fc_fields(inv),
         created_at=inv.created_at,
         updated_at=inv.updated_at,
     )
@@ -123,6 +145,9 @@ def to_list_item(inv: Invoice) -> InvoiceListItem:
         amount_paid=inv.amount_paid,
         balance_due=money(inv.balance_due),
         reference=inv.reference,
+        currency=inv.currency,
+        fc_total=fc_fields(inv)["fc_total"],
+        fc_balance_due=fc_fields(inv)["fc_balance_due"],
     )
 
 
@@ -151,19 +176,24 @@ def _apply_payload(db: Session, inv: Invoice, payload: InvoiceCreate, org_id: st
     inv.order_number = payload.order_number
     inv.subject = payload.subject
     inv.salesperson = payload.salesperson
-    inv.discount_amount = money(payload.discount_amount)
     inv.notes = payload.notes
     inv.terms = payload.terms
-    inv.subtotal = subtotal
-    inv.tax_total = tax_total
     inv.place_of_supply = payload.place_of_supply
     inv.tcs_rate = payload.tcs_rate
-    before_tcs = totals(subtotal, inv.discount_amount, tax_total)
+    # Lines are entered in the customer's currency; the books get base amounts.
+    inv.currency, inv.exchange_rate = fx.resolve(db, org_id, customer, payload.exchange_rate)
+    fc_discount = money(payload.discount_amount)
+    fc_before_tcs = totals(subtotal, fc_discount, tax_total)
     # TCS is collected on the full sale value, GST included.
-    inv.tcs_amount = money(before_tcs * payload.tcs_rate / Decimal("100"))
-    inv.total = money(before_tcs + inv.tcs_amount)
+    fc_tcs = money(fc_before_tcs * payload.tcs_rate / Decimal("100"))
+    inv.fc_subtotal, inv.fc_discount_amount, inv.fc_tax_total = subtotal, fc_discount, tax_total
+    inv.fc_total = money(fc_before_tcs + fc_tcs)
+    base = fx.convert(computed, fc_discount, inv.exchange_rate)
+    inv.subtotal, inv.discount_amount, inv.tax_total = base.subtotal, base.discount, base.tax_total
+    inv.tcs_amount = fx.to_base(fc_tcs, inv.exchange_rate)
+    inv.total = money(totals(base.subtotal, base.discount, base.tax_total) + inv.tcs_amount)
     inv.lines.clear()
-    for position, line in enumerate(computed):
+    for position, (line, base_line) in enumerate(zip(computed, base.lines, strict=True)):
         inv.lines.append(
             InvoiceLine(
                 item_id=line.item.id if line.item else None,
@@ -171,10 +201,12 @@ def _apply_payload(db: Session, inv: Invoice, payload: InvoiceCreate, org_id: st
                 position=position,
                 description=line.spec.description,
                 quantity=line.quantity,
-                rate=line.rate,
+                rate=base_line.rate,
                 tax_rate=line.tax_rate,
-                amount=line.amount,
-                tax_amount=line.tax_amount,
+                amount=base_line.amount,
+                tax_amount=base_line.tax_amount,
+                fc_rate=line.rate,
+                fc_amount=line.amount,
             )
         )
 

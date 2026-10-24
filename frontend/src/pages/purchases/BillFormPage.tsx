@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Trash2 } from 'lucide-react';
 
+import { currenciesApi } from '@/api/advancedAccounting';
 import { accountingApi, billsApi, contactsApi, itemsApi } from '@/api/endpoints';
 import type { Contact, Item } from '@/api/types';
 import { Button } from '@/components/ui/Button';
@@ -89,6 +90,8 @@ export function BillFormPage() {
   const [tdsSection, setTdsSection] = useState('');
   const [tdsRate, setTdsRate] = useState('0');
   const [reverseCharge, setReverseCharge] = useState(false);
+  const [exchangeRate, setExchangeRate] = useState('');
+  const currencies = useAsync(() => currenciesApi.list(), []);
   const [lines, setLines] = useState<LineDraft[]>(() => [emptyLine(defaultLineTaxRate)]);
   const [loadedId, setLoadedId] = useState<string | null>(null);
 
@@ -111,6 +114,7 @@ export function BillFormPage() {
     setTdsSection(bill.tdsSection ?? '');
     setTdsRate(String(bill.tdsRate ?? 0));
     setReverseCharge(Boolean(bill.reverseCharge));
+    setExchangeRate(bill.exchangeRate && bill.exchangeRate !== 1 ? String(bill.exchangeRate) : '');
     setLines(
       bill.lines.length > 0
         ? bill.lines.map((line) => ({
@@ -137,6 +141,9 @@ export function BillFormPage() {
   const subtotal = round2(lines.reduce((sum, line) => sum + lineAmount(line), 0));
   const taxTotal = round2(lines.reduce((sum, line) => sum + round2((lineAmount(line) * parseNumber(line.taxRate, 0)) / 100), 0));
   const discount = round2(parseNumber(discountAmount, 0));
+  const baseCurrency = organization?.currency ?? 'INR';
+  const vendorCurrency = vendor?.currency || baseCurrency;
+  const foreign = vendorCurrency !== baseCurrency;
   const tdsAmount = round2(((subtotal - discount) * parseNumber(tdsRate, 0)) / 100);
   // Under reverse charge the vendor is not paid the GST; TDS is withheld from them.
   const grandTotal = round2(subtotal - discount + (reverseCharge ? 0 : taxTotal) - tdsAmount);
@@ -187,6 +194,7 @@ export function BillFormPage() {
       notes: notes.trim() || null,
       status,
       reverseCharge,
+      exchangeRate: foreign && parseNumber(exchangeRate, 0) > 0 ? parseNumber(exchangeRate, 0) : null,
       tdsSection: parseNumber(tdsRate, 0) > 0 ? tdsSection || null : null,
       tdsRate: parseNumber(tdsRate, 0),
       lines: lines.map((line) => ({
@@ -263,8 +271,26 @@ export function BillFormPage() {
               placeholder={t('bills.form.vendorPlaceholder')}
               error={fieldErrors.vendorId}
               options={(refs.data?.vendors ?? []).map((option) => ({ value: option.id, label: option.displayName }))}
-              onChange={(event) => setVendorId(event.target.value)}
+              onChange={(event) => {
+                setVendorId(event.target.value);
+                const code = refs.data?.vendors.find((v) => v.id === event.target.value)?.currency;
+                const saved = currencies.data?.find((c) => c.code === code)?.exchangeRate;
+                setExchangeRate(saved ? String(saved) : '');
+              }}
             />
+            {foreign ? (
+              <TextField
+                label={`${t('bills.form.exchangeRate')} (${vendorCurrency})`}
+                type="number"
+                min="0"
+                step="0.000001"
+                required
+                value={exchangeRate}
+                hint={t('invoices.form.exchangeRateHint', { base: baseCurrency, code: vendorCurrency })}
+                error={fieldErrors.exchangeRate}
+                onChange={(event) => setExchangeRate(event.target.value)}
+              />
+            ) : null}
             <TextField
               label={t('bills.form.vendorBillNumber')}
               value={vendorBillNumber}
@@ -507,7 +533,7 @@ export function BillFormPage() {
             ) : null}
             <div className="grand">
               <span>{t('bills.form.grandTotal')}</span>
-              <span>{formatCurrency(grandTotal)}</span>
+              <span>{formatCurrency(grandTotal, vendorCurrency)}</span>
             </div>
           </div>
         </div>

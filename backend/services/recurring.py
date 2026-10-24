@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 from datetime import date, timedelta
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, status
@@ -23,11 +24,13 @@ from sqlalchemy.orm import Session
 from backend.config import get_settings
 from backend.db import SessionLocal
 from backend.models import RecurringProfile, User
+from backend.schemas.accounting import JournalCreate
 from backend.schemas.documents_flow import GeneratedDocument, RecurringRunResult
 from backend.schemas.purchases import BillCreate
 from backend.schemas.sales import InvoiceCreate
 from backend.services import doc_flow
 from backend.services.documents import compute_lines, totals
+from backend.services.money import money
 from backend.services.periods import add_months
 
 logger = logging.getLogger("roomanbooks.recurring")
@@ -73,6 +76,8 @@ def clean_template(template: Dict[str, Any]) -> Dict[str, Any]:
 def build_payload(profile_kind: str, template: Dict[str, Any], run_date: date, issue: bool):
     body = {**clean_template(template), "date": run_date.isoformat()}
     try:
+        if profile_kind == "journal":
+            return JournalCreate.model_validate(body)
         if profile_kind == "invoice":
             return InvoiceCreate.model_validate({**body, "status": "sent" if issue else "draft"})
         return BillCreate.model_validate({**body, "status": "open" if issue else "draft"})
@@ -85,6 +90,12 @@ def build_payload(profile_kind: str, template: Dict[str, Any], run_date: date, i
 def validate_template(db: Session, org_id: str, kind: str, template: Dict[str, Any], start: date):
     """Check the template prices like a real document; returns (contact, total)."""
     payload = build_payload(kind, template, start, issue=False)
+    if kind == "journal":
+        debit = money(sum((line.debit for line in payload.lines), Decimal("0")))
+        credit = money(sum((line.credit for line in payload.lines), Decimal("0")))
+        if debit != credit or debit == 0:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"The journal does not balance (debits {debit}, credits {credit})")
+        return None, debit
     party = "customer" if kind == "invoice" else "vendor"
     contact = doc_flow.get_party(db, org_id, getattr(payload, f"{party}_id"), party)
     _, subtotal, tax_total = compute_lines(db, org_id, payload.lines, kind=kind, discount=payload.discount_amount)
@@ -97,6 +108,11 @@ def _create(db: Session, profile: RecurringProfile, user: User, run_date: date):
     from backend.routers.invoices import create_invoice_record
 
     payload = build_payload(profile.kind, json.loads(profile.template), run_date, profile.auto_issue)
+    if profile.kind == "journal":
+        from backend.routers.accounting import create_journal_record
+
+        entry = create_journal_record(db, user, payload, recurring_profile_id=profile.id)
+        return GeneratedDocument(id=entry.id, number=entry.entry_number, date=entry.date, status="posted", total=entry.total)
     if profile.kind == "invoice":
         doc = create_invoice_record(db, user, payload, recurring_profile_id=profile.id)
         return GeneratedDocument(id=doc.id, number=doc.invoice_number, date=doc.date, status=doc.status, total=doc.total)

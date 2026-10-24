@@ -19,7 +19,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useDownload } from '@/hooks/useDownload';
 import { useSubmit } from '@/hooks/useSubmit';
-import { formatCurrency, formatDate, formatPercent, formatQuantity } from '@/utils/format';
+import { documentCurrency, formatCurrency, formatDate, formatPercent, formatQuantity } from '@/utils/format';
 import { paymentModeLabel, type Translate, statusLabel, statusTone } from '@/utils/status';
 
 import { InvoiceCreditsCard } from '@/pages/docflow/InvoiceCreditsCard';
@@ -49,7 +49,7 @@ export function InvoiceViewPage() {
 
   const data = invoice.data;
   const paymentContext = useMemo<PaymentInvoiceContext | undefined>(
-    () => (data ? { id: data.id, invoiceNumber: data.invoiceNumber, customerId: data.customerId, balanceDue: data.balanceDue } : undefined),
+    () => (data ? { id: data.id, invoiceNumber: data.invoiceNumber, customerId: data.customerId, balanceDue: data.balanceDue, currency: data.currency, fcBalanceDue: data.fcBalanceDue } : undefined),
     [data],
   );
 
@@ -102,12 +102,13 @@ export function InvoiceViewPage() {
   const canEdit = data.status === 'draft' || ((data.status === 'sent' || data.status === 'overdue') && data.amountPaid === 0);
   const canPay = data.status !== 'void' && data.balanceDue > 0;
   const paymentRows = payments.data?.items ?? [];
+  const fc = documentCurrency(data, organization?.currency ?? 'INR');
 
   return (
     <>
       <PageHeader
         title={t('invoices.view.title', { number: data.invoiceNumber })}
-        subtitle={t('invoices.view.subtitle', { customer: data.customerName, total: formatCurrency(data.total) })}
+        subtitle={t('invoices.view.subtitle', { customer: data.customerName, total: fc.format(fc.total) })}
         breadcrumb={[t('invoices.view.breadcrumb.sales'), t('invoices.view.breadcrumb.invoices')]}
         actions={
           <>
@@ -228,7 +229,7 @@ export function InvoiceViewPage() {
               </div>
               <div className="detail-item">
                 <dt>{t('invoices.view.balanceDue')}</dt>
-                <dd className="num strong">{formatCurrency(data.balanceDue)}</dd>
+                <dd className="num strong">{fc.format(fc.balance)}</dd>
               </div>
             </dl>
           </div>
@@ -266,12 +267,12 @@ export function InvoiceViewPage() {
                       </span>
                     </td>
                     <td className="align-right num">{formatQuantity(line.quantity)}</td>
-                    <td className="align-right num">{formatCurrency(line.rate)}</td>
+                    <td className="align-right num">{fc.format(fc.foreign ? (line.fcRate ?? line.rate) : line.rate)}</td>
                     <td className="align-right num">
                       {formatPercent(line.taxRate)}
                       {typeof line.taxAmount === 'number' ? <small className="text-subtle"> ({formatCurrency(line.taxAmount)})</small> : null}
                     </td>
-                    <td className="align-right num strong">{formatCurrency(line.amount ?? line.quantity * line.rate)}</td>
+                    <td className="align-right num strong">{fc.format(fc.foreign ? (line.fcAmount ?? line.amount) : (line.amount ?? line.quantity * line.rate))}</td>
                   </tr>
                 ))}
               </tbody>
@@ -281,28 +282,34 @@ export function InvoiceViewPage() {
             <div className="totals-list">
               <div>
                 <span>{t('invoices.view.totals.subtotal')}</span>
-                <span>{formatCurrency(data.subtotal)}</span>
+                <span>{fc.format(fc.subtotal)}</span>
               </div>
               <div>
                 <span>{t('invoices.view.totals.discount')}</span>
-                <span>{data.discountAmount > 0 ? `- ${formatCurrency(data.discountAmount)}` : formatCurrency(0)}</span>
+                <span>{fc.discount > 0 ? `- ${fc.format(fc.discount)}` : fc.format(0)}</span>
               </div>
               <div>
                 <span>{t('invoices.view.totals.tax')}</span>
-                <span>{formatCurrency(data.taxTotal)}</span>
+                <span>{fc.format(fc.tax)}</span>
               </div>
               <div className="grand">
                 <span>{t('invoices.view.totals.total')}</span>
-                <span>{formatCurrency(data.total)}</span>
+                <span>{fc.format(fc.total)}</span>
               </div>
               <div>
                 <span>{t('invoices.view.totals.paid')}</span>
-                <span className="text-success">{formatCurrency(data.amountPaid)}</span>
+                <span className="text-success">{fc.format(fc.paid)}</span>
               </div>
               <div className="grand">
                 <span>{t('invoices.view.totals.balanceDue')}</span>
-                <span>{formatCurrency(data.balanceDue)}</span>
+                <span>{fc.format(fc.balance)}</span>
               </div>
+              {fc.foreign ? (
+                <div className="text-subtle small">
+                  <span>{t('invoices.view.inBase', { rate: fc.rate, base: organization?.currency ?? 'INR' })}</span>
+                  <span>{formatCurrency(data.total, organization?.currency ?? 'INR')}</span>
+                </div>
+              ) : null}
             </div>
           </div>
         </Card>

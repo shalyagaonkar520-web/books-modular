@@ -22,6 +22,7 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatDate, todayIso } from '@/utils/format';
 
 import { LineItemsEditor, type LineDraft, lineTotals, linesError, linesFrom, linesPayload, newLine } from './LineItemsEditor';
+import { RecurringJournalModal } from './RecurringJournalModal';
 import { flowStatusLabel, flowStatusTone } from './status';
 
 const PAGE_SIZE = 25;
@@ -37,7 +38,7 @@ export function RecurringProfilesPage({ kind }: { kind: RecurringKind }) {
   const [deleting, setDeleting] = useState<RecurringProfile | null>(null);
   const { submitting, run, errorRef } = useSubmit();
   const list = useAsync((signal) => recurringApi.list({ kind, page, page_size: PAGE_SIZE }, signal), [kind, page]);
-  const p = kind === 'invoice' ? 'recurringInvoices' : 'recurringBills';
+  const p = { invoice: 'recurringInvoices', bill: 'recurringBills', journal: 'recurringJournals' }[kind];
 
   const act = async (label: string, action: () => Promise<unknown>) => {
     const result = await run(action);
@@ -65,7 +66,9 @@ export function RecurringProfilesPage({ kind }: { kind: RecurringKind }) {
 
   const columns: Array<Column<RecurringProfile>> = [
     { key: 'name', header: t('recurring.col.name'), render: (row) => <strong>{row.name}</strong> },
-    { key: 'contact', header: t(kind === 'invoice' ? 'docflow.form.customer' : 'docflow.form.vendor'), render: (row) => row.contactName },
+    ...(kind === 'journal'
+      ? []
+      : [{ key: 'contact', header: t(kind === 'invoice' ? 'docflow.form.customer' : 'docflow.form.vendor'), render: (row: RecurringProfile) => row.contactName }]),
     { key: 'frequency', header: t('recurring.col.frequency'), render: frequencyText },
     { key: 'next', header: t('recurring.col.next'), render: (row) => (row.nextRunDate ? formatDate(row.nextRunDate) : '—') },
     { key: 'runs', header: t('recurring.col.runs'), align: 'right', render: (row) => row.runsCount },
@@ -109,7 +112,7 @@ export function RecurringProfilesPage({ kind }: { kind: RecurringKind }) {
       <PageHeader
         title={t(`${p}.title`)}
         subtitle={t(`${p}.subtitle`)}
-        breadcrumb={[t(kind === 'invoice' ? 'sidebar.sales' : 'sidebar.purchases'), t(`${p}.title`)]}
+        breadcrumb={[t({ invoice: 'sidebar.sales', bill: 'sidebar.purchases', journal: 'sidebar.accounting' }[kind]), t(`${p}.title`)]}
         actions={
           canWrite ? (
             <div className="row">
@@ -138,7 +141,7 @@ export function RecurringProfilesPage({ kind }: { kind: RecurringKind }) {
         )}
       </Card>
 
-      {editing ? (
+      {editing && kind !== 'journal' ? (
         <ProfileModal
           kind={kind}
           profile={editing === 'new' ? null : editing}
@@ -148,6 +151,15 @@ export function RecurringProfilesPage({ kind }: { kind: RecurringKind }) {
             list.reload();
           }}
           onOpenDocument={(id) => navigate(kind === 'invoice' ? `/invoices/${id}` : `/bills/${id}/edit`)}
+        />
+      ) : editing ? (
+        <RecurringJournalModal
+          profile={editing === 'new' ? null : editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            list.reload();
+          }}
         />
       ) : null}
       <ConfirmDialog
@@ -167,7 +179,7 @@ export function RecurringProfilesPage({ kind }: { kind: RecurringKind }) {
 }
 
 interface ProfileModalProps {
-  kind: RecurringKind;
+  kind: Exclude<RecurringKind, 'journal'>;
   profile: RecurringProfile | null;
   onClose: () => void;
   onSaved: () => void;

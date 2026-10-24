@@ -38,6 +38,9 @@ class LineOut(LineInput):
     tax_amount: Decimal
     item_name: Optional[str] = None
     account_name: Optional[str] = None
+    # The line in the document's currency (equal to rate / amount in the base currency).
+    fc_rate: Optional[Decimal] = None
+    fc_amount: Optional[Decimal] = None
     # Relaxed from the input rule above. Entry still requires a description,
     # but an output model must be able to render whatever is stored - an
     # imported row with no description column would otherwise make the whole
@@ -63,6 +66,8 @@ class InvoiceCreate(APIModel):
     place_of_supply: Optional[str] = Field(default=None, max_length=2)
     # TCS (Income-tax section 206C) collected on the invoice value, in percent.
     tcs_rate: Decimal = Field(default=Decimal("0"), ge=0, le=10)
+    # Base currency per unit of the customer's currency; null = the saved rate.
+    exchange_rate: Optional[Decimal] = Field(default=None, gt=0, le=Decimal("1000000"))
 
     @model_validator(mode="after")
     def _due_after_date(self):
@@ -113,6 +118,14 @@ class InvoiceOut(APIModel):
     irn_ack_no: Optional[str] = None
     irn_ack_date: Optional[datetime] = None
     eway_bill_no: Optional[str] = None
+    currency: Optional[str] = None
+    exchange_rate: Decimal = Decimal("1")
+    fc_subtotal: Optional[Decimal] = None
+    fc_discount_amount: Optional[Decimal] = None
+    fc_tax_total: Optional[Decimal] = None
+    fc_total: Optional[Decimal] = None
+    fc_amount_paid: Optional[Decimal] = None
+    fc_balance_due: Optional[Decimal] = None
     created_at: datetime
     updated_at: datetime
 
@@ -129,6 +142,9 @@ class InvoiceListItem(APIModel):
     amount_paid: Decimal
     balance_due: Decimal
     reference: Optional[str] = None
+    currency: Optional[str] = None
+    fc_total: Optional[Decimal] = None
+    fc_balance_due: Optional[Decimal] = None
 
 
 class InvoiceStatusUpdate(APIModel):
@@ -149,7 +165,10 @@ class CustomerPaymentCreate(APIModel):
     invoice_id: Optional[str] = None
     bank_account_id: str
     date: date
+    # In the invoice's currency when it is a foreign-currency invoice.
     amount: Decimal = Field(gt=0, le=MAX_MONEY)
+    # Today's rate for a foreign-currency invoice; null = the saved rate.
+    exchange_rate: Optional[Decimal] = Field(default=None, gt=0, le=Decimal("1000000"))
     mode: PaymentMode = "bank_transfer"
     reference: Optional[str] = Field(default=None, max_length=120)
     notes: Optional[str] = None
@@ -169,4 +188,7 @@ class CustomerPaymentOut(APIModel):
     mode: str
     reference: Optional[str] = None
     notes: Optional[str] = None
+    currency: Optional[str] = None
+    exchange_rate: Decimal = Decimal("1")
+    fc_amount: Optional[Decimal] = None
     created_at: datetime

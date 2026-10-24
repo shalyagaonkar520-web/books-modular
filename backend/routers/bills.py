@@ -16,10 +16,11 @@ from sqlalchemy.orm import Session, selectinload
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
 from backend.models import Bill, BillLine, Contact, Item, Organization, User
+from backend.routers.invoices import fc_fields
 from backend.schemas.common import Message, Page
 from backend.schemas.purchases import BillCreate, BillListItem, BillOut, BillStats, BillStatusUpdate, BillUpdate
 from backend.schemas.sales import LineOut
-from backend.services import audit, doc_flow, export_service, inventory, ledger, numbering
+from backend.services import audit, doc_flow, export_service, fx, inventory, ledger, numbering
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.documents import compute_lines, group_by_account, totals
 from backend.services.email_service import get_smtp_connection, sender_identity
@@ -51,6 +52,8 @@ def line_out(line: BillLine) -> LineOut:
         amount=line.amount,
         tax_amount=line.tax_amount,
         item_name=line.item.name if line.item else None,
+        fc_rate=line.fc_rate if line.fc_rate is not None else line.rate,
+        fc_amount=line.fc_amount if line.fc_amount is not None else line.amount,
     )
 
 
@@ -79,6 +82,7 @@ def to_out(bill: Bill) -> BillOut:
         tds_section=bill.tds_section,
         tds_rate=bill.tds_rate,
         tds_amount=bill.tds_amount,
+        **fc_fields(bill),
         created_at=bill.created_at,
         updated_at=bill.updated_at,
     )
@@ -99,6 +103,9 @@ def to_list_item(bill: Bill) -> BillListItem:
         total=bill.total,
         amount_paid=bill.amount_paid,
         balance_due=money(bill.balance_due),
+        currency=bill.currency,
+        fc_total=fc_fields(bill)["fc_total"],
+        fc_balance_due=fc_fields(bill)["fc_balance_due"],
     )
 
 
@@ -113,21 +120,27 @@ def _apply_payload(db: Session, bill: Bill, payload: BillCreate, org_id: str) ->
     bill.subject = payload.subject
     bill.date = payload.date
     bill.due_date = payload.due_date or (payload.date + timedelta(days=vendor.payment_terms_days))
-    bill.discount_amount = money(payload.discount_amount)
     bill.notes = payload.notes
-    bill.subtotal = subtotal
-    bill.tax_total = tax_total
     bill.place_of_supply = payload.place_of_supply
     bill.reverse_charge = payload.reverse_charge
     bill.tds_section = payload.tds_section if payload.tds_rate > 0 else None
     bill.tds_rate = payload.tds_rate
-    taxable = totals(subtotal, bill.discount_amount, Decimal("0"))
-    bill.tds_amount = money(taxable * payload.tds_rate / Decimal("100"))
+    # Lines are entered in the vendor's currency; the books get base amounts.
+    bill.currency, bill.exchange_rate = fx.resolve(db, org_id, vendor, payload.exchange_rate)
+    fc_discount = money(payload.discount_amount)
+    fc_taxable = totals(subtotal, fc_discount, Decimal("0"))
+    fc_tds = money(fc_taxable * payload.tds_rate / Decimal("100"))
+    bill.fc_subtotal, bill.fc_discount_amount, bill.fc_tax_total = subtotal, fc_discount, tax_total
     # The vendor is paid the value, plus GST unless we pay it under reverse
     # charge, less the TDS we withhold for the government.
-    bill.total = money(taxable + (Decimal("0") if payload.reverse_charge else tax_total) - bill.tds_amount)
+    bill.fc_total = money(fc_taxable + (Decimal("0") if payload.reverse_charge else tax_total) - fc_tds)
+    base = fx.convert(computed, fc_discount, bill.exchange_rate)
+    bill.subtotal, bill.discount_amount, bill.tax_total = base.subtotal, base.discount, base.tax_total
+    taxable = totals(base.subtotal, base.discount, Decimal("0"))
+    bill.tds_amount = fx.to_base(fc_tds, bill.exchange_rate)
+    bill.total = money(taxable + (Decimal("0") if payload.reverse_charge else base.tax_total) - bill.tds_amount)
     bill.lines.clear()
-    for position, line in enumerate(computed):
+    for position, (line, base_line) in enumerate(zip(computed, base.lines, strict=True)):
         bill.lines.append(
             BillLine(
                 item_id=line.item.id if line.item else None,
@@ -135,10 +148,12 @@ def _apply_payload(db: Session, bill: Bill, payload: BillCreate, org_id: str) ->
                 position=position,
                 description=line.spec.description,
                 quantity=line.quantity,
-                rate=line.rate,
+                rate=base_line.rate,
                 tax_rate=line.tax_rate,
-                amount=line.amount,
-                tax_amount=line.tax_amount,
+                amount=base_line.amount,
+                tax_amount=base_line.tax_amount,
+                fc_rate=line.rate,
+                fc_amount=line.amount,
             )
         )
 

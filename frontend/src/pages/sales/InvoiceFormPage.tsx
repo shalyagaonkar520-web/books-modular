@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Trash2 } from 'lucide-react';
 
+import { currenciesApi } from '@/api/advancedAccounting';
 import { contactsApi, invoicesApi, itemsApi } from '@/api/endpoints';
 import type { Contact, Invoice, Item } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
@@ -76,8 +77,10 @@ export function InvoiceFormPage() {
   const [projectId, setProjectId] = useState('');
   const [placeOfSupply, setPlaceOfSupply] = useState('');
   const [tcsRate, setTcsRate] = useState('0');
+  const [exchangeRate, setExchangeRate] = useState('');
 
   const customers = useAsync((signal) => contactsApi.list({ type: 'customer', page_size: 200 }, signal), []);
+  const currencies = useAsync(() => currenciesApi.list(), []);
   const items = useAsync((signal) => itemsApi.list({ page_size: 200 }, signal), []);
   const existing = useAsync(async () => (invoiceId ? invoicesApi.get(invoiceId) : null), [invoiceId]);
 
@@ -103,6 +106,7 @@ export function InvoiceFormPage() {
     setProjectId(loaded.projectId ?? '');
     setPlaceOfSupply(loaded.placeOfSupply ?? '');
     setTcsRate(String(loaded.tcsRate ?? 0));
+    setExchangeRate(loaded.exchangeRate && loaded.exchangeRate !== 1 ? String(loaded.exchangeRate) : '');
     setLines(
       loaded.lines.length
         ? loaded.lines.map((line) => ({
@@ -148,6 +152,10 @@ export function InvoiceFormPage() {
   const beforeTcs = round2(subtotal - discount + taxTotal);
   const tcsAmount = round2((beforeTcs * parseNumber(tcsRate)) / 100);
   const total = round2(beforeTcs + tcsAmount);
+  const baseCurrency = organization?.currency ?? 'INR';
+  const customerCurrency = customerList.find((c) => c.id === customerId)?.currency || baseCurrency;
+  const foreign = customerCurrency !== baseCurrency;
+  const money = (amount: number) => formatCurrency(amount, customerCurrency);
   const customerState = stateFromGstin(customerList.find((c) => c.id === customerId)?.gstin) ?? customerList.find((c) => c.id === customerId)?.placeOfSupply;
 
   const submit = async (status: 'draft' | 'sent') => {
@@ -186,6 +194,7 @@ export function InvoiceFormPage() {
       status,
       placeOfSupply: placeOfSupply || null,
       tcsRate: parseNumber(tcsRate),
+      exchangeRate: foreign && parseNumber(exchangeRate) > 0 ? parseNumber(exchangeRate) : null,
       lines: lines.map((line) => ({
         itemId: line.itemId || null,
         accountId: line.accountId || null,
@@ -264,8 +273,24 @@ export function InvoiceFormPage() {
               onChange={(event) => {
                 setCustomerId(event.target.value);
                 syncDueDate(event.target.value, date);
+                const code = customerList.find((c) => c.id === event.target.value)?.currency;
+                const saved = currencies.data?.find((c) => c.code === code)?.exchangeRate;
+                setExchangeRate(saved ? String(saved) : '');
               }}
             />
+            {foreign ? (
+              <TextField
+                label={`${t('invoices.form.exchangeRate')} (${customerCurrency})`}
+                type="number"
+                min="0"
+                step="0.000001"
+                required
+                value={exchangeRate}
+                hint={t('invoices.form.exchangeRateHint', { base: baseCurrency, code: customerCurrency })}
+                error={fieldErrors.exchangeRate}
+                onChange={(event) => setExchangeRate(event.target.value)}
+              />
+            ) : null}
             <TextField
               label={t('invoices.form.date')}
               type="date"
@@ -423,7 +448,7 @@ export function InvoiceFormPage() {
                           ))}
                         </select>
                       </td>
-                      <td className="align-right num">{formatCurrency(lineAmount(line))}</td>
+                      <td className="align-right num">{money(lineAmount(line))}</td>
                       <td className="align-right">
                         <button
                           type="button"
@@ -477,26 +502,32 @@ export function InvoiceFormPage() {
               <div className="totals-list">
                 <div>
                   <span>{t('invoices.form.totals.subtotal')}</span>
-                  <span>{formatCurrency(subtotal)}</span>
+                  <span>{money(subtotal)}</span>
                 </div>
                 <div>
                   <span>{t('invoices.form.totals.discount')}</span>
-                  <span>{discount > 0 ? `- ${formatCurrency(discount)}` : formatCurrency(0)}</span>
+                  <span>{discount > 0 ? `- ${money(discount)}` : money(0)}</span>
                 </div>
                 <div>
                   <span>{t('invoices.form.totals.tax')}</span>
-                  <span>{formatCurrency(taxTotal)}</span>
+                  <span>{money(taxTotal)}</span>
                 </div>
                 {tcsAmount > 0 ? (
                   <div>
                     <span>{t('invoices.form.totals.tcs')}</span>
-                    <span>{formatCurrency(tcsAmount)}</span>
+                    <span>{money(tcsAmount)}</span>
                   </div>
                 ) : null}
                 <div className="grand">
                   <span>{t('invoices.form.totals.total')}</span>
-                  <span>{formatCurrency(total)}</span>
+                  <span>{money(total)}</span>
                 </div>
+                {foreign && parseNumber(exchangeRate) > 0 ? (
+                  <div className="text-subtle small">
+                    <span>{t('invoices.form.inBase', { base: baseCurrency, amount: formatCurrency(round2(total * parseNumber(exchangeRate)), baseCurrency) })}</span>
+                    <span />
+                  </div>
+                ) : null}
               </div>
             </div>
           </Card>

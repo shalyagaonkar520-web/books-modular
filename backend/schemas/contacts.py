@@ -25,6 +25,15 @@ class _ContactFieldRules:
     instead of just being flagged at entry.
     """
 
+    @field_validator("currency")
+    @classmethod
+    def _currency(cls, value: Optional[str]) -> Optional[str]:
+        if not value:
+            return None
+        if not value.isalpha():
+            raise ValueError("A currency code is three letters, e.g. USD")
+        return value.upper()
+
     @field_validator("place_of_supply")
     @classmethod
     def _place_of_supply(cls, value: Optional[str]) -> Optional[str]:
@@ -111,6 +120,8 @@ class ContactBase(APIModel):
     gst_treatment: GstTreatment = "unregistered"
     # GST state code of the place of supply; null = taken from the GSTIN.
     place_of_supply: Optional[str] = Field(default=None, max_length=2)
+    # ISO currency code for this contact's invoices / bills; null = base currency.
+    currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
     language: Optional[str] = Field(default=None, max_length=40)
     # Overrides the org-wide receivables/payables account for this contact.
     ledger_account_id: Optional[str] = None
@@ -143,6 +154,7 @@ class ContactUpdate(_ContactFieldRules, APIModel):
     bank_ifsc: Optional[str] = Field(default=None, max_length=20)
     gst_treatment: Optional[GstTreatment] = None
     place_of_supply: Optional[str] = Field(default=None, max_length=2)
+    currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
     language: Optional[str] = Field(default=None, max_length=40)
     ledger_account_id: Optional[str] = None
     billing_address: Optional[str] = None

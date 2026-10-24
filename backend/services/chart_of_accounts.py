@@ -21,6 +21,7 @@ DEFAULT_ACCOUNTS = [
     ("1300", "Input GST", "asset", "tax"),
     ("1400", "Prepaid Expenses", "asset", "other_current_asset"),
     ("1500", "Furniture and Equipment", "asset", "fixed_asset"),
+    ("1590", "Accumulated Depreciation", "asset", "accumulated_depreciation"),
     ("1900", "Undeposited Funds", "asset", "other_current_asset"),
     # Liabilities
     ("2000", "Accounts Payable", "liability", "accounts_payable"),
@@ -42,6 +43,7 @@ DEFAULT_ACCOUNTS = [
     ("4200", "Consulting Revenue", "income", "sales"),
     ("4300", "Discount Given", "income", "contra_income"),
     ("4900", "Other Income", "income", "other_income"),
+    ("4950", "Gain or Loss on Asset Disposal", "income", "other_income"),
     # Expenses
     ("5000", "Cost of Goods Sold", "expense", "cogs"),
     ("5100", "Subcontractor Costs", "expense", "cogs"),
@@ -60,6 +62,7 @@ DEFAULT_ACCOUNTS = [
     ("6950", "Depreciation Expense", "expense", "operating"),
     ("6990", "Other Expenses", "expense", "operating"),
     ("7000", "Inventory Adjustments", "expense", "operating"),
+    ("7100", "Exchange Gain or Loss", "expense", "operating"),
 ]
 
 SYSTEM_CODES = {
@@ -84,6 +87,9 @@ SYSTEM_CODES = {
     "2400",
     "6400",
     "7000",
+    "1590",
+    "4950",
+    "7100",
 }
 
 

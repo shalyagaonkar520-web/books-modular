@@ -44,6 +44,8 @@ import { DocumentViewPage } from '@/pages/docflow/DocumentViewPage';
 import { RecurringProfilesPage } from '@/pages/docflow/RecurringProfilesPage';
 import { RefundsPage } from '@/pages/docflow/RefundsPage';
 import { GstFilingPage } from '@/pages/gst/GstFilingPage';
+import { BudgetsPage } from '@/pages/accounting/BudgetsPage';
+import { FixedAssetsPage } from '@/pages/accounting/FixedAssetsPage';
 import { SubscriptionPage } from '@/pages/subscription/SubscriptionPage';
 
 export function App() {
@@ -177,6 +179,30 @@ export function App() {
             />
             <Route path="/time-tracking" element={<TimeTrackingPage />} />
             <Route path="/gst-filing" element={<GstFilingPage />} />
+            <Route
+              path="/fixed-assets"
+              element={
+                <RequireRole roles={['admin', 'viewer']}>
+                  <FixedAssetsPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/budgets"
+              element={
+                <RequireRole roles={['admin', 'viewer']}>
+                  <BudgetsPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/recurring-journals"
+              element={
+                <RequireRole roles={['admin', 'viewer']}>
+                  <RecurringProfilesPage key="journal" kind="journal" />
+                </RequireRole>
+              }
+            />
             <Route
               path="/accounting"
               element={

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import contextvars
 import html
 import io
 import re
 from datetime import date, datetime
+from decimal import Decimal
+from types import SimpleNamespace
 from typing import List, Optional
 
 from openpyxl import Workbook
@@ -82,9 +85,62 @@ def _save(wb: Workbook, buf: io.BytesIO) -> None:
     wb.save(buf)
 
 
+# The currency the PDF being built prints amounts in (an invoice in USD prints USD).
+_PDF_CURRENCY: contextvars.ContextVar[str] = contextvars.ContextVar("pdf_currency", default="INR")
+
+
 def _fmt_curr(val: Optional[float]) -> str:
     amount = float(val or 0.0)
-    return f"INR {amount:,.2f}"
+    return f"{_PDF_CURRENCY.get()} {amount:,.2f}"
+
+
+def _in_document_currency(invoice):
+    """A read-only stand-in for a foreign-currency invoice with its own-currency
+    figures, so the PDF prints what the customer was actually charged."""
+    rate = Decimal(str(invoice.exchange_rate or 1))
+
+    def fc_line(line):
+        tax = (Decimal(str(line.tax_amount)) / rate).quantize(Decimal("0.01"))
+        return SimpleNamespace(
+            item=line.item,
+            description=line.description,
+            quantity=line.quantity,
+            tax_rate=line.tax_rate,
+            rate=line.fc_rate if line.fc_rate is not None else line.rate,
+            amount=line.fc_amount if line.fc_amount is not None else line.amount,
+            tax_amount=tax,
+        )
+
+    fields = {
+        name: getattr(invoice, name)
+        for name in (
+            "invoice_number",
+            "date",
+            "due_date",
+            "status",
+            "reference",
+            "notes",
+            "terms",
+            "customer",
+            "order_number",
+            "subject",
+            "salesperson",
+            "place_of_supply",
+            "tcs_amount",
+            "irn",
+            "currency",
+        )
+    }
+    return SimpleNamespace(
+        **fields,
+        lines=[fc_line(line) for line in invoice.lines],
+        subtotal=invoice.fc_subtotal,
+        discount_amount=invoice.fc_discount_amount,
+        tax_total=invoice.fc_tax_total,
+        total=invoice.fc_total,
+        amount_paid=invoice.fc_amount_paid,
+        balance_due=invoice.fc_total - invoice.fc_amount_paid,
+    )
 
 
 def _fmt_date(d: Optional[date | datetime]) -> str:
@@ -97,6 +153,16 @@ def _fmt_date(d: Optional[date | datetime]) -> str:
 
 def generate_invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
     """Generate a high-quality, professional GST Tax Invoice PDF document."""
+    base = (org.currency if org else None) or "INR"
+    code = invoice.currency or base
+    token = _PDF_CURRENCY.set(code)
+    try:
+        return _invoice_pdf(_in_document_currency(invoice) if code != base else invoice, org)
+    finally:
+        _PDF_CURRENCY.reset(token)
+
+
+def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,

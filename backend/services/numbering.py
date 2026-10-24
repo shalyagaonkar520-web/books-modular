@@ -23,6 +23,7 @@ PREFIXES = {
     "purchase_order": "PO",
     "vendor_credit": "VC",
     "refund": "RFD",
+    "fixed_asset": "FA",
 }
 
 

@@ -11,8 +11,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
-from backend.deps import get_current_user, module_write_error, require_write
-from backend.models import Bill, Invoice, RecurringProfile, User
+from backend.deps import ROLE_ADMIN, get_current_user, module_write_error, require_write
+from backend.models import Bill, Invoice, JournalEntry, RecurringProfile, User
 from backend.schemas.common import Message, Page
 from backend.schemas.documents_flow import (
     GeneratedDocument,
@@ -26,10 +26,13 @@ from backend.services.tenancy import Pagination, get_or_404, paginate
 
 router = APIRouter(prefix="/api/recurring-profiles", tags=["Recurring"])
 
-_KIND_MODULE = {"invoice": "invoices", "bill": "bills"}
+_KIND_MODULE = {"invoice": "invoices", "bill": "bills", "journal": "accounting"}
 
 
 def _check_module(user: User, kind: str) -> None:
+    # Journals post straight to the ledger: the same admins who write manual journals.
+    if kind == "journal" and user.role != ROLE_ADMIN:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only an admin can set up recurring journals")
     error = module_write_error(user, (_KIND_MODULE[kind],))
     if error:
         raise HTTPException(status.HTTP_403_FORBIDDEN, error)
@@ -41,7 +44,7 @@ def profile_out(p: RecurringProfile) -> RecurringProfileOut:
         name=p.name,
         kind=p.kind,
         contact_id=p.contact_id,
-        contact_name=p.contact.display_name,
+        contact_name=p.contact.display_name if p.contact else "",
         frequency=p.frequency,
         interval_count=p.interval_count,
         start_date=p.start_date,
@@ -69,7 +72,7 @@ def _apply(db: Session, profile: RecurringProfile, payload: RecurringProfileCrea
     )
     profile.name = payload.name
     profile.kind = payload.kind
-    profile.contact_id = contact.id
+    profile.contact_id = contact.id if contact else None
     profile.frequency = payload.frequency
     profile.interval_count = payload.interval_count
     profile.start_date = payload.start_date
@@ -94,7 +97,7 @@ def _load(db: Session, profile_id: str, org_id: str) -> RecurringProfile:
 
 @router.get("", response_model=Page[RecurringProfileOut])
 def list_profiles(
-    kind: Optional[Literal["invoice", "bill"]] = None,
+    kind: Optional[Literal["invoice", "bill", "journal"]] = None,
     status_filter: Optional[str] = Query(None, alias="status"),
     pagination: Pagination = Depends(),
     user: User = Depends(get_current_user),
@@ -127,6 +130,11 @@ def get_profile(profile_id: str, user: User = Depends(get_current_user), db: Ses
 @router.get("/{profile_id}/documents", response_model=List[GeneratedDocument])
 def generated_documents(profile_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     profile = _load(db, profile_id, user.organization_id)
+    if profile.kind == "journal":
+        entries = db.execute(
+            select(JournalEntry).where(JournalEntry.recurring_profile_id == profile.id).order_by(JournalEntry.date.desc())
+        ).scalars()
+        return [GeneratedDocument(id=e.id, number=e.entry_number, date=e.date, status="posted", total=e.total) for e in entries]
     if profile.kind == "invoice":
         rows = db.execute(select(Invoice).where(Invoice.recurring_profile_id == profile.id).order_by(Invoice.date.desc())).scalars()
         return [GeneratedDocument(id=i.id, number=i.invoice_number, date=i.date, status=i.status, total=i.total) for i in rows]
@@ -226,7 +234,7 @@ def delete_profile(profile_id: str, user: User = Depends(require_write), db: Ses
     profile = _load(db, profile_id, user.organization_id)
     _check_module(user, profile.kind)
     name = profile.name
-    model = Invoice if profile.kind == "invoice" else Bill
+    model = {"invoice": Invoice, "bill": Bill, "journal": JournalEntry}[profile.kind]
     for doc in db.execute(select(model).where(model.recurring_profile_id == profile.id)).scalars():
         doc.recurring_profile_id = None
     db.delete(profile)

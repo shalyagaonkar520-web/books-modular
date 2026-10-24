@@ -42,7 +42,7 @@ from backend.routers.payments import (
     _remove_bill_payment,
     _remove_invoice_payment,
 )
-from backend.services import audit, bank, inventory, ledger, numbering
+from backend.services import audit, bank, fx, inventory, ledger, numbering
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.documents import group_by_account
 from backend.services.money import money, qty
@@ -258,6 +258,7 @@ def apply_credit_note(
 
 
 def apply_vendor_credit(db: Session, vc: VendorCredit, bill: Bill, amount: Decimal, when: Optional[date], user: User) -> CreditApplication:
+    fx.guard_base_only(db, vc.organization_id, bill.currency, "Applying vendor credits")
     if bill.vendor_id != vc.vendor_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Bill {bill.bill_number} belongs to a different vendor")
     when = _application_date(db, vc.organization_id, when, vc.date, bill.date)
@@ -275,6 +276,7 @@ def apply_vendor_credit(db: Session, vc: VendorCredit, bill: Bill, amount: Decim
 
 def apply_advance(db: Session, org_id: str, party_type: str, contact: Contact, document, amount: Decimal, when: Optional[date], user: User):
     """Settle an invoice from the customer's advance (Dr 2400, Cr AR), or a bill from a vendor advance (Dr AP, Cr 1400)."""
+    fx.guard_base_only(db, org_id, document.currency, "Applying advances")
     amount = money(amount)
     when = _application_date(db, org_id, when, document.date)
     available = advance_balance(db, org_id, party_type, contact.id)

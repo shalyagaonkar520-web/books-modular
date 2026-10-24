@@ -158,6 +158,22 @@ FEATURES: Tuple[Feature, ...] = (
         ("/api/projects", "/api/time-entries"),
         "Projects, timesheets and billable hours.",
     ),
+    Feature(
+        "fixedAssets",
+        "Fixed assets",
+        ("fixed_assets:router",),
+        ("accounting",),
+        ("/api/fixed-assets",),
+        "Asset register with monthly depreciation and disposals.",
+    ),
+    Feature(
+        "budgets",
+        "Budgets",
+        ("budgets:router",),
+        ("accounting",),
+        ("/api/budgets",),
+        "Budgets per account and month, and budget vs actual.",
+    ),
     Feature("documents", "Documents", ("documents:router",), ("documents",), ("/api/documents",), "Business documents."),
     Feature("payroll", "Payroll", ("payroll:router",), ("payroll",), ("/api/payroll",), "Employees, salary runs and payslips."),
     Feature(
@@ -172,6 +188,7 @@ FEATURES: Tuple[Feature, ...] = (
     # Mounted for the app, never offered to connected apps.
     Feature("dashboard", "Dashboard", ("dashboard:router",)),
     Feature("organization", "Organization settings", ("organization:router",)),
+    Feature("currencies", "Currencies", ("currencies:router",)),
 )
 
 ACCESS_LEVELS = ("read", "write")

@@ -37,6 +37,7 @@ from backend.models import (
 )
 from backend.schemas.documents_flow import CreditApplicationOut, DocumentListItem, DocumentOut, RefundOut
 from backend.schemas.sales import LineInput, LineOut
+from backend.services import fx
 from backend.services.documents import compute_lines, totals
 from backend.services.money import money
 from backend.services.tenancy import get_or_404
@@ -97,6 +98,11 @@ def get_party(db: Session, org_id: str, contact_id: str, party: str, current_id:
 def price(db: Session, org_id: str, doc, payload, kind: DocKind) -> None:
     """Fill a document's common fields, lines and totals from its payload."""
     contact = get_party(db, org_id, getattr(payload, kind.party_attr), kind.party, getattr(doc, kind.party_attr, None))
+    if fx.is_foreign(db, org_id, contact.currency):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"{kind.label}s are kept in {fx.base_currency(db, org_id)}; {contact.display_name} deals in {contact.currency}, so invoice or bill them directly",
+        )
     existing_item_ids = {line.item_id for line in doc.lines if line.item_id}
     computed, subtotal, tax_total = compute_lines(db, org_id, payload.lines, kind=kind.line_kind, discount=payload.discount_amount)
     for line in computed:
