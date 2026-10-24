@@ -6,7 +6,7 @@ import { accountingApi, billsApi, contactsApi, itemsApi } from '@/api/endpoints'
 import type { Contact, Item } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
+import { CheckboxField, SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -15,6 +15,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { addDaysIso, formatCurrency, parseNumber, round2, round3, todayIso } from '@/utils/format';
+import { TDS_SECTIONS } from '@/utils/gst';
 import { taxRatesWith } from '@/utils/status';
 
 interface LineDraft {
@@ -85,6 +86,9 @@ export function BillFormPage() {
   const [dueDateTouched, setDueDateTouched] = useState(false);
   const [discountAmount, setDiscountAmount] = useState('0');
   const [notes, setNotes] = useState('');
+  const [tdsSection, setTdsSection] = useState('');
+  const [tdsRate, setTdsRate] = useState('0');
+  const [reverseCharge, setReverseCharge] = useState(false);
   const [lines, setLines] = useState<LineDraft[]>(() => [emptyLine(defaultLineTaxRate)]);
   const [loadedId, setLoadedId] = useState<string | null>(null);
 
@@ -104,6 +108,9 @@ export function BillFormPage() {
     setDueDateTouched(true);
     setDiscountAmount(String(bill.discountAmount));
     setNotes(bill.notes ?? '');
+    setTdsSection(bill.tdsSection ?? '');
+    setTdsRate(String(bill.tdsRate ?? 0));
+    setReverseCharge(Boolean(bill.reverseCharge));
     setLines(
       bill.lines.length > 0
         ? bill.lines.map((line) => ({
@@ -130,7 +137,9 @@ export function BillFormPage() {
   const subtotal = round2(lines.reduce((sum, line) => sum + lineAmount(line), 0));
   const taxTotal = round2(lines.reduce((sum, line) => sum + round2((lineAmount(line) * parseNumber(line.taxRate, 0)) / 100), 0));
   const discount = round2(parseNumber(discountAmount, 0));
-  const grandTotal = round2(subtotal - discount + taxTotal);
+  const tdsAmount = round2(((subtotal - discount) * parseNumber(tdsRate, 0)) / 100);
+  // Under reverse charge the vendor is not paid the GST; TDS is withheld from them.
+  const grandTotal = round2(subtotal - discount + (reverseCharge ? 0 : taxTotal) - tdsAmount);
 
   const updateLine = (key: string, patch: Partial<LineDraft>) => {
     setLines((current) => current.map((line) => (line.key === key ? { ...line, ...patch } : line)));
@@ -177,6 +186,9 @@ export function BillFormPage() {
       discountAmount: discount,
       notes: notes.trim() || null,
       status,
+      reverseCharge,
+      tdsSection: parseNumber(tdsRate, 0) > 0 ? tdsSection || null : null,
+      tdsRate: parseNumber(tdsRate, 0),
       lines: lines.map((line) => ({
         itemId: line.itemId || null,
         accountId: line.accountId || null,
@@ -438,6 +450,35 @@ export function BillFormPage() {
               onChange={(event) => setDiscountAmount(event.target.value)}
             />
             <TextAreaField label={t('bills.form.notes')} value={notes} error={fieldErrors.notes} onChange={(event) => setNotes(event.target.value)} />
+            <SelectField
+              label={t('bills.form.tdsSection')}
+              value={tdsSection}
+              placeholder={t('bills.form.tdsNone')}
+              options={TDS_SECTIONS.map((s) => ({ value: s.section, label: `${s.label} (${s.rate}%)` }))}
+              error={fieldErrors.tdsSection}
+              onChange={(event) => {
+                const picked = TDS_SECTIONS.find((s) => s.section === event.target.value);
+                setTdsSection(event.target.value);
+                setTdsRate(picked ? String(picked.rate) : '0');
+              }}
+            />
+            <TextField
+              label={t('bills.form.tdsRate')}
+              type="number"
+              min="0"
+              max="30"
+              step="0.001"
+              value={tdsRate}
+              disabled={!tdsSection}
+              error={fieldErrors.tdsRate}
+              onChange={(event) => setTdsRate(event.target.value)}
+            />
+            <CheckboxField
+              label={t('bills.form.reverseCharge')}
+              hint={t('bills.form.reverseChargeHint')}
+              checked={reverseCharge}
+              onChange={(event) => setReverseCharge(event.target.checked)}
+            />
           </div>
           <div className="totals-list">
             <div>
@@ -452,6 +493,18 @@ export function BillFormPage() {
               <span>{t('bills.form.taxTotal')}</span>
               <span>{formatCurrency(taxTotal)}</span>
             </div>
+            {reverseCharge && taxTotal > 0 ? (
+              <div>
+                <span>{t('bills.form.reverseChargeLine')}</span>
+                <span>-{formatCurrency(taxTotal)}</span>
+              </div>
+            ) : null}
+            {tdsAmount > 0 ? (
+              <div>
+                <span>{t('bills.form.tdsLine', { section: tdsSection })}</span>
+                <span>-{formatCurrency(tdsAmount)}</span>
+              </div>
+            ) : null}
             <div className="grand">
               <span>{t('bills.form.grandTotal')}</span>
               <span>{formatCurrency(grandTotal)}</span>

@@ -3736,3 +3736,37 @@ input[type='password']::-ms-clear {
   background: rgba(17, 26, 43, 0.96);
   border-color: rgba(148, 163, 184, 0.25);
 }
+
+/* Document flow (quotes, orders, credits): key/value details and wrapping action rows. */
+.row.wrap {
+  flex-wrap: wrap;
+}
+.block {
+  display: block;
+}
+.detail-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  margin: 0;
+  font-size: 0.9rem;
+}
+.detail-list dt {
+  color: var(--text-subtle, #64748b);
+}
+.detail-list dd {
+  margin: 0;
+}
+
+/* Inline notices (GST filing warnings). */
+.alert {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  border: 1px solid transparent;
+}
+.alert-warning {
+  background: var(--warning-soft);
+  border-color: var(--warning);
+  color: var(--text);
+}

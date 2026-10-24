@@ -38,6 +38,12 @@ import { ReportsPage } from '@/pages/reports/ReportsPage';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
 import { TimeTrackingPage } from '@/pages/timetracking/TimeTrackingPage';
 import { OrgAdminApp } from '@/pages/orgadmin/OrgAdminApp';
+import { DocumentFormPage } from '@/pages/docflow/DocumentFormPage';
+import { DocumentListPage } from '@/pages/docflow/DocumentListPage';
+import { DocumentViewPage } from '@/pages/docflow/DocumentViewPage';
+import { RecurringProfilesPage } from '@/pages/docflow/RecurringProfilesPage';
+import { RefundsPage } from '@/pages/docflow/RefundsPage';
+import { GstFilingPage } from '@/pages/gst/GstFilingPage';
 import { SubscriptionPage } from '@/pages/subscription/SubscriptionPage';
 
 export function App() {
@@ -113,6 +119,20 @@ export function App() {
             <Route path="/invoices/:invoiceId" element={<InvoiceViewPage />} />
             <Route path="/invoices/:invoiceId/edit" element={<InvoiceFormPage />} />
             <Route path="/payments-received" element={<PaymentsReceivedPage />} />
+            <Route path="/quotes" element={<DocumentListPage key="estimate" kind="estimate" />} />
+            <Route path="/quotes/new" element={<DocumentFormPage key="estimate-new" kind="estimate" />} />
+            <Route path="/quotes/:docId" element={<DocumentViewPage key="estimate-view" kind="estimate" />} />
+            <Route path="/quotes/:docId/edit" element={<DocumentFormPage key="estimate-edit" kind="estimate" />} />
+            <Route path="/sales-orders" element={<DocumentListPage key="sales_order" kind="sales_order" />} />
+            <Route path="/sales-orders/new" element={<DocumentFormPage key="sales_order-new" kind="sales_order" />} />
+            <Route path="/sales-orders/:docId" element={<DocumentViewPage key="sales_order-view" kind="sales_order" />} />
+            <Route path="/sales-orders/:docId/edit" element={<DocumentFormPage key="sales_order-edit" kind="sales_order" />} />
+            <Route path="/credit-notes" element={<DocumentListPage key="credit_note" kind="credit_note" />} />
+            <Route path="/credit-notes/new" element={<DocumentFormPage key="credit_note-new" kind="credit_note" />} />
+            <Route path="/credit-notes/:docId" element={<DocumentViewPage key="credit_note-view" kind="credit_note" />} />
+            <Route path="/credit-notes/:docId/edit" element={<DocumentFormPage key="credit_note-edit" kind="credit_note" />} />
+            <Route path="/recurring-invoices" element={<RecurringProfilesPage key="invoice" kind="invoice" />} />
+            <Route path="/refunds" element={<RefundsPage />} />
 
             <Route path="/bills" element={<BillsPage />} />
             <Route path="/bills/new" element={<BillFormPage />} />
@@ -120,6 +140,15 @@ export function App() {
             <Route path="/expense-dashboard" element={<ExpenseDashboardPage />} />
             <Route path="/expenses" element={<ExpensesPage />} />
             <Route path="/payments-made" element={<PaymentsMadePage />} />
+            <Route path="/purchase-orders" element={<DocumentListPage key="purchase_order" kind="purchase_order" />} />
+            <Route path="/purchase-orders/new" element={<DocumentFormPage key="purchase_order-new" kind="purchase_order" />} />
+            <Route path="/purchase-orders/:docId" element={<DocumentViewPage key="purchase_order-view" kind="purchase_order" />} />
+            <Route path="/purchase-orders/:docId/edit" element={<DocumentFormPage key="purchase_order-edit" kind="purchase_order" />} />
+            <Route path="/vendor-credits" element={<DocumentListPage key="vendor_credit" kind="vendor_credit" />} />
+            <Route path="/vendor-credits/new" element={<DocumentFormPage key="vendor_credit-new" kind="vendor_credit" />} />
+            <Route path="/vendor-credits/:docId" element={<DocumentViewPage key="vendor_credit-view" kind="vendor_credit" />} />
+            <Route path="/vendor-credits/:docId/edit" element={<DocumentFormPage key="vendor_credit-edit" kind="vendor_credit" />} />
+            <Route path="/recurring-bills" element={<RecurringProfilesPage key="bill" kind="bill" />} />
 
             <Route
               path="/financial-dashboard"
@@ -147,6 +176,7 @@ export function App() {
               }
             />
             <Route path="/time-tracking" element={<TimeTrackingPage />} />
+            <Route path="/gst-filing" element={<GstFilingPage />} />
             <Route
               path="/accounting"
               element={

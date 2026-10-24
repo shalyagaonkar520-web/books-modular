@@ -19,7 +19,7 @@ from backend.models import Bill, BillLine, Contact, Item, Organization, User
 from backend.schemas.common import Message, Page
 from backend.schemas.purchases import BillCreate, BillListItem, BillOut, BillStats, BillStatusUpdate, BillUpdate
 from backend.schemas.sales import LineOut
-from backend.services import audit, export_service, inventory, ledger, numbering
+from backend.services import audit, doc_flow, export_service, inventory, ledger, numbering
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.documents import compute_lines, group_by_account, totals
 from backend.services.email_service import get_smtp_connection, sender_identity
@@ -74,6 +74,11 @@ def to_out(bill: Bill) -> BillOut:
         balance_due=money(bill.balance_due),
         notes=bill.notes,
         lines=[line_out(line) for line in bill.lines],
+        place_of_supply=bill.place_of_supply,
+        reverse_charge=bill.reverse_charge,
+        tds_section=bill.tds_section,
+        tds_rate=bill.tds_rate,
+        tds_amount=bill.tds_amount,
         created_at=bill.created_at,
         updated_at=bill.updated_at,
     )
@@ -112,7 +117,15 @@ def _apply_payload(db: Session, bill: Bill, payload: BillCreate, org_id: str) ->
     bill.notes = payload.notes
     bill.subtotal = subtotal
     bill.tax_total = tax_total
-    bill.total = totals(subtotal, bill.discount_amount, tax_total)
+    bill.place_of_supply = payload.place_of_supply
+    bill.reverse_charge = payload.reverse_charge
+    bill.tds_section = payload.tds_section if payload.tds_rate > 0 else None
+    bill.tds_rate = payload.tds_rate
+    taxable = totals(subtotal, bill.discount_amount, Decimal("0"))
+    bill.tds_amount = money(taxable * payload.tds_rate / Decimal("100"))
+    # The vendor is paid the value, plus GST unless we pay it under reverse
+    # charge, less the TDS we withhold for the government.
+    bill.total = money(taxable + (Decimal("0") if payload.reverse_charge else tax_total) - bill.tds_amount)
     bill.lines.clear()
     for position, line in enumerate(computed):
         bill.lines.append(
@@ -197,6 +210,13 @@ def post_bill(db: Session, bill: Bill, user: User) -> None:
         lines.append((input_gst.id, bill.tax_total, Decimal("0"), f"GST on {bill.bill_number}", bill.vendor_id))
     if bill.discount_amount > 0:
         lines.append((discount_acct.id, Decimal("0"), bill.discount_amount, f"Discount on {bill.bill_number}", bill.vendor_id))
+    if bill.reverse_charge and bill.tax_total > 0:
+        # We owe the GST ourselves; the input credit above is still ours.
+        rcm = get_account_by_code(db, org_id, "2110")
+        lines.append((rcm.id, Decimal("0"), bill.tax_total, f"Reverse charge GST on {bill.bill_number}", bill.vendor_id))
+    if bill.tds_amount > 0:
+        tds = get_account_by_code(db, org_id, "2200")
+        lines.append((tds.id, Decimal("0"), bill.tds_amount, f"TDS {bill.tds_section} on {bill.bill_number}", bill.vendor_id))
     lines.append((ap.id, Decimal("0"), bill.total, f"Bill {bill.bill_number}", bill.vendor_id))
     ledger.post_entry(
         db, org_id, bill.date, lines, "bill", bill.id, reference=bill.vendor_bill_number or bill.bill_number, created_by=user.id
@@ -477,13 +497,14 @@ def send_bill_via_gmail(
     return {"success": True, "message": f"Bill {bill.bill_number} emailed to {payload.to_email}."}
 
 
-@router.post("", response_model=BillOut, status_code=status.HTTP_201_CREATED)
-def create_bill(payload: BillCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def create_bill_record(db: Session, user: User, payload: BillCreate, recurring_profile_id: Optional[str] = None) -> Bill:
+    """Create (and, when open, post) a bill without committing; see create_invoice_record."""
     bill = Bill(
         organization_id=user.organization_id,
         bill_number=numbering.next_number(db, user.organization_id, "bill"),
         status="draft",
         created_by=user.id,
+        recurring_profile_id=recurring_profile_id,
     )
     _apply_payload(db, bill, payload, user.organization_id)
     db.add(bill)
@@ -492,6 +513,12 @@ def create_bill(payload: BillCreate, user: User = Depends(require_write), db: Se
         bill.status = "open"
         post_bill(db, bill, user)
     audit.record(db, user, "create", "bill", bill.id, f"Created bill {bill.bill_number} ({bill.status})")
+    return bill
+
+
+@router.post("", response_model=BillOut, status_code=status.HTTP_201_CREATED)
+def create_bill(payload: BillCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+    bill = create_bill_record(db, user, payload)
     db.commit()
     return get_bill(bill.id, user, db)
 
@@ -533,6 +560,7 @@ def change_status(bill_id: str, payload: BillStatusUpdate, user: User = Depends(
         if bill.status != "draft":
             unpost_bill(db, bill, user, "Bill voided")
         bill.status = "void"
+        doc_flow.release_bill(db, bill)
     elif target == "draft":
         if bill.status != "open" or bill.amount_paid > 0:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only unpaid open bills can be reverted to draft")
@@ -557,6 +585,7 @@ def delete_bill(bill_id: str, user: User = Depends(require_write), db: Session =
     # it would silently leave the books unbalanced.
     if bill.status not in ("draft", "void"):
         unpost_bill(db, bill, user, "Bill deleted")
+    doc_flow.release_bill(db, bill)
     db.delete(bill)
     audit.record(db, user, "delete", "bill", bill_id, f"Deleted bill {number}")
     db.commit()

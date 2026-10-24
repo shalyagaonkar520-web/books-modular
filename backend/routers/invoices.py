@@ -36,7 +36,7 @@ from backend.schemas.sales import (
     InvoiceUpdate,
     LineOut,
 )
-from backend.services import audit, export_service, inventory, ledger, numbering
+from backend.services import audit, doc_flow, export_service, inventory, ledger, numbering
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.documents import compute_lines, group_by_account, totals
 from backend.services.email_service import send_due_reminder_email, send_invoice_email
@@ -98,6 +98,13 @@ def to_out(inv: Invoice) -> InvoiceOut:
         terms=inv.terms,
         sent_at=inv.sent_at,
         lines=[line_out(line) for line in inv.lines],
+        place_of_supply=inv.place_of_supply,
+        tcs_rate=inv.tcs_rate,
+        tcs_amount=inv.tcs_amount,
+        irn=inv.irn,
+        irn_ack_no=inv.irn_ack_no,
+        irn_ack_date=inv.irn_ack_date,
+        eway_bill_no=inv.eway_bill_no,
         created_at=inv.created_at,
         updated_at=inv.updated_at,
     )
@@ -149,7 +156,12 @@ def _apply_payload(db: Session, inv: Invoice, payload: InvoiceCreate, org_id: st
     inv.terms = payload.terms
     inv.subtotal = subtotal
     inv.tax_total = tax_total
-    inv.total = totals(subtotal, inv.discount_amount, tax_total)
+    inv.place_of_supply = payload.place_of_supply
+    inv.tcs_rate = payload.tcs_rate
+    before_tcs = totals(subtotal, inv.discount_amount, tax_total)
+    # TCS is collected on the full sale value, GST included.
+    inv.tcs_amount = money(before_tcs * payload.tcs_rate / Decimal("100"))
+    inv.total = money(before_tcs + inv.tcs_amount)
     inv.lines.clear()
     for position, line in enumerate(computed):
         inv.lines.append(
@@ -188,6 +200,9 @@ def post_invoice(db: Session, inv: Invoice, user: User) -> None:
         lines.append((account_id, Decimal("0"), amount, f"Invoice {inv.invoice_number}", inv.customer_id))
     if inv.tax_total > 0:
         lines.append((output_gst.id, Decimal("0"), inv.tax_total, f"GST on {inv.invoice_number}", inv.customer_id))
+    if inv.tcs_amount > 0:
+        tcs_payable = get_account_by_code(db, org_id, "2210")
+        lines.append((tcs_payable.id, Decimal("0"), inv.tcs_amount, f"TCS on {inv.invoice_number}", inv.customer_id))
     ledger.post_entry(db, org_id, inv.date, lines, "invoice", inv.id, reference=inv.invoice_number, created_by=user.id)
 
     # Perpetual inventory: relieve stock and recognise COGS at cost.
@@ -584,13 +599,18 @@ def send_invoice_via_gmail(
     return res
 
 
-@router.post("", response_model=InvoiceOut, status_code=status.HTTP_201_CREATED)
-def create_invoice(payload: InvoiceCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def create_invoice_record(db: Session, user: User, payload: InvoiceCreate, recurring_profile_id: Optional[str] = None) -> Invoice:
+    """Create (and, when sent, post) an invoice without committing.
+
+    Shared by the endpoint, quote / sales order conversion and recurring
+    profiles, so each can commit the invoice together with its own changes.
+    """
     inv = Invoice(
         organization_id=user.organization_id,
         invoice_number=numbering.next_number(db, user.organization_id, "invoice"),
         status="draft",
         created_by=user.id,
+        recurring_profile_id=recurring_profile_id,
     )
     _apply_payload(db, inv, payload, user.organization_id)
     db.add(inv)
@@ -600,6 +620,12 @@ def create_invoice(payload: InvoiceCreate, user: User = Depends(require_write), 
         inv.sent_at = datetime.now(UTC)
         post_invoice(db, inv, user)
     audit.record(db, user, "create", "invoice", inv.id, f"Created invoice {inv.invoice_number} ({inv.status})")
+    return inv
+
+
+@router.post("", response_model=InvoiceOut, status_code=status.HTTP_201_CREATED)
+def create_invoice(payload: InvoiceCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+    inv = create_invoice_record(db, user, payload)
     db.commit()
     return get_invoice(inv.id, user, db)
 
@@ -609,6 +635,8 @@ def update_invoice(invoice_id: str, payload: InvoiceUpdate, user: User = Depends
     inv = get_or_404(db, Invoice, invoice_id, user.organization_id, "Invoice")
     if inv.status in ("paid", "partially_paid", "void") or inv.amount_paid > 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invoices with payments or voided invoices cannot be edited")
+    if inv.irn:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This invoice has an e-invoice IRN; cancel the IRN and clear it before editing")
     was_posted = inv.status == "sent"
     if was_posted:
         unpost_invoice(db, inv, user, "Invoice edited")
@@ -646,6 +674,7 @@ def change_status(invoice_id: str, payload: InvoiceStatusUpdate, user: User = De
         # Release billed time so it can go on a replacement invoice, as delete does.
         for entry in db.execute(select(TimeEntry).where(TimeEntry.invoice_id == inv.id)).scalars():
             entry.invoice_id = None
+        doc_flow.release_invoice(db, inv)
     elif target == "draft":
         if inv.status != "sent" or inv.amount_paid > 0:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only unpaid sent invoices can be reverted to draft")
@@ -665,6 +694,7 @@ def delete_invoice(invoice_id: str, user: User = Depends(require_write), db: Ses
         unpost_invoice(db, inv, user, "Invoice deleted")
     for entry in db.execute(select(TimeEntry).where(TimeEntry.invoice_id == inv.id)).scalars():
         entry.invoice_id = None
+    doc_flow.release_invoice(db, inv)
     for rz in db.execute(select(RazorpayPayment).where(RazorpayPayment.invoice_id == inv.id)).scalars():
         rz.invoice_id = None
     for ref in db.execute(select(PaymentRefund).where(PaymentRefund.invoice_id == inv.id)).scalars():

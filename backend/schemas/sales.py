@@ -4,12 +4,22 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Literal, Optional
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from backend.schemas.common import MAX_MONEY, MAX_QUANTITY, APIModel
+from backend.services.gst import STATE_CODES
 
 InvoiceStatus = Literal["draft", "sent", "partially_paid", "paid", "void", "overdue"]
 PaymentMode = Literal["cash", "bank_transfer", "upi", "cheque", "card", "other"]
+
+
+def validate_state(value: Optional[str]) -> Optional[str]:
+    if value in (None, ""):
+        return None
+    code = value.strip().zfill(2)
+    if code not in STATE_CODES:
+        raise ValueError("Unknown GST state code")
+    return code
 
 
 class LineInput(APIModel):
@@ -49,12 +59,21 @@ class InvoiceCreate(APIModel):
     terms: Optional[str] = None
     lines: List[LineInput] = Field(min_length=1)
     status: Literal["draft", "sent"] = "draft"
+    # GST state code where the supply is made; null = the customer's state.
+    place_of_supply: Optional[str] = Field(default=None, max_length=2)
+    # TCS (Income-tax section 206C) collected on the invoice value, in percent.
+    tcs_rate: Decimal = Field(default=Decimal("0"), ge=0, le=10)
 
     @model_validator(mode="after")
     def _due_after_date(self):
         if self.due_date and self.due_date < self.date:
             raise ValueError("Due date cannot be before the invoice date")
         return self
+
+    @field_validator("place_of_supply")
+    @classmethod
+    def _state(cls, value: Optional[str]) -> Optional[str]:
+        return validate_state(value)
 
 
 class InvoiceUpdate(InvoiceCreate):
@@ -87,6 +106,13 @@ class InvoiceOut(APIModel):
     terms: Optional[str] = None
     sent_at: Optional[datetime] = None
     lines: List[LineOut] = []
+    place_of_supply: Optional[str] = None
+    tcs_rate: Decimal = Decimal("0")
+    tcs_amount: Decimal = Decimal("0")
+    irn: Optional[str] = None
+    irn_ack_no: Optional[str] = None
+    irn_ack_date: Optional[datetime] = None
+    eway_bill_no: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

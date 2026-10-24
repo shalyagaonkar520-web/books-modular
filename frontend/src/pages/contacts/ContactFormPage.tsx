@@ -19,6 +19,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
+import { stateFromGstin, stateOptions } from '@/utils/gst';
 import { GST_TREATMENTS } from '@/utils/status';
 
 const SALUTATIONS = ['Mr.', 'Ms.', 'Mrs.', 'Dr.', 'Prof.'];
@@ -49,6 +50,7 @@ interface FormState {
   bankAccountNumberConfirm: string;
   bankIfsc: string;
   gstTreatment: GstTreatment;
+  placeOfSupply: string;
   language: string;
   ledgerAccountId: string;
   paymentTermsDays: string;
@@ -84,6 +86,7 @@ function initialForm(contact: Contact | null, type: ContactType, defaultPaymentT
     language: contact?.language ?? '',
     ledgerAccountId: contact?.ledgerAccountId ?? '',
     gstTreatment: contact?.gstTreatment ?? 'unregistered',
+    placeOfSupply: contact?.placeOfSupply ?? '',
     paymentTermsDays: String(contact ? contact.paymentTermsDays : (defaultPaymentTermsDays ?? FALLBACK_PAYMENT_TERMS_DAYS)),
     billingAddress: contact?.billingAddress ?? '',
     shippingAddress: contact?.shippingAddress ?? '',
@@ -212,6 +215,7 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
       language: form.language.trim() || null,
       ledgerAccountId: form.ledgerAccountId || null,
       gstTreatment: form.gstTreatment,
+      placeOfSupply: form.placeOfSupply || null,
       paymentTermsDays: Number.parseInt(form.paymentTermsDays, 10) || 0,
       billingAddress: form.billingAddress.trim() || null,
       shippingAddress: form.shippingAddress.trim() || null,
@@ -371,6 +375,15 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
             options={GST_TREATMENTS.map((treatment) => ({ value: treatment.value, label: t(treatment.labelKey) }))}
             error={fieldErrors.gstTreatment}
             onChange={(event) => set('gstTreatment', event.target.value as GstTreatment)}
+          />
+          <SelectField
+            label={t('customers.form.placeOfSupply')}
+            value={form.placeOfSupply}
+            placeholder={stateFromGstin(form.gstin) ? t('customers.form.placeOfSupplyFromGstin', { code: stateFromGstin(form.gstin) ?? '' }) : t('customers.form.placeOfSupplyNone')}
+            options={stateOptions}
+            hint={t('customers.form.placeOfSupplyHint')}
+            error={fieldErrors.placeOfSupply}
+            onChange={(event) => set('placeOfSupply', event.target.value)}
           />
           <TextField
             label={t('customers.form.paymentTerms')}

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional
 
@@ -158,6 +158,8 @@ class OrganizationOut(APIModel):
     default_payment_terms_days: int
     invoice_terms: Optional[str] = None
     invoice_notes: Optional[str] = None
+    # Books closed up to and including this date (see PUT /api/organization/lock-date).
+    lock_date: Optional[date] = None
     # The active plan's app modules (null = every module: on trial, or an
     # organization from before plans) and its monthly price.
     requested_modules: Optional[List[str]] = None

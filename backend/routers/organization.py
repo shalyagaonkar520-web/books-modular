@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -10,7 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_admin
-from backend.models import AuditLog, Employee, PayRun, Payslip, Project, TimeEntry, User
+from backend.models import AuditLog, Employee, Organization, PayRun, Payslip, Project, TimeEntry, User
 from backend.schemas.auth import (
     AdminResetPasswordRequest,
     AuditLogOut,
@@ -23,7 +24,8 @@ from backend.schemas.auth import (
     UserStats,
 )
 from backend.schemas.common import Message, Page
-from backend.services import export_service, org_users
+from backend.schemas.documents_flow import LockDateOut, LockDateUpdate
+from backend.services import audit, export_service, org_users
 from backend.services.tenancy import Pagination
 
 router = APIRouter(prefix="/api", tags=["Organization"])
@@ -37,6 +39,29 @@ def get_organization(user: User = Depends(get_current_user), db: Session = Depen
 @router.put("/organization", response_model=OrganizationOut)
 def update_organization(payload: OrganizationUpdate, user: User = Depends(require_admin), db: Session = Depends(get_db)):
     return org_users.update_organization(db, user.organization_id, user, payload)
+
+
+@router.get("/organization/lock-date", response_model=LockDateOut)
+def get_lock_date(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return LockDateOut(lock_date=db.get(Organization, user.organization_id).lock_date)
+
+
+@router.put("/organization/lock-date", response_model=LockDateOut)
+def set_lock_date(payload: LockDateUpdate, user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Close the books up to a date (inclusive), or reopen them with null.
+
+    Nothing dated on or before it can then be posted, edited, voided or
+    deleted - the usual step after filing a GST return or closing a year.
+    """
+    if payload.lock_date and payload.lock_date >= date.today():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The lock date must be in the past")
+    org = db.get(Organization, user.organization_id)
+    previous = org.lock_date
+    org.lock_date = payload.lock_date
+    summary = f"Books locked up to {payload.lock_date.isoformat()}" if payload.lock_date else "Books lock removed"
+    audit.record(db, user, "update", "organization", org.id, f"{summary} (was {previous.isoformat() if previous else 'unlocked'})")
+    db.commit()
+    return LockDateOut(lock_date=org.lock_date)
 
 
 @router.get("/users", response_model=List[UserOut])

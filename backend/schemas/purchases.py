@@ -4,10 +4,10 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Literal, Optional
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from backend.schemas.common import MAX_MONEY, APIModel
-from backend.schemas.sales import LineInput, LineOut, PaymentMode
+from backend.schemas.sales import LineInput, LineOut, PaymentMode, validate_state
 
 BillStatus = Literal["draft", "open", "partially_paid", "paid", "void", "overdue"]
 # An expense is always paid out of a bank/cash/card account the moment it is
@@ -31,12 +31,25 @@ class BillCreate(APIModel):
     notes: Optional[str] = None
     lines: List[LineInput] = Field(min_length=1)
     status: Literal["draft", "open"] = "open"
+    place_of_supply: Optional[str] = Field(default=None, max_length=2)
+    # GST payable by us instead of the vendor (section 9(3)/9(4)).
+    reverse_charge: bool = False
+    # TDS withheld from the vendor: Income-tax section (194C, 194J ...) and rate.
+    tds_section: Optional[str] = Field(default=None, max_length=20)
+    tds_rate: Decimal = Field(default=Decimal("0"), ge=0, le=30)
 
     @model_validator(mode="after")
     def _due_after_date(self):
         if self.due_date and self.due_date < self.date:
             raise ValueError("Due date cannot be before the bill date")
+        if self.tds_rate > 0 and not self.tds_section:
+            raise ValueError("Choose the TDS section for the rate deducted")
         return self
+
+    @field_validator("place_of_supply")
+    @classmethod
+    def _state(cls, value: Optional[str]) -> Optional[str]:
+        return validate_state(value)
 
 
 class BillUpdate(BillCreate):
@@ -62,6 +75,11 @@ class BillOut(APIModel):
     balance_due: Decimal
     notes: Optional[str] = None
     lines: List[LineOut] = []
+    place_of_supply: Optional[str] = None
+    reverse_charge: bool = False
+    tds_section: Optional[str] = None
+    tds_rate: Decimal = Decimal("0")
+    tds_amount: Decimal = Decimal("0")
     created_at: datetime
     updated_at: datetime
 

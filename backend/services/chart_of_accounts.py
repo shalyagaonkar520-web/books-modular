@@ -25,7 +25,9 @@ DEFAULT_ACCOUNTS = [
     # Liabilities
     ("2000", "Accounts Payable", "liability", "accounts_payable"),
     ("2100", "Output GST", "liability", "tax"),
+    ("2110", "GST Payable (Reverse Charge)", "liability", "tax"),
     ("2200", "TDS Payable", "liability", "other_current_liability"),
+    ("2210", "TCS Payable", "liability", "other_current_liability"),
     ("2300", "Salaries Payable", "liability", "other_current_liability"),
     ("2310", "Provident Fund Payable", "liability", "other_current_liability"),
     ("2320", "Professional Tax Payable", "liability", "other_current_liability"),
@@ -67,7 +69,9 @@ SYSTEM_CODES = {
     "1300",
     "2000",
     "2100",
+    "2110",
     "2200",
+    "2210",
     "2300",
     "2310",
     "2320",
@@ -103,7 +107,17 @@ def bootstrap_accounts(db: Session, organization_id: str) -> Dict[str, Account]:
 def get_account_by_code(db: Session, organization_id: str, code: str) -> Account:
     account = db.execute(select(Account).where(Account.organization_id == organization_id, Account.code == code)).scalar_one_or_none()
     if account is None:
-        raise RuntimeError(f"System account {code} missing for organization {organization_id}")
+        default = next((row for row in DEFAULT_ACCOUNTS if row[0] == code), None)
+        if default is None:
+            raise RuntimeError(f"System account {code} missing for organization {organization_id}")
+        # A system account added to the defaults after this organization was
+        # created (e.g. 2110 reverse-charge GST): create it on first use.
+        _, name, acc_type, subtype = default
+        account = Account(
+            organization_id=organization_id, code=code, name=name, type=acc_type, subtype=subtype, is_system=code in SYSTEM_CODES
+        )
+        db.add(account)
+        db.flush()
     return account
 
 

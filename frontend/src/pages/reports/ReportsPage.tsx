@@ -11,6 +11,7 @@ import { todayIso } from '@/utils/format';
 
 import { AgeingReportView } from './AgeingReportView';
 import { BalanceSheetReport } from './BalanceSheetReport';
+import { CashFlowReport } from './CashFlowReport';
 import { ContactTotalsReportView } from './ContactTotalsReportView';
 import { ExpensesByCategoryReport } from './ExpensesByCategoryReport';
 import { InventorySummaryReportView } from './InventorySummaryReportView';
@@ -22,6 +23,7 @@ type RangeKind = 'period' | 'as_of' | 'none';
 type ReportId =
   | 'profit_and_loss'
   | 'balance_sheet'
+  | 'cash_flow'
   | 'receivables_ageing'
   | 'payables_ageing'
   | 'sales_by_customer'
@@ -42,6 +44,7 @@ interface ReportMeta {
 const REPORTS: ReportMeta[] = [
   { id: 'profit_and_loss', textKey: 'reports.profitAndLoss', range: 'period', financialOnly: true },
   { id: 'balance_sheet', textKey: 'reports.balanceSheet', range: 'as_of', financialOnly: true },
+  { id: 'cash_flow', textKey: 'reports.cashFlow', range: 'period', financialOnly: true },
   { id: 'receivables_ageing', textKey: 'reports.receivablesAgeing', range: 'as_of' },
   { id: 'payables_ageing', textKey: 'reports.payablesAgeing', range: 'as_of' },
   { id: 'sales_by_customer', textKey: 'reports.salesByCustomer', range: 'period' },
@@ -83,6 +86,8 @@ export function ReportsPage() {
         return <ProfitAndLossReport startDate={startDate} endDate={endDate} />;
       case 'balance_sheet':
         return <BalanceSheetReport asOf={asOf} />;
+      case 'cash_flow':
+        return <CashFlowReport startDate={startDate} endDate={endDate} />;
       case 'receivables_ageing':
         return <AgeingReportView kind="receivables" asOf={asOf} />;
       case 'payables_ageing':

@@ -1,6 +1,7 @@
 import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 
+import { LockDateSettings } from './LockDateSettings';
 import { OrganizationSettings } from './OrganizationSettings';
 
 /**
@@ -14,6 +15,7 @@ export function SettingsPage() {
     <div className="stack">
       <PageHeader title={t('settings.title')} subtitle={t('settings.subtitle')} />
       <OrganizationSettings />
+      <LockDateSettings />
     </div>
   );
 }

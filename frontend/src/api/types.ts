@@ -47,6 +47,8 @@ export interface Organization {
   fiscalYearStartMonth: number;
   invoiceTerms?: string | null;
   invoiceNotes?: string | null;
+  /** Books are closed up to and including this date (null = open). */
+  lockDate?: string | null;
   /** Default GST % for new items and new document lines. */
   defaultTaxRate?: number;
   /** Default payment terms (days) for new customers and vendors. */
@@ -179,6 +181,8 @@ export interface Contact {
   outstandingBalance: number;
   createdAt: string;
   updatedAt: string;
+  /** GST state code of the place of supply; null = from the GSTIN. */
+  placeOfSupply?: string | null;
 }
 
 export interface ContactSummary {
@@ -233,6 +237,13 @@ export interface Invoice {
   notes?: string | null;
   terms?: string | null;
   sentAt?: string | null;
+  placeOfSupply?: string | null;
+  tcsRate?: number;
+  tcsAmount?: number;
+  irn?: string | null;
+  irnAckNo?: string | null;
+  irnAckDate?: string | null;
+  ewayBillNo?: string | null;
   lines: DocumentLine[];
   createdAt: string;
   updatedAt: string;
@@ -300,6 +311,11 @@ export interface Bill {
   amountPaid: number;
   balanceDue: number;
   notes?: string | null;
+  placeOfSupply?: string | null;
+  reverseCharge?: boolean;
+  tdsSection?: string | null;
+  tdsRate?: number;
+  tdsAmount?: number;
   lines: DocumentLine[];
   createdAt: string;
   updatedAt: string;

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Dict, List, Optional
 
@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.db import get_db
 from backend.deps import get_current_user, require_financial_read
 from backend.models import Account, Bill, Expense, Invoice, Item, User
+from backend.schemas.documents_flow import CashFlowLine, CashFlowSection, CashFlowStatement
 from backend.schemas.reports import (
     AgingBucket,
     AgingReport,
@@ -29,7 +30,7 @@ from backend.schemas.reports import (
     ReportSection,
     TaxSummary,
 )
-from backend.services import ledger
+from backend.services import bank, ledger
 from backend.services.money import money
 from backend.services.periods import fiscal_year_bounds
 
@@ -385,4 +386,79 @@ def tax_summary(
         taxable_purchases=money(
             sum((b.subtotal - b.discount_amount for b in bills), Decimal("0")) + sum((e.amount for e in expenses), Decimal("0"))
         ),
+    )
+
+
+# Cash and cash equivalents: bank and cash registers, plus undeposited funds.
+_CASH_SUBTYPES = {"cash", "bank"}
+_UNDEPOSITED_FUNDS = "1900"
+_INVESTING_SUBTYPES = {"fixed_asset", "non_current_asset", "investment"}
+_FINANCING_LIABILITY_SUBTYPES = {"credit_card", "long_term_liability", "non_current_liability", "loan"}
+
+
+@router.get("/cash-flow", response_model=CashFlowStatement)
+def cash_flow(
+    start_date: Optional[date] = Query(default=None, alias="startDate"),
+    end_date: Optional[date] = Query(default=None, alias="endDate"),
+    user: User = Depends(require_financial_read),
+    db: Session = Depends(get_db),
+):
+    """Cash-flow statement (indirect method), computed from the ledger.
+
+    Net income is adjusted by the period's movement on every other non-cash
+    account. Because every journal entry balances, operating + investing +
+    financing always equals the change in cash.
+    """
+    start, end = _default_range(user, start_date, end_date)
+    org_id = user.organization_id
+    accounts = db.execute(select(Account).where(Account.organization_id == org_id).order_by(Account.code)).scalars().all()
+    cash_ids = {a.id for a in accounts if a.subtype in _CASH_SUBTYPES or a.code == _UNDEPOSITED_FUNDS} | bank.bank_ledger_account_ids(
+        db, org_id
+    )
+    period = ledger.account_balances(db, org_id, start=start, end=end)
+    to_start = ledger.account_balances(db, org_id, end=start - timedelta(days=1), account_ids=cash_ids)
+    to_end = ledger.account_balances(db, org_id, end=end, account_ids=cash_ids)
+
+    def cash_total(balances: dict) -> Decimal:
+        return money(sum((d - c for d, c in balances.values()), Decimal("0")))
+
+    net_income = Decimal("0")
+    sections: Dict[str, List[CashFlowLine]] = {"operating": [], "investing": [], "financing": []}
+    for acct in accounts:
+        if acct.id in cash_ids:
+            continue
+        d, c = period.get(acct.id, (Decimal("0"), Decimal("0")))
+        effect = money(c - d)  # what the movement did to cash
+        if acct.type in ("income", "expense"):
+            net_income += effect
+            continue
+        if effect == 0:
+            continue
+        if acct.type == "asset" and acct.subtype in _INVESTING_SUBTYPES:
+            bucket = "investing"
+        elif acct.type == "equity" or (acct.type == "liability" and acct.subtype in _FINANCING_LIABILITY_SUBTYPES):
+            bucket = "financing"
+        else:
+            bucket = "operating"
+        sections[bucket].append(CashFlowLine(label=acct.name, account_id=acct.id, code=acct.code, amount=effect))
+
+    net_income = money(net_income)
+    operating_lines = [CashFlowLine(label="Net income", amount=net_income), *sections["operating"]]
+
+    def section(title: str, lines: List[CashFlowLine]) -> CashFlowSection:
+        return CashFlowSection(title=title, lines=lines, total=money(sum((line.amount for line in lines), Decimal("0"))))
+
+    operating = section("Operating activities", operating_lines)
+    investing = section("Investing activities", sections["investing"])
+    financing = section("Financing activities", sections["financing"])
+    return CashFlowStatement(
+        start_date=start,
+        end_date=end,
+        net_income=net_income,
+        operating=operating,
+        investing=investing,
+        financing=financing,
+        net_change=money(operating.total + investing.total + financing.total),
+        opening_cash=cash_total(to_start),
+        closing_cash=cash_total(to_end),
     )

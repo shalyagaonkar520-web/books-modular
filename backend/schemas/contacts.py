@@ -9,6 +9,7 @@ from pydantic.alias_generators import to_camel
 
 from backend.schemas import validators
 from backend.schemas.common import APIModel
+from backend.schemas.sales import validate_state
 
 ContactType = Literal["customer", "vendor"]
 ContactKind = Literal["business", "individual"]
@@ -23,6 +24,11 @@ class _ContactFieldRules:
     unreadable - one bad legacy value would break the whole contacts list
     instead of just being flagged at entry.
     """
+
+    @field_validator("place_of_supply")
+    @classmethod
+    def _place_of_supply(cls, value: Optional[str]) -> Optional[str]:
+        return validate_state(value)
 
     @field_validator("display_name")
     @classmethod
@@ -103,6 +109,8 @@ class ContactBase(APIModel):
     bank_account_number: Optional[str] = Field(default=None, max_length=40)
     bank_ifsc: Optional[str] = Field(default=None, max_length=20)
     gst_treatment: GstTreatment = "unregistered"
+    # GST state code of the place of supply; null = taken from the GSTIN.
+    place_of_supply: Optional[str] = Field(default=None, max_length=2)
     language: Optional[str] = Field(default=None, max_length=40)
     # Overrides the org-wide receivables/payables account for this contact.
     ledger_account_id: Optional[str] = None
@@ -134,6 +142,7 @@ class ContactUpdate(_ContactFieldRules, APIModel):
     bank_account_number: Optional[str] = Field(default=None, max_length=40)
     bank_ifsc: Optional[str] = Field(default=None, max_length=20)
     gst_treatment: Optional[GstTreatment] = None
+    place_of_supply: Optional[str] = Field(default=None, max_length=2)
     language: Optional[str] = Field(default=None, max_length=40)
     ledger_account_id: Optional[str] = None
     billing_address: Optional[str] = None

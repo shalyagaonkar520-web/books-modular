@@ -22,6 +22,9 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatDate, formatPercent, formatQuantity } from '@/utils/format';
 import { paymentModeLabel, type Translate, statusLabel, statusTone } from '@/utils/status';
 
+import { InvoiceCreditsCard } from '@/pages/docflow/InvoiceCreditsCard';
+
+import { InvoiceGstCard } from './InvoiceGstCard';
 import { RecordPaymentModal, type PaymentInvoiceContext } from './RecordPaymentModal';
 
 type Pending = { kind: 'send' | 'void' };
@@ -336,6 +339,10 @@ export function InvoiceViewPage() {
             <DataTable columns={paymentColumns} rows={paymentRows} rowKey={(row) => row.id} caption={t('invoices.view.payments.caption')} />
           )}
         </Card>
+
+        <InvoiceCreditsCard invoice={data} onChanged={refresh} />
+
+        <InvoiceGstCard invoice={data} onChanged={refresh} />
       </div>
 
       <RecordPaymentModal open={payingOpen} invoice={paymentContext} onClose={() => setPayingOpen(false)} onSaved={refresh} />

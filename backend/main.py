@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 from backend.config import get_settings
 from backend.db import SessionLocal, create_all
-from backend.services import idempotency, razorpay_scheduler, webhook_dispatcher
+from backend.services import idempotency, razorpay_scheduler, recurring, webhook_dispatcher
 
 settings = get_settings()
 logger = logging.getLogger("roomanbooks")
@@ -31,9 +31,11 @@ async def lifespan(_app: FastAPI):
     logger.info("Rooman Books API started (env=%s, db=%s)", settings.environment, "sqlite" if settings.is_sqlite else "postgresql")
     razorpay_scheduler.start()
     webhook_dispatcher.start()
+    recurring.start()
     try:
         yield
     finally:
+        await recurring.stop()
         await webhook_dispatcher.stop()
         await razorpay_scheduler.stop()
 
