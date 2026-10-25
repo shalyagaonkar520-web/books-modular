@@ -362,6 +362,21 @@ async def import_excel_categorize(
     )
 
 
+# Expense category words -> default chart-of-accounts code (imports).
+_EXPENSE_KEYWORDS = (
+    ("6300", ("rent", "lease")),
+    ("6500", ("travel", "fuel", "petrol", "diesel", "taxi", "cab", "flight", "train", "hotel", "conveyance")),
+    ("6600", ("internet", "telephone", "phone", "mobile", "broadband", "wifi")),
+    ("6700", ("electric", "utilit", "water", "power")),
+    ("6400", ("salary", "salaries", "wage", "payroll")),
+    ("6000", ("advertis", "marketing", "promotion", "ads")),
+    ("6200", ("office", "stationery", "supplies", "printing")),
+    ("6900", ("repair", "maintenance", "service charge")),
+    ("6100", ("bank charge", "bank fee", "bank")),
+    ("6800", ("professional", "legal", "audit", "consult", "ca fee")),
+)
+
+
 @router.post("/import-excel-commit", response_model=ExcelCommitResponse)
 def import_excel_commit(
     payload: ExcelCommitPayload,
@@ -379,6 +394,7 @@ def import_excel_commit(
     # Imported late: the routers import each other's services, and importing at
     # module level here would create a circular import.
     from backend.routers.bills import post_bill
+    from backend.routers.expenses import _post as post_expense
     from backend.routers.invoices import post_invoice
 
     org_id = user.organization_id
@@ -394,8 +410,33 @@ def import_excel_commit(
         if error:
             raise HTTPException(status.HTTP_403_FORBIDDEN, f"You can't import {category}: {error}")
 
-    expense_acct = db.execute(select(Account).where(Account.organization_id == org_id, Account.type == "expense")).scalars().first()
-    bank_acct = db.execute(select(BankAccount).where(BankAccount.organization_id == org_id)).scalars().first()
+    expense_accounts = {
+        a.code: a
+        for a in db.execute(
+            select(Account).where(Account.organization_id == org_id, Account.type == "expense", Account.is_active.is_(True))
+        ).scalars()
+    }
+    expense_acct = expense_accounts.get("6990") or next((a for a in expense_accounts.values() if a.subtype == "operating"), None)
+
+    def _expense_account(category: str) -> Optional[Account]:
+        """The ledger account an expense category belongs to; Other Expenses when nothing fits."""
+        text = category.lower()
+        for code, words in _EXPENSE_KEYWORDS:
+            if code in expense_accounts and any(w in text for w in words):
+                return expense_accounts[code]
+        named = next((a for a in expense_accounts.values() if a.subtype == "operating" and text and text in a.name.lower()), None)
+        return named or expense_acct
+
+    # Paid from the primary bank account, else any bank account, else cash.
+    bank_acct = (
+        db.execute(
+            select(BankAccount)
+            .where(BankAccount.organization_id == org_id, BankAccount.is_active.is_(True))
+            .order_by(BankAccount.is_primary.desc(), (BankAccount.type == "bank").desc(), BankAccount.created_at)
+        )
+        .scalars()
+        .first()
+    )
 
     # Exactly one source of rows. Callers have sent both `sections` and an
     # `items` copy of the same rows, and appending both imported everything
@@ -501,9 +542,20 @@ def import_excel_commit(
             category = str(d.get("category") or "").strip()
             if category:
                 expense.category = category[:50]
+                expense.account_id = _expense_account(category).id
             if payee:
                 expense.vendor_id = _find_or_create_contact(payee, "vendor", None).id
-            db.add(expense)
+            # Post it like an expense entered by hand: the ledger and the bank balance move.
+            # A row that cannot be posted (e.g. not enough cash) is skipped, not the whole import.
+            try:
+                with db.begin_nested():
+                    db.add(expense)
+                    db.flush()
+                    db.refresh(expense)
+                    post_expense(db, expense, user)
+            except HTTPException as exc:
+                skipped.append(f"Row {index} (expense): {exc.detail}")
+                continue
             counts["expenses"] += 1
 
         elif cat in ("invoices", "bills"):

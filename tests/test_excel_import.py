@@ -250,3 +250,35 @@ def test_columns_absent_from_the_sheet_are_left_empty(client, org):
 
     expense = next(e for e in client.get("/api/expenses", headers=org["h"], params={"page_size": 200}).json()["items"] if e["total"] == 250)
     assert not expense["notes"]
+
+
+def test_imported_expenses_are_posted_to_the_matching_account(client, org):
+    """Imported expenses reach the ledger and the bank, booked by their category."""
+    client.post(
+        "/api/banking/accounts",
+        headers=org["h"],
+        json={"name": "Main Bank", "type": "bank", "openingBalance": 50000, "openingBalanceDate": "2026-01-01", "isPrimary": True},
+    )
+    res = _upload(
+        client,
+        org["h"],
+        {
+            "Expenses": [
+                ["Amount", "Date", "Category"],
+                ["12000", "2026-08-12", "Office Rent"],
+                ["800", "2026-08-13", "Petrol"],
+                ["99", "2026-08-14", "Misc"],
+            ]
+        },
+    ).json()
+    commit = client.post("/api/documents/import-excel-commit", headers=org["h"], json={"sections": res["sections"]})
+    assert commit.status_code == 200, commit.text
+    assert commit.json()["imported_counts"]["expenses"] == 3
+    names = {
+        e["category"]: e["accountName"] for e in client.get("/api/expenses", headers=org["h"]).json()["items"] if e["category"] != "Other"
+    }
+    assert names == {"Office Rent": "Rent Expense", "Petrol": "Travel Expense", "Misc": "Other Expenses"}
+    pl = client.get("/api/reports/profit-and-loss", headers=org["h"], params={"startDate": "2026-08-12", "endDate": "2026-08-14"}).json()
+    assert pl["operatingExpenses"]["total"] == 12899
+    bank = next(a for a in client.get("/api/banking/accounts", headers=org["h"]).json() if a["name"] == "Main Bank")
+    assert bank["currentBalance"] == 50000 - 12899
