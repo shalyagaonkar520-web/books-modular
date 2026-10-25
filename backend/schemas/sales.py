@@ -131,6 +131,8 @@ class InvoiceOut(APIModel):
     branch_id: Optional[str] = None
     approval_status: Optional[str] = None
     approval_note: Optional[str] = None
+    # The total an approver signed off; a higher total needs approving again.
+    approved_total: Optional[Decimal] = None
     currency: Optional[str] = None
     exchange_rate: Decimal = Decimal("1")
     fc_subtotal: Optional[Decimal] = None

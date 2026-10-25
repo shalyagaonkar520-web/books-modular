@@ -192,6 +192,18 @@ def _check_cash_withdrawal(db: Session, bank_acct: BankAccount, amount: Decimal)
     bank.check_cash_overdraft(db, bank_acct, amount)
 
 
+def _ensure_advance_unused(db: Session, org_id: str, party_type: str, contact_id: str, amount: Decimal) -> None:
+    """An advance already applied to invoices / bills or refunded cannot be deleted: the
+    documents it settled would stay paid with no money behind them."""
+    from backend.services import credits
+
+    if credits.advance_balance(db, org_id, party_type, contact_id) < amount:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This advance has already been applied or refunded. Remove those applications or refunds first, then delete it.",
+        )
+
+
 def _refresh_invoice_status(inv: Invoice) -> None:
     if inv.status == "void":
         return
@@ -500,6 +512,8 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
 def delete_customer_payment(payment_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
     payment = get_or_404(db, CustomerPayment, payment_id, user.organization_id, "Payment")
     number = payment.payment_number
+    if payment.invoice_id is None:
+        _ensure_advance_unused(db, user.organization_id, "customer", payment.customer_id, money(payment.amount))
     ledger.reverse_entries_for_source(db, user.organization_id, "customer_payment", payment.id, date.today(), user.id, "Payment deleted")
     # Removing a receipt takes its deposit back out of the account; a cash
     # drawer cannot go below zero (same rule as paying out of it). Checked
@@ -805,6 +819,8 @@ def create_vendor_payment(payload: VendorPaymentCreate, user: User = Depends(req
 @router.delete("/vendor-payments/{payment_id}", response_model=Message, dependencies=[Depends(require_module("paymentsMade"))])
 def delete_vendor_payment(payment_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
     payment = get_or_404(db, VendorPayment, payment_id, user.organization_id, "Payment")
+    if payment.bill_id is None:
+        _ensure_advance_unused(db, user.organization_id, "vendor", payment.vendor_id, money(payment.amount))
     ledger.reverse_entries_for_source(db, user.organization_id, "vendor_payment", payment.id, date.today(), user.id, "Payment deleted")
     bank.remove_movements(db, "vendor_payment", payment.id)
     if payment.bill:

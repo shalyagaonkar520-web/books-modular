@@ -133,6 +133,7 @@ def to_out(inv: Invoice) -> InvoiceOut:
         branch_id=inv.branch_id,
         approval_status=inv.approval_status,
         approval_note=inv.approval_note,
+        approved_total=inv.approved_total,
         **fc_fields(inv),
         created_at=inv.created_at,
         updated_at=inv.updated_at,

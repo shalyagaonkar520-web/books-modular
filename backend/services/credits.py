@@ -42,7 +42,7 @@ from backend.routers.payments import (
     _remove_bill_payment,
     _remove_invoice_payment,
 )
-from backend.services import audit, bank, fx, inventory, ledger, numbering
+from backend.services import audit, bank, fx, inventory, ledger, numbering, stock
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.documents import group_by_account
 from backend.services.money import money, qty
@@ -97,6 +97,7 @@ def post_credit_note(db: Session, cn: CreditNote, user: User) -> None:
                 user.id,
                 rate=Decimal("0"),
                 warehouse_id=cn.warehouse_id,
+                serial_numbers=stock.parse_serials(line.serial_numbers) if item.track_serial else None,
             )
             cost = money(line.quantity * money(item.cost_price))
             if cost > 0:
@@ -126,6 +127,7 @@ def unpost_credit_note(db: Session, cn: CreditNote, user: User, reason: str) -> 
                 rate=Decimal("0"),
                 allow_negative=True,
                 warehouse_id=cn.warehouse_id,
+                serial_numbers=stock.parse_serials(line.serial_numbers) if line.item.track_serial else None,
             )
 
 
@@ -157,6 +159,7 @@ def post_vendor_credit(db: Session, vc: VendorCredit, user: User) -> None:
                 user.id,
                 rate=Decimal("0"),
                 warehouse_id=vc.warehouse_id,
+                serial_numbers=stock.parse_serials(line.serial_numbers) if item.track_serial else None,
             )
         else:
             account_id = line.account_id or (item.purchase_account_id if item and item.purchase_account_id else default_expense.id)
@@ -189,6 +192,7 @@ def unpost_vendor_credit(db: Session, vc: VendorCredit, user: User, reason: str)
                 user.id,
                 rate=Decimal("0"),
                 warehouse_id=vc.warehouse_id,
+                serial_numbers=stock.parse_serials(line.serial_numbers) if item.track_serial else None,
             )
             _receive_at_average_cost(item, on_hand, qty(line.quantity), money(line.rate))
 

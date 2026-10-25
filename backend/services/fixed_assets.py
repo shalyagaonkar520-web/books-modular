@@ -144,6 +144,12 @@ def dispose(db: Session, asset: FixedAsset, on: date, proceeds: Decimal, bank_ac
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This asset is already disposed")
     if on < asset.purchase_date:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "An asset cannot be disposed before it was bought")
+    if asset.last_depreciation_date and on < asset.last_depreciation_date:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Depreciation is posted up to {asset.last_depreciation_date.strftime('%d %b %Y')}. "
+            "Undo the months after the disposal date first, then dispose.",
+        )
     proceeds = money(proceeds)
     org_id = asset.organization_id
     accumulated = asset.accumulated_account_id or get_account_by_code(db, org_id, ACCUMULATED).id

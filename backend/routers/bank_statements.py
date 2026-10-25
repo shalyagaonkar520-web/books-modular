@@ -19,7 +19,7 @@ from backend.schemas.banking import BankTransactionCreate
 from backend.schemas.common import APIModel, Message
 from backend.schemas.purchases import VendorPaymentCreate
 from backend.schemas.sales import CustomerPaymentCreate
-from backend.services import audit, bank_statements
+from backend.services import audit, bank_statements, fx
 from backend.services.tenancy import get_or_404
 
 router = APIRouter(prefix="/api/banking", tags=["Banking"])
@@ -131,19 +131,22 @@ async def import_statement(
     parsed = bank_statements.parse_csv(content)
     if not parsed.lines and parsed.errors:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, parsed.errors[0])
-    existing = {
-        (r.date, r.type, r.amount, r.description)
+    # How many times each line was imported before; a re-upload skips that many
+    # occurrences, so genuine repeats in one file (two SMS charges) still import.
+    existing = Counter(
+        (r.date, r.type, r.amount, r.description, r.reference or "")
         for r in db.execute(select(BankStatementLine).where(BankStatementLine.bank_account_id == acct.id)).scalars()
-    }
+    )
+    seen: Counter = Counter()
     batch = new_id()
     added: List[BankStatementLine] = []
     duplicates = 0
     for p in parsed.lines:
-        key = (p.date, p.type, p.amount, p.description)
-        if key in existing:
+        key = (p.date, p.type, p.amount, p.description, p.reference or "")
+        seen[key] += 1
+        if seen[key] <= existing[key]:
             duplicates += 1
             continue
-        existing.add(key)
         line = BankStatementLine(
             organization_id=user.organization_id,
             bank_account_id=acct.id,
@@ -227,6 +230,7 @@ def categorize_line(line_id: str, payload: CategorizeRequest, user: User = Depen
     )
     line = db.get(BankStatementLine, line_id)
     _match(line, db.get(BankTransaction, out.id))
+    line.created_kind = "transaction"
     db.commit()
     return _line_out(db, line, with_candidates=False)
 
@@ -241,6 +245,8 @@ def apply_line(line_id: str, payload: ApplyRequest, user: User = Depends(require
         if not payload.invoice_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose the invoice this money was received for")
         inv = get_or_404(db, Invoice, payload.invoice_id, user.organization_id, "Invoice")
+        if fx.is_foreign(db, user.organization_id, inv.currency):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Record foreign-currency payments from the invoice, with the exchange rate")
         created = create_customer_payment(
             CustomerPaymentCreate(
                 customer_id=inv.customer_id,
@@ -259,6 +265,8 @@ def apply_line(line_id: str, payload: ApplyRequest, user: User = Depends(require
         if not payload.bill_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose the bill this payment was for")
         bill = get_or_404(db, Bill, payload.bill_id, user.organization_id, "Bill")
+        if fx.is_foreign(db, user.organization_id, bill.currency):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Record foreign-currency payments from the bill, with the exchange rate")
         created = create_vendor_payment(
             VendorPaymentCreate(
                 vendor_id=bill.vendor_id,
@@ -278,6 +286,7 @@ def apply_line(line_id: str, payload: ApplyRequest, user: User = Depends(require
     ).scalar_one()
     line = db.get(BankStatementLine, line_id)
     _match(line, tx)
+    line.created_kind = source[0]
     db.commit()
     return _line_out(db, line, with_candidates=False)
 
@@ -294,12 +303,26 @@ def ignore_line(line_id: str, user: User = Depends(require_financial_write), db:
 def undo_line(line_id: str, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     """Put a matched or ignored line back to unmatched (the matched transaction is unreconciled)."""
     line = get_or_404(db, BankStatementLine, line_id, user.organization_id, "Statement line")
-    if line.transaction_id:
-        tx = db.get(BankTransaction, line.transaction_id)
-        if tx is not None:
-            tx.is_reconciled = False
-            tx.reconciled_at = None
-    line.status, line.transaction_id = "unmatched", None
+    tx = db.get(BankTransaction, line.transaction_id) if line.transaction_id else None
+    if tx is not None:
+        tx.is_reconciled = False
+        tx.reconciled_at = None
+        db.flush()
+        # A transaction or payment this line created goes too, or booking it again would count it twice.
+        if line.created_kind == "transaction":
+            from backend.routers.banking import delete_transaction
+
+            delete_transaction(tx.id, user, db)
+        elif line.created_kind == "customer_payment":
+            from backend.routers.payments import delete_customer_payment
+
+            delete_customer_payment(tx.source_id, user, db)
+        elif line.created_kind == "vendor_payment":
+            from backend.routers.payments import delete_vendor_payment
+
+            delete_vendor_payment(tx.source_id, user, db)
+        line = db.get(BankStatementLine, line_id)
+    line.status, line.transaction_id, line.created_kind = "unmatched", None, None
     db.commit()
     return _line_out(db, line, with_candidates=True)
 

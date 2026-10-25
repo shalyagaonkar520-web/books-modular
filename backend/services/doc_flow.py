@@ -37,7 +37,7 @@ from backend.models import (
 )
 from backend.schemas.documents_flow import CreditApplicationOut, DocumentListItem, DocumentOut, RefundOut
 from backend.schemas.sales import LineInput, LineOut
-from backend.services import fx
+from backend.services import fx, stock
 from backend.services.documents import compute_lines, totals
 from backend.services.money import money
 from backend.services.tenancy import get_or_404
@@ -132,6 +132,7 @@ def price(db: Session, org_id: str, doc, payload, kind: DocKind) -> None:
                 tax_rate=line.tax_rate,
                 amount=line.amount,
                 tax_amount=line.tax_amount,
+                serial_numbers=", ".join(stock.parse_serials(line.spec.serial_numbers)) or None,
             )
         )
 
@@ -149,6 +150,7 @@ def line_out(line) -> LineOut:
         amount=line.amount,
         tax_amount=line.tax_amount,
         item_name=line.item.name if line.item else None,
+        serial_numbers=line.serial_numbers,
     )
 
 
@@ -162,6 +164,7 @@ def copy_lines(doc) -> List[LineInput]:
             quantity=line.quantity,
             rate=line.rate,
             tax_rate=line.tax_rate,
+            serial_numbers=line.serial_numbers,
         )
         for line in doc.lines
     ]

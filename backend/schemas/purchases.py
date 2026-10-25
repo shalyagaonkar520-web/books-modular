@@ -91,6 +91,7 @@ class BillOut(APIModel):
     project_id: Optional[str] = None
     approval_status: Optional[str] = None
     approval_note: Optional[str] = None
+    approved_total: Optional[Decimal] = None
     currency: Optional[str] = None
     exchange_rate: Decimal = Decimal("1")
     fc_subtotal: Optional[Decimal] = None

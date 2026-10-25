@@ -99,12 +99,26 @@ def build(db: Session, contact: Contact, start: date, end: date) -> Statement:
             JournalEntry.date, JournalEntry.created_at, JournalEntry.entry_number
         )
     )
+    # One row per entry, netted: an advance applied to an invoice (2400 and receivable on the
+    # same entry) moves nothing, and a reversal reduces the column of what it reverses.
+    grouped: dict = {}
     for entry, line in rows:
-        running += sign * (line.debit - line.credit)
+        bucket = grouped.setdefault(entry.id, [entry, Decimal("0"), []])
+        bucket[1] += sign * (line.debit - line.credit)
+        if line.description:
+            bucket[2].append(line.description)
+    for entry, net, descriptions in grouped.values():
+        net = money(net)
+        if net == 0:
+            continue
+        running += net
         kind = _LABELS.get(entry.source_type, entry.source_type.replace("_", " ").capitalize())
         if entry.is_reversal:
             kind = f"{kind} (reversed)"
-        charge, receipt = (line.debit, line.credit) if contact.type == "customer" else (line.credit, line.debit)
+            # Undoing a charge is a negative charge; undoing a receipt is a negative receipt.
+            charge, receipt = (net, Decimal("0")) if net < 0 else (Decimal("0"), -net)
+        else:
+            charge, receipt = (net, Decimal("0")) if net > 0 else (Decimal("0"), -net)
         statement.charges += charge
         statement.receipts += receipt
         statement.rows.append(
@@ -112,7 +126,7 @@ def build(db: Session, contact: Contact, start: date, end: date) -> Statement:
                 date=entry.date,
                 kind=kind,
                 reference=(entry.reference or entry.entry_number)[:60],
-                description=(line.description or entry.notes or "")[:200],
+                description=(descriptions[0] if descriptions else entry.notes or "")[:200],
                 debit=money(charge),
                 credit=money(receipt),
                 balance=money(running),

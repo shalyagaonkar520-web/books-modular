@@ -121,6 +121,21 @@ def export_xml(db: Session, org: Organization, start: date, end: date) -> str:
         ).scalars()
     )
     used_party_ids = {ln.contact_id for e in entries for ln in e.lines if ln.contact_id and ln.account_id in party_accounts}
+    # A receivable / payable line without a contact (e.g. a manual journal) stays on the control
+    # account, which then needs its own ledger master.
+    control_used = {ln.account_id for e in entries for ln in e.lines if ln.account_id in party_accounts and ln.contact_id not in contacts}
+    # Tally ledger names are unique: a party whose name is taken gets "(Customer)" / "(Vendor)".
+    taken = {a.name.strip().lower() for a in accounts if a.id not in party_accounts or a.id in control_used}
+    party_names: dict = {}
+    for c in sorted(contacts.values(), key=lambda c: (c.type != "customer", c.display_name.lower(), c.id)):
+        name = c.display_name.strip()
+        if name.lower() in taken:
+            name = f"{name} ({'Customer' if c.type == 'customer' else 'Vendor'})"
+        n, base = 2, name
+        while name.lower() in taken:
+            name, n = f"{base} {n}", n + 1
+        taken.add(name.lower())
+        party_names[c.id] = name
     out: List[str] = [
         "<ENVELOPE>",
         "<HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>",
@@ -129,7 +144,7 @@ def export_xml(db: Session, org: Organization, start: date, end: date) -> str:
         "<REQUESTDATA>",
     ]
     for a in accounts:
-        if a.id in party_accounts:
+        if a.id in party_accounts and a.id not in control_used:
             continue  # parties get their own ledgers below
         out.append(
             f'<TALLYMESSAGE xmlns:UDF="TallyUDF"><LEDGER NAME="{_x(a.name)}" ACTION="Create">'
@@ -142,8 +157,8 @@ def export_xml(db: Session, org: Organization, start: date, end: date) -> str:
         parent = "Sundry Debtors" if c.type == "customer" else "Sundry Creditors"
         gst = f"<PARTYGSTIN>{_x(c.gstin)}</PARTYGSTIN>" if c.gstin else ""
         out.append(
-            f'<TALLYMESSAGE xmlns:UDF="TallyUDF"><LEDGER NAME="{_x(c.display_name)}" ACTION="Create">'
-            f"<NAME>{_x(c.display_name)}</NAME><PARENT>{parent}</PARENT>{gst}</LEDGER></TALLYMESSAGE>"
+            f'<TALLYMESSAGE xmlns:UDF="TallyUDF"><LEDGER NAME="{_x(party_names[c.id])}" ACTION="Create">'
+            f"<NAME>{_x(party_names[c.id])}</NAME><PARENT>{parent}</PARENT>{gst}</LEDGER></TALLYMESSAGE>"
         )
     for e in entries:
         vtype = "Journal" if e.is_reversal else _VOUCHER_TYPES.get(e.source_type, "Journal")
@@ -151,7 +166,7 @@ def export_xml(db: Session, org: Organization, start: date, end: date) -> str:
         for ln in e.lines:
             ledger = by_id[ln.account_id].name
             if ln.account_id in party_accounts and ln.contact_id in contacts:
-                ledger = contacts[ln.contact_id].display_name
+                ledger = party_names[ln.contact_id]
             debit = ln.debit > 0
             # Tally signs amounts: debits negative, credits positive.
             amount = -ln.debit if debit else ln.credit

@@ -90,6 +90,7 @@ def to_out(bill: Bill) -> BillOut:
         project_id=bill.project_id,
         approval_status=bill.approval_status,
         approval_note=bill.approval_note,
+        approved_total=bill.approved_total,
         **fc_fields(bill),
         created_at=bill.created_at,
         updated_at=bill.updated_at,

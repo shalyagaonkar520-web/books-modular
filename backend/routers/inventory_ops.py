@@ -155,6 +155,8 @@ class TransferLineIn(APIModel):
     item_id: str
     quantity: Decimal = Field(gt=0, le=MAX_QUANTITY)
     batch_number: Optional[str] = Field(default=None, max_length=60)
+    # Serial-tracked items: the units being moved, comma separated.
+    serial_numbers: Optional[str] = Field(default=None, max_length=20000)
 
 
 class TransferIn(APIModel):
@@ -177,6 +179,7 @@ class TransferLineOut(APIModel):
     item_name: str
     quantity: Decimal
     batch_number: Optional[str] = None
+    serial_numbers: Optional[str] = None
 
 
 class TransferOut(APIModel):
@@ -205,7 +208,13 @@ def _transfer_out(db: Session, t: TransferOrder) -> TransferOut:
         status=t.status,
         notes=t.notes,
         lines=[
-            TransferLineOut(item_id=ln.item_id, item_name=ln.item.name, quantity=ln.quantity, batch_number=ln.batch_number)
+            TransferLineOut(
+                item_id=ln.item_id,
+                item_name=ln.item.name,
+                quantity=ln.quantity,
+                batch_number=ln.batch_number,
+                serial_numbers=ln.serial_numbers,
+            )
             for ln in t.lines
         ],
     )
@@ -216,6 +225,7 @@ def _transfer_stock(db: Session, t: TransferOrder, user: User, reverse: bool = F
     label = f"{'Reversal of ' if reverse else ''}transfer {t.transfer_number}"
     for line in t.lines:
         item = line.item
+        serials = stock.parse_serials(line.serial_numbers) if item.track_serial else None
         stock.record(
             db,
             item,
@@ -228,6 +238,7 @@ def _transfer_stock(db: Session, t: TransferOrder, user: User, reverse: bool = F
             warehouse_id=src,
             batch_number=line.batch_number,
             total_includes_delta=False,
+            serial_numbers=serials,
         )
         stock.record(
             db,
@@ -241,6 +252,7 @@ def _transfer_stock(db: Session, t: TransferOrder, user: User, reverse: bool = F
             warehouse_id=dst,
             batch_number=line.batch_number,
             total_includes_delta=False,
+            serial_numbers=serials,
         )
 
 
@@ -286,7 +298,12 @@ def create_transfer(payload: TransferIn, user: User = Depends(require_write), db
         if not item.track_inventory:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"'{item.name}' does not track stock")
         t.lines.append(
-            TransferOrderLine(item_id=item.id, quantity=qty(line.quantity), batch_number=(line.batch_number or "").strip() or None)
+            TransferOrderLine(
+                item_id=item.id,
+                quantity=qty(line.quantity),
+                batch_number=(line.batch_number or "").strip() or None,
+                serial_numbers=", ".join(stock.parse_serials(line.serial_numbers)) or None,
+            )
         )
     db.add(t)
     db.flush()

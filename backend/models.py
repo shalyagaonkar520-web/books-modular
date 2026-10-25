@@ -1432,6 +1432,8 @@ class DocumentLineMixin:
     tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)  # before tax
     tax_amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
+    # Serial-tracked goods: the units on the line, comma separated.
+    serial_numbers: Mapped[Optional[str]] = mapped_column(Text)
 
     @declared_attr
     def item_id(cls) -> Mapped[Optional[str]]:
@@ -1872,6 +1874,7 @@ class TransferOrderLine(Base):
     item_id: Mapped[str] = mapped_column(String(32), ForeignKey("items.id"), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Qty, nullable=False)
     batch_number: Mapped[Optional[str]] = mapped_column(String(60))
+    serial_numbers: Mapped[Optional[str]] = mapped_column(Text)
 
     transfer: Mapped[TransferOrder] = relationship(back_populates="lines")
     item: Mapped[Item] = relationship()
@@ -2064,5 +2067,8 @@ class BankStatementLine(Base):
     # unmatched | matched | ignored
     status: Mapped[str] = mapped_column(String(20), default="unmatched", nullable=False)
     transaction_id: Mapped[Optional[str]] = mapped_column(String(32))
+    # What matching created (so Undo can remove it): transaction | customer_payment | vendor_payment;
+    # null when the line was matched to something already in the books.
+    created_kind: Mapped[Optional[str]] = mapped_column(String(20))
     import_batch: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
