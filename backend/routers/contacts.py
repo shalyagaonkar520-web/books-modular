@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -34,15 +34,16 @@ from backend.schemas.contacts import ContactCreate, ContactOut, ContactSummary, 
 from backend.services import audit, export_service, statements
 from backend.services.email_service import send_custom_message_email
 from backend.services.money import money
+from backend.services.ratelimit import OUTBOUND_LIMIT_MESSAGE, outbound_email_limiter
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
 router = APIRouter(prefix="/api/contacts", tags=["Contacts"])
 
 
 class SendContactEmailRequest(BaseModel):
-    to_email: Optional[str] = None
-    subject: str
-    message: str
+    to_email: Optional[EmailStr] = None
+    subject: str = Field(min_length=1, max_length=200)
+    message: str = Field(min_length=1, max_length=10000)
 
 
 class StatementLineOut(APIModel):
@@ -69,8 +70,8 @@ class StatementOut(APIModel):
 
 
 class SendStatementRequest(APIModel):
-    to_email: Optional[str] = None
-    message: Optional[str] = None
+    to_email: Optional[EmailStr] = None
+    message: Optional[str] = Field(default=None, max_length=10000)
 
 
 class BulkDeleteContactsRequest(BaseModel):
@@ -428,6 +429,7 @@ def send_contact_email(
     if not recipient or not recipient.strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No email address found for this contact")
 
+    outbound_email_limiter.check(f"email:{user.organization_id}", OUTBOUND_LIMIT_MESSAGE)
     result = send_custom_message_email(
         to_email=recipient.strip(),
         subject=payload.subject,
@@ -517,6 +519,7 @@ def send_contact_statement(
     message = payload.message or (
         f"Please find attached your statement of account for {period}. The balance as of {end.strftime('%d %b %Y')} is {st.closing:,.2f}."
     )
+    outbound_email_limiter.check(f"email:{user.organization_id}", OUTBOUND_LIMIT_MESSAGE)
     result = send_custom_message_email(
         to_email=recipient,
         subject=f"Statement of account - {period}",

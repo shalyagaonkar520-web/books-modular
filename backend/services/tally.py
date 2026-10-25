@@ -19,6 +19,8 @@ from datetime import date
 from typing import Dict, List, Optional
 from xml.sax.saxutils import escape
 
+import defusedxml.ElementTree as SafeET
+from defusedxml import DefusedXmlException
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -92,7 +94,8 @@ _CODE_BASE = {"asset": 1700, "liability": 2700, "equity": 3700, "income": 4700, 
 
 
 def _x(value: object) -> str:
-    return escape(str(value if value is not None else ""))
+    """Escaped for element text and for double-quoted attribute values."""
+    return escape(str(value if value is not None else ""), {'"': "&quot;"})
 
 
 def _group(account: Account) -> str:
@@ -185,14 +188,15 @@ def _text(el: ET.Element, tag: str) -> str:
 def _parse(content: bytes) -> ET.Element:
     if len(content) > MAX_IMPORT_BYTES:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "The Tally file is larger than 5 MB")
-    if b"<!DOCTYPE" in content[:2000].upper() or b"<!ENTITY" in content.upper():
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The file contains a DOCTYPE, which is not allowed")
     text = content.decode("utf-16") if content[:2] in (b"\xff\xfe", b"\xfe\xff") else content.decode("utf-8", errors="replace")
+    # Checked after decoding, so a UTF-16 file cannot hide one; defusedxml refuses them as well.
+    if "<!DOCTYPE" in text.upper() or "<!ENTITY" in text.upper():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The file contains a DOCTYPE, which is not allowed")
     # Tally writes control characters as &#4; etc., which XML 1.0 forbids.
     text = re.sub(r"&#(?:[0-8]|1[124-9]|2[0-9]|3[01]);", "", text)
     try:
-        return ET.fromstring(text)
-    except ET.ParseError as exc:
+        return SafeET.fromstring(text, forbid_dtd=True)
+    except (ET.ParseError, DefusedXmlException) as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"This is not a Tally XML file ({exc})") from exc
 
 

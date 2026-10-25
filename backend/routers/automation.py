@@ -372,6 +372,13 @@ def rule_runs(rule_id: str, user: User = Depends(get_current_user), db: Session 
     return [RunOut.model_validate(r) for r in rows]
 
 
+@workflow_router.get("/{rule_id}/signing-secret")
+def rule_signing_secret(rule_id: str, user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """The key the receiving system uses to check X-Rooman-Signature (HMAC-SHA256 of "<timestamp>.<body>")."""
+    rule = get_or_404(db, WorkflowRule, rule_id, user.organization_id, "Workflow rule")
+    return {"secret": workflows.signing_secret(rule)}
+
+
 @workflow_router.post("/process", response_model=Message)
 def process_now(user: User = Depends(require_admin), db: Session = Depends(get_db)):
     """Run this organization's queued actions now instead of waiting for the background worker."""

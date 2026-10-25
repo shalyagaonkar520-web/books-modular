@@ -14,10 +14,10 @@ from openpyxl.styles import Font
 from sqlalchemy.orm import Session
 
 from backend.db import get_db
-from backend.deps import get_current_user, module_write_error, require_write
+from backend.deps import get_current_user, module_write_error, require_financial_read, require_write
 from backend.models import Invoice, User
 from backend.schemas.common import APIModel
-from backend.services import audit, gst_returns
+from backend.services import audit, export_service, gst_returns
 from backend.services.periods import month_bounds
 from backend.services.tenancy import get_or_404
 
@@ -55,7 +55,8 @@ def _xlsx(sheets: dict, filename: str) -> Response:
         for row in rows:
             ws.append(row)
     buf = io.BytesIO()
-    wb.save(buf)
+    # export_service._save stores text starting with = + - @ as text, never as a formula.
+    export_service._save(wb, buf)
     return Response(
         content=buf.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -130,7 +131,7 @@ def gstr1(
     start_date: Optional[date] = Query(None, alias="startDate"),
     end_date: Optional[date] = Query(None, alias="endDate"),
     format: str = Query("summary", pattern="^(summary|json|xlsx)$"),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     """GSTR-1. format=summary for the screen, json for the GST offline tool, xlsx for review."""
@@ -148,7 +149,7 @@ def gstr3b(
     start_date: Optional[date] = Query(None, alias="startDate"),
     end_date: Optional[date] = Query(None, alias="endDate"),
     format: str = Query("summary", pattern="^(summary|json)$"),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     start, end = _period(start_date, end_date)
@@ -163,7 +164,7 @@ def tds_register(
     start_date: Optional[date] = Query(None, alias="startDate"),
     end_date: Optional[date] = Query(None, alias="endDate"),
     format: str = Query("summary", pattern="^(summary|xlsx)$"),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
 ):
     start, end = _period(start_date, end_date)

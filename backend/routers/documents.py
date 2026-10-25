@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 import openpyxl
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -197,9 +197,13 @@ class ExcelCommitItem(BaseModel):
     data: Dict[str, Any]
 
 
+# One import commits at most this many rows (the preview is built from a file of bounded size).
+MAX_IMPORT_ROWS = 5000
+
+
 class ExcelCommitPayload(BaseModel):
-    items: Optional[List[ExcelCommitItem]] = None
-    sections: Optional[List[ExcelCategorizeSection]] = None
+    items: Optional[List[ExcelCommitItem]] = Field(default=None, max_length=MAX_IMPORT_ROWS)
+    sections: Optional[List[ExcelCategorizeSection]] = Field(default=None, max_length=50)
 
 
 class ExcelCommitResponse(BaseModel):
@@ -398,6 +402,12 @@ def import_excel_commit(
     from backend.routers.invoices import post_invoice
 
     org_id = user.organization_id
+    total_rows = sum(len(sec.rows) for sec in payload.sections or []) + len(payload.items or [])
+    if total_rows > MAX_IMPORT_ROWS:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            f"One import can bring in at most {MAX_IMPORT_ROWS} rows; split the file and import it in parts.",
+        )
     counts: Dict[str, int] = {"customers": 0, "vendors": 0, "invoices": 0, "bills": 0, "expenses": 0}
     skipped: List[str] = []
 

@@ -17,6 +17,7 @@ from backend.deps import get_current_user, require_admin, require_financial_read
 from backend.models import Invoice, Organization, User
 from backend.schemas.common import APIModel
 from backend.services import audit, tally, whatsapp
+from backend.services.ratelimit import OUTBOUND_LIMIT_MESSAGE, outbound_whatsapp_limiter
 from backend.services.tenancy import get_or_404
 
 router = APIRouter(prefix="/api/integrations", tags=["Integrations"])
@@ -111,6 +112,7 @@ def whatsapp_invoice(invoice_id: str, payload: WhatsAppInvoice, user: User = Dep
             f"Hello {inv.customer.display_name}, {org.name} has sent you invoice {inv.invoice_number} for {amount}, "
             f"due {inv.due_date.strftime('%d %b %Y')}. View, download and pay: {link}"
         )
+    outbound_whatsapp_limiter.check(f"whatsapp:{user.organization_id}", OUTBOUND_LIMIT_MESSAGE)
     message_id = whatsapp.send_text(phone, text)
     to = whatsapp.normalize_phone(phone)
     audit.record(db, user, "send", "invoice", inv.id, f"Sent {payload.kind} for {inv.invoice_number} on WhatsApp to +{to}")

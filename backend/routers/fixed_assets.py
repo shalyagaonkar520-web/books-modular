@@ -12,10 +12,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.db import get_db
-from backend.deps import get_current_user, require_write
+from backend.deps import get_current_user, require_financial_write
 from backend.models import Account, AssetDepreciation, FixedAsset, User
 from backend.schemas.common import MAX_MONEY, APIModel, Message
-from backend.services import audit, fixed_assets, ledger, numbering
+from backend.services import audit, bank, fixed_assets, ledger, numbering
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.money import money
 from backend.services.tenancy import get_or_404
@@ -136,7 +136,13 @@ def _account(db: Session, org_id: str, account_id: Optional[str], allowed_types:
     acct = get_or_404(db, Account, account_id, org_id, "Account")
     if acct.type not in allowed_types:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{label} must be an {' or '.join(allowed_types)} account")
+    # Bank, cash, receivable, payable and tax accounts are kept by their own registers.
+    if acct.subtype in _CONTROL_SUBTYPES or bank.is_bank_ledger_account(db, org_id, acct.id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{acct.name} is a control account and cannot be used for {label.lower()}")
     return acct.id
+
+
+_CONTROL_SUBTYPES = {"bank", "cash", "credit_card", "accounts_receivable", "accounts_payable", "tax"}
 
 
 @router.get("", response_model=List[AssetOut])
@@ -150,7 +156,7 @@ def list_assets(
 
 
 @router.post("/run-depreciation", response_model=RunResult)
-def run_depreciation(payload: RunRequest, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def run_depreciation(payload: RunRequest, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     """Post monthly depreciation for active assets up to a month end (default: the last completed month)."""
     today = date.today()
     through = payload.through or date(today.year, today.month, 1) - timedelta(days=1)
@@ -192,7 +198,7 @@ def depreciation_history(asset_id: str, user: User = Depends(get_current_user), 
 
 
 @router.post("", response_model=AssetOut, status_code=status.HTTP_201_CREATED)
-def create_asset(payload: AssetCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def create_asset(payload: AssetCreate, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     org_id = user.organization_id
     asset = FixedAsset(
         organization_id=org_id,
@@ -225,7 +231,7 @@ def create_asset(payload: AssetCreate, user: User = Depends(require_write), db: 
 
 
 @router.post("/{asset_id}/undo-depreciation", response_model=AssetOut)
-def undo_depreciation(asset_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def undo_depreciation(asset_id: str, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     asset = get_or_404(db, FixedAsset, asset_id, user.organization_id, "Asset")
     row = fixed_assets.undo_last(db, asset, user)
     audit.record(
@@ -236,7 +242,7 @@ def undo_depreciation(asset_id: str, user: User = Depends(require_write), db: Se
 
 
 @router.post("/{asset_id}/dispose", response_model=AssetOut)
-def dispose_asset(asset_id: str, payload: DisposeRequest, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def dispose_asset(asset_id: str, payload: DisposeRequest, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     asset = get_or_404(db, FixedAsset, asset_id, user.organization_id, "Asset")
     # Depreciate up to the month before disposal so the gain or loss is right.
     if asset.status == "active":
@@ -248,7 +254,7 @@ def dispose_asset(asset_id: str, payload: DisposeRequest, user: User = Depends(r
 
 
 @router.post("/{asset_id}/undo-disposal", response_model=AssetOut)
-def undo_disposal(asset_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def undo_disposal(asset_id: str, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     asset = get_or_404(db, FixedAsset, asset_id, user.organization_id, "Asset")
     fixed_assets.undo_disposal(db, asset, user)
     audit.record(db, user, "update", "fixed_asset", asset.id, f"Disposal of {asset.asset_number} undone")
@@ -257,7 +263,7 @@ def undo_disposal(asset_id: str, user: User = Depends(require_write), db: Sessio
 
 
 @router.delete("/{asset_id}", response_model=Message)
-def delete_asset(asset_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def delete_asset(asset_id: str, user: User = Depends(require_financial_write), db: Session = Depends(get_db)):
     asset = get_or_404(db, FixedAsset, asset_id, user.organization_id, "Asset")
     if asset.accumulated_depreciation > 0 or asset.status == "disposed":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Undo its depreciation and disposal before deleting an asset")

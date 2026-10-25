@@ -14,5 +14,7 @@ psycopg[binary]>=3.1
 python-dotenv>=1.0
 razorpay>=2.0.0
 openpyxl>=3.1.5
+# Safe XML parsing (Tally import; openpyxl uses it automatically when installed).
+defusedxml>=0.7.1
 reportlab>=4.2.0
 anthropic>=2.3,<3

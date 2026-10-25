@@ -195,7 +195,14 @@ export function App() {
               }
             />
             <Route path="/time-tracking" element={<TimeTrackingPage />} />
-            <Route path="/gst-filing" element={<GstFilingPage />} />
+            <Route
+              path="/gst-filing"
+              element={
+                <RequireRole roles={['admin', 'viewer']}>
+                  <GstFilingPage />
+                </RequireRole>
+              }
+            />
             <Route path="/ai-assistant" element={<AiAssistantPage />} />
             <Route
               path="/insights"

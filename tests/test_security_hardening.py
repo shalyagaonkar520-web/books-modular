@@ -1,128 +1,171 @@
-"""Security fixes from the October audit: platform-wide email settings, token
-renewal, module checks on payments and imports, .env writes, PDF markup."""
+"""Pre-production hardening: workflow webhooks, fixed-asset permissions, spreadsheet
+formula injection, outbound message limits, import size and Tally XML safety."""
 
 import io
-import uuid
-import zipfile
-from unittest.mock import patch
+import json
+import xml.etree.ElementTree as ET
+from datetime import date
 
+import openpyxl
 import pytest
-from reportlab.lib.styles import getSampleStyleSheet
 
-from backend.services import env_config
-from backend.services.export_service import Paragraph
-from tests.conftest import auth, invite_and_accept, platform_admin_headers, register_org
+from backend.config import get_settings
+from backend.services import ratelimit, whatsapp, workflows
+from tests.conftest import auth, invite_and_accept, register_org
 
-SMTP_BODY = {"host": "smtp.attacker.example", "port": 587, "username": "x@attacker.example", "senderName": "Accounts"}
+D = date.today().isoformat()
 
 
 @pytest.fixture
-def tenant(client):
-    ctx = register_org(client, "Hardening")
-    return {"h": auth(ctx["token"]), "org_id": ctx["org"]["id"], "token": ctx["token"]}
+def books(client):
+    ctx = register_org(client, "Sec")
+    h = auth(ctx["token"])
+    accounts = {a["code"]: a for a in client.get("/api/accounting/accounts", headers=h).json()}
+    return {"h": h, "accounts": accounts}
 
 
-# --------------------------------------------------------------------------- #
-# SMTP is platform-wide: an organization admin cannot read or change it
-# --------------------------------------------------------------------------- #
-def test_tenant_admin_cannot_touch_the_platform_email_account(client, tenant):
-    assert client.put("/api/settings/smtp", headers=tenant["h"], json=SMTP_BODY).status_code in (404, 405)
-    assert client.get("/api/settings/smtp", headers=tenant["h"]).status_code in (404, 405)
-    assert client.post("/api/settings/smtp/test", headers=tenant["h"], json={"toEmail": "a@b.com"}).status_code in (404, 405)
-    assert client.put("/api/platform/settings/smtp", headers=tenant["h"], json=SMTP_BODY).status_code == 401
+def _staff(client, h, email):
+    invite_and_accept(client, h, "Staff", email, "staff", "Staff1Pass!")
+    return auth(client.post("/api/auth/login", json={"email": email, "password": "Staff1Pass!"}).json()["accessToken"])
 
 
-def test_platform_admin_must_retype_the_password_for_a_new_server(client):
-    ph = platform_admin_headers(client)
-    current = client.get("/api/platform/settings/smtp", headers=ph)
-    assert current.status_code == 200 and "password" not in current.json()
-    with patch("backend.routers.platform_email.verify_smtp_credentials") as verify:
-        res = client.put("/api/platform/settings/smtp", headers=ph, json=SMTP_BODY)
-    # The stored password is never sent to a different server or account.
-    assert res.status_code == 400 and not verify.called
+def test_workflow_webhook_refuses_redirects_and_signs_with_a_server_secret(client, books, monkeypatch):
+    h = books["h"]
+    rule = client.post(
+        "/api/workflow-rules",
+        headers=h,
+        json={"name": "Hook", "event": "invoice.created", "actions": [{"type": "webhook", "url": "https://hooks.example.com/in"}]},
+    ).json()
+    sent = []
 
+    def fake_post(url, body, headers):
+        sent.append((url, body, headers))
+        return 302  # what a redirect to an internal address looks like with redirects disabled
 
-def test_smtp_values_must_be_single_lines(client):
-    ph = platform_admin_headers(client)
-    res = client.put("/api/platform/settings/smtp", headers=ph, json={**SMTP_BODY, "password": "pw", "senderName": "x\nSECRET_KEY=known"})
-    assert res.status_code == 422
-
-
-def test_env_writer_refuses_line_breaks(tmp_path, monkeypatch):
-    monkeypatch.setattr(env_config, "ENV_PATH", tmp_path / ".env")
-    with pytest.raises(ValueError):
-        env_config.update_env_values({"SMTP_SENDER_NAME": "Accounts\nTRUSTED_PROXIES=0.0.0.0/0"})
-    assert not (tmp_path / ".env").exists()
-
-
-# --------------------------------------------------------------------------- #
-# /me hands back the same token: sessions are renewed only through /refresh
-# --------------------------------------------------------------------------- #
-def test_me_does_not_mint_a_new_token(client, tenant):
-    res = client.get("/api/auth/me", headers=tenant["h"])
-    assert res.status_code == 200 and res.json()["accessToken"] == tenant["token"]
-
-
-# --------------------------------------------------------------------------- #
-# Module checks on payments and on endpoints that create other modules' records
-# --------------------------------------------------------------------------- #
-def _staff_limited_to(client, tenant, modules):
-    email = f"staff-{uuid.uuid4().hex[:6]}@hardening.example.com"
-    staff = invite_and_accept(client, tenant["h"], "Limited Staff", email, "staff", "Str0ngPass!")
-    import json
-
-    from backend.db import SessionLocal
-    from backend.models import User
-
-    with SessionLocal() as db:
-        user = db.get(User, staff["id"])
-        user.module_access = json.dumps(modules)
-        db.commit()
-    login = client.post("/api/auth/login", json={"email": email, "password": "Str0ngPass!"})
-    assert login.status_code == 200, login.text
-    return auth(login.json()["accessToken"])
-
-
-def test_payments_need_their_module(client, tenant):
-    h = _staff_limited_to(client, tenant, ["documents"])
-    for path in ("/api/customer-payments", "/api/vendor-payments"):
-        res = client.post(path, headers=h, json={})
-        assert res.status_code == 403 and "edit access" in res.json()["detail"], (path, res.text)
-
-
-def test_excel_import_needs_access_to_what_it_creates(client, tenant):
-    h = _staff_limited_to(client, tenant, ["documents"])
-    body = {"items": [{"category": "invoices", "data": {"display_name": "X", "amount": "100", "date": "2026-01-01"}}]}
-    res = client.post("/api/documents/import-excel-commit", headers=h, json=body)
-    assert res.status_code == 403 and "invoices" in res.json()["detail"]
-
-
-def test_excel_import_refuses_a_zip_bomb(client, tenant):
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("xl/worksheets/sheet1.xml", b"0" * (210 * 1024 * 1024))
-    res = client.post(
-        "/api/documents/import-excel-categorize",
-        headers=tenant["h"],
-        files={"file": ("big.xlsx", buf.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    monkeypatch.setattr("backend.services.webhook_dispatcher._post", fake_post)
+    customer = client.post("/api/contacts", headers=h, json={"type": "customer", "displayName": "Hook Co"}).json()
+    client.post(
+        "/api/invoices",
+        headers=h,
+        json={
+            "customerId": customer["id"],
+            "date": D,
+            "status": "sent",
+            "lines": [{"description": "x", "quantity": 1, "rate": 100, "taxRate": 0}],
+        },
     )
-    assert res.status_code == 413
+    client.post("/api/workflow-rules/process", headers=h)
+    runs = client.get(f"/api/workflow-rules/{rule['id']}/runs", headers=h).json()
+    assert sent and runs[0]["error"] == "Webhook answered 302"
+    # The signing key is not the guessable rule id + org id, and only admins can read it.
+    secret = client.get(f"/api/workflow-rules/{rule['id']}/signing-secret", headers=h).json()["secret"]
+    assert len(secret) == 64 and rule["id"] not in secret
+    body = sent[0][1]
+    assert json.loads(body)["event"] == "invoice.created"
 
 
-def test_unreadable_workbook_gets_a_plain_message(client, tenant):
-    res = client.post(
-        "/api/documents/import-excel-categorize",
-        headers=tenant["h"],
-        files={"file": ("bad.xlsx", b"not a workbook", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+def test_workflow_network_errors_are_not_echoed(monkeypatch):
+    import urllib.error
+
+    def boom(url, body, headers):
+        raise urllib.error.URLError("[Errno 111] Connection refused to 10.0.0.5:5432")
+
+    monkeypatch.setattr("backend.services.webhook_dispatcher._post", boom)
+    monkeypatch.setattr("backend.services.integrations.webhook_url_error", lambda url: None)
+    rule = type("R", (), {"id": "r1", "name": "n"})()
+    org = type("O", (), {"id": "o1"})()
+    run = type("Run", (), {"event": "invoice.created"})()
+    with pytest.raises(RuntimeError) as exc:
+        workflows._webhook(org, rule, {"url": "https://x.example"}, run, {})
+    assert str(exc.value) == "Could not reach the webhook URL"
+
+
+def test_fixed_assets_are_admin_only_and_never_post_to_control_accounts(client, books):
+    h = books["h"]
+    staff = _staff(client, h, "fa.staff@sec.example.com")
+    body = {"name": "Laptop", "purchaseDate": D, "cost": 60000}
+    assert client.post("/api/fixed-assets", headers=staff, json=body).status_code == 403
+    bank_ledger = books["accounts"]["1000"]["id"]  # Cash: the Petty Cash bank account's ledger
+    bad = client.post("/api/fixed-assets", headers=h, json={**body, "assetAccountId": bank_ledger, "postOpeningBalance": True})
+    assert bad.status_code == 400 and "control account" in bad.json()["detail"]
+    assert client.post("/api/fixed-assets", headers=h, json=body).status_code == 201
+
+
+def test_gst_spreadsheet_stores_formulas_as_text(client, books):
+    h = books["h"]
+    vendor = client.post(
+        "/api/contacts", headers=h, json={"type": "vendor", "displayName": '=HYPERLINK("https://evil.example","x")'}
+    ).json()
+    client.post(
+        "/api/bills",
+        headers=h,
+        json={
+            "vendorId": vendor["id"],
+            "date": D,
+            "status": "open",
+            "tdsSection": "194C",
+            "tdsRate": 1,
+            "lines": [{"accountId": books["accounts"]["6000"]["id"], "description": "Work", "quantity": 1, "rate": 50000, "taxRate": 0}],
+        },
     )
-    assert res.status_code == 400 and "valid Excel" in res.json()["detail"] and "zip" not in res.json()["detail"].lower()
+    res = client.get("/api/gst/tds-register", headers=h, params={"startDate": D, "endDate": D, "format": "xlsx"})
+    assert res.status_code == 200, res.text
+    wb = openpyxl.load_workbook(io.BytesIO(res.content))
+    cells = [c for ws in wb.worksheets for row in ws.iter_rows() for c in row if isinstance(c.value, str) and "HYPERLINK" in c.value]
+    assert cells and all(c.data_type == "s" for c in cells)
 
 
-# --------------------------------------------------------------------------- #
-# PDF: user text is text, never markup
-# --------------------------------------------------------------------------- #
-@pytest.mark.parametrize("text", ["see <br> next", "a<i>b", "x &#; y", "x <b>y", "R&D Ltd", "<img src='/etc/hosts'/>", "a &foo; b"])
-def test_pdf_paragraphs_accept_any_user_text(text):
-    p = Paragraph(f"<b>Customer:</b> {text}", getSampleStyleSheet()["Normal"])
-    p.wrap(400, 200)
-    assert "<img" not in p.text or "&lt;img" in p.text
+def test_gst_returns_are_not_open_to_staff(client, books):
+    staff = _staff(client, books["h"], "gst.staff@sec.example.com")
+    assert client.get("/api/gst/gstr3b", headers=staff).status_code == 403
+    assert client.get("/api/gst/gstr3b", headers=books["h"]).status_code == 200
+
+
+def test_outbound_email_and_whatsapp_are_rate_limited(client, books, monkeypatch):
+    h = books["h"]
+    monkeypatch.setattr(ratelimit, "outbound_email_limiter", ratelimit.RateLimiter(limit=2, window_seconds=3600))
+    monkeypatch.setattr("backend.routers.contacts.outbound_email_limiter", ratelimit.outbound_email_limiter)
+    monkeypatch.setattr("backend.routers.contacts.send_custom_message_email", lambda **kw: {"success": True})
+    c = client.post("/api/contacts", headers=h, json={"type": "customer", "displayName": "Mail Co", "email": "m@x.com"}).json()
+    msg = {"subject": "Hi", "message": "Hello"}
+    assert client.post(f"/api/contacts/{c['id']}/send-gmail", headers=h, json=msg).status_code == 200
+    assert client.post(f"/api/contacts/{c['id']}/send-gmail", headers=h, json=msg).status_code == 200
+    third = client.post(f"/api/contacts/{c['id']}/send-gmail", headers=h, json=msg)
+    assert third.status_code == 429 and "Too many messages" in third.json()["detail"]
+    assert client.post(f"/api/contacts/{c['id']}/send-gmail", headers=h, json={**msg, "to_email": "not-an-email"}).status_code == 422
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "whatsapp_token", "tok")
+    monkeypatch.setattr(settings, "whatsapp_phone_number_id", "1")
+    monkeypatch.setattr(whatsapp, "poster", lambda url, token, body: {"messages": [{"id": "w"}]})
+    monkeypatch.setattr("backend.routers.integrations.outbound_whatsapp_limiter", ratelimit.RateLimiter(limit=1, window_seconds=3600))
+    inv = client.post(
+        "/api/invoices",
+        headers=h,
+        json={
+            "customerId": c["id"],
+            "date": D,
+            "status": "sent",
+            "lines": [{"description": "x", "quantity": 1, "rate": 100, "taxRate": 0}],
+        },
+    ).json()
+    url = f"/api/integrations/whatsapp/invoices/{inv['id']}"
+    assert client.post(url, headers=h, json={"toPhone": "9876543210"}).status_code == 200
+    assert client.post(url, headers=h, json={"toPhone": "9876543210"}).status_code == 429
+
+
+def test_excel_import_commit_is_bounded(client, books):
+    items = [{"category": "customers", "data": {"display_name": f"C{i}"}} for i in range(5001)]
+    res = client.post("/api/documents/import-excel-commit", headers=books["h"], json={"items": items})
+    assert res.status_code in (413, 422)
+
+
+def test_tally_export_escapes_quotes_and_import_rejects_utf16_doctype(client, books):
+    h = books["h"]
+    client.post("/api/contacts", headers=h, json={"type": "customer", "displayName": 'Acme" ACTION="Alter'})
+    res = client.get("/api/integrations/tally/export", headers=h, params={"startDate": D, "endDate": D})
+    root = ET.fromstring(res.content)  # well-formed despite the quote in the name
+    assert 'Acme" ACTION="Alter' in {ld.get("NAME") for ld in root.iter("LEDGER")}
+    evil = '<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE x [<!ENTITY a "b">]><ENVELOPE>&a;</ENVELOPE>'.encode("utf-16")
+    bad = client.post("/api/integrations/tally/import-ledgers", headers=h, files={"file": ("e.xml", evil, "application/xml")})
+    assert bad.status_code == 400

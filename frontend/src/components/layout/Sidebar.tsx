@@ -105,7 +105,7 @@ const LOWER_LINKS: NavEntry[] = [
   { to: '/budgets', label: 'sidebar.budgets', icon: PiggyBank, staffBlocked: true, module: 'accounting' },
   { to: '/recurring-journals', label: 'sidebar.recurringJournals', icon: Repeat, staffBlocked: true, module: 'accounting' },
   { to: '/reports', label: 'sidebar.reports', icon: BarChart3, module: 'reports' },
-  { to: '/gst-filing', label: 'sidebar.gstFiling', icon: FileCheck2, module: 'reports' },
+  { to: '/gst-filing', label: 'sidebar.gstFiling', icon: FileCheck2, staffBlocked: true, module: 'reports' },
   { to: '/documents', label: 'sidebar.documents', icon: FolderOpen, module: 'documents' },
   { to: '/payroll', label: 'sidebar.payroll', icon: Users, staffBlocked: true, module: 'payroll' },
 ];

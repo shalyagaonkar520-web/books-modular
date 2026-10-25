@@ -219,18 +219,25 @@ def _webhook(org: Organization, rule: WorkflowRule, action: Dict[str, Any], run:
     error = webhook_url_error(url)
     if error:
         raise ValueError(error)
+    from backend.services.webhook_dispatcher import _post as post_no_redirect
+
     body = json.dumps({"event": run.event, "rule": rule.name, "organizationId": org.id, "data": data}).encode()
     timestamp = str(int(time.time()))
-    signature = hmac.new((rule.id + org.id).encode(), f"{timestamp}.".encode() + body, hashlib.sha256).hexdigest()
-    req = urllib.request.Request(
-        url,
-        data=body,
-        method="POST",
-        headers={"Content-Type": "application/json", "X-Rooman-Timestamp": timestamp, "X-Rooman-Signature": f"sha256={signature}"},
-    )
-    with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310 - URL checked by webhook_url_error
-        if resp.status >= 300:
-            raise RuntimeError(f"Webhook answered {resp.status}")
+    signature = hmac.new(signing_secret(rule).encode(), f"{timestamp}.".encode() + body, hashlib.sha256).hexdigest()
+    headers = {"Content-Type": "application/json", "X-Rooman-Timestamp": timestamp, "X-Rooman-Signature": f"sha256={signature}"}
+    # Redirects are refused (a redirect could point the call at an internal address), and
+    # network errors are reported without detail so the run log cannot map internal hosts.
+    try:
+        status_code = post_no_redirect(url, body, headers)
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        raise RuntimeError("Could not reach the webhook URL") from exc
+    if status_code >= 300:
+        raise RuntimeError(f"Webhook answered {status_code}")
+
+
+def signing_secret(rule: WorkflowRule) -> str:
+    """Per-rule key for X-Rooman-Signature, derived from the server secret (only admins can read it)."""
+    return hmac.new(get_settings().secret_key.encode(), f"workflow:{rule.id}".encode(), hashlib.sha256).hexdigest()
 
 
 def execute(db: Session, run: WorkflowRun) -> None:
