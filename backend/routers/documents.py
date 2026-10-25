@@ -427,12 +427,12 @@ def import_excel_commit(
         named = next((a for a in expense_accounts.values() if a.subtype == "operating" and text and text in a.name.lower()), None)
         return named or expense_acct
 
-    # Paid from the primary bank account, else any bank account, else cash.
+    # Paid from a bank account (the primary one first), else cash.
     bank_acct = (
         db.execute(
             select(BankAccount)
             .where(BankAccount.organization_id == org_id, BankAccount.is_active.is_(True))
-            .order_by(BankAccount.is_primary.desc(), (BankAccount.type == "bank").desc(), BankAccount.created_at)
+            .order_by((BankAccount.type == "bank").desc(), BankAccount.is_primary.desc(), BankAccount.created_at)
         )
         .scalars()
         .first()
