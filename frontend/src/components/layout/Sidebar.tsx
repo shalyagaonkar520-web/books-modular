@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   ArrowLeftRight,
   BarChart3,
@@ -111,13 +111,16 @@ const LOWER_LINKS: NavEntry[] = [
 export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () => void }) {
   const { isAdmin, isStaff } = useAuth();
   const { t, isModuleEnabled } = useAppContent();
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const { pathname } = useLocation();
+  // Groups start closed; the one holding the current page opens itself. A click overrides either way.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const holdsCurrentPage = (group: NavGroup) => group.entries.some((e) => pathname === e.to || pathname.startsWith(`${e.to}/`));
   const enabled = (entry: NavEntry) => !entry.module || isModuleEnabled(entry.module);
   const singleLinks = SINGLE_LINKS.filter(enabled);
   const groups = GROUPS.map((group) => ({ ...group, entries: group.entries.filter(enabled) })).filter((group) => group.entries.length > 0);
   const lowerLinks = LOWER_LINKS.filter((entry) => !(entry.staffBlocked && isStaff) && enabled(entry));
 
-  const toggle = (id: string) => setCollapsed((current) => ({ ...current, [id]: !current[id] }));
+  const toggle = (group: NavGroup) => setOpenGroups((current) => ({ ...current, [group.id]: !(current[group.id] ?? holdsCurrentPage(group)) }));
 
   return (
     <>
@@ -132,10 +135,10 @@ export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () =>
           ))}
 
           {groups.map((group) => {
-            const isCollapsed = collapsed[group.id];
+            const isCollapsed = !(openGroups[group.id] ?? holdsCurrentPage(group));
             return (
               <div className="nav-group" key={group.id}>
-                <button type="button" className="nav-group-toggle" onClick={() => toggle(group.id)} aria-expanded={!isCollapsed}>
+                <button type="button" className="nav-group-toggle" onClick={() => toggle(group)} aria-expanded={!isCollapsed}>
                   <group.icon size={17} aria-hidden="true" />
                   <span>{t(group.label)}</span>
                   <ChevronDown size={14} className={`chevron ${isCollapsed ? 'is-collapsed' : ''}`} aria-hidden="true" />
