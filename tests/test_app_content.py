@@ -216,3 +216,22 @@ def test_corrupt_org_overrides_fall_back_to_shared(client, admin_h, two_orgs):
         platform_settings.set_value(db, f"{APP_CONTENT_KEY}:org:{a['org']['id']}", json.dumps({"branding": {"primaryColor": "red"}}))
         db.commit()
     assert client.get("/api/app-content", headers=a["h"]).json() == BACKEND_DEFAULT
+
+
+def test_org_cannot_switch_off_a_module_others_need():
+    """Invoices need customers: saving invoices on with customers off keeps customers on."""
+    from backend.db import SessionLocal
+    from backend.schemas.app_content import AppContent
+    from backend.services import app_content
+
+    with SessionLocal() as db:
+        doc = app_content.get_app_content(db).model_dump(by_alias=True)
+        doc["modules"]["customers"] = False
+        doc["modules"]["invoices"] = True
+        doc["modules"]["payroll"] = False
+        overrides = app_content.save_org_app_content(db, "org-dep-test", AppContent.model_validate(doc))
+        assert "customers" not in overrides["modules"]
+        assert overrides["modules"]["payroll"] is False
+        assert app_content.get_org_app_content(db, "org-dep-test").modules["customers"] is True
+        app_content.delete_org_app_content(db, "org-dep-test")
+        db.commit()
