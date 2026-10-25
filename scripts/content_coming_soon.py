@@ -17,6 +17,7 @@ TEXTS = {
     "comingSoon.note": "This switches on automatically once it is enabled for your account.",
     "comingSoon.ai.ask": "Ask questions about your business in plain words and get answers straight from your books.",
     "comingSoon.ai.scan": "Photograph a bill or receipt and get a ready-to-check draft bill in seconds.",
+    "header.excel.skippedTitle": "{count} row(s) were not imported:",
     "comingSoon.razorpay": "Sync Razorpay payments, match them to invoices and reconcile settlements automatically.",
 }
 

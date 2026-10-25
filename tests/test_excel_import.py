@@ -282,3 +282,24 @@ def test_imported_expenses_are_posted_to_the_matching_account(client, org):
     assert pl["operatingExpenses"]["total"] == 12899
     bank = next(a for a in client.get("/api/banking/accounts", headers=org["h"]).json() if a["name"] == "Main Bank")
     assert bank["currentBalance"] == 50000 - 12899
+
+
+def test_reimporting_invoices_and_bills_does_not_duplicate_them(client, org):
+    sheet = {
+        "Invoices": [["Customer Name", "Amount", "Date", "Invoice Number"], ["Twice Co", "1000", "2026-08-01", "T-1"]],
+        "Bills": [
+            ["Vendor Name", "Amount", "Date", "Bill Number"],
+            ["Twice Supplier", "500", "2026-08-01", "B-1"],
+            ["Twice Supplier", "500", "2026-08-09", "B-1"],
+        ],
+    }
+    first = client.post(
+        "/api/documents/import-excel-commit", headers=org["h"], json={"sections": _upload(client, org["h"], sheet).json()["sections"]}
+    )
+    # The same vendor bill number on another date is a separate bill (and Insights flags it).
+    assert first.json()["imported_counts"] == {"customers": 0, "vendors": 0, "invoices": 1, "bills": 2, "expenses": 0}
+    again = client.post(
+        "/api/documents/import-excel-commit", headers=org["h"], json={"sections": _upload(client, org["h"], sheet).json()["sections"]}
+    )
+    assert again.json()["imported_counts"]["invoices"] == 0 and again.json()["imported_counts"]["bills"] == 0
+    assert len(again.json()["skipped"]) == 3 and "already has invoice T-1" in again.json()["skipped"][0]

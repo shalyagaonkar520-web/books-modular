@@ -522,7 +522,7 @@ def import_excel_commit(
                 skipped.append(f"Row {index} (expense): the amount must be more than zero")
                 continue
             if not expense_acct or not bank_acct:
-                skipped.append(f"Row {index} (expense): no expense or bank account set up yet")
+                skipped.append(f"Row {index} (expense): add a bank account in Banking first - expenses are paid from it")
                 continue
             payee = str(d.get("payee") or "").strip()
             expense = Expense(
@@ -554,7 +554,8 @@ def import_excel_commit(
                     db.refresh(expense)
                     post_expense(db, expense, user)
             except HTTPException as exc:
-                skipped.append(f"Row {index} (expense): {exc.detail}")
+                hint = " Add a bank account in Banking and import again." if bank_acct.type == "cash" else ""
+                skipped.append(f"Row {index} (expense): {exc.detail}{hint}")
                 continue
             counts["expenses"] += 1
 
@@ -576,6 +577,17 @@ def import_excel_commit(
 
             if cat == "invoices":
                 customer = _find_or_create_contact(name, "customer", d.get("email"))
+                reference = str(d.get("invoice_number") or "")[:50] or None
+                if (
+                    reference
+                    and db.execute(
+                        select(Invoice.id).where(
+                            Invoice.organization_id == org_id, Invoice.customer_id == customer.id, Invoice.reference == reference
+                        )
+                    ).first()
+                ):
+                    skipped.append(f"Row {index} (invoice): {name} already has invoice {reference}")
+                    continue
                 invoice = Invoice(
                     organization_id=org_id,
                     invoice_number=numbering.next_number(db, org_id, "invoice"),
@@ -607,6 +619,21 @@ def import_excel_commit(
                 counts["invoices"] += 1
             else:
                 vendor = _find_or_create_contact(name, "vendor", d.get("email"))
+                vendor_number = str(d.get("bill_number") or "")[:50] or None
+                if (
+                    vendor_number
+                    and db.execute(
+                        select(Bill.id).where(
+                            Bill.organization_id == org_id,
+                            Bill.vendor_id == vendor.id,
+                            Bill.vendor_bill_number == vendor_number,
+                            Bill.date == when,
+                            Bill.total == amount,
+                        )
+                    ).first()
+                ):
+                    skipped.append(f"Row {index} (bill): {name}'s bill {vendor_number} of {when.isoformat()} is already in the books")
+                    continue
                 bill = Bill(
                     organization_id=org_id,
                     bill_number=numbering.next_number(db, org_id, "bill"),
