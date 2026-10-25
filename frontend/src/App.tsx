@@ -4,7 +4,7 @@ import { PlatformAuthProvider } from '@/auth/PlatformAuthContext';
 import { PlatformApp } from '@/pages/platform/PlatformApp';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ModuleGuard } from '@/app/ModuleGuard';
-import { RequireAuth, RequireEmployeePortal, RequireGuest, RequireMainApp, RequireRole } from '@/auth/RouteGuards';
+import { RequireAuth, RequireEmployeePortal, RequireGuest, RequireMainApp, RequireRole, RequireWrite } from '@/auth/RouteGuards';
 import { AcceptInvitePage } from '@/pages/auth/AcceptInvitePage';
 import { EmployeePortalPage } from '@/pages/portal/EmployeePortalPage';
 import { AccountingPage } from '@/pages/accounting/AccountingPage';
@@ -114,15 +114,15 @@ export function App() {
             <Route element={<ModuleGuard />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/items" element={<ItemsPage />} />
-            <Route path="/items/new" element={<ItemFormPage />} />
+            <Route path="/items/new" element={<RequireWrite><ItemFormPage /></RequireWrite>} />
             <Route path="/items/:itemId/edit" element={<ItemFormPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
 
             <Route path="/customers" element={<ContactsPage type="customer" />} />
-            <Route path="/customers/new" element={<ContactFormPage type="customer" />} />
+            <Route path="/customers/new" element={<RequireWrite><ContactFormPage type="customer" /></RequireWrite>} />
             <Route path="/customers/:contactId/edit" element={<ContactFormPage type="customer" />} />
             <Route path="/vendors" element={<ContactsPage type="vendor" />} />
-            <Route path="/vendors/new" element={<ContactFormPage type="vendor" />} />
+            <Route path="/vendors/new" element={<RequireWrite><ContactFormPage type="vendor" /></RequireWrite>} />
             <Route path="/vendors/:contactId/edit" element={<ContactFormPage type="vendor" />} />
 
             <Route path="/invoices" element={<InvoicesPage />} />
@@ -146,7 +146,7 @@ export function App() {
             <Route path="/refunds" element={<RefundsPage />} />
 
             <Route path="/bills" element={<BillsPage />} />
-            <Route path="/bills/new" element={<BillFormPage />} />
+            <Route path="/bills/new" element={<RequireWrite><BillFormPage /></RequireWrite>} />
             <Route path="/bills/:billId/edit" element={<BillFormPage />} />
             <Route path="/expense-dashboard" element={<ExpenseDashboardPage />} />
             <Route path="/expenses" element={<ExpensesPage />} />

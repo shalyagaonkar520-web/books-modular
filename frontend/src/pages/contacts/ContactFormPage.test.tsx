@@ -59,6 +59,23 @@ describe('ContactFormPage', () => {
     expect(screen.queryByText('Bank details')).not.toBeInTheDocument();
   });
 
+  it('saves a long vendor name exactly as typed', async () => {
+    let sent: { displayName?: string } = {};
+    installMockApi({
+      'GET /api/accounting/accounts': accounts,
+      'POST /api/contacts': (_url: URL, init: RequestInit) => {
+        sent = JSON.parse(String(init.body));
+        return { id: 'c1', displayName: sent.displayName };
+      },
+    });
+    renderWithProviders(<ContactFormPage type="vendor" />);
+    const name = await screen.findByLabelText(/display name/i);
+    await userEvent.type(name, 'WoodCraft Suppliers Pvt Ltd');
+    expect(name).toHaveValue('WoodCraft Suppliers Pvt Ltd');
+    await userEvent.click(screen.getByRole('button', { name: /create vendor/i }));
+    await waitFor(() => expect(sent.displayName).toBe('WoodCraft Suppliers Pvt Ltd'));
+  });
+
   it('refuses to save when the two account numbers differ', async () => {
     renderWithProviders(<ContactFormPage type="vendor" />);
     await screen.findByText('Bank details');

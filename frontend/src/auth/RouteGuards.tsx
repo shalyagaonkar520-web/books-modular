@@ -3,6 +3,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom';
 
 import { LoadingBlock } from '@/components/ui/Feedback';
 import type { Role } from '@/api/types';
+import { useAppContent } from '@/app/AppContentContext';
 
 import { useAuth } from './AuthContext';
 
@@ -47,6 +48,21 @@ export function RequireRole({ roles, children }: { roles: Role[]; children: Reac
       <div className="state-block state-empty">
         <h3>You do not have access to this page</h3>
         <p>Ask an administrator in your organization if you need access.</p>
+      </div>
+    );
+  }
+  return <>{children}</>;
+}
+
+/** A page that only creates a record: read-only users get a notice instead of a form that cannot save. */
+export function RequireWrite({ children }: { children: ReactNode }) {
+  const { canWrite } = useAuth();
+  const { t } = useAppContent();
+  if (!canWrite) {
+    return (
+      <div className="state-block state-empty">
+        <h3>{t('common.readOnly.title')}</h3>
+        <p>{t('common.readOnly.body')}</p>
       </div>
     );
   }

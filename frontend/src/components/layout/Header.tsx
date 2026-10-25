@@ -143,8 +143,15 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
     const onClickAway = (event: MouseEvent) => {
       if (headerRef.current && !headerRef.current.contains(event.target as Node)) setOpenMenu('none');
     };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenMenu('none');
+    };
     document.addEventListener('mousedown', onClickAway);
-    return () => document.removeEventListener('mousedown', onClickAway);
+    document.addEventListener('keydown', onEscape);
+    return () => {
+      document.removeEventListener('mousedown', onClickAway);
+      document.removeEventListener('keydown', onEscape);
+    };
   }, []);
 
   return (
@@ -167,7 +174,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
           <>
             <button
               type="button"
-              className="btn btn-secondary btn-sm"
+              className="btn btn-secondary btn-sm header-data-input"
               onClick={() => setExcelModalOpen(true)}
               title={t('header.dataInputHint')}
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
@@ -182,9 +189,10 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
                 className="btn btn-primary btn-sm"
                 onClick={() => setOpenMenu(openMenu === 'create' ? 'none' : 'create')}
                 aria-expanded={openMenu === 'create'}
+                aria-label={t('header.create')}
               >
                 <Plus size={15} />
-                <span>{t('header.create')}</span>
+                <span className="header-btn-label">{t('header.create')}</span>
               </button>
             {openMenu === 'create' ? (
               <div className="dropdown" role="menu">

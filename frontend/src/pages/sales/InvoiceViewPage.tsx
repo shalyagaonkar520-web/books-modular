@@ -136,13 +136,15 @@ export function InvoiceViewPage() {
             >
               {t('invoices.view.downloadExcel')}
             </Button>
-            <Button
-              variant="secondary"
-              icon={<Mail size={15} style={{ color: '#ea4335' }} />}
-              onClick={() => setMailModalOpen(true)}
-            >
-              {t('invoices.view.sendGmail')}
-            </Button>
+            <IfCanWrite>
+              <Button
+                variant="secondary"
+                icon={<Mail size={15} style={{ color: '#ea4335' }} />}
+                onClick={() => setMailModalOpen(true)}
+              >
+                {t('invoices.view.sendGmail')}
+              </Button>
+            </IfCanWrite>
             <IfCanWrite>
               <>
                 <ReminderDraftButton invoice={data} />

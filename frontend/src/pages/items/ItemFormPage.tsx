@@ -141,7 +141,7 @@ interface ItemFormProps {
 function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
   const { t } = useAppContent();
   const toast = useToast();
-  const { organization } = useAuth();
+  const { organization, canWrite } = useAuth();
   const [form, setForm] = useState<FormState>(() => initialForm(item, organization?.defaultTaxRate));
   const taxOptions = taxRatesWith(organization?.defaultTaxRate, item?.taxRate).map((rate) => ({ value: String(rate), label: `${rate}%` }));
   const { submitting, error, fieldErrors, run } = useSubmit();
@@ -350,9 +350,11 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
             <Button variant="secondary" onClick={onDone} disabled={submitting}>
               {t('items.form.cancel')}
             </Button>
-            <Button variant="primary" loading={submitting} onClick={save}>
-              {item ? t('items.form.saveChanges') : t('items.form.create')}
-            </Button>
+            {canWrite ? (
+              <Button variant="primary" loading={submitting} onClick={save}>
+                {item ? t('items.form.saveChanges') : t('items.form.create')}
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>

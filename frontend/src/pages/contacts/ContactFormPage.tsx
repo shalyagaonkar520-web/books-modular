@@ -28,12 +28,6 @@ import { CustomFieldsCard } from '@/pages/automation/DocumentExtrasCards';
 const SALUTATIONS = ['Mr.', 'Ms.', 'Mrs.', 'Dr.', 'Prof.'];
 const LANGUAGES = ['English', 'Hindi', 'Kannada', 'Tamil', 'Telugu', 'Malayalam', 'Marathi', 'Gujarati', 'Bengali'];
 
-function formatVendorMaskedName(name: string | null | undefined, isVendor: boolean): string {
-  if (!name) return '';
-  if (!isVendor || name.length <= 10) return name;
-  return name.slice(0, 10) + '*'.repeat(name.length - 10);
-}
-
 interface FormState {
   contactType: ContactKind;
   displayName: string;
@@ -67,17 +61,17 @@ interface FormState {
 /** Payment terms a brand-new contact starts with when the organization sets no default. */
 const FALLBACK_PAYMENT_TERMS_DAYS = 30;
 
-function initialForm(contact: Contact | null, type: ContactType, defaultPaymentTermsDays?: number): FormState {
+function initialForm(contact: Contact | null, defaultPaymentTermsDays?: number): FormState {
   const displayName = contact?.displayName ?? '';
   const contactPerson = contact?.contactPerson ?? '';
   return {
     contactType: contact?.contactType ?? 'business',
-    displayName: formatVendorMaskedName(displayName, type === 'vendor'),
+    displayName,
     companyName: contact?.companyName ?? '',
     salutation: contact?.salutation ?? '',
     firstName: contact?.firstName ?? '',
     lastName: contact?.lastName ?? '',
-    contactPerson: formatVendorMaskedName(contactPerson, type === 'vendor'),
+    contactPerson,
     email: contact?.email ?? '',
     phone: contact?.phone ?? '',
     mobile: contact?.mobile ?? '',
@@ -136,9 +130,9 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
   // Reading the chart of accounts is Admin/Viewer only, but Staff may create
   // contacts - so only ask for the accounts when the signed-in role is allowed
   // them, otherwise the form 403s on open for a role that is entitled to use it.
-  const { can, organization } = useAuth();
+  const { can, canWrite, organization } = useAuth();
   const canChooseAccount = can('admin', 'viewer');
-  const [form, setForm] = useState<FormState>(() => initialForm(contact, type, organization?.defaultPaymentTermsDays));
+  const [form, setForm] = useState<FormState>(() => initialForm(contact, organization?.defaultPaymentTermsDays));
   const { submitting, error, fieldErrors, run } = useSubmit();
   // Receivables for a customer, payables for a vendor - the only accounts it
   // makes sense to point a contact at.
@@ -160,7 +154,7 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
     form.bankAccountNumber.trim() !== form.bankAccountNumberConfirm.trim();
 
   function setDisplayName(value: string) {
-    set('displayName', formatVendorMaskedName(value, type === 'vendor'));
+    set('displayName', value);
   }
 
   function setPhone(value: string) {
@@ -201,8 +195,8 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
       toast.error(t('vendors.form.accountMismatch'));
       return;
     }
-    const displayName = formatVendorMaskedName(form.displayName.trim(), type === 'vendor');
-    const contactPerson = form.contactPerson.trim() ? formatVendorMaskedName(form.contactPerson.trim(), type === 'vendor') : null;
+    const displayName = form.displayName.trim();
+    const contactPerson = form.contactPerson.trim() || null;
     const payload: Partial<Contact> = {
       type,
       contactType: form.contactType,
@@ -461,9 +455,11 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
             <Button variant="secondary" onClick={onDone} disabled={submitting}>
               {t('customers.form.cancel')}
             </Button>
-            <Button variant="primary" loading={submitting} onClick={save}>
-              {contact ? t('customers.form.saveChanges') : t(isCustomer ? 'customers.form.create' : 'vendors.form.create')}
-            </Button>
+            {canWrite ? (
+              <Button variant="primary" loading={submitting} onClick={save}>
+                {contact ? t('customers.form.saveChanges') : t(isCustomer ? 'customers.form.create' : 'vendors.form.create')}
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>

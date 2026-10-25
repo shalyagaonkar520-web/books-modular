@@ -1293,6 +1293,9 @@ a:hover {
 .table-wrap {
   width: 100%;
   overflow-x: auto;
+  /* Contains absolutely positioned children (screen-reader labels) so they scroll with the
+     table instead of widening the page on phones. */
+  position: relative;
 }
 
 .data-table {
@@ -3891,4 +3894,33 @@ input[type='password']::-ms-clear {
   place-items: center;
   background: var(--primary-soft);
   color: var(--primary);
+}
+
+/* Phones: the header keeps every control on screen (Create, theme, notifications and the
+   user menu with Logout); the spreadsheet import lives on desktop. */
+@media (max-width: 720px) {
+  .app-header {
+    gap: 8px;
+  }
+  .header-right {
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .header-left {
+    min-width: 0;
+  }
+  .header-left .brand-text {
+    min-width: 0;
+    overflow: hidden;
+  }
+  .header-left .brand-text strong,
+  .header-left .brand-text small {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .header-data-input,
+  .header-btn-label {
+    display: none !important;
+  }
 }

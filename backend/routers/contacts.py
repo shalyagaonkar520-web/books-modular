@@ -298,6 +298,8 @@ def bulk_delete_contacts(
     db: Session = Depends(get_db),
 ):
     """Delete or deactivate multiple contacts across single or all pages."""
+    if payload.all_matching and user.role != "admin":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only an administrator can delete all contacts at once")
     stmt = select(Contact).where(Contact.organization_id == user.organization_id)
     if payload.type:
         stmt = stmt.where(Contact.type == payload.type)

@@ -63,7 +63,7 @@ export function ContactsPage({ type }: { type: ContactType }) {
   const { download } = useDownload();
   const copy = copyFor(type);
   const textGroup = type === 'customer' ? 'customers' : 'vendors';
-  const { canWrite } = useAuth();
+  const { canWrite, isAdmin } = useAuth();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -204,7 +204,7 @@ export function ContactsPage({ type }: { type: ContactType }) {
       key: 'mailing',
       header: t('customers.col.mailing'),
       render: (contact) => (
-        contact.email ? (
+        contact.email && canWrite ? (
           <div className="row-actions" onClick={(event) => event.stopPropagation()} style={{ justifyContent: 'flex-start' }}>
             <button
               type="button"
@@ -390,7 +390,7 @@ export function ContactsPage({ type }: { type: ContactType }) {
                     : t('customers.bulk.selectAllOnPage', { count: rows.length })}
                 </Button>
 
-                {(list.data?.total ?? 0) > rows.length && (
+                {isAdmin && (list.data?.total ?? 0) > rows.length && (
                   <Button
                     size="sm"
                     variant={selectAllPages ? 'primary' : 'secondary'}
@@ -420,7 +420,7 @@ export function ContactsPage({ type }: { type: ContactType }) {
               </div>
 
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                {canWrite && (list.data?.total ?? 0) > 0 && !selectedIds.size && !selectAllPages && (
+                {isAdmin && (list.data?.total ?? 0) > 0 && !selectedIds.size && !selectAllPages && (
                   <Button
                     size="sm"
                     variant="ghost"

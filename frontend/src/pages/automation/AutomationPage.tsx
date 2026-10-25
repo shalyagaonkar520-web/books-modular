@@ -36,6 +36,12 @@ type Tab = 'rules' | 'fields' | 'approvals' | 'schedules' | 'branding';
 const ENTITIES: CustomFieldEntity[] = ['invoice', 'bill', 'estimate', 'sales_order', 'purchase_order', 'credit_note', 'vendor_credit', 'contact', 'item', 'expense'];
 const REPORTS: ScheduledReport[] = ['digest', 'profit_and_loss', 'balance_sheet', 'receivables', 'payables', 'cash_flow', 'gstr3b'];
 
+/** "invoice.created" -> "Invoice: created", in the app's language. */
+function eventLabel(event: string, t: (key: string) => string): string {
+  const [entity, trigger] = event.split('.');
+  return `${t(`automation.entity.${entity}`)}: ${t(`automation.trigger.${trigger}`)}`;
+}
+
 export function AutomationPage() {
   const { t } = useAppContent();
   const [tab, setTab] = useState<Tab>('rules');
@@ -115,7 +121,7 @@ function RulesTab() {
                     <strong>{r.name}</strong> {!r.isActive ? <Badge tone="neutral">{t('automation.off')}</Badge> : null}
                   </td>
                   <td className="small">
-                    <code>{r.event}</code>
+                    {eventLabel(r.event, t)}
                     {r.conditions.length ? ` · ${r.conditions.map((c) => `${c.field} ${c.operator} ${c.value ?? ''}`).join(' & ')}` : ''}
                   </td>
                   <td className="small">
@@ -224,7 +230,7 @@ function RuleModal({ rule, onClose, onSaved }: { rule: WorkflowRule | null; onCl
       <FormError message={error} />
       <div className="form-grid">
         <TextField label={t('automation.rules.name')} value={name} onChange={(e) => setName(e.target.value)} />
-        <SelectField label={t('automation.rules.when')} value={eventName} options={(meta.data?.events ?? []).map((ev) => ({ value: ev, label: ev }))} onChange={(e) => changeEvent(e.target.value)} />
+        <SelectField label={t('automation.rules.when')} value={eventName} options={(meta.data?.events ?? []).map((ev) => ({ value: ev, label: eventLabel(ev, t) }))} onChange={(e) => changeEvent(e.target.value)} />
       </div>
       <CheckboxField label={t('automation.active')} checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
       <h4>{t('automation.rules.conditions')}</h4>

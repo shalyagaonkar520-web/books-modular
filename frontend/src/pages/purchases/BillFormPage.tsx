@@ -62,7 +62,7 @@ export function BillFormPage() {
   // bill - so only fetch the accounts when the role can read them, otherwise the
   // whole form 403s on open. The per-line account picker then falls back to the
   // "Default expense account" option and the server applies its default.
-  const { can, organization } = useAuth();
+  const { can, canWrite, organization } = useAuth();
   const canReadAccounts = can('admin', 'viewer');
   // New lines (never existing ones) start at the organization's default tax rate.
   const defaultLineTaxRate = organization?.defaultTaxRate !== undefined ? String(organization.defaultTaxRate) : FALLBACK_LINE_TAX_RATE;
@@ -392,6 +392,7 @@ export function BillFormPage() {
 
         <div className="form-section">
           <h2 className="form-section-title">{t('bills.form.lineItems')}</h2>
+          <div className="table-wrap">
           <table className="line-items-table">
             <thead>
               <tr>
@@ -534,6 +535,7 @@ export function BillFormPage() {
               })}
             </tbody>
           </table>
+          </div>
           <div className="row">
             <Button variant="secondary" size="sm" icon={<Plus size={14} />} onClick={() => setLines((current) => [...current, emptyLine(defaultLineTaxRate)])}>
               {t('bills.form.addLine')}
@@ -621,7 +623,9 @@ export function BillFormPage() {
             {isEdit ? t('bills.form.footerEdit') : t('bills.form.footerNew')}
           </span>
           <div className="row">
-            {isEdit && isOpenBill ? (
+            {!canWrite ? (
+              <span className="small text-subtle">{t('common.readOnly.body')}</span>
+            ) : isEdit && isOpenBill ? (
               <Button variant="primary" loading={submitting} onClick={() => void save('open')}>
                 {t('bills.form.saveChanges')}
               </Button>
