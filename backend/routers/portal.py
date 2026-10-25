@@ -21,7 +21,7 @@ from backend.db import get_db
 from backend.deps import require_write
 from backend.models import Estimate, EstimateLine, Invoice, InvoiceLine, Organization, User
 from backend.schemas.common import APIModel, Message
-from backend.services import audit, doc_flow, doc_pdf, export_service
+from backend.services import audit, doc_flow, doc_pdf, export_service, upi
 from backend.services.doc_flow import ESTIMATE
 from backend.services.tenancy import get_or_404
 
@@ -67,6 +67,8 @@ class PortalDocument(APIModel):
     terms: Optional[str] = None
     lines: List[PortalLine]
     can_respond: bool = False
+    # UPI payment link for an unpaid INR invoice when the organization has a UPI ID.
+    upi_uri: Optional[str] = None
 
 
 def _model(kind: str):
@@ -114,6 +116,23 @@ def _find(db: Session, token: str):
     raise HTTPException(status.HTTP_404_NOT_FOUND, "This link is not valid or has been revoked")
 
 
+def _upi_uri(org: Organization, inv: Invoice, currency: str, balance: Decimal) -> Optional[str]:
+    if not org.upi_id or currency != "INR" or inv.status not in ("sent", "partially_paid") or balance <= 0:
+        return None
+    return upi.pay_uri(org.upi_id, org.legal_name or org.name, balance, f"Invoice {inv.invoice_number}")
+
+
+@public_router.get("/{token}/upi-qr")
+def upi_qr(token: str, db: Session = Depends(get_db)):
+    """The invoice's UPI payment link as a QR code (SVG) the customer scans with any UPI app."""
+    kind, doc = _find(db, token)
+    org = db.get(Organization, doc.organization_id)
+    uri = _upi_uri(org, doc, doc.currency or org.currency or "INR", doc.balance_due) if kind == "invoice" else None
+    if not uri:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "UPI payment is not available for this document")
+    return Response(content=upi.qr_svg(uri), media_type="image/svg+xml", headers={"Cache-Control": "no-store"})
+
+
 @public_router.get("/{token}", response_model=PortalDocument)
 def view(token: str, db: Session = Depends(get_db)):
     kind, doc = _find(db, token)
@@ -135,18 +154,21 @@ def view(token: str, db: Session = Depends(get_db)):
             """The invoice's own-currency figure for a foreign-currency invoice."""
             return own if foreign and own is not None else base
 
+        currency = doc.currency or org.currency or "INR"
+        balance = (doc.fc_total - doc.fc_amount_paid) if foreign else doc.balance_due
         return PortalDocument(
             kind="invoice",
             number=doc.invoice_number,
+            upi_uri=_upi_uri(org, doc, currency, balance),
             status=doc.status,
             due_date=doc.due_date,
-            currency=doc.currency or org.currency or "INR",
+            currency=currency,
             subtotal=fc(doc.subtotal, doc.fc_subtotal),
             discount=fc(doc.discount_amount, doc.fc_discount_amount),
             tax_total=fc(doc.tax_total, doc.fc_tax_total),
             total=fc(doc.total, doc.fc_total),
             amount_paid=fc(doc.amount_paid, doc.fc_amount_paid),
-            balance_due=(doc.fc_total - doc.fc_amount_paid) if foreign else doc.balance_due,
+            balance_due=balance,
             lines=[
                 PortalLine(
                     description=ln.description,

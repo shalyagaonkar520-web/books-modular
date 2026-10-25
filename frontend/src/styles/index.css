@@ -3770,6 +3770,11 @@ input[type='password']::-ms-clear {
   border-color: var(--warning);
   color: var(--text);
 }
+.alert-info {
+  background: var(--primary-soft, rgba(37, 99, 235, 0.08));
+  border-color: var(--primary);
+  color: var(--text);
+}
 
 /* Compact secondary input under a line's item picker (batch, expiry). */
 .input.input-sm {
@@ -3837,4 +3842,19 @@ input[type='password']::-ms-clear {
   height: 10px;
   border-radius: 5px;
   min-width: 2px;
+}
+
+/* Customer portal: pay-by-UPI QR beside its button. */
+.portal-upi {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.portal-upi img {
+  background: #fff;
+  border-radius: 6px;
 }

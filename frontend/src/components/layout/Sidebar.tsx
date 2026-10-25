@@ -15,6 +15,7 @@ import {
   Home,
   IndianRupee,
   Landmark,
+  Lightbulb,
   Package,
   PiggyBank,
   Receipt,
@@ -88,6 +89,7 @@ const GROUPS: NavGroup[] = [
 const SINGLE_LINKS: NavEntry[] = [
   { to: '/dashboard', label: 'sidebar.dashboard', icon: Home },
   { to: '/ai-assistant', label: 'sidebar.aiAssistant', icon: Sparkles },
+  { to: '/insights', label: 'sidebar.insights', icon: Lightbulb, staffBlocked: true },
   { to: '/items', label: 'sidebar.items', icon: Package, module: 'items' },
   { to: '/inventory', label: 'sidebar.inventory', icon: Warehouse, module: 'items' },
 ];

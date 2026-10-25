@@ -534,3 +534,115 @@ def ask(db: Session, user: User, question: str, history: Optional[List[Dict[str,
                 results.append({"type": "tool_result", "tool_use_id": block.id, "content": f"Error: {detail}", "is_error": True})
         messages.append({"role": "user", "content": results})
     return {"answer": "That question needed more steps than I can take at once; try asking something narrower.", "tools_used": used}
+
+
+# --------------------------------------------------------------------------- #
+# Payment reminder drafts
+# --------------------------------------------------------------------------- #
+_REMINDER_SCHEMA = {
+    "type": "object",
+    "properties": {"subject": {"type": "string"}, "body": {"type": "string"}},
+    "required": ["subject", "body"],
+    "additionalProperties": False,
+}
+
+_TONES = {
+    "friendly": "warm and polite: a gentle nudge that assumes it was overlooked",
+    "firm": "courteous but firm: the payment is overdue and needs a date",
+    "final": "a final notice before escalation: clear consequences, still professional",
+}
+
+
+def reminder_facts(inv, org_name: str, today: date) -> Dict[str, Any]:
+    days_late = (today - inv.due_date).days
+    return {
+        "customer": inv.customer.display_name,
+        "invoice_number": inv.invoice_number,
+        "invoice_date": inv.date.isoformat(),
+        "due_date": inv.due_date.isoformat(),
+        "days_overdue": max(days_late, 0),
+        "balance_due": f"{inv.balance_due:,.2f}",
+        "currency": inv.currency or "INR",
+        "business": org_name,
+    }
+
+
+def template_reminder(facts: Dict[str, Any], tone: str) -> Dict[str, str]:
+    """Used when the AI assistant is not set up (or fails): a fixed template per tone."""
+    late = facts["days_overdue"]
+    when = f"was due on {facts['due_date']}" + (f" and is now {late} days overdue" if late else "")
+    amount = f"{facts['currency']} {facts['balance_due']}"
+    if tone == "final":
+        subject = f"Final notice: invoice {facts['invoice_number']} is {late} days overdue"
+        body = (
+            f"Invoice {facts['invoice_number']} for {amount} {when}. Despite earlier reminders it remains unpaid.\n\n"
+            "Please arrange payment within 7 days. If we do not hear from you, we will have to put further supplies on hold "
+            "and take the matter forward.\n\nIf you have already paid, please send us the payment reference."
+        )
+    elif tone == "firm":
+        subject = f"Payment overdue: invoice {facts['invoice_number']}"
+        body = (
+            f"Our records show that invoice {facts['invoice_number']} for {amount} {when}.\n\n"
+            "Please let us know the date you will make the payment. If there is a problem with the invoice, reply and we will sort it out."
+        )
+    else:
+        subject = f"Reminder: invoice {facts['invoice_number']}"
+        body = (
+            f"This is a friendly reminder that invoice {facts['invoice_number']} for {amount} {when}.\n\n"
+            "If you have already paid, thank you, and please ignore this message."
+        )
+    return {"subject": subject, "body": body}
+
+
+def reminder_draft(inv, org_name: str, tone: str, today: Optional[date] = None) -> Dict[str, str]:
+    """A reminder email for an unpaid invoice, written by Claude when configured, otherwise the template."""
+    facts = reminder_facts(inv, org_name, today or date.today())
+    if not configured():
+        return {**template_reminder(facts, tone), "source": "template"}
+    try:
+        response = create(
+            max_tokens=2000,
+            output_config={"effort": "low", "format": {"type": "json_schema", "schema": _REMINDER_SCHEMA}},
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f"Write a payment reminder email from {org_name} to a customer in India. Tone: {_TONES.get(tone, _TONES['friendly'])}. "
+                        "Use only these facts; do not invent penalties, interest or bank details. Do not include a greeting line "
+                        "(the email adds 'Dear <name>,') or a signature. Keep the body under 120 words.\n" + json.dumps(facts)
+                    ),
+                }
+            ],
+        )
+        data = _json(response)
+        subject, body = str(data.get("subject", "")).strip(), str(data.get("body", "")).strip()
+        if subject and body:
+            return {"subject": subject[:200], "body": body[:3000], "source": "ai"}
+    except HTTPException as exc:
+        logger.warning("AI reminder draft failed, using the template: %s", exc.detail)
+    return {**template_reminder(facts, tone), "source": "template"}
+
+
+def digest_headline(lines: List[str]) -> Optional[str]:
+    """Two sentences on what matters most in today's digest; None when AI is off or fails."""
+    if not configured():
+        return None
+    try:
+        response = create(
+            max_tokens=600,
+            output_config={"effort": "low"},
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        "Here is a small business's daily finance digest. In at most two short sentences, tell the owner what "
+                        "needs attention first. Use only these figures; no greeting.\n\n" + "\n".join(lines)
+                    ),
+                }
+            ],
+        )
+        text = _text(response).strip()
+        return text[:500] or None
+    except HTTPException as exc:
+        logger.warning("AI digest headline failed: %s", exc.detail)
+        return None

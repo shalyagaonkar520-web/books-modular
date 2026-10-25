@@ -1,7 +1,7 @@
 /** AI assistant: ask questions about the books, scan a bill into a draft, and the cash-flow forecast. */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ScanLine, Send, Sparkles } from 'lucide-react';
+import { Camera, ScanLine, Send, Sparkles } from 'lucide-react';
 
 import { aiApi, type ExtractedDocument } from '@/api/ai';
 import { billsApi } from '@/api/endpoints';
@@ -17,6 +17,7 @@ import { Tabs } from '@/components/ui/Toolbar';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatDate, todayIso } from '@/utils/format';
+import { WhatIfCard } from '@/pages/insights/WhatIfCard';
 
 type Tab = 'ask' | 'scan' | 'forecast';
 
@@ -146,6 +147,10 @@ function ScanTab() {
       <label className="btn btn-secondary btn-md">
         <ScanLine size={15} aria-hidden="true" /> <span>{t('ai.scan.choose')}</span>
         <input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" hidden onChange={(e) => void scan(e.target.files?.[0])} />
+      </label>{' '}
+      <label className="btn btn-secondary btn-md">
+        <Camera size={15} aria-hidden="true" /> <span>{t('ai.scan.camera')}</span>
+        <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => void scan(e.target.files?.[0])} />
       </label>
       {submitting && !draft ? <LoadingBlock label={t('ai.scan.reading')} /> : null}
       {draft ? (
@@ -258,6 +263,7 @@ function ForecastTab() {
           ))}
         </ul>
       </Card>
+      <WhatIfCard />
     </>
   );
 }

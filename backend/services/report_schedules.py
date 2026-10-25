@@ -22,11 +22,15 @@ REPORTS = {
     "payables": "Payables summary",
     "cash_flow": "Cash flow",
     "gstr3b": "GST summary (GSTR-3B)",
+    "digest": "Daily digest",
 }
 
 
 def period_for(frequency: str, today: date) -> Tuple[date, date]:
-    """The period just finished: last week (Mon-Sun) or last calendar month."""
+    """The period just finished: yesterday, last week (Mon-Sun) or last calendar month."""
+    if frequency == "daily":
+        yesterday = today - timedelta(days=1)
+        return yesterday, yesterday
     if frequency == "weekly":
         end = today - timedelta(days=today.weekday() + 1)
         return end - timedelta(days=6), end
@@ -36,6 +40,8 @@ def period_for(frequency: str, today: date) -> Tuple[date, date]:
 
 
 def next_after(frequency: str, current: date) -> date:
+    if frequency == "daily":
+        return current + timedelta(days=1)
     if frequency == "weekly":
         return current + timedelta(days=7)
     return add_months(current.replace(day=1), 1)
@@ -50,6 +56,12 @@ def summary(db: Session, user: User, report: str, start: date, end: date) -> Lis
     from backend.routers import reports
     from backend.services import gst_returns
 
+    if report == "digest":
+        from backend.services import ai, insights
+
+        lines = insights.digest(db, user.organization_id, end)
+        headline = ai.digest_headline(lines)
+        return ([headline, ""] if headline else []) + lines
     if report == "profit_and_loss":
         pl = reports.profit_and_loss(
             start_date=start, end_date=end, start_date_snake=None, end_date_snake=None, branch_id=None, user=user, db=db

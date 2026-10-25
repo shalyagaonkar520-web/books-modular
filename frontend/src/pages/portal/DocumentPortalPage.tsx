@@ -146,6 +146,19 @@ export function DocumentPortalPage() {
           </div>
         ) : null}
 
+        {d.upiUri ? (
+          <div className="portal-upi form-section">
+            <img src={portalApi.upiQrUrl(token)} alt={t('portal.upi.qrAlt')} width={168} height={168} />
+            <div className="stack">
+              <strong>{t('portal.upi.title')}</strong>
+              <span className="small text-subtle">{t('portal.upi.hint')}</span>
+              <a className="btn btn-primary btn-md" href={d.upiUri}>
+                {t('portal.upi.pay', { amount: money(d.balanceDue) })}
+              </a>
+            </div>
+          </div>
+        ) : null}
+
         <div className="row wrap form-section">
           <a className="btn btn-secondary btn-md" href={portalApi.pdfUrl(token)}>
             <Download size={15} aria-hidden="true" /> <span>{t('portal.doc.download')}</span>

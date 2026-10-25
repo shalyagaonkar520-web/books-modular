@@ -1,6 +1,7 @@
 import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 
+import { TallyCard } from '@/pages/insights/TallyCard';
 import { BranchesSettings } from '@/pages/operations/BranchesSettings';
 
 import { CurrencySettings } from './CurrencySettings';
@@ -21,6 +22,7 @@ export function SettingsPage() {
       <LockDateSettings />
       <CurrencySettings />
       <BranchesSettings />
+      <TallyCard />
     </div>
   );
 }

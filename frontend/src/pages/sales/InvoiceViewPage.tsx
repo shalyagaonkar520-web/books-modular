@@ -23,6 +23,7 @@ import { documentCurrency, formatCurrency, formatDate, formatPercent, formatQuan
 import { paymentModeLabel, type Translate, statusLabel, statusTone } from '@/utils/status';
 
 import { ApprovalBanner, CustomFieldsCard, ShareLinkCard } from '@/pages/automation/DocumentExtrasCards';
+import { ReminderDraftButton, WhatsAppButton } from '@/pages/insights/InvoiceOutreach';
 import { InvoiceCreditsCard } from '@/pages/docflow/InvoiceCreditsCard';
 
 import { InvoiceGstCard } from './InvoiceGstCard';
@@ -144,6 +145,8 @@ export function InvoiceViewPage() {
             </Button>
             <IfCanWrite>
               <>
+                <ReminderDraftButton invoice={data} />
+                <WhatsAppButton invoice={data} />
                 {canEdit ? (
                   <Button icon={<Pencil size={15} />} onClick={() => navigate(`/invoices/${data.id}/edit`)}>
                     {t('invoices.view.edit')}

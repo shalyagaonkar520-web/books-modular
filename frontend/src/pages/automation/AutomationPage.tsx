@@ -34,7 +34,7 @@ import { formatCurrency, formatDate, formatDateTime, parseNumber } from '@/utils
 
 type Tab = 'rules' | 'fields' | 'approvals' | 'schedules' | 'branding';
 const ENTITIES: CustomFieldEntity[] = ['invoice', 'bill', 'estimate', 'sales_order', 'purchase_order', 'credit_note', 'vendor_credit', 'contact', 'item', 'expense'];
-const REPORTS: ScheduledReport[] = ['profit_and_loss', 'balance_sheet', 'receivables', 'payables', 'cash_flow', 'gstr3b'];
+const REPORTS: ScheduledReport[] = ['digest', 'profit_and_loss', 'balance_sheet', 'receivables', 'payables', 'cash_flow', 'gstr3b'];
 
 export function AutomationPage() {
   const { t } = useAppContent();
@@ -623,7 +623,7 @@ function ScheduleModal({ schedule, onClose, onSaved }: { schedule: ReportSchedul
   const { submitting, error, run } = useSubmit();
   const [name, setName] = useState(schedule?.name ?? '');
   const [report, setReport] = useState<ScheduledReport>(schedule?.report ?? 'profit_and_loss');
-  const [frequency, setFrequency] = useState<'weekly' | 'monthly'>(schedule?.frequency ?? 'monthly');
+  const [frequency, setFrequency] = useState<'daily' | 'weekly' | 'monthly'>(schedule?.frequency ?? 'monthly');
   const [recipients, setRecipients] = useState((schedule?.recipients ?? []).join(', '));
   const [isActive, setIsActive] = useState(schedule?.isActive ?? true);
   const preview = useAsync(() => schedulesApi.preview(report, frequency), [report, frequency]);
@@ -660,10 +660,11 @@ function ScheduleModal({ schedule, onClose, onSaved }: { schedule: ReportSchedul
           label={t('recurring.field.frequency')}
           value={frequency}
           options={[
+            { value: 'daily', label: t('recurring.frequency.daily') },
             { value: 'weekly', label: t('recurring.frequency.weekly') },
             { value: 'monthly', label: t('recurring.frequency.monthly') },
           ]}
-          onChange={(e) => setFrequency(e.target.value as 'weekly' | 'monthly')}
+          onChange={(e) => setFrequency(e.target.value as 'daily' | 'weekly' | 'monthly')}
         />
         <TextField label={t('automation.schedules.to')} value={recipients} hint={t('automation.schedules.toHint')} onChange={(e) => setRecipients(e.target.value)} />
       </div>

@@ -2008,7 +2008,7 @@ class ReportSchedule(TimestampMixin, OrgScopedMixin, Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     report: Mapped[str] = mapped_column(String(30), nullable=False)
-    frequency: Mapped[str] = mapped_column(String(10), default="monthly", nullable=False)  # weekly | monthly
+    frequency: Mapped[str] = mapped_column(String(10), default="monthly", nullable=False)  # daily | weekly | monthly
     recipients: Mapped[str] = mapped_column(Text, nullable=False)  # comma separated
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     next_run_date: Mapped[Optional[date]] = mapped_column(Date)

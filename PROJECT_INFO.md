@@ -116,6 +116,16 @@ A marketing landing page with pricing, driven by content that super-admins edit 
 | **Automation** | Workflow rules (email / signed webhook on create, update, delete, overdue), custom fields, approval limits for invoices and bills, scheduled report emails, document branding |
 | **Customer portal** | Private share links to view / download invoices and accept or decline quotes without logging in |
 | **AI assistant** | Scan a bill or receipt into a draft bill; suggest ledger accounts for bank lines; answer questions about the books using read-only tools (Claude API; off unless `ANTHROPIC_API_KEY` is set) |
+| **Branches** | Tag invoices, bills, expenses and journals with a branch; the profit and loss runs for one branch |
+| **Serial numbers** | Serial-tracked items: serials received on bills, sold on invoices, returned on void; register serials for stock on hand |
+| **Mileage and projects** | Mileage claims (km x rate) as travel expenses; project profitability (revenue less bills, expenses and time at cost rate) |
+| **Statements** | Customer / vendor statement of account from the ledger with running balance, PDF and email |
+| **Bank statement import** | Upload the bank's CSV; lines auto-match to booked transactions, become payments of open invoices / bills, or are booked to an account (AI suggestions); matching reconciles |
+| **Insights** | Anomaly alerts (duplicate bills, unusual amounts, missing GSTIN, overdrawn accounts), customer credit-risk scores, daily digest email with an optional AI summary |
+| **Cash planning** | What-if planner over the 13-week forecast: late collections, bad debts, new monthly costs, one-off purchases |
+| **Getting paid** | AI-written payment reminders (template fallback); UPI pay-by-QR on invoice PDFs and the customer portal; invoices and reminders on WhatsApp (Cloud API, off unless `WHATSAPP_TOKEN` is set) |
+| **Tally** | Export ledgers and vouchers as Tally XML; import Tally ledger masters as accounts, customers and vendors |
+| **Installable app** | PWA: install on phone or desktop, offline app shell, camera capture for bill scanning |
 
 ---
 

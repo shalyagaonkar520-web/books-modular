@@ -221,6 +221,10 @@ FEATURES: Tuple[Feature, ...] = (
         ),
     ),
     Feature("ai", "AI assistant", ("ai:router",)),
+    Feature(
+        "insights", "Insights", ("insights:router",), (), ("/api/insights",), "Anomaly alerts, customer credit risk and the daily digest."
+    ),
+    Feature("integrations", "Integrations", ("integrations:router",)),
     Feature("dashboard", "Dashboard", ("dashboard:router",)),
     Feature("organization", "Organization settings", ("organization:router",)),
     Feature("currencies", "Currencies", ("currencies:router",)),

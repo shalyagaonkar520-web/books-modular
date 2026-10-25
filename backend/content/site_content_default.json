@@ -21,17 +21,20 @@
   "features": {
     "badge": "PLATFORM CAPABILITIES",
     "title": "Every Financial Tool You Need",
-    "description": "A complete enterprise accounting suite with all modules fully unlocked and operational.",
+    "description": "Everything a growing Indian business needs to run its finances, in one place.",
     "items": [
-      { "title": "Smart GST Invoicing", "text": "Generate GST-compliant tax invoices with e-Way Bill, HSN codes, and automated GSTR returns." },
-      { "title": "Financial Intelligence", "text": "Real-time P&L, Balance Sheet, and Cash Flow dashboards. Multi-currency forex, live inventory valuation." },
-      { "title": "Bank Reconciliation", "text": "One-click auto-reconciliation against imported bank statements. Auto-match payments and deposits." },
-      { "title": "Automated Workflows", "text": "Invoice aging alerts, payment reminders, and approval workflows reduce manual follow-ups by 90%." },
-      { "title": "Multi-Entity Support", "text": "Manage multiple companies, branches, and cost centers from a single unified dashboard." },
-      { "title": "Compliance Vault", "text": "Store and manage all statutory documents, GST filings, TDS certificates, and audit trail records securely." },
-      { "title": "Time & Billing", "text": "Track billable hours by project, auto-generate invoices from timesheets, and manage project profitability." },
-      { "title": "Payroll Engine", "text": "Process payroll with PF/ESI/TDS deductions, generate payslips, and file returns automatically." },
-      { "title": "Inventory & Catalog", "text": "Real-time stock tracking with FIFO/LIFO/Weighted Average costing, reorder alerts, and batch/serial control." }
+      { "title": "Smart GST Invoicing", "text": "Quotes, sales orders, invoices and credit notes with CGST/SGST/IGST, TCS, e-invoice and e-way bill JSON, GSTR-1 and GSTR-3B." },
+      { "title": "Get Paid Faster", "text": "UPI pay-by-QR on every invoice, a customer portal, AI-written payment reminders and invoices on WhatsApp." },
+      { "title": "Bank Reconciliation", "text": "Import any bank's CSV statement: lines auto-match to your books, become payments, or are booked to an account in one click." },
+      { "title": "AI Assistant", "text": "Scan a bill photo into a draft, ask questions about your books, and get account suggestions for bank lines." },
+      { "title": "Insights & Alerts", "text": "Duplicate-bill and unusual-amount alerts, customer credit-risk scores and a daily digest email." },
+      { "title": "Cash Planning", "text": "Cash-flow statement, a 13-week cash forecast and a what-if planner for late payments, new costs and big purchases." },
+      { "title": "Branches & Projects", "text": "Profit and loss by branch, project profitability with labour cost, mileage claims and budgets vs actual." },
+      { "title": "Inventory Control", "text": "Warehouses, transfers, batches with expiry, serial numbers, composite items, price lists and a stock ledger." },
+      { "title": "Multi-Currency & Assets", "text": "Invoices and bills in any currency with exchange gain/loss, plus a fixed asset register with depreciation." },
+      { "title": "Automation", "text": "Workflow rules, approvals, custom fields, recurring invoices and bills, and scheduled report emails." },
+      { "title": "Payroll & Time", "text": "Salary runs and payslips, timesheets, and invoices generated from billable hours." },
+      { "title": "Works with Tally", "text": "Export your books to Tally for your CA, or import Tally ledgers to get started in minutes." }
     ]
   },
   "pricing": {

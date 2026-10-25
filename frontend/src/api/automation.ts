@@ -106,13 +106,13 @@ export const brandingApi = {
   save: (body: Branding) => api.put<Branding>('/document-branding', body),
 };
 
-export type ScheduledReport = 'profit_and_loss' | 'balance_sheet' | 'receivables' | 'payables' | 'cash_flow' | 'gstr3b';
+export type ScheduledReport = 'profit_and_loss' | 'balance_sheet' | 'receivables' | 'payables' | 'cash_flow' | 'gstr3b' | 'digest';
 
 export interface ReportSchedule {
   id: string;
   name: string;
   report: ScheduledReport;
-  frequency: 'weekly' | 'monthly';
+  frequency: 'daily' | 'weekly' | 'monthly';
   recipients: string[];
   isActive: boolean;
   nextRunDate?: string | null;
@@ -125,7 +125,7 @@ export const schedulesApi = {
   update: (id: string, body: unknown) => api.put<ReportSchedule>(`/report-schedules/${id}`, body),
   remove: (id: string) => api.delete<Message>(`/report-schedules/${id}`),
   sendNow: (id: string) => api.post<Message>(`/report-schedules/${id}/send-now`),
-  preview: (report: ScheduledReport, frequency: 'weekly' | 'monthly') =>
+  preview: (report: ScheduledReport, frequency: 'daily' | 'weekly' | 'monthly') =>
     api.get<{ title: string; start: string; end: string; lines: string[] }>('/report-schedules/preview', { report, frequency }),
 };
 
@@ -157,6 +157,8 @@ export interface PortalDocument {
   terms?: string | null;
   lines: Array<{ description: string; quantity: number; rate: number; taxRate: number; amount: number }>;
   canRespond: boolean;
+  /** UPI payment link (unpaid INR invoice, organization has a UPI ID). */
+  upiUri?: string | null;
 }
 
 /** The public portal calls need no session. */
@@ -165,4 +167,5 @@ export const portalApi = {
   respond: (token: string, accept: boolean, body: { name?: string; note?: string }) =>
     request<Message>(`/public/documents/${token}/${accept ? 'accept' : 'decline'}`, { method: 'POST', body, retryOnUnauthorized: false }),
   pdfUrl: (token: string) => `/api/public/documents/${token}/pdf`,
+  upiQrUrl: (token: string) => `/api/public/documents/${token}/upi-qr`,
 };

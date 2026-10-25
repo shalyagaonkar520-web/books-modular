@@ -13,6 +13,7 @@ import { ReceivablesPayablesDashboard } from '@/pages/financial/ReceivablesPayab
 import { RazorpayPaymentsPage } from '@/pages/payments/RazorpayPaymentsPage';
 import { BankingPage } from '@/pages/banking/BankingPage';
 import { BankStatementPage } from '@/pages/operations/BankStatementPage';
+import { InsightsPage } from '@/pages/insights/InsightsPage';
 import { BillFormPage } from '@/pages/purchases/BillFormPage';
 import { BillsPage } from '@/pages/purchases/BillsPage';
 import { ContactsPage } from '@/pages/contacts/ContactsPage';
@@ -196,6 +197,14 @@ export function App() {
             <Route path="/time-tracking" element={<TimeTrackingPage />} />
             <Route path="/gst-filing" element={<GstFilingPage />} />
             <Route path="/ai-assistant" element={<AiAssistantPage />} />
+            <Route
+              path="/insights"
+              element={
+                <RequireRole roles={['admin', 'viewer']}>
+                  <InsightsPage />
+                </RequireRole>
+              }
+            />
             <Route
               path="/automation"
               element={

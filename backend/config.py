@@ -64,6 +64,14 @@ class Settings(BaseSettings):
     anthropic_api_key: str = Field(default="", description="ANTHROPIC_API_KEY")
     ai_model: str = Field(default="claude-opus-5-5", description="Claude model used by the AI assistant")
 
+    # WhatsApp Cloud API (Meta). Off until the token and phone number id are set.
+    whatsapp_token: str = Field(default="", description="WHATSAPP_TOKEN (permanent system-user token)")
+    whatsapp_phone_number_id: str = Field(default="", description="WHATSAPP_PHONE_NUMBER_ID")
+    whatsapp_api_version: str = Field(default="v21.0", description="Graph API version")
+    # Approved message template with one body parameter; empty = free-form text (24-hour window only).
+    whatsapp_template: str = Field(default="", description="WHATSAPP_TEMPLATE")
+    whatsapp_template_language: str = Field(default="en", description="WHATSAPP_TEMPLATE_LANGUAGE")
+
     # Razorpay gateway
     # Credentials are read from the environment only. Never hardcode them here:
     # this file is committed to Git, so a default value is a leaked secret.

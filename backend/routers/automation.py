@@ -539,8 +539,8 @@ def save_branding(payload: Branding, user: User = Depends(require_admin), db: Se
 # --------------------------------------------------------------------------- #
 class ScheduleIn(APIModel):
     name: str = Field(min_length=1, max_length=120)
-    report: Literal["profit_and_loss", "balance_sheet", "receivables", "payables", "cash_flow", "gstr3b"]
-    frequency: Literal["weekly", "monthly"] = "monthly"
+    report: Literal["profit_and_loss", "balance_sheet", "receivables", "payables", "cash_flow", "gstr3b", "digest"]
+    frequency: Literal["daily", "weekly", "monthly"] = "monthly"
     recipients: List[str] = Field(min_length=1, max_length=20)
     is_active: bool = True
 
@@ -649,7 +649,7 @@ def send_now(schedule_id: str, user: User = Depends(require_admin), db: Session 
 @schedules_router.get("/preview")
 def preview(
     report: str = Query(...),
-    frequency: Literal["weekly", "monthly"] = "monthly",
+    frequency: Literal["daily", "weekly", "monthly"] = "monthly",
     user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):

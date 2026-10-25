@@ -407,6 +407,26 @@ def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
     t_wrap.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
     story.append(t_wrap)
 
+    # Pay by UPI: a QR any UPI app opens with the amount filled in (INR invoices with a balance).
+    if org and org.upi_id and balance > 0 and _PDF_CURRENCY.get() == "INR" and invoice.status in ("sent", "partially_paid", "overdue"):
+        from backend.services import upi
+
+        uri = upi.pay_uri(org.upi_id, org.legal_name or org.name, Decimal(str(balance)), f"Invoice {invoice.invoice_number}")
+        t_upi = Table(
+            [
+                [
+                    upi.qr_drawing(uri, 84),
+                    Paragraph(
+                        f"<b>Scan to pay with any UPI app</b><br/>UPI ID: {_text(org.upi_id)}<br/>Amount: {_fmt_curr(balance)}", value_style
+                    ),
+                ]
+            ],
+            colWidths=[96, 444],
+        )
+        t_upi.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+        story.append(Spacer(1, 10))
+        story.append(t_upi)
+
     if org and org.signature_label:
         story.append(Spacer(1, 18))
         story.append(
