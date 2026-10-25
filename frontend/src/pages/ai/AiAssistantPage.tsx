@@ -9,6 +9,7 @@ import { useAppContent } from '@/app/AppContentContext';
 import { useAuth } from '@/auth/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { ComingSoon } from '@/components/ui/ComingSoon';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { TextField } from '@/components/ui/Field';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -27,13 +28,14 @@ export function AiAssistantPage() {
   const status = useAsync(() => aiApi.status(), []);
   const [tab, setTab] = useState<Tab>('ask');
   const tabs: Tab[] = can('admin', 'viewer') ? ['ask', 'scan', 'forecast'] : ['ask', 'scan'];
+  // No AI key on the server yet: the AI tabs say "Coming soon"; the forecast needs no AI.
+  const aiOff = status.data ? !status.data.configured : false;
   return (
     <div className="stack">
       <PageHeader title={t('ai.title')} subtitle={t('ai.subtitle')} />
-      {status.data && !status.data.configured ? <div className="alert alert-warning">{t('ai.notConfigured')}</div> : null}
       <Tabs tabs={tabs.map((id) => ({ id, label: t(`ai.tab.${id}`) }))} active={tab} onChange={(id) => setTab(id as Tab)} />
-      {tab === 'ask' ? <AskTab /> : null}
-      {tab === 'scan' ? <ScanTab /> : null}
+      {tab === 'ask' ? aiOff ? <ComingSoon title={t('ai.ask.title')} description={t('comingSoon.ai.ask')} /> : <AskTab /> : null}
+      {tab === 'scan' ? aiOff ? <ComingSoon title={t('ai.scan.title')} description={t('comingSoon.ai.scan')} icon={<ScanLine size={22} />} /> : <ScanTab /> : null}
       {tab === 'forecast' ? <ForecastTab /> : null}
     </div>
   );

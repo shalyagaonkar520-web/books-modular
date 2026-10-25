@@ -3,11 +3,13 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, CalendarClock, Sparkles } from 'lucide-react';
 
+import { aiApi } from '@/api/ai';
 import { type Alert, insightsApi } from '@/api/insights';
 import { useAppContent } from '@/app/AppContentContext';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { ComingSoonBadge } from '@/components/ui/ComingSoon';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Tabs } from '@/components/ui/Toolbar';
@@ -128,15 +130,18 @@ function DigestTab() {
   const { t } = useAppContent();
   const [withAi, setWithAi] = useState(false);
   const data = useAsync(() => insightsApi.digest(withAi), [withAi]);
+  const ai = useAsync(() => aiApi.status(), []);
+  const aiOff = !ai.data?.configured;
   return (
     <Card
       title={data.data ? t('insights.digest.title', { date: formatDate(data.data.date) }) : t('insights.tab.digest')}
       subtitle={t('insights.digest.subtitle')}
       actions={
         <div className="row">
-          <Button size="sm" icon={<Sparkles size={13} />} disabled={withAi} onClick={() => setWithAi(true)}>
+          <Button size="sm" icon={<Sparkles size={13} />} disabled={withAi || aiOff} onClick={() => setWithAi(true)}>
             {t('insights.digest.ai')}
           </Button>
+          {ai.data && aiOff ? <ComingSoonBadge /> : null}
           <Link className="btn btn-secondary btn-sm" to="/automation">
             <CalendarClock size={13} aria-hidden="true" /> {t('insights.digest.schedule')}
           </Link>

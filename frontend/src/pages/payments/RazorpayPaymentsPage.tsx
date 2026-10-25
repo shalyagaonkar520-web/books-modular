@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { CreditCard, RefreshCw } from 'lucide-react';
 
 import { ApiError } from '@/api/client';
 import { razorpaySyncApi } from '@/api/razorpay';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { ComingSoon } from '@/components/ui/ComingSoon';
 import { ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
 import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -63,6 +64,15 @@ export function RazorpayPaymentsPage() {
   const { status } = data;
   const categories = data.categories.items;
 
+  if (!status.configured) {
+    return (
+      <div className="stack">
+        <PageHeader title={t('razorpay.title')} subtitle={t('razorpay.subtitle')} breadcrumb={['Banking', 'Payments']} />
+        <ComingSoon title={t('razorpay.title')} description={t('comingSoon.razorpay')} icon={<CreditCard size={22} />} />
+      </div>
+    );
+  }
+
   return (
     <div className="stack">
       <PageHeader
@@ -89,15 +99,6 @@ export function RazorpayPaymentsPage() {
           </div>
         }
       />
-
-      {!status.configured ? (
-        <div className="notification notification-info" role="status">
-          <span>
-            Razorpay is not configured on this server. An administrator can set the credentials in the server
-            environment (set by the platform administrator).
-          </span>
-        </div>
-      ) : null}
 
       <Tabs
         tabs={[

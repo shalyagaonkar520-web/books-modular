@@ -4096,6 +4096,12 @@
     "tally.export": "Export to Tally (XML)",
     "tally.import": "Import Tally ledgers",
     "tally.hint": "In Tally: Gateway of Tally > Import > Vouchers to load the export. To import, export your ledger masters from Tally as XML.",
-    "tally.imported": "Imported {accounts} account(s), {customers} customer(s) and {vendors} vendor(s)"
+    "tally.imported": "Imported {accounts} account(s), {customers} customer(s) and {vendors} vendor(s)",
+
+    "comingSoon.badge": "Coming soon",
+    "comingSoon.note": "This switches on automatically once it is enabled for your account.",
+    "comingSoon.ai.ask": "Ask questions about your business in plain words and get answers straight from your books.",
+    "comingSoon.ai.scan": "Photograph a bill or receipt and get a ready-to-check draft bill in seconds.",
+    "comingSoon.razorpay": "Sync Razorpay payments, match them to invoices and reconcile settlements automatically."
   }
 }

@@ -8,6 +8,7 @@ import type { Invoice } from '@/api/types';
 import { useAppContent } from '@/app/AppContentContext';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { ComingSoonBadge } from '@/components/ui/ComingSoon';
 import { FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
@@ -99,7 +100,18 @@ function ReminderModal({ invoice, onClose }: { invoice: Invoice; onClose: () => 
 export function WhatsAppButton({ invoice, mobile }: { invoice: Invoice; mobile?: string | null }) {
   const { t } = useAppContent();
   const [open, setOpen] = useState(false);
+  const status = useAsync(() => whatsappApi.status(), []);
   if (invoice.status === 'draft' || invoice.status === 'void') return null;
+  if (status.data && !status.data.configured) {
+    return (
+      <span className="row" style={{ gap: 6 }}>
+        <Button variant="secondary" icon={<MessageCircle size={15} />} disabled>
+          {t('outreach.whatsapp.button')}
+        </Button>
+        <ComingSoonBadge />
+      </span>
+    );
+  }
   return (
     <>
       <Button variant="secondary" icon={<MessageCircle size={15} style={{ color: '#16a34a' }} />} onClick={() => setOpen(true)}>

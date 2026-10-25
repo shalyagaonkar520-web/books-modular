@@ -11,6 +11,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { ComingSoonBadge } from '@/components/ui/ComingSoon';
 import { EmptyState, ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
@@ -109,11 +110,12 @@ export function BankStatementPage() {
       />
       <p className="small text-subtle">{t('ops.bank.formatHint')}</p>
       <Tabs tabs={(['unmatched', 'matched', 'ignored'] as View[]).map((id) => ({ id, label: t(`ops.bank.tab.${id}`) }))} active={view} onChange={(id) => setView(id as View)} />
-      {view === 'unmatched' && canWrite && aiStatus.data?.configured && (lines.data ?? []).length > 0 ? (
-        <div>
-          <Button size="sm" icon={<Sparkles size={13} />} loading={submitting} onClick={suggest}>
+      {view === 'unmatched' && canWrite && aiStatus.data && (lines.data ?? []).length > 0 ? (
+        <div className="row">
+          <Button size="sm" icon={<Sparkles size={13} />} loading={submitting} disabled={!aiStatus.data.configured} onClick={suggest}>
             {t('ops.bank.aiSuggest')}
           </Button>
+          {aiStatus.data.configured ? null : <ComingSoonBadge />}
         </div>
       ) : null}
       {lines.loading ? <LoadingBlock /> : null}
