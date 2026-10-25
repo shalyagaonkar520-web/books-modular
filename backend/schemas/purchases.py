@@ -40,6 +40,9 @@ class BillCreate(APIModel):
     exchange_rate: Optional[Decimal] = Field(default=None, gt=0, le=Decimal("1000000"))
     # Warehouse goods are received into; null = the default warehouse.
     warehouse_id: Optional[str] = None
+    branch_id: Optional[str] = None
+    # Project the cost is charged to (project profitability).
+    project_id: Optional[str] = None
 
     @model_validator(mode="after")
     def _due_after_date(self):
@@ -84,6 +87,8 @@ class BillOut(APIModel):
     tds_rate: Decimal = Decimal("0")
     tds_amount: Decimal = Decimal("0")
     warehouse_id: Optional[str] = None
+    branch_id: Optional[str] = None
+    project_id: Optional[str] = None
     approval_status: Optional[str] = None
     approval_note: Optional[str] = None
     currency: Optional[str] = None
@@ -180,6 +185,8 @@ class ExpenseCreate(APIModel):
     payment_method: ExpensePaymentMethod = "bank_transfer"
     receipt_url: Optional[str] = Field(default=None, max_length=500)
     status: ExpenseStatus = "paid"
+    branch_id: Optional[str] = None
+    project_id: Optional[str] = None
 
 
 class ExpenseUpdate(ExpenseCreate):
@@ -216,4 +223,8 @@ class ExpenseOut(APIModel):
     reference: Optional[str] = None
     notes: Optional[str] = None
     is_billable: bool
+    branch_id: Optional[str] = None
+    project_id: Optional[str] = None
+    distance_km: Optional[Decimal] = None
+    rate_per_km: Optional[Decimal] = None
     created_at: datetime

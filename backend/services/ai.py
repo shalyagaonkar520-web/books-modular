@@ -451,7 +451,11 @@ def run_tool(db: Session, user: User, name: str, args: Dict[str, Any]) -> Any:
         raise PermissionError("Your role cannot see ledger balances; ask an admin")
     start, end, as_of = _date(args.get("start_date")), _date(args.get("end_date")), _date(args.get("as_of"))
     if name == "profit_and_loss":
-        return _dump(reports.profit_and_loss(start_date=start, end_date=end, start_date_snake=None, end_date_snake=None, user=user, db=db))
+        return _dump(
+            reports.profit_and_loss(
+                start_date=start, end_date=end, start_date_snake=None, end_date_snake=None, branch_id=None, user=user, db=db
+            )
+        )
     if name == "balance_sheet":
         return _dump(reports.balance_sheet(as_of=as_of, user=user, db=db))
     if name == "cash_flow":

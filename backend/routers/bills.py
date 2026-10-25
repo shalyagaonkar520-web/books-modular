@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
-from backend.models import Bill, BillLine, Contact, Item, Organization, User
+from backend.models import Bill, BillLine, Branch, Contact, Item, Organization, Project, User
 from backend.routers.invoices import fc_fields
 from backend.schemas.common import Message, Page
 from backend.schemas.purchases import BillCreate, BillListItem, BillOut, BillStats, BillStatusUpdate, BillUpdate
@@ -56,6 +56,7 @@ def line_out(line: BillLine) -> LineOut:
         fc_amount=line.fc_amount if line.fc_amount is not None else line.amount,
         batch_number=line.batch_number,
         expiry_date=line.expiry_date,
+        serial_numbers=line.serial_numbers,
     )
 
 
@@ -85,6 +86,8 @@ def to_out(bill: Bill) -> BillOut:
         tds_rate=bill.tds_rate,
         tds_amount=bill.tds_amount,
         warehouse_id=bill.warehouse_id,
+        branch_id=bill.branch_id,
+        project_id=bill.project_id,
         approval_status=bill.approval_status,
         approval_note=bill.approval_note,
         **fc_fields(bill),
@@ -127,6 +130,8 @@ def _apply_payload(db: Session, bill: Bill, payload: BillCreate, org_id: str) ->
     bill.due_date = payload.due_date or (payload.date + timedelta(days=vendor.payment_terms_days))
     bill.notes = payload.notes
     bill.warehouse_id = stock.resolve_warehouse(db, org_id, payload.warehouse_id).id if payload.warehouse_id else None
+    bill.branch_id = get_or_404(db, Branch, payload.branch_id, org_id, "Branch").id if payload.branch_id else None
+    bill.project_id = get_or_404(db, Project, payload.project_id, org_id, "Project").id if payload.project_id else None
     bill.place_of_supply = payload.place_of_supply
     bill.reverse_charge = payload.reverse_charge
     bill.tds_section = payload.tds_section if payload.tds_rate > 0 else None
@@ -162,6 +167,7 @@ def _apply_payload(db: Session, bill: Bill, payload: BillCreate, org_id: str) ->
                 fc_amount=line.amount,
                 batch_number=(line.spec.batch_number or "").strip() or None,
                 expiry_date=line.spec.expiry_date,
+                serial_numbers=", ".join(stock.parse_serials(line.spec.serial_numbers)) or None,
             )
         )
 
@@ -233,6 +239,7 @@ def post_bill(db: Session, bill: Bill, user: User) -> None:
                 warehouse_id=bill.warehouse_id,
                 batch_number=line.batch_number,
                 expiry_date=line.expiry_date,
+                serial_numbers=stock.parse_serials(line.serial_numbers) if item.track_serial else None,
             )
             _receive_at_average_cost(item, on_hand, qty(line.quantity), money(line.rate))
         else:
@@ -277,6 +284,7 @@ def unpost_bill(db: Session, bill: Bill, user: User, reason: str) -> None:
                 allow_negative=True,
                 warehouse_id=bill.warehouse_id,
                 batch_number=line.batch_number,
+                serial_numbers=stock.parse_serials(line.serial_numbers) if line.item.track_serial else None,
             )
 
 

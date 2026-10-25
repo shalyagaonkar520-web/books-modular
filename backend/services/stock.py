@@ -20,7 +20,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from backend.models import Item, ItemStock, StockBatch, StockMovement, Warehouse
+from backend.models import Item, ItemStock, StockBatch, StockMovement, StockSerial, Warehouse
 from backend.services.money import money, qty
 
 
@@ -95,12 +95,16 @@ def record(
     unit_cost: Optional[Decimal] = None,
     allow_negative: bool = False,
     total_includes_delta: bool = True,
+    serial_numbers: Optional[list[str]] = None,
 ) -> StockMovement:
     """Log a stock movement and move it between warehouse / batch balances.
 
     ``total_includes_delta``: the movement is already in ``item.stock_on_hand``
     (everything through inventory.adjust_stock). Transfers move stock between
     warehouses without changing the total and pass False.
+
+    ``serial_numbers``: the units moved, for a serial-tracked item; None when
+    the movement does not name units (adjustments, opening stock).
     """
     delta = qty(delta)
     wh = resolve_warehouse(db, item.organization_id, warehouse_id)
@@ -134,6 +138,8 @@ def record(
         elif expiry_date and not found.expiry_date:
             found.expiry_date = expiry_date
         _move(db, StockBatch, (StockBatch.id == found.id,), delta, allow_negative, f"in batch {batch} of '{item.name}'")
+    if serial_numbers is not None and item.track_serial:
+        move_serials(db, item, wh, delta, serial_numbers, source_type, source_id, allow_negative)
     movement = StockMovement(
         organization_id=item.organization_id,
         item_id=item.id,
@@ -157,3 +163,59 @@ def warehouse_quantity(db: Session, item_id: str, warehouse_id: str) -> Decimal:
         select(ItemStock.quantity).where(ItemStock.item_id == item_id, ItemStock.warehouse_id == warehouse_id)
     ).scalar_one_or_none()
     return qty(value or 0)
+
+
+def parse_serials(text: Optional[str]) -> list[str]:
+    """Serial numbers typed as a comma / newline separated list, de-duplicated in order."""
+    seen: list[str] = []
+    for part in (text or "").replace("\n", ",").replace(";", ",").split(","):
+        value = part.strip()
+        if value and value not in seen:
+            seen.append(value[:80])
+    return seen
+
+
+def move_serials(
+    db: Session,
+    item: Item,
+    wh: Warehouse,
+    delta: Decimal,
+    serials: list[str],
+    source_type: str,
+    source_id: Optional[str],
+    allow_negative: bool = False,
+) -> None:
+    """Receive (delta > 0) or issue (delta < 0) the named units of a serial-tracked item."""
+    if len(serials) != abs(int(delta)) or Decimal(len(serials)) != abs(delta):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"'{item.name}' is tracked by serial number: enter {qty(abs(delta))} serial number(s), {len(serials)} given",
+        )
+    existing = {
+        s.serial_number: s
+        for s in db.execute(select(StockSerial).where(StockSerial.item_id == item.id, StockSerial.serial_number.in_(serials))).scalars()
+    }
+    for number in serials:
+        row = existing.get(number)
+        if delta > 0:
+            if row is not None and row.status == "in_stock":
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Serial {number} of '{item.name}' is already in stock")
+            if row is None:
+                row = StockSerial(organization_id=item.organization_id, item_id=item.id, serial_number=number, warehouse_id=wh.id)
+                db.add(row)
+            row.status, row.warehouse_id = "in_stock", wh.id
+        else:
+            if row is None or row.status != "in_stock" or row.warehouse_id != wh.id:
+                if allow_negative:
+                    continue
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Serial {number} of '{item.name}' is not in stock at {wh.name}")
+            row.status = "out"
+        row.last_source_type, row.last_source_id = source_type, source_id
+    db.flush()
+
+
+def serials_in_stock(db: Session, item_id: str, warehouse_id: Optional[str] = None) -> int:
+    stmt = select(func.count()).select_from(StockSerial).where(StockSerial.item_id == item_id, StockSerial.status == "in_stock")
+    if warehouse_id:
+        stmt = stmt.where(StockSerial.warehouse_id == warehouse_id)
+    return int(db.execute(stmt).scalar_one())

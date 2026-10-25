@@ -1,6 +1,8 @@
 import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 
+import { BranchesSettings } from '@/pages/operations/BranchesSettings';
+
 import { CurrencySettings } from './CurrencySettings';
 import { LockDateSettings } from './LockDateSettings';
 import { OrganizationSettings } from './OrganizationSettings';
@@ -18,6 +20,7 @@ export function SettingsPage() {
       <OrganizationSettings />
       <LockDateSettings />
       <CurrencySettings />
+      <BranchesSettings />
     </div>
   );
 }

@@ -30,6 +30,7 @@ class ItemBase(APIModel):
     purchase_description: Optional[str] = None
     preferred_vendor_id: Optional[str] = None
     track_inventory: bool = False
+    track_serial: bool = False
     opening_stock: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("99999999"))
     opening_stock_rate: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("999999999.99"))
     reorder_level: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("99999999"))
@@ -39,6 +40,9 @@ class ItemBase(APIModel):
     def _service_has_no_inventory(self):
         if self.type == "service":
             self.track_inventory = False
+        if not self.track_inventory:
+            self.track_serial = False
+        if self.type == "service":
             self.opening_stock = Decimal("0")
             self.opening_stock_rate = Decimal("0")
             self.reorder_level = Decimal("0")
@@ -72,6 +76,7 @@ class ItemUpdate(APIModel):
     purchase_description: Optional[str] = None
     preferred_vendor_id: Optional[str] = None
     track_inventory: Optional[bool] = None
+    track_serial: Optional[bool] = None
     opening_stock: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("99999999"))
     opening_stock_rate: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("999999999.99"))
     reorder_level: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("99999999"))
@@ -87,6 +92,7 @@ class ItemUpdate(APIModel):
         "selling_price",
         "cost_price",
         "track_inventory",
+        "track_serial",
         "opening_stock",
         "opening_stock_rate",
         "reorder_level",

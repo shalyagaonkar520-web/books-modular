@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional
@@ -160,6 +161,10 @@ class OrganizationOut(APIModel):
     invoice_notes: Optional[str] = None
     # Books closed up to and including this date (see PUT /api/organization/lock-date).
     lock_date: Optional[date] = None
+    # Default reimbursement per km for mileage claims.
+    mileage_rate: Optional[Decimal] = None
+    # UPI ID customers pay to (QR code on invoices and the portal).
+    upi_id: Optional[str] = None
     # The active plan's app modules (null = every module: on trial, or an
     # organization from before plans) and its monthly price.
     requested_modules: Optional[List[str]] = None
@@ -191,6 +196,8 @@ class OrganizationUpdate(APIModel):
     default_payment_terms_days: Optional[int] = Field(default=None, ge=0, le=365)
     invoice_terms: Optional[str] = None
     invoice_notes: Optional[str] = None
+    mileage_rate: Optional[Decimal] = Field(default=None, ge=0, le=1000, max_digits=8, decimal_places=2)
+    upi_id: Optional[str] = Field(default=None, max_length=100)
 
     _required = field_validator("name", "country", "fiscal_year_start_month", "default_tax_rate", "default_payment_terms_days")(_not_null)
 
@@ -198,6 +205,16 @@ class OrganizationUpdate(APIModel):
     @classmethod
     def _phone(cls, value: Optional[str]) -> Optional[str]:
         return validators.phone(value)
+
+    @field_validator("upi_id")
+    @classmethod
+    def _upi_id(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or not value.strip():
+            return None
+        value = value.strip()
+        if not re.fullmatch(r"[A-Za-z0-9.\-_]{2,256}@[A-Za-z][A-Za-z0-9]{1,63}", value):
+            raise ValueError("Enter a UPI ID like business@okhdfcbank")
+        return value
 
     @field_validator("postal_code")
     @classmethod

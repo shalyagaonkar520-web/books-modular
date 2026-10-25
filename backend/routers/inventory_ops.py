@@ -23,6 +23,7 @@ from backend.models import (
     PriceListItem,
     StockBatch,
     StockMovement,
+    StockSerial,
     TransferOrder,
     TransferOrderLine,
     User,
@@ -869,3 +870,85 @@ def batches(
         )
         for r in rows
     ]
+
+
+# --------------------------------------------------------------------------- #
+# Serial numbers
+# --------------------------------------------------------------------------- #
+class SerialOut(APIModel):
+    id: str
+    item_id: str
+    item_name: str
+    warehouse_id: str
+    warehouse_name: str
+    serial_number: str
+    status: str
+    last_source_type: Optional[str] = None
+    last_source_id: Optional[str] = None
+
+
+class SerialRegister(APIModel):
+    item_id: str
+    warehouse_id: Optional[str] = None
+    serial_numbers: str = Field(min_length=1, max_length=20000)
+
+
+@stock_router.get("/serials", response_model=List[SerialOut])
+def serials(
+    item_id: Optional[str] = Query(None, alias="itemId"),
+    serial_status: Optional[Literal["in_stock", "out"]] = Query(None, alias="status"),
+    search: Optional[str] = Query(None, max_length=80),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Serial-numbered units: where each one is, or which document it last moved on."""
+    stmt = select(StockSerial).where(StockSerial.organization_id == user.organization_id)
+    if item_id:
+        stmt = stmt.where(StockSerial.item_id == item_id)
+    if serial_status:
+        stmt = stmt.where(StockSerial.status == serial_status)
+    if search:
+        stmt = stmt.where(StockSerial.serial_number.ilike(f"%{search.strip()}%"))
+    rows = list(db.execute(stmt.order_by(StockSerial.serial_number).limit(1000)).scalars())
+    items = {i.id: i for i in db.execute(select(Item).where(Item.id.in_({r.item_id for r in rows}))).scalars()} if rows else {}
+    whs = {w.id: w for w in db.execute(select(Warehouse).where(Warehouse.organization_id == user.organization_id)).scalars()}
+    return [
+        SerialOut(
+            id=r.id,
+            item_id=r.item_id,
+            item_name=items[r.item_id].name,
+            warehouse_id=r.warehouse_id,
+            warehouse_name=whs[r.warehouse_id].name,
+            serial_number=r.serial_number,
+            status=r.status,
+            last_source_type=r.last_source_type,
+            last_source_id=r.last_source_id,
+        )
+        for r in rows
+    ]
+
+
+@stock_router.post("/serials/register", response_model=Message)
+def register_serials(payload: SerialRegister, user: User = Depends(require_write), db: Session = Depends(get_db)):
+    """Name the units already on hand (opening stock, adjustments) without moving stock."""
+    item = get_or_404(db, Item, payload.item_id, user.organization_id, "Item")
+    if not item.track_serial:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"'{item.name}' is not tracked by serial number")
+    wh = stock.resolve_warehouse(db, user.organization_id, payload.warehouse_id)
+    numbers = stock.parse_serials(payload.serial_numbers)
+    on_hand = stock.warehouse_quantity(db, item.id, wh.id)
+    if (
+        not db.execute(select(ItemStock.id).where(ItemStock.item_id == item.id)).first()
+        and wh.id == stock.default_warehouse(db, user.organization_id).id
+    ):
+        on_hand = qty(item.stock_on_hand)  # stock from before warehouses sits in the default one
+    free = on_hand - stock.serials_in_stock(db, item.id, wh.id)
+    if len(numbers) > free:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Only {qty(max(free, Decimal('0')))} unit(s) of '{item.name}' at {wh.name} have no serial number yet; {len(numbers)} given",
+        )
+    stock.move_serials(db, item, wh, Decimal(len(numbers)), numbers, "serial_register", None)
+    audit.record(db, user, "update", "item", item.id, f"Registered {len(numbers)} serial number(s) for {item.name}")
+    db.commit()
+    return Message(message=f"{len(numbers)} serial number(s) registered")

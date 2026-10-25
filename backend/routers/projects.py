@@ -12,13 +12,15 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user, module_write_error, require_write
-from backend.models import Contact, Invoice, InvoiceLine, Project, TimeEntry, User
+from backend.models import Bill, Contact, Expense, Invoice, InvoiceLine, Project, TimeEntry, User
 from backend.schemas.common import Message, Page
 from backend.schemas.sales import InvoiceOut
 from backend.schemas.timetracking import (
     InvoiceFromTimeRequest,
+    ProfitabilityCost,
     ProjectCreate,
     ProjectOut,
+    ProjectProfitability,
     ProjectUpdate,
     TimeEntryCreate,
     TimeEntryOut,
@@ -57,6 +59,7 @@ def project_out(p: Project, summary: Optional[dict] = None) -> ProjectOut:
         billing_method=p.billing_method,
         hourly_rate=p.hourly_rate,
         budget_hours=p.budget_hours,
+        cost_rate=p.cost_rate,
         status=p.status,
         logged_hours=s["logged"],
         billable_hours=s["billable"],
@@ -99,6 +102,64 @@ def list_projects(
 def get_project(project_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     p = get_or_404(db, Project, project_id, user.organization_id, "Project")
     return project_out(p, _hours_summary(db, [p.id]).get(p.id))
+
+
+@router.get("/projects/{project_id}/profitability", response_model=ProjectProfitability)
+def project_profitability(project_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Revenue invoiced against the project less what it cost: bills, expenses and time at the cost rate."""
+    p = get_or_404(db, Project, project_id, user.organization_id, "Project")
+    invoices = db.execute(
+        select(Invoice).where(
+            Invoice.organization_id == p.organization_id, Invoice.project_id == p.id, Invoice.status.notin_(("draft", "void"))
+        )
+    ).scalars()
+    invoices = list(invoices)
+    # Revenue excludes GST and TCS: net of discount, before tax.
+    revenue = money(sum((i.subtotal - i.discount_amount for i in invoices), Decimal("0")))
+    bills = list(
+        db.execute(
+            select(Bill).where(Bill.organization_id == p.organization_id, Bill.project_id == p.id, Bill.status.notin_(("draft", "void")))
+        ).scalars()
+    )
+    expenses = list(db.execute(select(Expense).where(Expense.organization_id == p.organization_id, Expense.project_id == p.id)).scalars())
+    costs = [
+        ProfitabilityCost(
+            kind="bill",
+            id=b.id,
+            number=b.bill_number,
+            date=b.date,
+            description=b.vendor.display_name,
+            amount=money(b.subtotal - b.discount_amount),
+        )
+        for b in bills
+    ] + [
+        ProfitabilityCost(kind="expense", id=e.id, number=e.expense_number, date=e.date, description=e.account.name, amount=money(e.amount))
+        for e in expenses
+    ]
+    costs.sort(key=lambda c: c.date, reverse=True)
+    bill_costs = money(sum((c.amount for c in costs if c.kind == "bill"), Decimal("0")))
+    expense_costs = money(sum((c.amount for c in costs if c.kind == "expense"), Decimal("0")))
+    summary = _hours_summary(db, [p.id]).get(p.id) or {"logged": Decimal("0"), "unbilled": Decimal("0")}
+    labour_cost = money(summary["logged"] * p.cost_rate)
+    total_cost = money(bill_costs + expense_costs + labour_cost)
+    profit = money(revenue - total_cost)
+    return ProjectProfitability(
+        project_id=p.id,
+        project_name=p.name,
+        revenue=revenue,
+        invoice_count=len(invoices),
+        bill_costs=bill_costs,
+        expense_costs=expense_costs,
+        labour_hours=summary["logged"],
+        labour_cost=labour_cost,
+        total_cost=total_cost,
+        profit=profit,
+        margin_percent=money(profit * 100 / revenue) if revenue > 0 else None,
+        unbilled_amount=money(summary["unbilled"] * p.hourly_rate) if p.billing_method == "hourly" else Decimal("0"),
+        budget_hours=p.budget_hours,
+        logged_hours=summary["logged"],
+        costs=costs[:200],
+    )
 
 
 @router.post("/projects", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)

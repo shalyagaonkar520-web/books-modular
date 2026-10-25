@@ -155,7 +155,15 @@ FEATURES: Tuple[Feature, ...] = (
         "Payments to vendors against bills.",
     ),
     Feature("expenses", "Expenses", ("expenses:router",), ("expenses",), ("/api/expenses",), "Business expenses with receipts."),
-    Feature("banking", "Banking", ("banking:router",), ("banking",), ("/api/banking",), "Bank accounts, transactions and reconciliation."),
+    Feature(
+        "banking",
+        "Banking",
+        ("banking:router", "bank_statements:router"),
+        ("banking",),
+        ("/api/banking",),
+        "Bank accounts, transactions, statement import and reconciliation.",
+    ),
+    Feature("branches", "Branches", ("branches:router",), (), ("/api/branches",), "Branches and locations for reporting."),
     Feature(
         "accounting",
         "Accountant",

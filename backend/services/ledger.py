@@ -15,7 +15,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.models import Account, JournalEntry, JournalLine, Organization
+from backend.models import Account, Bill, Expense, Invoice, JournalEntry, JournalLine, Organization
 from backend.services import numbering
 from backend.services.money import money
 
@@ -56,8 +56,11 @@ def post_entry(
     notes: Optional[str] = None,
     created_by: Optional[str] = None,
     is_reversal: bool = False,
+    branch_id: Optional[str] = None,
 ) -> JournalEntry:
     ensure_open(db, organization_id, entry_date)
+    if branch_id is None:
+        branch_id = _source_branch(db, source_type, source_id)
     cleaned: List[LineSpec] = []
     total_debit = Decimal("0")
     total_credit = Decimal("0")
@@ -96,6 +99,7 @@ def post_entry(
         is_reversal=is_reversal,
         total=total_debit,
         created_by=created_by,
+        branch_id=branch_id,
     )
     for position, (account_id, debit, credit, description, contact_id) in enumerate(cleaned):
         entry.lines.append(
@@ -111,6 +115,18 @@ def post_entry(
     db.add(entry)
     db.flush()
     return entry
+
+
+# Documents that carry a branch; their entries (and reversals) are tagged with it.
+_BRANCH_SOURCES = {"invoice": Invoice, "invoice_cogs": Invoice, "bill": Bill, "expense": Expense}
+
+
+def _source_branch(db: Session, source_type: str, source_id: Optional[str]) -> Optional[str]:
+    model = _BRANCH_SOURCES.get(source_type)
+    if model is None or not source_id:
+        return None
+    doc = db.get(model, source_id)
+    return doc.branch_id if doc is not None else None
 
 
 def reverse_entries_for_source(
@@ -166,6 +182,7 @@ def reverse_entries_for_source(
                 notes=f"{note} of {entry.entry_number}",
                 created_by=created_by,
                 is_reversal=True,
+                branch_id=entry.branch_id,
             )
         )
     return reversals
@@ -177,8 +194,9 @@ def account_balances(
     start: Optional[date] = None,
     end: Optional[date] = None,
     account_ids: Optional[Iterable[str]] = None,
+    branch_id: Optional[str] = None,
 ) -> dict:
-    """Return {account_id: (debit_total, credit_total)} for the period."""
+    """Return {account_id: (debit_total, credit_total)} for the period (optionally one branch)."""
     stmt = (
         select(JournalLine.account_id, JournalLine.debit, JournalLine.credit)
         .join(JournalEntry, JournalEntry.id == JournalLine.entry_id)
@@ -190,6 +208,8 @@ def account_balances(
         stmt = stmt.where(JournalEntry.date <= end)
     if account_ids is not None:
         stmt = stmt.where(JournalLine.account_id.in_(list(account_ids)))
+    if branch_id:
+        stmt = stmt.where(JournalEntry.branch_id == branch_id)
     totals: dict = {}
     for account_id, debit, credit in db.execute(stmt):
         d, c = totals.get(account_id, (Decimal("0"), Decimal("0")))

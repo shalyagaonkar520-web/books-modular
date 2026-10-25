@@ -30,10 +30,11 @@ interface FormState {
   billingMethod: 'hourly' | 'fixed';
   hourlyRate: string;
   budgetHours: string;
+  costRate: string;
   status: Project['status'];
 }
 
-const BLANK: FormState = { name: '', customerId: '', description: '', billingMethod: 'hourly', hourlyRate: '0', budgetHours: '0', status: 'active' };
+const BLANK: FormState = { name: '', customerId: '', description: '', billingMethod: 'hourly', hourlyRate: '0', budgetHours: '0', costRate: '0', status: 'active' };
 
 interface ProjectModalProps {
   open: boolean;
@@ -63,6 +64,7 @@ export function ProjectModal({ open, project, onClose, onSaved }: ProjectModalPr
             billingMethod: project.billingMethod,
             hourlyRate: String(project.hourlyRate),
             budgetHours: String(project.budgetHours),
+            costRate: String(project.costRate ?? 0),
             status: project.status,
           }
         : BLANK,
@@ -80,6 +82,7 @@ export function ProjectModal({ open, project, onClose, onSaved }: ProjectModalPr
       billingMethod: form.billingMethod,
       hourlyRate: parseNumber(form.hourlyRate),
       budgetHours: parseNumber(form.budgetHours),
+      costRate: parseNumber(form.costRate),
     };
     const saved = await run(() =>
       project ? projectsApi.update(project.id, { ...payload, status: form.status }) : projectsApi.create(payload),
@@ -135,6 +138,16 @@ export function ProjectModal({ open, project, onClose, onSaved }: ProjectModalPr
             error={fieldErrors.hourlyRate}
             disabled={form.billingMethod !== 'hourly'}
             onChange={(event) => set('hourlyRate', event.target.value)}
+          />
+          <TextField
+            label={t('ops.profit.costRate')}
+            type="number"
+            step="0.01"
+            min="0"
+            value={form.costRate}
+            error={fieldErrors.costRate}
+            hint={t('ops.profit.costRateHint')}
+            onChange={(event) => set('costRate', event.target.value)}
           />
           <TextField
             label={t('timeTracking.projectModal.budgetHours')}

@@ -90,6 +90,8 @@ class JournalCreate(APIModel):
     reference: Optional[str] = Field(default=None, max_length=120)
     notes: Optional[str] = None
     lines: List[JournalLineInput] = Field(min_length=2)
+    # Branch the journal belongs to (P&L by branch).
+    branch_id: Optional[str] = None
 
 
 class JournalLineOut(APIModel):
@@ -114,6 +116,7 @@ class JournalOut(APIModel):
     is_reversal: bool
     total: Decimal
     lines: List[JournalLineOut]
+    branch_id: Optional[str] = None
     created_at: datetime
 
 

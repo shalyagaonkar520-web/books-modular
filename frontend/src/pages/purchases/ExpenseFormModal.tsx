@@ -11,6 +11,7 @@ import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatPercent, parseNumber, round2, todayIso } from '@/utils/format';
+import { BranchSelect, ProjectSelect } from '@/pages/operations/BranchSelect';
 import { TAX_RATES } from '@/utils/status';
 
 const TAX_OPTIONS = TAX_RATES.map((rate) => ({ value: String(rate), label: `${rate}%` }));
@@ -47,6 +48,8 @@ export function ExpenseFormModal({ refs, expense, onClose, onSaved }: ExpenseFor
   const [isBillable, setIsBillable] = useState(expense?.isBillable ?? false);
   const [reference, setReference] = useState(expense?.reference ?? '');
   const [notes, setNotes] = useState(expense?.notes ?? '');
+  const [branchId, setBranchId] = useState(expense?.branchId ?? '');
+  const [projectId, setProjectId] = useState(expense?.projectId ?? '');
   // These are recorded on the expense but this form does not expose them. Carry
   // the loaded values so they are echoed back on update - otherwise ExpenseUpdate
   // resets category/paymentMethod/receiptUrl/status to its defaults on save.
@@ -87,6 +90,8 @@ export function ExpenseFormModal({ refs, expense, onClose, onSaved }: ExpenseFor
       reference: reference.trim() || null,
       notes: notes.trim() || null,
       isBillable,
+      branchId: branchId || null,
+      projectId: projectId || null,
     };
     if (expense) {
       // Preserve the fields this form does not edit; otherwise the server's
@@ -178,6 +183,11 @@ export function ExpenseFormModal({ refs, expense, onClose, onSaved }: ExpenseFor
           options={TAX_OPTIONS}
           onChange={(event) => setTaxRate(event.target.value)}
         />
+      </div>
+
+      <div className="form-grid">
+        <BranchSelect value={branchId} onChange={setBranchId} />
+        <ProjectSelect value={projectId} onChange={setProjectId} />
       </div>
 
       <div className="totals-list">

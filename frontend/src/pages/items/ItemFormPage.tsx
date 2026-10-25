@@ -41,6 +41,7 @@ interface FormState {
   preferredVendorId: string;
   purchaseDescription: string;
   trackInventory: boolean;
+  trackSerial: boolean;
   openingStock: string;
   openingStockRate: string;
   reorderLevel: string;
@@ -67,6 +68,7 @@ function initialForm(item: Item | null, defaultTaxRate?: number): FormState {
     preferredVendorId: item?.preferredVendorId ?? '',
     purchaseDescription: item?.purchaseDescription ?? '',
     trackInventory: item?.trackInventory ?? false,
+    trackSerial: item?.trackSerial ?? false,
     openingStock: item ? String(item.openingStock) : '0',
     openingStockRate: item ? String(item.openingStockRate) : '0',
     reorderLevel: item ? String(item.reorderLevel) : '0',
@@ -162,6 +164,7 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
       preferredVendorId: form.preferredVendorId || null,
       purchaseDescription: form.purchaseDescription.trim() || null,
       trackInventory: tracks,
+      trackSerial: tracks && form.trackSerial,
       openingStock: tracks ? parseNumber(form.openingStock) : 0,
       openingStockRate: tracks ? parseNumber(form.openingStockRate) : 0,
       reorderLevel: tracks ? parseNumber(form.reorderLevel) : 0,
@@ -283,6 +286,14 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
             checked={form.trackInventory}
             onChange={(event) => set('trackInventory', event.target.checked)}
           />
+          {form.trackInventory ? (
+            <CheckboxField
+              label={t('ops.serials.track')}
+              hint={t('ops.serials.trackHint')}
+              checked={form.trackSerial}
+              onChange={(event) => set('trackSerial', event.target.checked)}
+            />
+          ) : null}
           {form.trackInventory ? (
             <div className="form-grid-3">
               <TextField

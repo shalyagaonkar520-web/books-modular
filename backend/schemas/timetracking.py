@@ -17,10 +17,12 @@ class ProjectCreate(APIModel):
     billing_method: Literal["hourly", "fixed"] = "hourly"
     hourly_rate: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
     budget_hours: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_QUANTITY)
+    # What an hour of work costs the business (project profitability).
+    cost_rate: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
 
 
 class ProjectUpdate(NoExplicitNulls, APIModel):
-    non_nullable_fields: ClassVar[Tuple[str, ...]] = ("name", "billing_method", "hourly_rate", "budget_hours", "status")
+    non_nullable_fields: ClassVar[Tuple[str, ...]] = ("name", "billing_method", "hourly_rate", "budget_hours", "cost_rate", "status")
 
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     customer_id: Optional[str] = None
@@ -28,6 +30,7 @@ class ProjectUpdate(NoExplicitNulls, APIModel):
     billing_method: Optional[Literal["hourly", "fixed"]] = None
     hourly_rate: Optional[Decimal] = Field(default=None, ge=0, le=MAX_MONEY)
     budget_hours: Optional[Decimal] = Field(default=None, ge=0, le=MAX_QUANTITY)
+    cost_rate: Optional[Decimal] = Field(default=None, ge=0, le=MAX_MONEY)
     status: Optional[Literal["active", "completed", "on_hold"]] = None
 
 
@@ -40,6 +43,7 @@ class ProjectOut(APIModel):
     billing_method: str
     hourly_rate: Decimal
     budget_hours: Decimal
+    cost_rate: Decimal = Decimal("0")
     status: str
     logged_hours: Decimal = Decimal("0")
     billable_hours: Decimal = Decimal("0")
@@ -93,3 +97,30 @@ class InvoiceFromTimeRequest(APIModel):
         if self.due_date and self.due_date < self.date:
             raise ValueError("Due date cannot be before the invoice date")
         return self
+
+
+class ProfitabilityCost(APIModel):
+    kind: Literal["bill", "expense"]
+    id: str
+    number: str
+    date: date
+    description: str
+    amount: Decimal
+
+
+class ProjectProfitability(APIModel):
+    project_id: str
+    project_name: str
+    revenue: Decimal
+    invoice_count: int
+    bill_costs: Decimal
+    expense_costs: Decimal
+    labour_hours: Decimal
+    labour_cost: Decimal
+    total_cost: Decimal
+    profit: Decimal
+    margin_percent: Optional[Decimal] = None
+    unbilled_amount: Decimal
+    budget_hours: Decimal
+    logged_hours: Decimal
+    costs: List[ProfitabilityCost] = []

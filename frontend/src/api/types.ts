@@ -49,6 +49,10 @@ export interface Organization {
   invoiceNotes?: string | null;
   /** Books are closed up to and including this date (null = open). */
   lockDate?: string | null;
+  /** Default reimbursement per km for mileage claims. */
+  mileageRate?: number | null;
+  /** UPI ID customers pay to (QR code on invoices). */
+  upiId?: string | null;
   /** Default GST % for new items and new document lines. */
   defaultTaxRate?: number;
   /** Default payment terms (days) for new customers and vendors. */
@@ -120,6 +124,8 @@ export interface Item {
   preferredVendorId?: string | null;
   preferredVendorName?: string | null;
   trackInventory: boolean;
+  /** Every unit carries its own serial number. */
+  trackSerial?: boolean;
   openingStock: number;
   openingStockRate: number;
   stockOnHand: number;
@@ -215,6 +221,8 @@ export interface DocumentLine {
   fcAmount?: number | null;
   batchNumber?: string | null;
   expiryDate?: string | null;
+  /** Serial numbers of the units, comma separated. */
+  serialNumbers?: string | null;
 }
 
 export type InvoiceStatus = 'draft' | 'sent' | 'partially_paid' | 'paid' | 'void' | 'overdue';
@@ -261,6 +269,7 @@ export interface Invoice {
   fcAmountPaid?: number | null;
   fcBalanceDue?: number | null;
   warehouseId?: string | null;
+  branchId?: string | null;
   approvalStatus?: string | null;
   approvalNote?: string | null;
   lines: DocumentLine[];
@@ -350,6 +359,8 @@ export interface Bill {
   fcAmountPaid?: number | null;
   fcBalanceDue?: number | null;
   warehouseId?: string | null;
+  branchId?: string | null;
+  projectId?: string | null;
   approvalStatus?: string | null;
   approvalNote?: string | null;
   lines: DocumentLine[];
@@ -413,6 +424,10 @@ export interface Expense {
   reference?: string | null;
   notes?: string | null;
   isBillable: boolean;
+  branchId?: string | null;
+  projectId?: string | null;
+  distanceKm?: number | null;
+  ratePerKm?: number | null;
   /** Set on creation but not exposed by the edit form; echoed back on update so
    * the server does not reset them to its ExpenseUpdate defaults. */
   category?: string | null;
@@ -561,6 +576,8 @@ export interface Project {
   billingMethod: 'hourly' | 'fixed';
   hourlyRate: number;
   budgetHours: number;
+  /** What an hour of work costs the business. */
+  costRate?: number;
   status: 'active' | 'completed' | 'on_hold';
   loggedHours: number;
   billableHours: number;

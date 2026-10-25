@@ -18,6 +18,7 @@ from backend.models import (
     BankAccount,
     BankTransaction,
     BillLine,
+    Branch,
     Contact,
     Expense,
     InvoiceLine,
@@ -177,6 +178,7 @@ def journal_out(entry: JournalEntry) -> JournalOut:
         source_id=entry.source_id,
         is_reversal=entry.is_reversal,
         total=entry.total,
+        branch_id=entry.branch_id,
         lines=[
             JournalLineOut(
                 id=ln.id,
@@ -260,9 +262,19 @@ def create_journal_record(db: Session, user: User, payload: JournalCreate, recur
         found = set(db.execute(select(Contact.id).where(Contact.organization_id == org_id, Contact.id.in_(contact_ids))).scalars())
         if found != contact_ids:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "One or more contacts do not belong to this organization")
+    branch_id = get_or_404(db, Branch, payload.branch_id, org_id, "Branch").id if payload.branch_id else None
     lines = [(ln.account_id, ln.debit, ln.credit, ln.description, ln.contact_id) for ln in payload.lines]
     entry = ledger.post_entry(
-        db, user.organization_id, payload.date, lines, "manual", None, reference=payload.reference, notes=payload.notes, created_by=user.id
+        db,
+        user.organization_id,
+        payload.date,
+        lines,
+        "manual",
+        None,
+        reference=payload.reference,
+        notes=payload.notes,
+        created_by=user.id,
+        branch_id=branch_id,
     )
     entry.source_id = entry.id
     entry.recurring_profile_id = recurring_profile_id

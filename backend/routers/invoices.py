@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
 from backend.models import (
+    Branch,
     Contact,
     ExternalPaymentProof,
     Invoice,
@@ -71,6 +72,7 @@ def line_out(line: InvoiceLine) -> LineOut:
         fc_rate=line.fc_rate if line.fc_rate is not None else line.rate,
         fc_amount=line.fc_amount if line.fc_amount is not None else line.amount,
         batch_number=line.batch_number,
+        serial_numbers=line.serial_numbers,
     )
 
 
@@ -128,6 +130,7 @@ def to_out(inv: Invoice) -> InvoiceOut:
         irn_ack_date=inv.irn_ack_date,
         eway_bill_no=inv.eway_bill_no,
         warehouse_id=inv.warehouse_id,
+        branch_id=inv.branch_id,
         approval_status=inv.approval_status,
         approval_note=inv.approval_note,
         **fc_fields(inv),
@@ -183,6 +186,7 @@ def _apply_payload(db: Session, inv: Invoice, payload: InvoiceCreate, org_id: st
     inv.notes = payload.notes
     inv.terms = payload.terms
     inv.warehouse_id = stock.resolve_warehouse(db, org_id, payload.warehouse_id).id if payload.warehouse_id else None
+    inv.branch_id = get_or_404(db, Branch, payload.branch_id, org_id, "Branch").id if payload.branch_id else None
     inv.place_of_supply = payload.place_of_supply
     inv.tcs_rate = payload.tcs_rate
     # Lines are entered in the customer's currency; the books get base amounts.
@@ -213,6 +217,7 @@ def _apply_payload(db: Session, inv: Invoice, payload: InvoiceCreate, org_id: st
                 fc_rate=line.rate,
                 fc_amount=line.amount,
                 batch_number=(line.spec.batch_number or "").strip() or None,
+                serial_numbers=", ".join(stock.parse_serials(line.spec.serial_numbers)) or None,
             )
         )
 
@@ -263,6 +268,7 @@ def post_invoice(db: Session, inv: Invoice, user: User) -> None:
                 rate=Decimal("0"),
                 warehouse_id=inv.warehouse_id,
                 batch_number=line.batch_number,
+                serial_numbers=stock.parse_serials(line.serial_numbers) if line.item.track_serial else None,
             )
             cost = money(line.quantity * money(item.cost_price))
             if cost > 0:
@@ -291,6 +297,7 @@ def unpost_invoice(db: Session, inv: Invoice, user: User, reason: str) -> None:
                 rate=Decimal("0"),
                 warehouse_id=inv.warehouse_id,
                 batch_number=line.batch_number,
+                serial_numbers=stock.parse_serials(line.serial_numbers) if line.item.track_serial else None,
             )
 
 

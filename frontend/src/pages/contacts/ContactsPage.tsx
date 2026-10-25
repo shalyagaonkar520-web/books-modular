@@ -1,7 +1,7 @@
 /** Customers and vendors share this page; every label follows the `type` prop. */
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { FileDown, FileSpreadsheet, FileText, Mail, Pencil, Plus, Trash2, Users } from 'lucide-react';
+import { FileDown, FileSpreadsheet, FileText, Mail, Pencil, Plus, ScrollText, Trash2, Users } from 'lucide-react';
 
 import { contactsApi } from '@/api/endpoints';
 import type { Contact, ContactType, GstTreatment } from '@/api/types';
@@ -24,6 +24,7 @@ import { SearchInput, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
 import { formatCurrency, formatDateTime, formatNumber } from '@/utils/format';
 import { gstTreatmentLabel, type Tone, type Translate } from '@/utils/status';
+import { StatementModal } from '@/pages/operations/StatementModal';
 
 const PAGE_SIZE = 25;
 
@@ -73,6 +74,7 @@ export function ContactsPage({ type }: { type: ContactType }) {
 
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [emailContact, setEmailContact] = useState<Contact | null>(null);
+  const [statementContact, setStatementContact] = useState<Contact | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectAllPages, setSelectAllPages] = useState(false);
@@ -238,6 +240,15 @@ export function ContactsPage({ type }: { type: ContactType }) {
           <Link className="action-btn" to={`${copy.documentsPath}${contact.id}`} aria-label={t(`${textGroup}.action.viewDocuments`, { name: contact.displayName })}>
             <FileText size={15} />
           </Link>
+          <button
+            type="button"
+            className="action-btn"
+            title={t('ops.statement.action', { name: contact.displayName })}
+            aria-label={t('ops.statement.action', { name: contact.displayName })}
+            onClick={() => setStatementContact(contact)}
+          >
+            <ScrollText size={15} />
+          </button>
           <IfCanWrite>
             <button
               type="button"
@@ -477,6 +488,8 @@ export function ContactsPage({ type }: { type: ContactType }) {
           }}
         />
       ) : null}
+
+      {statementContact ? <StatementModal contact={statementContact} onClose={() => setStatementContact(null)} /> : null}
 
       {emailContact ? (
         <SendContactEmailModal

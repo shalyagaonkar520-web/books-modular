@@ -66,6 +66,8 @@ def profit_and_loss(
     # Also accept the snake_case form so existing callers aren't broken
     start_date_snake: Optional[date] = Query(default=None, alias="start_date"),
     end_date_snake: Optional[date] = Query(default=None, alias="end_date"),
+    # One branch only; omitted = the whole organization.
+    branch_id: Optional[str] = Query(default=None, alias="branchId"),
     # Ledger account balances: Admin and Viewer only, like Accounting.
     user: User = Depends(require_financial_read),
     db: Session = Depends(get_db),
@@ -74,7 +76,7 @@ def profit_and_loss(
     effective_end = end_date or end_date_snake
     start, end = _default_range(user, effective_start, effective_end)
     accounts = db.execute(select(Account).where(Account.organization_id == user.organization_id).order_by(Account.code)).scalars().all()
-    balances = ledger.account_balances(db, user.organization_id, start=start, end=end)
+    balances = ledger.account_balances(db, user.organization_id, start=start, end=end, branch_id=branch_id)
     income = _section("Operating Income", accounts, balances, lambda a: a.type == "income" and a.subtype != "other_income")
     cogs = _section("Cost of Goods Sold", accounts, balances, lambda a: a.type == "expense" and a.subtype in ("cogs", "contra_expense"))
     opex = _section("Operating Expenses", accounts, balances, lambda a: a.type == "expense" and a.subtype not in ("cogs", "contra_expense"))

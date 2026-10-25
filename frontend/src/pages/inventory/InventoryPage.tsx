@@ -19,8 +19,9 @@ import { Tabs } from '@/components/ui/Toolbar';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatDate, formatQuantity, parseNumber, todayIso } from '@/utils/format';
+import { SerialsTab } from '@/pages/operations/SerialsTab';
 
-type Tab = 'stock' | 'warehouses' | 'transfers' | 'batches' | 'ledger' | 'priceLists';
+type Tab = 'stock' | 'warehouses' | 'transfers' | 'batches' | 'serials' | 'ledger' | 'priceLists';
 
 export function InventoryPage() {
   const { t } = useAppContent();
@@ -29,7 +30,7 @@ export function InventoryPage() {
     <div className="stack">
       <PageHeader title={t('inventory.title')} subtitle={t('inventory.subtitle')} />
       <Tabs
-        tabs={(['stock', 'warehouses', 'transfers', 'batches', 'ledger', 'priceLists'] as Tab[]).map((id) => ({ id, label: t(`inventory.tab.${id}`) }))}
+        tabs={(['stock', 'warehouses', 'transfers', 'batches', 'serials', 'ledger', 'priceLists'] as Tab[]).map((id) => ({ id, label: t(`inventory.tab.${id}`) }))}
         active={tab}
         onChange={(id) => setTab(id as Tab)}
       />
@@ -37,6 +38,7 @@ export function InventoryPage() {
       {tab === 'warehouses' ? <WarehousesTab /> : null}
       {tab === 'transfers' ? <TransfersTab /> : null}
       {tab === 'batches' ? <BatchesTab /> : null}
+      {tab === 'serials' ? <SerialsTab /> : null}
       {tab === 'ledger' ? <LedgerTab /> : null}
       {tab === 'priceLists' ? <PriceListsTab /> : null}
     </div>

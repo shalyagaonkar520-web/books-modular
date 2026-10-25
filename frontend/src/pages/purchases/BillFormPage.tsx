@@ -19,6 +19,7 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { addDaysIso, formatCurrency, parseNumber, round2, round3, todayIso } from '@/utils/format';
 import { TDS_SECTIONS } from '@/utils/gst';
 import { taxRatesWith } from '@/utils/status';
+import { BranchSelect, ProjectSelect } from '@/pages/operations/BranchSelect';
 
 interface LineDraft {
   key: string;
@@ -29,6 +30,7 @@ interface LineDraft {
   rate: string;
   taxRate: string;
   batchNumber: string;
+  serialNumbers: string;
   expiryDate: string;
 }
 
@@ -38,7 +40,7 @@ let nextLineKey = 1;
 const FALLBACK_LINE_TAX_RATE = '0';
 
 function emptyLine(taxRate: string = FALLBACK_LINE_TAX_RATE): LineDraft {
-  return { key: `line-${nextLineKey++}`, itemId: '', accountId: '', description: '', quantity: '1', rate: '0', taxRate, batchNumber: '', expiryDate: '' };
+  return { key: `line-${nextLineKey++}`, itemId: '', accountId: '', description: '', quantity: '1', rate: '0', taxRate, batchNumber: '', expiryDate: '', serialNumbers: '' };
 }
 
 
@@ -95,6 +97,8 @@ export function BillFormPage() {
   const [reverseCharge, setReverseCharge] = useState(false);
   const [exchangeRate, setExchangeRate] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
+  const [branchId, setBranchId] = useState('');
+  const [projectId, setProjectId] = useState('');
   const warehouses = useAsync(() => warehousesApi.list(), []);
   const currencies = useAsync(() => currenciesApi.list(), []);
   const [lines, setLines] = useState<LineDraft[]>(() => [emptyLine(defaultLineTaxRate)]);
@@ -121,6 +125,8 @@ export function BillFormPage() {
     setReverseCharge(Boolean(bill.reverseCharge));
     setExchangeRate(bill.exchangeRate && bill.exchangeRate !== 1 ? String(bill.exchangeRate) : '');
     setWarehouseId(bill.warehouseId ?? '');
+    setBranchId(bill.branchId ?? '');
+    setProjectId(bill.projectId ?? '');
     setLines(
       bill.lines.length > 0
         ? bill.lines.map((line) => ({
@@ -134,6 +140,7 @@ export function BillFormPage() {
             taxRate: String(line.taxRate),
             batchNumber: line.batchNumber ?? '',
             expiryDate: line.expiryDate ?? '',
+            serialNumbers: line.serialNumbers ?? '',
           }))
         : [emptyLine()],
     );
@@ -205,6 +212,8 @@ export function BillFormPage() {
       reverseCharge,
       exchangeRate: foreign && parseNumber(exchangeRate, 0) > 0 ? parseNumber(exchangeRate, 0) : null,
       warehouseId: warehouseId || null,
+      branchId: branchId || null,
+      projectId: projectId || null,
       tdsSection: parseNumber(tdsRate, 0) > 0 ? tdsSection || null : null,
       tdsRate: parseNumber(tdsRate, 0),
       lines: lines.map((line) => ({
@@ -216,6 +225,7 @@ export function BillFormPage() {
         taxRate: parseNumber(line.taxRate, 0),
         batchNumber: line.batchNumber.trim() || null,
         expiryDate: line.expiryDate || null,
+        serialNumbers: line.serialNumbers.trim() || null,
       })),
     };
     const result = await run(() => (billId ? billsApi.update(billId, body) : billsApi.create(body)));
@@ -290,6 +300,8 @@ export function BillFormPage() {
                 setExchangeRate(saved ? String(saved) : '');
               }}
             />
+            <BranchSelect value={branchId} onChange={setBranchId} />
+            <ProjectSelect value={projectId} onChange={setProjectId} />
             {(warehouses.data?.length ?? 0) > 1 ? (
               <SelectField
                 label={t('docflow.form.warehouse')}
@@ -417,6 +429,16 @@ export function BillFormPage() {
                             onChange={(event) => updateLine(line.key, { expiryDate: event.target.value })}
                           />
                         </div>
+                      ) : null}
+                      {item?.trackSerial ? (
+                        <textarea
+                          className="input input-sm"
+                          rows={2}
+                          placeholder={t('ops.serials.placeholder', { count: line.quantity })}
+                          aria-label={t('ops.serials.label')}
+                          value={line.serialNumbers}
+                          onChange={(event) => updateLine(line.key, { serialNumbers: event.target.value })}
+                        />
                       ) : null}
                     </td>
                     <td>

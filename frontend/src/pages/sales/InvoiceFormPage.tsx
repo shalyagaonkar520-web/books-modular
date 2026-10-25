@@ -20,6 +20,7 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { addDaysIso, formatCurrency, formatQuantity, parseNumber, round2, round3, todayIso } from '@/utils/format';
 import { stateFromGstin, stateOptions, TCS_RATES } from '@/utils/gst';
 import { taxRatesWith } from '@/utils/status';
+import { BranchSelect } from '@/pages/operations/BranchSelect';
 
 interface LineDraft {
   key: string;
@@ -31,6 +32,7 @@ interface LineDraft {
   rate: string;
   taxRate: string;
   batchNumber: string;
+  serialNumbers: string;
 }
 
 let lineCounter = 0;
@@ -45,6 +47,7 @@ const newLine = (taxRate: string = FALLBACK_LINE_TAX_RATE): LineDraft => ({
   rate: '0',
   taxRate,
   batchNumber: '',
+  serialNumbers: '',
 });
 
 // Match the backend, which rounds quantity to 3dp and rate to 2dp before
@@ -82,6 +85,7 @@ export function InvoiceFormPage() {
   const [tcsRate, setTcsRate] = useState('0');
   const [exchangeRate, setExchangeRate] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
+  const [branchId, setBranchId] = useState('');
 
   const customers = useAsync((signal) => contactsApi.list({ type: 'customer', page_size: 200 }, signal), []);
   const currencies = useAsync(() => currenciesApi.list(), []);
@@ -115,6 +119,7 @@ export function InvoiceFormPage() {
     setTcsRate(String(loaded.tcsRate ?? 0));
     setExchangeRate(loaded.exchangeRate && loaded.exchangeRate !== 1 ? String(loaded.exchangeRate) : '');
     setWarehouseId(loaded.warehouseId ?? '');
+    setBranchId(loaded.branchId ?? '');
     setLines(
       loaded.lines.length
         ? loaded.lines.map((line) => ({
@@ -127,6 +132,7 @@ export function InvoiceFormPage() {
             rate: String(line.fcRate ?? line.rate),
             taxRate: String(line.taxRate),
             batchNumber: line.batchNumber ?? '',
+            serialNumbers: line.serialNumbers ?? '',
           }))
         : [newLine()],
     );
@@ -206,6 +212,7 @@ export function InvoiceFormPage() {
       tcsRate: parseNumber(tcsRate),
       exchangeRate: foreign && parseNumber(exchangeRate) > 0 ? parseNumber(exchangeRate) : null,
       warehouseId: warehouseId || null,
+      branchId: branchId || null,
       lines: lines.map((line) => ({
         itemId: line.itemId || null,
         accountId: line.accountId || null,
@@ -214,6 +221,7 @@ export function InvoiceFormPage() {
         rate: round2(parseNumber(line.rate)),
         taxRate: parseNumber(line.taxRate),
         batchNumber: line.batchNumber.trim() || null,
+        serialNumbers: line.serialNumbers.trim() || null,
       })),
     };
     const saved = await run<Invoice>(() => (invoiceId ? invoicesApi.update(invoiceId, payload) : invoicesApi.create(payload)));
@@ -353,6 +361,7 @@ export function InvoiceFormPage() {
               error={fieldErrors.subject}
               onChange={(event) => setSubject(event.target.value)}
             />
+            <BranchSelect value={branchId} onChange={setBranchId} />
             {(warehouses.data?.length ?? 0) > 1 ? (
               <SelectField
                 label={t('docflow.form.warehouse')}
@@ -430,6 +439,16 @@ export function InvoiceFormPage() {
                             aria-label={t('docflow.lines.batch')}
                             value={line.batchNumber}
                             onChange={(event) => updateLine(line.key, { batchNumber: event.target.value })}
+                          />
+                        ) : null}
+                        {item?.trackSerial ? (
+                          <textarea
+                            className="input input-sm"
+                            rows={2}
+                            placeholder={t('ops.serials.placeholder', { count: line.quantity })}
+                            aria-label={t('ops.serials.label')}
+                            value={line.serialNumbers}
+                            onChange={(event) => updateLine(line.key, { serialNumbers: event.target.value })}
                           />
                         ) : null}
                       </td>

@@ -51,7 +51,9 @@ def summary(db: Session, user: User, report: str, start: date, end: date) -> Lis
     from backend.services import gst_returns
 
     if report == "profit_and_loss":
-        pl = reports.profit_and_loss(start_date=start, end_date=end, start_date_snake=None, end_date_snake=None, user=user, db=db)
+        pl = reports.profit_and_loss(
+            start_date=start, end_date=end, start_date_snake=None, end_date_snake=None, branch_id=None, user=user, db=db
+        )
         return [
             f"Income: {_inr(pl.income.total)}",
             f"Cost of goods sold: {_inr(pl.cost_of_goods_sold.total)}",

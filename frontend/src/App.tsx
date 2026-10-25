@@ -12,6 +12,7 @@ import { FinancialDashboardPage } from '@/pages/financial/FinancialDashboardPage
 import { ReceivablesPayablesDashboard } from '@/pages/financial/ReceivablesPayablesDashboard';
 import { RazorpayPaymentsPage } from '@/pages/payments/RazorpayPaymentsPage';
 import { BankingPage } from '@/pages/banking/BankingPage';
+import { BankStatementPage } from '@/pages/operations/BankStatementPage';
 import { BillFormPage } from '@/pages/purchases/BillFormPage';
 import { BillsPage } from '@/pages/purchases/BillsPage';
 import { ContactsPage } from '@/pages/contacts/ContactsPage';
@@ -173,6 +174,14 @@ export function App() {
               element={
                 <RequireRole roles={['admin', 'viewer']}>
                   <BankingPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/banking/:accountId/statement"
+              element={
+                <RequireRole roles={['admin', 'viewer']}>
+                  <BankStatementPage />
                 </RequireRole>
               }
             />

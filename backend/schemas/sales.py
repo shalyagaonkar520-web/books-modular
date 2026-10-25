@@ -32,6 +32,8 @@ class LineInput(APIModel):
     # Goods tracked in batches: the batch sold (invoices) or received (bills, with expiry).
     batch_number: Optional[str] = Field(default=None, max_length=60)
     expiry_date: Optional[date] = None
+    # Serial-tracked goods: the units sold or received, comma separated.
+    serial_numbers: Optional[str] = Field(default=None, max_length=20000)
 
 
 class LineOut(LineInput):
@@ -73,6 +75,8 @@ class InvoiceCreate(APIModel):
     exchange_rate: Optional[Decimal] = Field(default=None, gt=0, le=Decimal("1000000"))
     # Warehouse goods ship from; null = the default warehouse.
     warehouse_id: Optional[str] = None
+    # Branch the sale belongs to (P&L by branch).
+    branch_id: Optional[str] = None
 
     @model_validator(mode="after")
     def _due_after_date(self):
@@ -124,6 +128,7 @@ class InvoiceOut(APIModel):
     irn_ack_date: Optional[datetime] = None
     eway_bill_no: Optional[str] = None
     warehouse_id: Optional[str] = None
+    branch_id: Optional[str] = None
     approval_status: Optional[str] = None
     approval_note: Optional[str] = None
     currency: Optional[str] = None

@@ -31,6 +31,7 @@ def adjust_stock(
     warehouse_id: Optional[str] = None,
     batch_number: Optional[str] = None,
     expiry_date: Optional[date] = None,
+    serial_numbers: Optional[list[str]] = None,
 ) -> None:
     """Change stock on hand, log the movement (warehouse, batch) and post the inventory asset movement."""
     if not item.track_inventory:
@@ -74,6 +75,7 @@ def adjust_stock(
         batch_number=batch_number,
         expiry_date=expiry_date,
         allow_negative=allow_negative,
+        serial_numbers=serial_numbers,
     )
     unit_rate = money(rate if rate is not None else item.cost_price)
     value = money(delta * unit_rate)
