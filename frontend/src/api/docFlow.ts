@@ -44,6 +44,8 @@ export interface Refund {
 }
 
 export interface FlowDocument {
+  /** What was saved (draft / sent); status shows 'expired' for a quote past its expiry date. */
+  storedStatus?: string | null;
   id: string;
   kind: DocKindKey;
   number: string;

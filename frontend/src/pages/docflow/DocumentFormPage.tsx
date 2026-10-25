@@ -106,7 +106,9 @@ export function DocumentFormPage({ kind }: { kind: DocKindKey }) {
   }, [fromInvoice, fromBill, isEdit]);
 
   const totals = lineTotals(lines, discountAmount);
-  const keepStatus = loaded && loaded.status !== 'draft';
+  // An expired quote is edited by what was saved: an expired draft as a draft, an expired sent quote stays sent.
+  const savedStatus = loaded?.storedStatus ?? loaded?.status;
+  const keepStatus = loaded && savedStatus !== 'draft';
 
   const submit = async (status: string) => {
     if (!contactId) {

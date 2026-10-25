@@ -15,6 +15,7 @@ import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { parseNumber } from '@/utils/format';
 import { taxRatesWith, UNITS } from '@/utils/status';
+import { CustomFieldsCard } from '@/pages/automation/DocumentExtrasCards';
 import { CompositeItemCard } from './CompositeItemCard';
 
 const UNIT_OPTIONS = UNITS.map((unit) => ({ value: unit, label: unit }));
@@ -119,6 +120,11 @@ export function ItemFormPage() {
       {existing.data?.trackInventory ? (
         <div className="form-section">
           <CompositeItemCard itemId={existing.data.id} onChanged={existing.reload} />
+        </div>
+      ) : null}
+      {existing.data ? (
+        <div className="form-section">
+          <CustomFieldsCard entity="item" entityId={existing.data.id} />
         </div>
       ) : null}
     </>

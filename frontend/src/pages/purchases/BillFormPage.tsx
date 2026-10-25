@@ -19,6 +19,7 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { addDaysIso, formatCurrency, parseNumber, round2, round3, todayIso } from '@/utils/format';
 import { TDS_SECTIONS } from '@/utils/gst';
 import { taxRatesWith } from '@/utils/status';
+import { ApprovalBanner, CustomFieldsCard } from '@/pages/automation/DocumentExtrasCards';
 import { BranchSelect, ProjectSelect } from '@/pages/operations/BranchSelect';
 
 interface LineDraft {
@@ -158,7 +159,10 @@ export function BillFormPage() {
   const taxTotal = round2(lines.reduce((sum, line) => sum + round2((lineAmount(line) * parseNumber(line.taxRate, 0)) / 100), 0));
   const discount = round2(parseNumber(discountAmount, 0));
   const baseCurrency = organization?.currency ?? 'INR';
-  const vendorCurrency = vendor?.currency || baseCurrency;
+  // The vendor list holds only the first 200 vendors: an existing foreign-currency
+  // bill still knows its own currency, so the exchange-rate field stays visible.
+  const billCurrency = bill && vendorId === bill.vendorId && bill.currency && bill.exchangeRate !== undefined && bill.exchangeRate !== 1 ? bill.currency : null;
+  const vendorCurrency = vendor?.currency || billCurrency || baseCurrency;
   const foreign = vendorCurrency !== baseCurrency;
   const tdsAmount = round2(((subtotal - discount) * parseNumber(tdsRate, 0)) / 100);
   // Under reverse charge the vendor is not paid the GST; TDS is withheld from them.
@@ -280,6 +284,18 @@ export function BillFormPage() {
           </Button>
         }
       />
+      {bill ? (
+        <ApprovalBanner
+          kind="bill"
+          id={bill.id}
+          status={bill.status}
+          total={bill.total}
+          approvalStatus={bill.approvalStatus}
+          approvalNote={bill.approvalNote}
+          approvedTotal={bill.approvedTotal}
+          onChanged={existing.reload}
+        />
+      ) : null}
 
       <Card>
         <FormError message={error} />
@@ -622,6 +638,7 @@ export function BillFormPage() {
           </div>
         </div>
       </Card>
+      {bill ? <CustomFieldsCard entity="bill" entityId={bill.id} /> : null}
     </>
   );
 }

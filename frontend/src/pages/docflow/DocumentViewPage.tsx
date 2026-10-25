@@ -63,7 +63,7 @@ export function DocumentViewPage({ kind }: { kind: DocKindKey }) {
   const convert = (target: 'invoice' | 'bill' | 'sales-order', issue: boolean) =>
     act(t('docflow.view.converted'), () => api.convert(d.id, target, issue), (result) => {
       const r = result as { kind: string; id: string };
-      navigate(r.kind === 'invoice' ? `/invoices/${r.id}` : r.kind === 'bill' ? `/bills` : `/sales-orders/${r.id}`);
+      navigate(r.kind === 'invoice' ? `/invoices/${r.id}` : r.kind === 'bill' ? `/bills/${r.id}/edit` : `/sales-orders/${r.id}`);
     });
 
   const confirm = async () => {
@@ -82,7 +82,7 @@ export function DocumentViewPage({ kind }: { kind: DocKindKey }) {
     buttons.push({ key: `s-${next}`, label, variant, onClick: () => setPending({ action: 'status', status: next }) });
   if (canWrite) {
     if (kind === 'estimate') {
-      if (status === 'draft') status_('sent', t('docflow.action.markSent'));
+      if ((d.storedStatus ?? status) === 'draft') status_('sent', t('docflow.action.markSent'));
       if (['draft', 'sent', 'expired', 'declined'].includes(status)) status_('accepted', t('docflow.action.markAccepted'));
       if (['draft', 'sent', 'expired', 'accepted'].includes(status) && !d.salesOrderId) status_('declined', t('docflow.action.markDeclined'));
       if (!d.invoiceId && !d.salesOrderId && status !== 'declined') {
@@ -111,7 +111,8 @@ export function DocumentViewPage({ kind }: { kind: DocKindKey }) {
     }
   }
   const canEdit = canWrite && cfg.editable.includes(status) && !used;
-  const canDelete = canWrite && !used && !d.invoiceId && !d.billId && !(kind === 'estimate' && d.salesOrderId);
+  // On a credit note / vendor credit the invoice or bill is its source, not a conversion: it may still be deleted.
+  const canDelete = canWrite && !used && (cfg.isCredit || (!d.invoiceId && !d.billId)) && !(kind === 'estimate' && d.salesOrderId);
 
   const links: Array<{ label: string; to: string; text: string }> = [];
   if (d.estimateId) links.push({ label: t('docflow.view.fromQuote'), to: `/quotes/${d.estimateId}`, text: d.estimateNumber ?? '' });

@@ -272,6 +272,8 @@ export interface Invoice {
   branchId?: string | null;
   approvalStatus?: string | null;
   approvalNote?: string | null;
+  /** Total at the time of approval; raising the total above it needs re-approval. */
+  approvedTotal?: number | null;
   lines: DocumentLine[];
   createdAt: string;
   updatedAt: string;
@@ -363,6 +365,8 @@ export interface Bill {
   projectId?: string | null;
   approvalStatus?: string | null;
   approvalNote?: string | null;
+  /** Total at the time of approval; raising the total above it needs re-approval. */
+  approvedTotal?: number | null;
   lines: DocumentLine[];
   createdAt: string;
   updatedAt: string;

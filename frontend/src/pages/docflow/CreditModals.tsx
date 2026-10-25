@@ -27,7 +27,7 @@ async function openDocuments(party: 'customer' | 'vendor', contactId: string): P
     const page = await invoicesApi.list({ customer_id: contactId, status: 'unpaid', page_size: 100 });
     return page.items.map((inv) => ({ id: inv.id, number: inv.invoiceNumber, date: inv.date, balanceDue: inv.balanceDue }));
   }
-  const page = await billsApi.list({ vendor_id: contactId, page_size: 100 });
+  const page = await billsApi.list({ vendor_id: contactId, status: 'unpaid', page_size: 100 });
   return page.items
     .filter((bill) => ['open', 'partially_paid', 'overdue'].includes(bill.status))
     .map((bill) => ({ id: bill.id, number: bill.billNumber, date: bill.date, balanceDue: bill.balanceDue }));

@@ -152,7 +152,7 @@ def anomalies(db: Session, org_id: str, today: Optional[date] = None) -> List[Al
                     "medium",
                     f"No GSTIN for {b.vendor.display_name}",
                     f"Bill {b.bill_number} charges GST of {_inr(b.tax_total)}, but the vendor has no GSTIN: the input credit may be refused.",
-                    "contact",
+                    "vendor",
                     b.vendor_id,
                     b.tax_total,
                 )
@@ -173,7 +173,7 @@ def anomalies(db: Session, org_id: str, today: Optional[date] = None) -> List[Al
                 "low",
                 f"No GSTIN for {c.display_name}",
                 "Marked as a registered business but no GSTIN: B2B invoices to them will not report correctly in GSTR-1.",
-                "contact",
+                "customer",
                 c.id,
             )
         )

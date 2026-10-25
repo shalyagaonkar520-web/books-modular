@@ -22,6 +22,9 @@ import { formatCurrency, formatDate } from '@/utils/format';
 
 type View = 'unmatched' | 'matched' | 'ignored';
 
+/** Most statement lines the AI categorizer accepts in one call. */
+const AI_SUGGEST_BATCH = 100;
+
 export function BankStatementPage() {
   const { t } = useAppContent();
   const { accountId = '' } = useParams<{ accountId: string }>();
@@ -63,14 +66,23 @@ export function BankStatementPage() {
 
   const suggest = async () => {
     const rows = (lines.data ?? []).filter((l) => l.status === 'unmatched');
-    const res = await run(() => aiApi.categorize(rows.map((l) => ({ description: l.description, amount: l.amount, type: l.type }))));
+    // The server takes at most 100 rows per call: send them in batches and map each
+    // returned index back to its line.
+    const res = await run(async () => {
+      const found: Record<string, string> = {};
+      for (let start = 0; start < rows.length; start += AI_SUGGEST_BATCH) {
+        const batch = rows.slice(start, start + AI_SUGGEST_BATCH);
+        const out = await aiApi.categorize(batch.map((l) => ({ description: l.description, amount: l.amount, type: l.type })));
+        out.suggestions.forEach((s) => {
+          const line = batch[s.index];
+          if (line && s.account_id) found[line.id] = s.account_id;
+        });
+      }
+      return found;
+    });
     if (res === null) toast.error(errorRef.current ?? t('common.error.generic'));
     else {
-      const next: Record<string, string> = {};
-      res.suggestions.forEach((s) => {
-        const line = rows[s.index];
-        if (line && s.account_id) next[line.id] = s.account_id;
-      });
+      const next = res;
       setSuggested(next);
       setChosen((current) => ({ ...next, ...current }));
       toast.success(t('ops.bank.suggested', { count: Object.keys(next).length }));
@@ -101,7 +113,11 @@ export function BankStatementPage() {
                 </Button>
                 <label className="btn btn-primary btn-md">
                   <Upload size={15} aria-hidden="true" /> <span>{t('ops.bank.upload')}</span>
-                  <input type="file" accept=".csv,text/csv" hidden onChange={(e) => void upload(e.target.files?.[0])} />
+                  <input type="file" accept=".csv,text/csv" hidden onChange={(e) => {
+                      void upload(e.target.files?.[0]);
+                      e.target.value = '';
+                    }}
+                  />
                 </label>
               </>
             ) : null}

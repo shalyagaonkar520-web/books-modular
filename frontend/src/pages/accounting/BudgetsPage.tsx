@@ -112,7 +112,8 @@ export function BudgetsPage() {
 
 function VarianceReport({ budget }: { budget: Budget }) {
   const { t } = useAppContent();
-  const report = useAsync(() => budgetsApi.vsActual(budget.id), [budget.id, budget.lines.length, budget.totalIncome, budget.totalExpense]);
+  // The whole budget: a reloaded budget (after any save, even one that only moves amounts between months) is a new object.
+  const report = useAsync(() => budgetsApi.vsActual(budget.id), [budget]);
   if (report.loading) return <LoadingBlock />;
   if (report.error || !report.data) return <ErrorBlock message={report.error ?? ''} onRetry={report.reload} />;
   const r = report.data;

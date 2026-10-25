@@ -243,6 +243,7 @@ def to_out(db: Session, doc, kind: DocKind) -> DocumentOut:
         contact_billing_address=contact.billing_address,
         date=doc.date,
         status=effective_status(doc, kind),
+        stored_status=doc.status,
         reference=doc.reference,
         subject=doc.subject,
         salesperson=getattr(doc, "salesperson", None),

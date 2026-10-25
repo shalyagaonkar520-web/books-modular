@@ -96,6 +96,10 @@ export function InvoiceCreditsCard({ invoice, onChanged }: { invoice: Invoice; o
         <ApplyToInvoiceModal
           invoice={invoice}
           onClose={() => setApplyOpen(false)}
+          onPartial={() => {
+            apps.reload();
+            onChanged();
+          }}
           onSaved={() => {
             setApplyOpen(false);
             apps.reload();
@@ -108,7 +112,7 @@ export function InvoiceCreditsCard({ invoice, onChanged }: { invoice: Invoice; o
 }
 
 /** Pick open credit notes of the customer (and the unused advance) to settle this invoice. */
-function ApplyToInvoiceModal({ invoice, onClose, onSaved }: { invoice: Invoice; onClose: () => void; onSaved: () => void }) {
+function ApplyToInvoiceModal({ invoice, onClose, onSaved, onPartial }: { invoice: Invoice; onClose: () => void; onSaved: () => void; onPartial: () => void }) {
   const { t } = useAppContent();
   const toast = useToast();
   const { submitting, error, run, setError } = useSubmit();
@@ -126,6 +130,9 @@ function ApplyToInvoiceModal({ invoice, onClose, onSaved }: { invoice: Invoice; 
       setError(t('docflow.apply.overInvoice', { amount: formatCurrency(invoice.balanceDue) }));
       return;
     }
+    // Sources are applied one by one: remember which went through so a failure part-way
+    // never leaves an already-applied amount in the form to be applied twice on retry.
+    const applied: string[] = [];
     const ok = await run(async () => {
       for (const [key, value] of Object.entries(amounts)) {
         const amount = round2(parseNumber(value));
@@ -135,9 +142,16 @@ function ApplyToInvoiceModal({ invoice, onClose, onSaved }: { invoice: Invoice; 
         } else {
           await docApi('credit_note').apply(key, [{ documentId: invoice.id, amount }]);
         }
+        applied.push(key);
       }
       return true;
     });
+    if (!ok && applied.length) {
+      setAmounts((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !applied.includes(key))));
+      credits.reload();
+      advance.reload();
+      onPartial();
+    }
     if (ok) {
       toast.success(t('docflow.apply.done', { amount: formatCurrency(total) }));
       onSaved();

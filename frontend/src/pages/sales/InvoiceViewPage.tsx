@@ -187,7 +187,7 @@ export function InvoiceViewPage() {
           </>
         }
       />
-      <ApprovalBanner kind="invoice" id={data.id} status={data.status} total={data.total} approvalStatus={data.approvalStatus} approvalNote={data.approvalNote} onChanged={refresh} />
+      <ApprovalBanner kind="invoice" id={data.id} status={data.status} total={data.total} approvalStatus={data.approvalStatus} approvalNote={data.approvalNote} approvedTotal={data.approvedTotal} onChanged={refresh} />
 
       <div className="stack printable">
         <Card>

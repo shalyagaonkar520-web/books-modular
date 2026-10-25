@@ -24,10 +24,11 @@ type Tab = 'ask' | 'scan' | 'forecast';
 
 export function AiAssistantPage() {
   const { t } = useAppContent();
-  const { can } = useAuth();
+  const { can, canWrite } = useAuth();
   const status = useAsync(() => aiApi.status(), []);
   const [tab, setTab] = useState<Tab>('ask');
-  const tabs: Tab[] = can('admin', 'viewer') ? ['ask', 'scan', 'forecast'] : ['ask', 'scan'];
+  // Scanning creates a draft bill, so it needs write access.
+  const tabs: Tab[] = (['ask', 'scan', 'forecast'] as Tab[]).filter((id) => (id === 'scan' ? canWrite : id === 'forecast' ? can('admin', 'viewer') : true));
   // No AI key on the server yet: the AI tabs say "Coming soon"; the forecast needs no AI.
   const aiOff = status.data ? !status.data.configured : false;
   return (
@@ -40,6 +41,9 @@ export function AiAssistantPage() {
     </div>
   );
 }
+
+const HISTORY_TURNS = 10;
+const HISTORY_TURN_CHARS = 4000;
 
 interface Turn {
   role: 'user' | 'assistant';
@@ -56,11 +60,18 @@ function AskTab() {
   const ask = async (text: string) => {
     const q = text.trim();
     if (!q) return;
-    const history = turns;
-    setTurns((c) => [...c, { role: 'user', content: q }]);
+    // The server takes at most 20 turns of 4000 characters and reads only the last 10.
+    const history = turns.slice(-HISTORY_TURNS).map((turn) => ({ ...turn, content: turn.content.slice(0, HISTORY_TURN_CHARS) }));
+    const userTurn: Turn = { role: 'user', content: q };
+    setTurns((c) => [...c, userTurn]);
     setQuestion('');
     const res = await run(() => aiApi.ask(q, history));
     if (res) setTurns((c) => [...c, { role: 'assistant', content: res.answer }]);
+    else {
+      // A failed question stays out of the history; put it back in the box to retry.
+      setTurns((c) => c.filter((turn) => turn !== userTurn));
+      setQuestion(q);
+    }
   };
 
   return (
@@ -148,11 +159,17 @@ function ScanTab() {
       <FormError message={error} />
       <label className="btn btn-secondary btn-md">
         <ScanLine size={15} aria-hidden="true" /> <span>{t('ai.scan.choose')}</span>
-        <input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" hidden onChange={(e) => void scan(e.target.files?.[0])} />
+        <input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" hidden onChange={(e) => {
+            void scan(e.target.files?.[0]);
+            e.target.value = '';
+          }} />
       </label>{' '}
       <label className="btn btn-secondary btn-md">
         <Camera size={15} aria-hidden="true" /> <span>{t('ai.scan.camera')}</span>
-        <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => void scan(e.target.files?.[0])} />
+        <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => {
+            void scan(e.target.files?.[0]);
+            e.target.value = '';
+          }} />
       </label>
       {submitting && !draft ? <LoadingBlock label={t('ai.scan.reading')} /> : null}
       {draft ? (

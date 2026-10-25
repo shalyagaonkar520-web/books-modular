@@ -24,7 +24,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState, ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { CheckboxField, SelectField, TextAreaField, TextField } from '@/components/ui/Field';
-import { Modal } from '@/components/ui/Modal';
+import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
 import { Tabs } from '@/components/ui/Toolbar';
@@ -60,6 +60,7 @@ function RulesTab() {
   const list = useAsync(() => workflowsApi.list(), []);
   const [editing, setEditing] = useState<WorkflowRule | 'new' | null>(null);
   const [runsFor, setRunsFor] = useState<WorkflowRule | null>(null);
+  const [deleting, setDeleting] = useState<WorkflowRule | null>(null);
   const { submitting, run, errorRef } = useSubmit();
 
   const act = async (label: string, action: () => Promise<unknown>) => {
@@ -69,6 +70,7 @@ function RulesTab() {
       toast.success(label);
       list.reload();
     }
+    return ok !== null;
   };
 
   return (
@@ -90,6 +92,8 @@ function RulesTab() {
     >
       {list.loading && !list.data ? (
         <LoadingBlock />
+      ) : list.error ? (
+        <ErrorBlock message={list.error} onRetry={list.reload} />
       ) : !list.data?.length ? (
         <EmptyState title={t('automation.rules.empty')} description={t('automation.rules.emptyBody')} />
       ) : (
@@ -132,7 +136,7 @@ function RulesTab() {
                         <Button size="sm" onClick={() => setEditing(r)}>
                           {t('inventory.edit')}
                         </Button>
-                        <button type="button" className="action-btn is-danger" aria-label={t('automation.delete')} onClick={() => act(t('automation.deleted'), () => workflowsApi.remove(r.id))}>
+                        <button type="button" className="action-btn is-danger" aria-label={t('automation.delete')} onClick={() => setDeleting(r)}>
                           <Trash2 size={15} />
                         </button>
                       </div>
@@ -155,6 +159,17 @@ function RulesTab() {
         />
       ) : null}
       {runsFor ? <RunsModal rule={runsFor} onClose={() => setRunsFor(null)} /> : null}
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        title={t('automation.delete')}
+        message={t('automation.confirmDelete.body', { name: deleting?.name ?? '' })}
+        confirmLabel={t('automation.delete')}
+        busy={submitting}
+        onCancel={() => setDeleting(null)}
+        onConfirm={async () => {
+          if (deleting && (await act(t('automation.deleted'), () => workflowsApi.remove(deleting.id)))) setDeleting(null);
+        }}
+      />
     </Card>
   );
 }
@@ -171,6 +186,13 @@ function RuleModal({ rule, onClose, onSaved }: { rule: WorkflowRule | null; onCl
   const [actions, setActions] = useState<WorkflowAction[]>(rule?.actions ?? [{ type: 'email', to: '', subject: '', message: '' }]);
   const entity = eventName.split('.')[0];
   const fields = meta.data?.fields[entity] ?? [];
+
+  // A condition on a field the new event's record does not have can never match: drop it.
+  const changeEvent = (next: string) => {
+    setEventName(next);
+    const nextFields = meta.data?.fields[next.split('.')[0]] ?? [];
+    setConditions((cs) => cs.filter((c) => nextFields.includes(c.field)));
+  };
 
   const save = async () => {
     const body = { name: name.trim(), event: eventName, isActive, conditions, actions };
@@ -202,7 +224,7 @@ function RuleModal({ rule, onClose, onSaved }: { rule: WorkflowRule | null; onCl
       <FormError message={error} />
       <div className="form-grid">
         <TextField label={t('automation.rules.name')} value={name} onChange={(e) => setName(e.target.value)} />
-        <SelectField label={t('automation.rules.when')} value={eventName} options={(meta.data?.events ?? []).map((ev) => ({ value: ev, label: ev }))} onChange={(e) => setEventName(e.target.value)} />
+        <SelectField label={t('automation.rules.when')} value={eventName} options={(meta.data?.events ?? []).map((ev) => ({ value: ev, label: ev }))} onChange={(e) => changeEvent(e.target.value)} />
       </div>
       <CheckboxField label={t('automation.active')} checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
       <h4>{t('automation.rules.conditions')}</h4>
@@ -311,12 +333,14 @@ function FieldsTab() {
   const { isAdmin } = useAuth();
   const list = useAsync(() => customFieldsApi.list(), []);
   const [editing, setEditing] = useState<CustomField | 'new' | null>(null);
-  const { run, errorRef } = useSubmit();
+  const [deleting, setDeleting] = useState<CustomField | null>(null);
+  const { submitting, run, errorRef } = useSubmit();
   const remove = async (f: CustomField) => {
     const ok = await run(() => customFieldsApi.remove(f.id));
     if (ok === null) toast.error(errorRef.current ?? t('common.error.generic'));
     else {
       toast.success(t('automation.deleted'));
+      setDeleting(null);
       list.reload();
     }
   };
@@ -332,7 +356,11 @@ function FieldsTab() {
         ) : undefined
       }
     >
-      {!list.data?.length ? (
+      {list.loading && !list.data ? (
+        <LoadingBlock />
+      ) : list.error ? (
+        <ErrorBlock message={list.error} onRetry={list.reload} />
+      ) : !list.data?.length ? (
         <EmptyState title={t('automation.fields.empty')} />
       ) : (
         <table className="data-table">
@@ -361,7 +389,7 @@ function FieldsTab() {
                       <Button size="sm" onClick={() => setEditing(f)}>
                         {t('inventory.edit')}
                       </Button>
-                      <button type="button" className="action-btn is-danger" aria-label={t('automation.delete')} onClick={() => remove(f)}>
+                      <button type="button" className="action-btn is-danger" aria-label={t('automation.delete')} onClick={() => setDeleting(f)}>
                         <Trash2 size={15} />
                       </button>
                     </div>
@@ -382,6 +410,17 @@ function FieldsTab() {
           }}
         />
       ) : null}
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        title={t('automation.delete')}
+        message={t('automation.confirmDelete.body', { name: deleting?.label ?? '' })}
+        confirmLabel={t('automation.delete')}
+        busy={submitting}
+        onCancel={() => setDeleting(null)}
+        onConfirm={() => {
+          if (deleting) void remove(deleting);
+        }}
+      />
     </Card>
   );
 }
@@ -396,8 +435,9 @@ function FieldModal({ field, onClose, onSaved }: { field: CustomField | null; on
   const [options, setOptions] = useState((field?.options ?? []).join(', '));
   const [required, setRequired] = useState(field?.required ?? false);
   const [isActive, setIsActive] = useState(field?.isActive ?? true);
+  const [showOnPdf, setShowOnPdf] = useState(field?.showOnPdf ?? false);
   const save = async () => {
-    const body = { entity, label: label.trim(), fieldType, options: options.split(',').map((o) => o.trim()).filter(Boolean), required, isActive, showOnPdf: false, position: field?.position ?? 0 };
+    const body = { entity, label: label.trim(), fieldType, options: options.split(',').map((o) => o.trim()).filter(Boolean), required, isActive, showOnPdf, position: field?.position ?? 0 };
     const saved = await run(() => (field ? customFieldsApi.update(field.id, body) : customFieldsApi.create(body)));
     if (saved) {
       toast.success(t('automation.saved'));
@@ -434,6 +474,7 @@ function FieldModal({ field, onClose, onSaved }: { field: CustomField | null; on
         {fieldType === 'select' ? <TextField label={t('automation.fields.options')} value={options} hint={t('automation.fields.optionsHint')} onChange={(e) => setOptions(e.target.value)} /> : null}
       </div>
       <CheckboxField label={t('automation.fields.required')} checked={required} onChange={(e) => setRequired(e.target.checked)} />
+      <CheckboxField label={t('automation.fields.showOnPdf')} checked={showOnPdf} onChange={(e) => setShowOnPdf(e.target.checked)} />
       <CheckboxField label={t('automation.active')} checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
     </Modal>
   );
@@ -448,7 +489,9 @@ function ApprovalsTab() {
   const pending = useAsync(() => approvalsApi.pending(), []);
   const [invoice, setInvoice] = useState('');
   const [bill, setBill] = useState('');
-  const { submitting, error, run, errorRef } = useSubmit();
+  const { submitting, error, run } = useSubmit();
+  // Approve / reject keep their own state, so their errors show by the pending list, not under the thresholds.
+  const decision = useSubmit();
   useEffect(() => {
     if (settings.data) {
       setInvoice(settings.data.invoiceThreshold != null ? String(settings.data.invoiceThreshold) : '');
@@ -460,9 +503,8 @@ function ApprovalsTab() {
     if (saved) toast.success(t('automation.saved'));
   };
   const decide = async (kind: 'invoice' | 'bill', id: string, approve: boolean) => {
-    const ok = await run(() => (approve ? approvalsApi.approve(kind, id) : approvalsApi.reject(kind, id)));
-    if (ok === null) toast.error(errorRef.current ?? t('common.error.generic'));
-    else {
+    const ok = await decision.run(() => (approve ? approvalsApi.approve(kind, id) : approvalsApi.reject(kind, id)));
+    if (ok !== null) {
       toast.success(t(approve ? 'automation.approvals.approved' : 'automation.approvals.rejected'));
       pending.reload();
     }
@@ -487,7 +529,12 @@ function ApprovalsTab() {
         </div>
       </Card>
       <Card title={t('automation.approvals.pending')}>
-        {!pending.data?.length ? (
+        <FormError message={decision.error} />
+        {pending.loading && !pending.data ? (
+          <LoadingBlock />
+        ) : pending.error ? (
+          <ErrorBlock message={pending.error} onRetry={pending.reload} />
+        ) : !pending.data?.length ? (
           <EmptyState title={t('automation.approvals.none')} />
         ) : (
           <table className="data-table">
@@ -512,10 +559,10 @@ function ApprovalsTab() {
                   <td className="align-right">
                     {isAdmin ? (
                       <div className="row" style={{ justifyContent: 'flex-end' }}>
-                        <Button size="sm" variant="primary" disabled={submitting} onClick={() => decide(p.kind, p.id, true)}>
+                        <Button size="sm" variant="primary" disabled={decision.submitting} onClick={() => decide(p.kind, p.id, true)}>
                           {t('automation.approvals.approve')}
                         </Button>
-                        <Button size="sm" variant="danger" disabled={submitting} onClick={() => decide(p.kind, p.id, false)}>
+                        <Button size="sm" variant="danger" disabled={decision.submitting} onClick={() => decide(p.kind, p.id, false)}>
                           {t('automation.approvals.reject')}
                         </Button>
                       </div>
@@ -538,6 +585,7 @@ function SchedulesTab() {
   const { isAdmin } = useAuth();
   const list = useAsync(() => schedulesApi.list(), []);
   const [editing, setEditing] = useState<ReportSchedule | 'new' | null>(null);
+  const [deleting, setDeleting] = useState<ReportSchedule | null>(null);
   const { submitting, run, errorRef } = useSubmit();
   const act = async (label: string, action: () => Promise<unknown>) => {
     const ok = await run(action);
@@ -546,6 +594,7 @@ function SchedulesTab() {
       toast.success(label);
       list.reload();
     }
+    return ok !== null;
   };
   return (
     <Card
@@ -559,7 +608,11 @@ function SchedulesTab() {
         ) : undefined
       }
     >
-      {!list.data?.length ? (
+      {list.loading && !list.data ? (
+        <LoadingBlock />
+      ) : list.error ? (
+        <ErrorBlock message={list.error} onRetry={list.reload} />
+      ) : !list.data?.length ? (
         <EmptyState title={t('automation.schedules.empty')} />
       ) : (
         <table className="data-table">
@@ -592,7 +645,7 @@ function SchedulesTab() {
                       <Button size="sm" onClick={() => setEditing(s)}>
                         {t('inventory.edit')}
                       </Button>
-                      <button type="button" className="action-btn is-danger" aria-label={t('automation.delete')} onClick={() => act(t('automation.deleted'), () => schedulesApi.remove(s.id))}>
+                      <button type="button" className="action-btn is-danger" aria-label={t('automation.delete')} onClick={() => setDeleting(s)}>
                         <Trash2 size={15} />
                       </button>
                     </div>
@@ -613,6 +666,17 @@ function SchedulesTab() {
           }}
         />
       ) : null}
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        title={t('automation.delete')}
+        message={t('automation.confirmDelete.body', { name: deleting?.name ?? '' })}
+        confirmLabel={t('automation.delete')}
+        busy={submitting}
+        onCancel={() => setDeleting(null)}
+        onConfirm={async () => {
+          if (deleting && (await act(t('automation.deleted'), () => schedulesApi.remove(deleting.id)))) setDeleting(null);
+        }}
+      />
     </Card>
   );
 }

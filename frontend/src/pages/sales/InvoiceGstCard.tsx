@@ -23,6 +23,14 @@ const TRANSPORT_MODES = [
   { value: '4', key: 'ship' },
 ];
 
+/** A stored UTC timestamp as the local "YYYY-MM-DDTHH:mm" a datetime-local input expects. */
+function toLocalInput(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
 export function InvoiceGstCard({ invoice, onChanged }: { invoice: Invoice; onChanged: () => void }) {
   const { t } = useAppContent();
   const toast = useToast();
@@ -33,7 +41,7 @@ export function InvoiceGstCard({ invoice, onChanged }: { invoice: Invoice; onCha
   const [ewayOpen, setEwayOpen] = useState(false);
   const [irn, setIrn] = useState(invoice.irn ?? '');
   const [ackNo, setAckNo] = useState(invoice.irnAckNo ?? '');
-  const [ackDate, setAckDate] = useState(invoice.irnAckDate ? invoice.irnAckDate.slice(0, 16) : '');
+  const [ackDate, setAckDate] = useState(() => toLocalInput(invoice.irnAckDate));
   const [ewayNo, setEwayNo] = useState(invoice.ewayBillNo ?? '');
   const [mode, setMode] = useState('1');
   const [distance, setDistance] = useState('0');

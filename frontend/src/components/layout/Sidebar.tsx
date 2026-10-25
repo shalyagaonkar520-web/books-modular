@@ -118,7 +118,7 @@ export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () =>
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const holdsCurrentPage = (group: NavGroup) => group.entries.some((e) => pathname === e.to || pathname.startsWith(`${e.to}/`));
   const enabled = (entry: NavEntry) => !entry.module || isModuleEnabled(entry.module);
-  const singleLinks = SINGLE_LINKS.filter(enabled);
+  const singleLinks = SINGLE_LINKS.filter((entry) => !(entry.staffBlocked && isStaff) && enabled(entry));
   const groups = GROUPS.map((group) => ({ ...group, entries: group.entries.filter(enabled) })).filter((group) => group.entries.length > 0);
   const lowerLinks = LOWER_LINKS.filter((entry) => !(entry.staffBlocked && isStaff) && enabled(entry));
 

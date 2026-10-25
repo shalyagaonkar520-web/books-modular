@@ -27,6 +27,8 @@ function docLink(alert: Alert): string | null {
   if (alert.docType === 'invoice') return `/invoices/${alert.docId}`;
   if (alert.docType === 'expense') return '/expenses';
   if (alert.docType === 'bank_account') return '/banking';
+  if (alert.docType === 'vendor') return `/vendors/${alert.docId}/edit`;
+  if (alert.docType === 'customer') return `/customers/${alert.docId}/edit`;
   return null;
 }
 

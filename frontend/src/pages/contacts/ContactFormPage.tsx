@@ -23,6 +23,7 @@ import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { stateFromGstin, stateOptions } from '@/utils/gst';
 import { GST_TREATMENTS } from '@/utils/status';
+import { CustomFieldsCard } from '@/pages/automation/DocumentExtrasCards';
 
 const SALUTATIONS = ['Mr.', 'Ms.', 'Mrs.', 'Dr.', 'Prof.'];
 const LANGUAGES = ['English', 'Hindi', 'Kannada', 'Tamil', 'Telugu', 'Malayalam', 'Marathi', 'Gujarati', 'Bengali'];
@@ -452,6 +453,7 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
       </section>
       </div>
 
+      {contact ? <CustomFieldsCard entity="contact" entityId={contact.id} /> : null}
       <div className="form-actions-bar">
         <div className="row-between">
           <span className="text-subtle small">{contact ? t('customers.form.editingExisting') : t(isCustomer ? 'customers.form.creatingNew' : 'vendors.form.creatingNew')}</span>

@@ -43,5 +43,8 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     css: false,
     include: ['src/**/*.test.{ts,tsx}'],
+    // Full-page renders in jsdom (the app-content editor shows thousands of texts) need more
+    // than the 5s default on a busy CI runner.
+    testTimeout: 20000,
   },
 });

@@ -44,7 +44,15 @@ export function TallyCard() {
         {isAdmin ? (
           <label className="btn btn-secondary btn-md">
             <FileUp size={15} aria-hidden="true" /> <span>{submitting ? t('common.loading') : t('tally.import')}</span>
-            <input type="file" accept=".xml,application/xml,text/xml" hidden onChange={(e) => void upload(e.target.files?.[0])} />
+            <input
+              type="file"
+              accept=".xml,application/xml,text/xml"
+              hidden
+              onChange={(e) => {
+                void upload(e.target.files?.[0]);
+                e.target.value = '';
+              }}
+            />
           </label>
         ) : null}
       </div>

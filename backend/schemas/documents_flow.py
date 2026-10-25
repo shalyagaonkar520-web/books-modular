@@ -165,6 +165,9 @@ class DocumentOut(APIModel):
     id: str
     kind: str
     number: str
+    # status is what the document shows (a quote past its expiry date is "expired");
+    # stored_status is what was saved (draft or sent), which decides how it is edited.
+    stored_status: Optional[str] = None
     contact_id: str
     contact_name: str
     contact_email: Optional[str] = None

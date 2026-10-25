@@ -169,7 +169,11 @@ export function InvoiceFormPage() {
   const tcsAmount = round2((beforeTcs * parseNumber(tcsRate)) / 100);
   const total = round2(beforeTcs + tcsAmount);
   const baseCurrency = organization?.currency ?? 'INR';
-  const customerCurrency = customerList.find((c) => c.id === customerId)?.currency || baseCurrency;
+  // The customer list holds only the first 200 customers: an existing foreign-currency
+  // invoice still knows its own currency, so the exchange-rate field stays visible.
+  const invoiceCurrency =
+    loaded && customerId === loaded.customerId && loaded.currency && loaded.exchangeRate !== undefined && loaded.exchangeRate !== 1 ? loaded.currency : null;
+  const customerCurrency = customerList.find((c) => c.id === customerId)?.currency || invoiceCurrency || baseCurrency;
   const foreign = customerCurrency !== baseCurrency;
   const money = (amount: number) => formatCurrency(amount, customerCurrency);
   const customerState = stateFromGstin(customerList.find((c) => c.id === customerId)?.gstin) ?? customerList.find((c) => c.id === customerId)?.placeOfSupply;

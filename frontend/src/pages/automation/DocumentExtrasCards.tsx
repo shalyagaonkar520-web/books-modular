@@ -135,10 +135,12 @@ interface ApprovalBannerProps {
   total: number;
   approvalStatus?: string | null;
   approvalNote?: string | null;
+  /** Total when it was approved (when the API sends it): a higher total needs approving again. */
+  approvedTotal?: number | null;
   onChanged: () => void;
 }
 
-export function ApprovalBanner({ kind, id, status, total, approvalStatus, approvalNote, onChanged }: ApprovalBannerProps) {
+export function ApprovalBanner({ kind, id, status, total, approvalStatus, approvalNote, approvedTotal, onChanged }: ApprovalBannerProps) {
   const { t } = useAppContent();
   const toast = useToast();
   const { isAdmin, canWrite } = useAuth();
@@ -147,6 +149,8 @@ export function ApprovalBanner({ kind, id, status, total, approvalStatus, approv
   const limit = kind === 'invoice' ? settings.data?.invoiceThreshold : settings.data?.billThreshold;
   const overLimit = limit !== null && limit !== undefined && total >= limit;
   if (!approvalStatus && !(status === 'draft' && overLimit)) return null;
+  const needsReapproval = approvalStatus === 'approved' && approvedTotal !== undefined && approvedTotal !== null && total > approvedTotal;
+  const canSubmit = (approvalStatus !== 'pending' && approvalStatus !== 'approved') || needsReapproval;
   const act = async (label: string, action: () => Promise<unknown>) => {
     const ok = await run(action);
     if (ok === null) toast.error(errorRef.current ?? t('common.error.generic'));
@@ -170,7 +174,7 @@ export function ApprovalBanner({ kind, id, status, total, approvalStatus, approv
       </span>
       {status === 'draft' && canWrite ? (
         <span className="row">
-          {approvalStatus !== 'pending' && approvalStatus !== 'approved' ? (
+          {canSubmit ? (
             <Button size="sm" disabled={submitting} onClick={() => act(t('automation.approvals.submitted'), () => approvalsApi.submit(kind, id))}>
               {t('automation.approvals.submit')}
             </Button>

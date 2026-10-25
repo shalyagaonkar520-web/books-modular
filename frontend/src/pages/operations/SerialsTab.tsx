@@ -32,7 +32,8 @@ export function SerialsTab() {
   const [search, setSearch] = useState('');
   const [registering, setRegistering] = useState(false);
   const debounced = useDebounced(search, 300);
-  const items = useAsync(() => itemsApi.list({ page_size: 200 }), []);
+  // Serial-tracked items are always stock-tracked: let the server narrow the list first.
+  const items = useAsync(() => itemsApi.list({ inventory_filter: 'tracked', page_size: 200 }), []);
   const serialItems = useMemo(() => (items.data?.items ?? []).filter((i) => i.trackSerial), [items.data]);
   const list = useAsync(
     () => serialsApi.list({ itemId: itemId || undefined, status: status || undefined, search: debounced.trim() || undefined }),

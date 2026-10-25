@@ -4104,6 +4104,11 @@
     "comingSoon.ai.scan": "Photograph a bill or receipt and get a ready-to-check draft bill in seconds.",
     "comingSoon.razorpay": "Sync Razorpay payments, match them to invoices and reconcile settlements automatically.",
 
-    "header.excel.skippedTitle": "{count} row(s) were not imported:"
+    "header.excel.skippedTitle": "{count} row(s) were not imported:",
+
+    "automation.confirmDelete.body": "Delete “{name}” permanently? This cannot be undone.",
+    "automation.fields.showOnPdf": "Show on PDF",
+    "inventory.warehouse.confirmDelete": "Delete the warehouse “{name}”? This cannot be undone.",
+    "inventory.priceList.confirmDelete": "Delete the price list “{name}”? This cannot be undone."
   }
 }

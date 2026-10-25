@@ -109,13 +109,15 @@ function WarehousesTab() {
   const { canWrite } = useAuth();
   const list = useAsync(() => warehousesApi.list(), []);
   const [editing, setEditing] = useState<Warehouse | 'new' | null>(null);
-  const { run, errorRef } = useSubmit();
+  const [deleting, setDeleting] = useState<Warehouse | null>(null);
+  const { submitting, run, errorRef } = useSubmit();
 
   const remove = async (w: Warehouse) => {
     const ok = await run(() => warehousesApi.remove(w.id));
     if (ok === null) toast.error(errorRef.current ?? t('common.error.generic'));
     else {
       toast.success(t('inventory.warehouse.deleted'));
+      setDeleting(null);
       list.reload();
     }
   };
@@ -133,6 +135,8 @@ function WarehousesTab() {
     >
       {list.loading && !list.data ? (
         <LoadingBlock />
+      ) : list.error ? (
+        <ErrorBlock message={list.error} onRetry={list.reload} />
       ) : (
         <div className="table-wrap">
           <table className="data-table">
@@ -163,7 +167,7 @@ function WarehousesTab() {
                           {t('inventory.edit')}
                         </Button>
                         {!w.isDefault ? (
-                          <button type="button" className="action-btn is-danger" aria-label={t('inventory.warehouse.delete')} onClick={() => remove(w)}>
+                          <button type="button" className="action-btn is-danger" aria-label={t('inventory.warehouse.delete')} onClick={() => setDeleting(w)}>
                             <Trash2 size={15} />
                           </button>
                         ) : null}
@@ -186,6 +190,17 @@ function WarehousesTab() {
           }}
         />
       ) : null}
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        title={t('inventory.warehouse.delete')}
+        message={t('inventory.warehouse.confirmDelete', { name: deleting?.name ?? '' })}
+        confirmLabel={t('inventory.warehouse.delete')}
+        busy={submitting}
+        onCancel={() => setDeleting(null)}
+        onConfirm={() => {
+          if (deleting) void remove(deleting);
+        }}
+      />
     </Card>
   );
 }
@@ -349,7 +364,8 @@ function TransferModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
   const toast = useToast();
   const { submitting, error, run, setError } = useSubmit();
   const warehouses = useAsync(() => warehousesApi.list(), []);
-  const items = useAsync(() => itemsApi.list({ page_size: 200 }), []);
+  // Ask the server for tracked items only, so the 200 newest are not mostly services.
+  const items = useAsync(() => itemsApi.list({ inventory_filter: 'tracked', page_size: 200 }), []);
   const tracked = useMemo(() => (items.data?.items ?? []).filter((i) => i.trackInventory), [items.data]);
   const whOptions = (warehouses.data ?? []).filter((w) => w.isActive).map((w) => ({ value: w.id, label: w.name }));
   const [from, setFrom] = useState('');
@@ -483,7 +499,7 @@ function BatchesTab() {
 
 function LedgerTab() {
   const { t } = useAppContent();
-  const items = useAsync(() => itemsApi.list({ page_size: 200 }), []);
+  const items = useAsync(() => itemsApi.list({ inventory_filter: 'tracked', page_size: 200 }), []);
   const warehouses = useAsync(() => warehousesApi.list(), []);
   const [itemId, setItemId] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
@@ -563,12 +579,14 @@ function PriceListsTab() {
   const { canWrite } = useAuth();
   const list = useAsync(() => priceListsApi.list(), []);
   const [editing, setEditing] = useState<PriceList | 'new' | null>(null);
-  const { run, errorRef } = useSubmit();
+  const [deleting, setDeleting] = useState<PriceList | null>(null);
+  const { submitting, run, errorRef } = useSubmit();
   const remove = async (pl: PriceList) => {
     const ok = await run(() => priceListsApi.remove(pl.id));
     if (ok === null) toast.error(errorRef.current ?? t('common.error.generic'));
     else {
       toast.success(t('inventory.priceList.deleted'));
+      setDeleting(null);
       list.reload();
     }
   };
@@ -584,7 +602,11 @@ function PriceListsTab() {
         ) : undefined
       }
     >
-      {!list.data?.length ? (
+      {list.loading && !list.data ? (
+        <LoadingBlock />
+      ) : list.error ? (
+        <ErrorBlock message={list.error} onRetry={list.reload} />
+      ) : !list.data?.length ? (
         <EmptyState title={t('inventory.priceList.empty')} />
       ) : (
         <div className="table-wrap">
@@ -611,7 +633,7 @@ function PriceListsTab() {
                         <Button size="sm" onClick={() => setEditing(pl)}>
                           {t('inventory.edit')}
                         </Button>
-                        <button type="button" className="action-btn is-danger" aria-label={t('inventory.priceList.delete')} onClick={() => remove(pl)}>
+                        <button type="button" className="action-btn is-danger" aria-label={t('inventory.priceList.delete')} onClick={() => setDeleting(pl)}>
                           <Trash2 size={15} />
                         </button>
                       </div>
@@ -633,6 +655,17 @@ function PriceListsTab() {
           }}
         />
       ) : null}
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        title={t('inventory.priceList.delete')}
+        message={t('inventory.priceList.confirmDelete', { name: deleting?.name ?? '' })}
+        confirmLabel={t('inventory.priceList.delete')}
+        busy={submitting}
+        onCancel={() => setDeleting(null)}
+        onConfirm={() => {
+          if (deleting) void remove(deleting);
+        }}
+      />
     </Card>
   );
 }
@@ -656,6 +689,8 @@ function PriceListModal({ priceList, onClose, onSaved }: { priceList: PriceList 
       method,
       percentage: parseNumber(percentage),
       rounding,
+      // Not edited here, but the update replaces the whole list: send it back unchanged.
+      description: priceList?.description ?? null,
       isActive,
       items: Object.entries(rates)
         .filter(([, v]) => v !== '')
