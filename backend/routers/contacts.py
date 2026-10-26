@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -29,20 +29,49 @@ from backend.models import (
     User,
     VendorPayment,
 )
-from backend.schemas.common import Message, Page
+from backend.schemas.common import APIModel, Message, Page
 from backend.schemas.contacts import ContactCreate, ContactOut, ContactSummary, ContactUpdate
-from backend.services import audit, export_service
+from backend.services import audit, export_service, statements
 from backend.services.email_service import send_custom_message_email
 from backend.services.money import money
+from backend.services.ratelimit import OUTBOUND_LIMIT_MESSAGE, outbound_email_limiter
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
 router = APIRouter(prefix="/api/contacts", tags=["Contacts"])
 
 
 class SendContactEmailRequest(BaseModel):
-    to_email: Optional[str] = None
-    subject: str
-    message: str
+    to_email: Optional[EmailStr] = None
+    subject: str = Field(min_length=1, max_length=200)
+    message: str = Field(min_length=1, max_length=10000)
+
+
+class StatementLineOut(APIModel):
+    date: date
+    kind: str
+    reference: str
+    description: str
+    debit: Decimal
+    credit: Decimal
+    balance: Decimal
+
+
+class StatementOut(APIModel):
+    contact_id: str
+    contact_name: str
+    contact_type: str
+    start_date: date
+    end_date: date
+    opening_balance: Decimal
+    charges: Decimal
+    receipts: Decimal
+    closing_balance: Decimal
+    rows: List[StatementLineOut]
+
+
+class SendStatementRequest(APIModel):
+    to_email: Optional[EmailStr] = None
+    message: Optional[str] = Field(default=None, max_length=10000)
 
 
 class BulkDeleteContactsRequest(BaseModel):
@@ -269,6 +298,8 @@ def bulk_delete_contacts(
     db: Session = Depends(get_db),
 ):
     """Delete or deactivate multiple contacts across single or all pages."""
+    if payload.all_matching and user.role != "admin":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only an administrator can delete all contacts at once")
     stmt = select(Contact).where(Contact.organization_id == user.organization_id)
     if payload.type:
         stmt = stmt.where(Contact.type == payload.type)
@@ -400,6 +431,7 @@ def send_contact_email(
     if not recipient or not recipient.strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No email address found for this contact")
 
+    outbound_email_limiter.check(f"email:{user.organization_id}", OUTBOUND_LIMIT_MESSAGE)
     result = send_custom_message_email(
         to_email=recipient.strip(),
         subject=payload.subject,
@@ -407,7 +439,99 @@ def send_contact_email(
         recipient_name=contact.display_name,
     )
     if not result.get("success"):
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Gmail SMTP error: {result.get('error')}")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            result.get("error") or "The email could not be sent. Check the address, or ask your administrator to check the email settings.",
+        )
     audit.record(db, user, "email", "contact", contact.id, f"Sent email to {contact.display_name} ({recipient})")
+    db.commit()
+    return result
+
+
+def _statement_range(start: Optional[date], end: Optional[date]) -> tuple[date, date]:
+    end = end or date.today()
+    start = start or end.replace(day=1)
+    if start > end:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The start date is after the end date")
+    return start, end
+
+
+@router.get("/{contact_id}/statement", response_model=StatementOut)
+def contact_statement(
+    contact_id: str,
+    start_date: Optional[date] = Query(default=None, alias="startDate"),
+    end_date: Optional[date] = Query(default=None, alias="endDate"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Statement of account: opening balance, every transaction with a running balance, closing balance."""
+    contact = get_or_404(db, Contact, contact_id, user.organization_id, "Contact")
+    start, end = _statement_range(start_date, end_date)
+    st = statements.build(db, contact, start, end)
+    return StatementOut(
+        contact_id=contact.id,
+        contact_name=contact.display_name,
+        contact_type=contact.type,
+        start_date=start,
+        end_date=end,
+        opening_balance=st.opening,
+        charges=st.charges,
+        receipts=st.receipts,
+        closing_balance=st.closing,
+        rows=[StatementLineOut(**r.__dict__) for r in st.rows],
+    )
+
+
+@router.get("/{contact_id}/statement/pdf")
+def contact_statement_pdf(
+    contact_id: str,
+    start_date: Optional[date] = Query(default=None, alias="startDate"),
+    end_date: Optional[date] = Query(default=None, alias="endDate"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    contact = get_or_404(db, Contact, contact_id, user.organization_id, "Contact")
+    start, end = _statement_range(start_date, end_date)
+    content = statements.pdf(statements.build(db, contact, start, end), db.get(Organization, user.organization_id))
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="statement_{end.isoformat()}.pdf"'},
+    )
+
+
+@router.post("/{contact_id}/statement/send")
+def send_contact_statement(
+    contact_id: str,
+    payload: SendStatementRequest,
+    start_date: Optional[date] = Query(default=None, alias="startDate"),
+    end_date: Optional[date] = Query(default=None, alias="endDate"),
+    user: User = Depends(require_write),
+    db: Session = Depends(get_db),
+):
+    """Email the statement PDF to the contact."""
+    contact = get_or_404(db, Contact, contact_id, user.organization_id, "Contact")
+    recipient = (payload.to_email or contact.email or "").strip()
+    if not recipient:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No email address found for this contact")
+    start, end = _statement_range(start_date, end_date)
+    org = db.get(Organization, user.organization_id)
+    st = statements.build(db, contact, start, end)
+    period = f"{start.strftime('%d %b %Y')} to {end.strftime('%d %b %Y')}"
+    message = payload.message or (
+        f"Please find attached your statement of account for {period}. The balance as of {end.strftime('%d %b %Y')} is {st.closing:,.2f}."
+    )
+    outbound_email_limiter.check(f"email:{user.organization_id}", OUTBOUND_LIMIT_MESSAGE)
+    result = send_custom_message_email(
+        to_email=recipient,
+        subject=f"Statement of account - {period}",
+        message=message,
+        recipient_name=contact.display_name,
+        company_name=org.name if org else None,
+        attachment=(f"statement_{end.isoformat()}.pdf", statements.pdf(st, org)),
+    )
+    if not result.get("success"):
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, result.get("error") or "The email could not be sent.")
+    audit.record(db, user, "email", "contact", contact.id, f"Sent statement ({period}) to {recipient}")
     db.commit()
     return result

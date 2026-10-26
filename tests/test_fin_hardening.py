@@ -43,7 +43,9 @@ def _make_env(client, hint: str = "FinHard") -> dict:
         headers=admin,
         json={"name": "Operating", "type": "bank", "openingBalance": 500000, "openingBalanceDate": "2026-04-01", "isPrimary": True},
     ).json()
-    vendor = client.post("/api/contacts", headers=admin, json={"type": "vendor", "displayName": "Dell India", "paymentTermsDays": 30}).json()
+    vendor = client.post(
+        "/api/contacts", headers=admin, json={"type": "vendor", "displayName": "Dell India", "paymentTermsDays": 30}
+    ).json()
     item = client.post(
         "/api/items",
         headers=admin,

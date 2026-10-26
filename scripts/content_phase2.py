@@ -1,0 +1,117 @@
+"""Add the Phase 2 texts (GST filing, place of supply, TDS/TCS, reverse charge, e-invoice)
+to both copies of the default app content. Run from the repo root: python scripts/content_phase2.py
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from content_phase1 import main  # noqa: E402
+
+TEXTS = {
+    "sidebar.gstFiling": "GST filing",
+    # Contacts
+    "customers.form.placeOfSupply": "Place of supply (state)",
+    "customers.form.placeOfSupplyFromGstin": "From GSTIN ({code})",
+    "customers.form.placeOfSupplyNone": "Not set",
+    "customers.form.placeOfSupplyHint": "Decides CGST + SGST (same state) or IGST (another state). Taken from the GSTIN when left empty.",
+    # Invoices
+    "invoices.form.placeOfSupply": "Place of supply",
+    "invoices.form.placeOfSupplyDefault": "Customer's state ({code})",
+    "invoices.form.placeOfSupplyUnknown": "Customer's state",
+    "invoices.form.placeOfSupplyHint": "Change only when goods are delivered to another state than the customer's.",
+    "invoices.form.tcs": "TCS collected",
+    "invoices.form.tcsNone": "None",
+    "invoices.form.tcsHint": "Tax collected at source (section 206C), added to the invoice total.",
+    "invoices.form.totals.tcs": "TCS",
+    "invoices.gst.title": "E-invoice & e-way bill",
+    "invoices.gst.subtitle": "Government-format JSON to upload on the IRP / e-way bill portal, and the numbers they return",
+    "invoices.gst.einvoiceJson": "E-invoice JSON",
+    "invoices.gst.ewayJson": "E-way bill JSON",
+    "invoices.gst.record": "Record IRN / e-way bill",
+    "invoices.gst.irn": "IRN",
+    "invoices.gst.irnHint": "The 64-character Invoice Reference Number from the IRP",
+    "invoices.gst.notRegistered": "Not registered yet",
+    "invoices.gst.ack": "Acknowledgement no.",
+    "invoices.gst.ackDate": "Acknowledgement date",
+    "invoices.gst.ewayNo": "E-way bill no.",
+    "invoices.gst.recordTitle": "GST portal numbers for {number}",
+    "invoices.gst.recordSubtitle": "Once an IRN is recorded the invoice can no longer be edited.",
+    "invoices.gst.save": "Save",
+    "invoices.gst.saved": "GST portal numbers saved",
+    "invoices.gst.ewayTitle": "E-way bill details",
+    "invoices.gst.ewaySubtitle": "Transport details for the e-way bill JSON",
+    "invoices.gst.mode": "Mode of transport",
+    "invoices.gst.mode.road": "Road",
+    "invoices.gst.mode.rail": "Rail",
+    "invoices.gst.mode.air": "Air",
+    "invoices.gst.mode.ship": "Ship",
+    "invoices.gst.distance": "Distance (km)",
+    "invoices.gst.vehicle": "Vehicle number",
+    "invoices.gst.download": "Download JSON",
+    # Bills
+    "bills.form.tdsSection": "TDS section",
+    "bills.form.tdsNone": "No TDS",
+    "bills.form.tdsRate": "TDS rate (%)",
+    "bills.form.reverseCharge": "Reverse charge applies",
+    "bills.form.reverseChargeHint": "You pay this GST to the government instead of the vendor (and still claim the credit).",
+    "bills.form.reverseChargeLine": "GST under reverse charge",
+    "bills.form.tdsLine": "TDS withheld ({section})",
+    # GST filing page
+    "gst.title": "GST filing",
+    "gst.subtitle": "GSTR-1, GSTR-3B and the TDS / TCS register for a return period, ready to upload.",
+    "gst.tab.gstr1": "GSTR-1",
+    "gst.tab.gstr3b": "GSTR-3B",
+    "gst.tab.tds": "TDS / TCS",
+    "gst.downloadJson": "Download JSON",
+    "gst.downloadExcel": "Download Excel",
+    "gst.col.section": "Section",
+    "gst.col.documents": "Documents",
+    "gst.col.taxable": "Taxable value",
+    "gst.col.nature": "Nature of supplies",
+    "gst.gstr1.title": "GSTR-1 summary",
+    "gst.gstr1.subtitle": "Outward supplies from {from} to {to}",
+    "gst.gstr1.b2b": "B2B invoices (4A, 4B)",
+    "gst.gstr1.b2cl": "B2C large (5)",
+    "gst.gstr1.b2cs": "B2C small (7)",
+    "gst.gstr1.exp": "Exports (6A)",
+    "gst.gstr1.cdnr": "Credit notes - registered (9B)",
+    "gst.gstr1.cdnur": "Credit notes - unregistered (9B)",
+    "gst.gstr1.b2csCredit": "Credit notes netted in B2C small",
+    "gst.hsn.title": "HSN-wise summary (12)",
+    "gst.hsn.empty": "No supplies in this period",
+    "gst.hsn.table": "Table",
+    "gst.hsn.qty": "Quantity",
+    "gst.hsn.rate": "Rate",
+    "gst.gstr3b.netItc": "Net input tax credit",
+    "gst.gstr3b.cashPayable": "Tax payable in cash",
+    "gst.gstr3b.outward": "3.1 Outward and reverse-charge inward supplies",
+    "gst.gstr3b.a": "(a) Outward taxable supplies",
+    "gst.gstr3b.b": "(b) Zero rated (exports, SEZ)",
+    "gst.gstr3b.c": "(c) Nil rated and exempted",
+    "gst.gstr3b.d": "(d) Inward supplies liable to reverse charge",
+    "gst.gstr3b.itc": "4 Eligible input tax credit",
+    "gst.gstr3b.itcRcm": "(A3) Inward supplies liable to reverse charge",
+    "gst.gstr3b.itcOther": "(A5) All other ITC",
+    "gst.gstr3b.itcReversed": "(B) ITC reversed (vendor credits)",
+    "gst.gstr3b.itcNet": "(C) Net ITC available",
+    "gst.gstr3b.payment": "6.1 Payment of tax",
+    "gst.gstr3b.paymentHint": "ITC is set off in the statutory order: IGST first, CGST and SGST never against each other.",
+    "gst.gstr3b.creditUsed": "Paid through ITC",
+    "gst.gstr3b.cash": "Paid in cash",
+    "gst.gstr3b.rcmCash": "Reverse charge (cash only)",
+    "gst.gstr3b.carried": "ITC carried forward",
+    "gst.tds.title": "TDS deducted on bills: {amount}",
+    "gst.tds.empty": "No TDS deducted in this period",
+    "gst.tds.bill": "Bill",
+    "gst.tds.section": "Section",
+    "gst.tds.missingPan": "Add the PAN for: {names}. TDS returns need it.",
+    "gst.tcs.title": "TCS collected on invoices: {amount}",
+    "gst.tcs.empty": "No TCS collected in this period",
+}
+
+if __name__ == "__main__":
+    main(TEXTS)

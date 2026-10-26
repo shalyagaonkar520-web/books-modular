@@ -151,3 +151,17 @@ def image_url(value: Optional[str], label: str = "Image URL") -> Optional[str]:
     if lowered.startswith("data:image/") and not lowered.startswith("data:image/svg"):
         return cleaned
     raise ValueError(f"{label} must be an http(s) address or an uploaded image")
+
+
+def barcode(value: Optional[str], label: str = "Barcode") -> Optional[str]:
+    """A scanned or typed barcode: trimmed, blank means none; no spaces or control characters."""
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if len(cleaned) > 64:
+        raise ValueError(f"{label} can be at most 64 characters")
+    if any(ch.isspace() or ord(ch) < 32 for ch in cleaned):
+        raise ValueError(f"{label} cannot contain spaces")
+    return cleaned

@@ -9,15 +9,15 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, status
 from fastapi.responses import HTMLResponse, Response
 from pydantic import Field
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from backend.config import get_settings
 from backend.db import get_db
-from backend.deps import ROLE_ADMIN, require_full_app_access, require_write
+from backend.deps import ROLE_ADMIN, require_full_app_access, require_module, require_write
 from backend.models import (
     BankAccount,
     Bill,
@@ -32,7 +32,7 @@ from backend.models import (
 from backend.schemas.common import MAX_MONEY, APIModel, Message, Page
 from backend.schemas.purchases import VendorPaymentCreate, VendorPaymentOut
 from backend.schemas.sales import CustomerPaymentCreate, CustomerPaymentOut
-from backend.services import audit, bank, export_service, ledger, numbering
+from backend.services import audit, bank, export_service, fx, ledger, numbering
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.email_service import (
     send_customer_payment_email,
@@ -69,7 +69,7 @@ def _payable_account_id(db: Session, org_id: str, vendor: Contact) -> str:
     return vendor.ledger_account_id or get_account_by_code(db, org_id, "2000").id
 
 
-def _apply_invoice_payment(db: Session, invoice: Invoice, amount: Decimal) -> None:
+def _apply_invoice_payment(db: Session, invoice: Invoice, amount: Decimal, fc_amount: Optional[Decimal] = None) -> None:
     """Add a payment to an invoice atomically, or raise 400 if it no longer fits.
 
     The balance check and the increment are one UPDATE, so two requests racing
@@ -86,7 +86,11 @@ def _apply_invoice_payment(db: Session, invoice: Invoice, amount: Decimal) -> No
             Invoice.status.in_(_PAYABLE_INVOICE_STATUSES),
             Invoice.total - Invoice.amount_paid >= amount - _HALF_PAISA,
         )
-        .values(amount_paid=func.round(Invoice.amount_paid + amount, 2))
+        .values(
+            amount_paid=func.round(Invoice.amount_paid + amount, 2),
+            # In the invoice's own currency; the same as amount for base-currency invoices.
+            fc_amount_paid=func.round(Invoice.fc_amount_paid + (amount if fc_amount is None else fc_amount), 2),
+        )
         .execution_options(synchronize_session=False)
     )
     db.refresh(invoice)
@@ -99,19 +103,22 @@ def _apply_invoice_payment(db: Session, invoice: Invoice, amount: Decimal) -> No
     _refresh_invoice_status(invoice)
 
 
-def _remove_invoice_payment(db: Session, invoice: Invoice, amount: Decimal) -> None:
+def _remove_invoice_payment(db: Session, invoice: Invoice, amount: Decimal, fc_amount: Optional[Decimal] = None) -> None:
     """Take a deleted payment back off an invoice, atomically."""
     db.execute(
         update(Invoice)
         .where(Invoice.id == invoice.id, Invoice.organization_id == invoice.organization_id)
-        .values(amount_paid=func.round(Invoice.amount_paid - amount, 2))
+        .values(
+            amount_paid=func.round(Invoice.amount_paid - amount, 2),
+            fc_amount_paid=func.round(Invoice.fc_amount_paid - (amount if fc_amount is None else fc_amount), 2),
+        )
         .execution_options(synchronize_session=False)
     )
     db.refresh(invoice)
     _refresh_invoice_status(invoice)
 
 
-def _apply_bill_payment(db: Session, bill: Bill, amount: Decimal) -> None:
+def _apply_bill_payment(db: Session, bill: Bill, amount: Decimal, fc_amount: Optional[Decimal] = None) -> None:
     """Bill counterpart of _apply_invoice_payment."""
     result = db.execute(
         update(Bill)
@@ -121,7 +128,10 @@ def _apply_bill_payment(db: Session, bill: Bill, amount: Decimal) -> None:
             Bill.status.in_(_PAYABLE_BILL_STATUSES),
             Bill.total - Bill.amount_paid >= amount - _HALF_PAISA,
         )
-        .values(amount_paid=func.round(Bill.amount_paid + amount, 2))
+        .values(
+            amount_paid=func.round(Bill.amount_paid + amount, 2),
+            fc_amount_paid=func.round(Bill.fc_amount_paid + (amount if fc_amount is None else fc_amount), 2),
+        )
         .execution_options(synchronize_session=False)
     )
     db.refresh(bill)
@@ -132,15 +142,42 @@ def _apply_bill_payment(db: Session, bill: Bill, amount: Decimal) -> None:
     _refresh_bill_status(bill)
 
 
-def _remove_bill_payment(db: Session, bill: Bill, amount: Decimal) -> None:
+def _remove_bill_payment(db: Session, bill: Bill, amount: Decimal, fc_amount: Optional[Decimal] = None) -> None:
     db.execute(
         update(Bill)
         .where(Bill.id == bill.id, Bill.organization_id == bill.organization_id)
-        .values(amount_paid=func.round(Bill.amount_paid - amount, 2))
+        .values(
+            amount_paid=func.round(Bill.amount_paid - amount, 2),
+            fc_amount_paid=func.round(Bill.fc_amount_paid - (amount if fc_amount is None else fc_amount), 2),
+        )
         .execution_options(synchronize_session=False)
     )
     db.refresh(bill)
     _refresh_bill_status(bill)
+
+
+def _fx_settlement(db: Session, org_id: str, doc, fc: Decimal, given_rate: Optional[Decimal]) -> tuple:
+    """For a foreign-currency invoice or bill: (base cleared off the document,
+    base moved through the bank, payment rate). The final payment clears exactly
+    the base balance left, so rounding never leaves a paisa behind."""
+    balance_fc = money(doc.fc_total - doc.fc_amount_paid)
+    if fc > balance_fc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the balance of {doc.currency} {balance_fc}")
+    pay_rate = fx.rate(given_rate) if given_rate else fx.stored_rate(db, org_id, doc.currency)
+    if not pay_rate:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Enter today's exchange rate for {doc.currency}")
+    applied = money(doc.balance_due) if fc == balance_fc else fx.to_base(fc, doc.exchange_rate)
+    return applied, fx.to_base(fc, pay_rate), pay_rate
+
+
+def _fx_line(db: Session, org_id: str, difference: Decimal, desc: str, contact_id: str) -> list:
+    """The exchange gain (credit) or loss (debit) that balances a settlement."""
+    if difference == 0:
+        return []
+    account = get_account_by_code(db, org_id, fx.EXCHANGE_GAIN_LOSS).id
+    if difference > 0:
+        return [(account, Decimal("0"), difference, f"Exchange gain - {desc}", contact_id)]
+    return [(account, -difference, Decimal("0"), f"Exchange loss - {desc}", contact_id)]
 
 
 def _check_cash_withdrawal(db: Session, bank_acct: BankAccount, amount: Decimal) -> None:
@@ -153,6 +190,18 @@ def _check_cash_withdrawal(db: Session, bank_acct: BankAccount, amount: Decimal)
     if db.bind is not None and db.bind.dialect.name != "sqlite":
         db.execute(select(BankAccount.id).where(BankAccount.id == bank_acct.id).with_for_update())
     bank.check_cash_overdraft(db, bank_acct, amount)
+
+
+def _ensure_advance_unused(db: Session, org_id: str, party_type: str, contact_id: str, amount: Decimal) -> None:
+    """An advance already applied to invoices / bills or refunded cannot be deleted: the
+    documents it settled would stay paid with no money behind them."""
+    from backend.services import credits
+
+    if credits.advance_balance(db, org_id, party_type, contact_id) < amount:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This advance has already been applied or refunded. Remove those applications or refunds first, then delete it.",
+        )
 
 
 def _refresh_invoice_status(inv: Invoice) -> None:
@@ -197,6 +246,9 @@ def cp_out(p: CustomerPayment) -> CustomerPaymentOut:
         mode=p.mode,
         reference=p.reference,
         notes=p.notes,
+        currency=p.currency,
+        exchange_rate=p.exchange_rate or 1,
+        fc_amount=p.fc_amount,
         created_at=p.created_at,
     )
 
@@ -291,28 +343,23 @@ def export_customer_payments_excel(
     )
 
 
-@router.post("/customer-payments", response_model=CustomerPaymentOut, status_code=status.HTTP_201_CREATED)
-def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
-    org_id = user.organization_id
-    customer = get_or_404(db, Contact, payload.customer_id, org_id, "Customer")
-    if customer.type != "customer":
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selected contact is not a customer")
-    bank_acct = get_or_404(db, BankAccount, payload.bank_account_id, org_id, "Bank account")
-    amount = money(payload.amount)
-    invoice = None
-    if payload.invoice_id:
-        invoice = get_or_404(db, Invoice, payload.invoice_id, org_id, "Invoice")
-        if invoice.customer_id != customer.id:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invoice belongs to a different customer")
-        if invoice.status not in _PAYABLE_INVOICE_STATUSES:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, f"Payments can only be applied to sent invoices (current status: {invoice.status})"
-            )
-        if amount > money(invoice.balance_due):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the invoice balance of {invoice.balance_due}")
-        # The checks above are a friendly early answer; this is the one that
-        # holds under concurrency. It must run first, before anything is posted.
-        _apply_invoice_payment(db, invoice, amount)
+def _record_customer_payment(
+    db: Session,
+    org_id: str,
+    user: User,
+    customer: Contact,
+    bank_acct: BankAccount,
+    invoice: Optional[Invoice],
+    amount: Decimal,
+    payload: CustomerPaymentCreate,
+    notes: Optional[str],
+    fx_details: Optional[tuple] = None,
+) -> CustomerPayment:
+    """One receipt: against ``invoice`` (already applied by the caller), or a customer advance when None.
+
+    ``fx_details`` = (fc amount, rate, base cleared off the invoice) for a
+    foreign-currency invoice; ``amount`` is then what the bank received.
+    """
     payment = CustomerPayment(
         organization_id=org_id,
         payment_number=numbering.next_number(db, org_id, "customer_payment"),
@@ -323,9 +370,14 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
         amount=amount,
         mode=payload.mode,
         reference=payload.reference,
-        notes=payload.notes,
+        notes=notes,
         created_by=user.id,
     )
+    applied = amount
+    if fx_details:
+        payment.fc_amount, payment.exchange_rate, applied = fx_details
+        payment.currency = invoice.currency
+        payment.applied_amount = applied
     db.add(payment)
     db.flush()
 
@@ -339,7 +391,11 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
         db,
         org_id,
         payment.date,
-        [(bank_acct.ledger_account_id, amount, Decimal("0"), desc, customer.id), (credit_account, Decimal("0"), amount, desc, customer.id)],
+        [
+            (bank_acct.ledger_account_id, amount, Decimal("0"), desc, customer.id),
+            (credit_account, Decimal("0"), applied, desc, customer.id),
+            *_fx_line(db, org_id, money(amount - applied), desc, customer.id),
+        ],
         "customer_payment",
         payment.id,
         reference=payment.reference or payment.payment_number,
@@ -359,17 +415,105 @@ def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends
         credit_account,
         entry.id,
     )
-
     audit.record(db, user, "create", "customer_payment", payment.id, desc)
+    return payment
+
+
+@router.post(
+    "/customer-payments",
+    response_model=CustomerPaymentOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_module("paymentsReceived"))],
+)
+def create_customer_payment(payload: CustomerPaymentCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+    """Record money received from a customer.
+
+    With an invoice: applied to that invoice. Without one: applied to the
+    customer's unpaid invoices, oldest due first (one receipt per invoice), and
+    only what is left over is kept as a customer advance. Returns the first receipt.
+    """
+    org_id = user.organization_id
+    customer = get_or_404(db, Contact, payload.customer_id, org_id, "Customer")
+    if customer.type != "customer":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selected contact is not a customer")
+    bank_acct = get_or_404(db, BankAccount, payload.bank_account_id, org_id, "Bank account")
+    amount = money(payload.amount)
+
+    if payload.invoice_id:
+        invoice = get_or_404(db, Invoice, payload.invoice_id, org_id, "Invoice")
+        if invoice.customer_id != customer.id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invoice belongs to a different customer")
+        if invoice.status not in _PAYABLE_INVOICE_STATUSES:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, f"Payments can only be applied to sent invoices (current status: {invoice.status})"
+            )
+        if fx.is_foreign(db, org_id, invoice.currency):
+            # amount is in the invoice's currency; the bank gets it at today's rate.
+            applied, banked, pay_rate = _fx_settlement(db, org_id, invoice, amount, payload.exchange_rate)
+            _apply_invoice_payment(db, invoice, applied, amount)
+            first = _record_customer_payment(
+                db, org_id, user, customer, bank_acct, invoice, banked, payload, payload.notes, (amount, pay_rate, applied)
+            )
+            db.commit()
+            db.refresh(first)
+            return cp_out(first)
+        if amount > money(invoice.balance_due):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the invoice balance of {invoice.balance_due}")
+        # The checks above are a friendly early answer; this is the one that
+        # holds under concurrency. It must run first, before anything is posted.
+        _apply_invoice_payment(db, invoice, amount)
+        first = _record_customer_payment(db, org_id, user, customer, bank_acct, invoice, amount, payload, payload.notes)
+    else:
+        if fx.is_foreign(db, org_id, customer.currency):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose the invoice this foreign-currency payment is for")
+        open_invoices = (
+            db.execute(
+                select(Invoice)
+                .where(
+                    Invoice.organization_id == org_id,
+                    Invoice.customer_id == customer.id,
+                    Invoice.status.in_(_PAYABLE_INVOICE_STATUSES),
+                    Invoice.date <= payload.date,
+                    # Foreign-currency invoices are only ever paid one by one.
+                    or_(Invoice.exchange_rate == 1, Invoice.currency.is_(None)),
+                )
+                .order_by(Invoice.due_date, Invoice.date, Invoice.invoice_number)
+            )
+            .scalars()
+            .all()
+        )
+        remaining = amount
+        receipts: List[CustomerPayment] = []
+        split = len(open_invoices) > 0
+        note = payload.notes
+        if split:
+            part_of = f"Part of {amount} received" + (f" ({payload.reference})" if payload.reference else "")
+            note = f"{payload.notes}\n{part_of}" if payload.notes else part_of
+        for inv in open_invoices:
+            if remaining <= 0:
+                break
+            portion = min(remaining, money(inv.balance_due))
+            if portion <= 0:
+                continue
+            _apply_invoice_payment(db, inv, portion)
+            receipts.append(_record_customer_payment(db, org_id, user, customer, bank_acct, inv, portion, payload, note))
+            remaining = money(remaining - portion)
+        if remaining > 0:
+            # Nothing (more) is owed: the rest is held as the customer's advance.
+            receipts.append(_record_customer_payment(db, org_id, user, customer, bank_acct, None, remaining, payload, note))
+        first = receipts[0]
+
     db.commit()
-    db.refresh(payment)
-    return cp_out(payment)
+    db.refresh(first)
+    return cp_out(first)
 
 
-@router.delete("/customer-payments/{payment_id}", response_model=Message)
+@router.delete("/customer-payments/{payment_id}", response_model=Message, dependencies=[Depends(require_module("paymentsReceived"))])
 def delete_customer_payment(payment_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
     payment = get_or_404(db, CustomerPayment, payment_id, user.organization_id, "Payment")
     number = payment.payment_number
+    if payment.invoice_id is None:
+        _ensure_advance_unused(db, user.organization_id, "customer", payment.customer_id, money(payment.amount))
     ledger.reverse_entries_for_source(db, user.organization_id, "customer_payment", payment.id, date.today(), user.id, "Payment deleted")
     # Removing a receipt takes its deposit back out of the account; a cash
     # drawer cannot go below zero (same rule as paying out of it). Checked
@@ -377,7 +521,8 @@ def delete_customer_payment(payment_id: str, user: User = Depends(require_write)
     _check_cash_withdrawal(db, payment.bank_account, money(payment.amount))
     bank.remove_movements(db, "customer_payment", payment.id)
     if payment.invoice:
-        _remove_invoice_payment(db, payment.invoice, money(payment.amount))
+        applied = payment.applied_amount if payment.applied_amount is not None else payment.amount
+        _remove_invoice_payment(db, payment.invoice, money(applied), payment.fc_amount)
     # A payment recorded from an approved external payment is still referenced
     # by it (foreign key). Unlink it and mark the external payment reversed so
     # its history stays visible and the same UTR can be recorded again.
@@ -416,7 +561,7 @@ def download_customer_payment_pdf(payment_id: str, user: User = Depends(require_
     )
 
 
-@router.post("/customer-payments/{payment_id}/send-gmail")
+@router.post("/customer-payments/{payment_id}/send-gmail", dependencies=[Depends(require_module("paymentsReceived"))])
 def send_customer_payment_receipt_gmail(
     payment_id: str,
     payload: SendPaymentEmailRequest,
@@ -449,7 +594,10 @@ def send_customer_payment_receipt_gmail(
         company_name=org.name if org else None,
     )
     if not result.get("success"):
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, result.get("error"))
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            result.get("error") or "The email could not be sent. Check the address, or ask your administrator to check the email settings.",
+        )
     audit.record(db, user, "email", "customer_payment", payment.id, f"Emailed receipt {payment.payment_number} to {payload.to_email}")
     db.commit()
     return result
@@ -473,6 +621,9 @@ def vp_out(p: VendorPayment) -> VendorPaymentOut:
         mode=p.mode,
         reference=p.reference,
         notes=p.notes,
+        currency=p.currency,
+        exchange_rate=p.exchange_rate or 1,
+        fc_amount=p.fc_amount,
         created_at=p.created_at,
     )
 
@@ -567,7 +718,12 @@ def export_vendor_payments_excel(
     )
 
 
-@router.post("/vendor-payments", response_model=VendorPaymentOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/vendor-payments",
+    response_model=VendorPaymentOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_module("paymentsMade"))],
+)
 def create_vendor_payment(payload: VendorPaymentCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
     org_id = user.organization_id
     vendor = get_or_404(db, Contact, payload.vendor_id, org_id, "Vendor")
@@ -576,16 +732,25 @@ def create_vendor_payment(payload: VendorPaymentCreate, user: User = Depends(req
     bank_acct = get_or_404(db, BankAccount, payload.bank_account_id, org_id, "Bank account")
     amount = money(payload.amount)
     bill = None
+    fx_details = None
     if payload.bill_id:
         bill = get_or_404(db, Bill, payload.bill_id, org_id, "Bill")
         if bill.vendor_id != vendor.id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Bill belongs to a different vendor")
         if bill.status not in _PAYABLE_BILL_STATUSES:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payments can only be applied to open bills (current status: {bill.status})")
-        if amount > money(bill.balance_due):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the bill balance of {bill.balance_due}")
-        # Authoritative, race-free check-and-apply; runs before anything is posted.
-        _apply_bill_payment(db, bill, amount)
+        if fx.is_foreign(db, org_id, bill.currency):
+            applied, banked, pay_rate = _fx_settlement(db, org_id, bill, amount, payload.exchange_rate)
+            fx_details = (amount, pay_rate, applied)
+            _apply_bill_payment(db, bill, applied, amount)
+            amount = banked
+        else:
+            if amount > money(bill.balance_due):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Payment exceeds the bill balance of {bill.balance_due}")
+            # Authoritative, race-free check-and-apply; runs before anything is posted.
+            _apply_bill_payment(db, bill, amount)
+    elif fx.is_foreign(db, org_id, vendor.currency):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose the bill this foreign-currency payment is for")
     payment = VendorPayment(
         organization_id=org_id,
         payment_number=numbering.next_number(db, org_id, "vendor_payment"),
@@ -599,6 +764,11 @@ def create_vendor_payment(payload: VendorPaymentCreate, user: User = Depends(req
         notes=payload.notes,
         created_by=user.id,
     )
+    applied = amount
+    if bill and fx_details:
+        payment.fc_amount, payment.exchange_rate, applied = fx_details
+        payment.currency = bill.currency
+        payment.applied_amount = applied
     db.add(payment)
     db.flush()
 
@@ -612,7 +782,12 @@ def create_vendor_payment(payload: VendorPaymentCreate, user: User = Depends(req
         db,
         org_id,
         payment.date,
-        [(debit_account, amount, Decimal("0"), desc, vendor.id), (bank_acct.ledger_account_id, Decimal("0"), amount, desc, vendor.id)],
+        [
+            (debit_account, applied, Decimal("0"), desc, vendor.id),
+            (bank_acct.ledger_account_id, Decimal("0"), amount, desc, vendor.id),
+            # Paying more base currency than the payable was booked at is a loss.
+            *_fx_line(db, org_id, money(applied - amount), desc, vendor.id),
+        ],
         "vendor_payment",
         payment.id,
         reference=payment.reference or payment.payment_number,
@@ -641,13 +816,16 @@ def create_vendor_payment(payload: VendorPaymentCreate, user: User = Depends(req
     return vp_out(payment)
 
 
-@router.delete("/vendor-payments/{payment_id}", response_model=Message)
+@router.delete("/vendor-payments/{payment_id}", response_model=Message, dependencies=[Depends(require_module("paymentsMade"))])
 def delete_vendor_payment(payment_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
     payment = get_or_404(db, VendorPayment, payment_id, user.organization_id, "Payment")
+    if payment.bill_id is None:
+        _ensure_advance_unused(db, user.organization_id, "vendor", payment.vendor_id, money(payment.amount))
     ledger.reverse_entries_for_source(db, user.organization_id, "vendor_payment", payment.id, date.today(), user.id, "Payment deleted")
     bank.remove_movements(db, "vendor_payment", payment.id)
     if payment.bill:
-        _remove_bill_payment(db, payment.bill, money(payment.amount))
+        applied = payment.applied_amount if payment.applied_amount is not None else payment.amount
+        _remove_bill_payment(db, payment.bill, money(applied), payment.fc_amount)
     number = payment.payment_number
     db.delete(payment)
     audit.record(db, user, "delete", "vendor_payment", payment_id, f"Deleted payment {number}")
@@ -675,7 +853,7 @@ def download_vendor_payment_pdf(payment_id: str, user: User = Depends(require_fu
     )
 
 
-@router.post("/vendor-payments/{payment_id}/send-gmail")
+@router.post("/vendor-payments/{payment_id}/send-gmail", dependencies=[Depends(require_module("paymentsMade"))])
 def send_vendor_payment_remittance_gmail(
     payment_id: str,
     payload: SendPaymentEmailRequest,
@@ -708,7 +886,10 @@ def send_vendor_payment_remittance_gmail(
         company_name=org.name if org else None,
     )
     if not result.get("success"):
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, result.get("error"))
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            result.get("error") or "The email could not be sent. Check the address, or ask your administrator to check the email settings.",
+        )
     audit.record(db, user, "email", "vendor_payment", payment.id, f"Emailed remittance {payment.payment_number} to {payload.to_email}")
     db.commit()
     return result
@@ -1053,7 +1234,7 @@ def process_approved_external_payment(
     return payment
 
 
-@router.post("/payments/external/incoming", status_code=status.HTTP_201_CREATED)
+@router.post("/payments/external/incoming", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_module("paymentsReceived"))])
 def receive_external_payment(
     payload: IncomingExternalPayment,
     user: User = Depends(require_write),
@@ -1126,7 +1307,11 @@ def receive_external_payment(
 
     return {
         "success": True,
-        "message": "External payment received. Confirmation request dispatched via Gmail SMTP.",
+        "message": (
+            "External payment received. A confirmation request was emailed to the organization's admins."
+            if email_result["success"]
+            else "External payment received, but the confirmation email could not be sent. Resend it from the payment."
+        ),
         "external_payment_id": ext_payment.id,
         "platform": ext_payment.platform,
         "external_transaction_id": ext_payment.external_transaction_id,
@@ -1206,18 +1391,57 @@ def _result_page(title: str, heading: str, subtitle: str, icon: str, color: str,
 
 
 @router.get("/payments/external/confirm", response_class=HTMLResponse)
-def confirm_external_payment_from_email(
+def confirm_external_payment_page(
     token: str = Query(..., max_length=128, description="Approval token from Gmail confirmation email"),
     decision: str = Query(..., max_length=10, description="yes or no"),
     db: Session = Depends(get_db),
 ):
-    """Processes 1-click YES or NO confirmation directly from the Gmail SMTP email.
+    """The link in the confirmation email: shows the payment and a button.
+
+    Opening the link changes nothing - email security scanners and link
+    previews open links on their own. The decision is made by the button,
+    which POSTs to the same address.
+    """
+    return _decide_external_payment(token, decision, db, act=False)
+
+
+@router.post("/payments/external/confirm", response_class=HTMLResponse)
+def confirm_external_payment_from_email(
+    token: str = Form(..., max_length=128),
+    decision: str = Form(..., max_length=10),
+    db: Session = Depends(get_db),
+):
+    """Records the YES or NO chosen on the confirmation page.
 
     Unauthenticated by design: the unguessable token, sent only to the
     organization's admins, is the credential. A token decides a payment once
     (the status change is atomic) and stops working CONFIRM_TOKEN_TTL after the
     payment was received.
     """
+    return _decide_external_payment(token, decision, db, act=True)
+
+
+def _confirm_page(token: str, decision: str, amount: str, platform: str, txn: str, desk: str) -> HTMLResponse:
+    approve = decision == "yes"
+    label = "Approve and record this payment" if approve else "Reject this payment"
+    color = "#16a34a" if approve else "#dc2626"
+    return HTMLResponse(
+        content=(
+            f'<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="robots" content="noindex">'
+            f'<title>Confirm payment</title><style>{_PAGE_STYLE}</style></head><body><div class="card">'
+            f'<h2 style="color:{color};">{html.escape(label)}?</h2>'
+            f"<p>{html.escape(platform)} payment of <strong>{html.escape(amount)}</strong> (Ref: {html.escape(txn)}).</p>"
+            f'<form method="post" action="/api/payments/external/confirm">'
+            f'<input type="hidden" name="token" value="{html.escape(token)}">'
+            f'<input type="hidden" name="decision" value="{html.escape(decision)}">'
+            f'<button type="submit" style="background:{color};color:#fff;border:0;border-radius:6px;padding:10px 18px;'
+            f'font-size:15px;cursor:pointer;">{html.escape(label)}</button></form>'
+            f'<p style="color:#64748b;font-size:13px;">{html.escape(desk)}</p></div></body></html>'
+        ),
+    )
+
+
+def _decide_external_payment(token: str, decision: str, db: Session, act: bool) -> HTMLResponse:
     ext_pay = db.execute(select(ExternalPayment).where(ExternalPayment.approval_token == token)).scalar_one_or_none()
 
     if not ext_pay:
@@ -1266,6 +1490,9 @@ def confirm_external_payment_from_email(
             "#ef4444",
             410,
         )
+
+    if not act:
+        return _confirm_page(token, decision_clean, formatted_amount, platform, txn, desk)
 
     if decision_clean == "yes":
         try:
@@ -1345,7 +1572,9 @@ def list_external_payments(
     return Page(items=[ext_out(p) for p in rows], total=total, page=pagination.page, page_size=pagination.page_size)
 
 
-@router.post("/payments/external/{payment_id}/resend-email", response_model=Message)
+@router.post(
+    "/payments/external/{payment_id}/resend-email", response_model=Message, dependencies=[Depends(require_module("paymentsReceived"))]
+)
 def resend_external_payment_confirmation_email(
     payment_id: str,
     user: User = Depends(require_write),
@@ -1367,7 +1596,7 @@ def resend_external_payment_confirmation_email(
     db.commit()
     result = _send_confirmation_requests(db, ext_pay)
     if not result["success"]:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, result["error"] or "Failed to send the confirmation email")
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, result["error"] or "Failed to send the confirmation email")
 
     recipients = ", ".join(result["recipients"])
     ext_pay.confirmation_email_sent = True

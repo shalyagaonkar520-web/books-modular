@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import { useAppContent } from '@/app/AppContentContext';
 import { Card } from '@/components/ui/Card';
 import { DonutChart } from '@/components/ui/Charts';
@@ -6,6 +8,7 @@ import { reportsApi } from '@/api/endpoints';
 import { useAsync } from '@/hooks/useAsync';
 import { useAuth } from '@/auth/AuthContext';
 import { formatCurrency, formatDate } from '@/utils/format';
+import { BranchSelect } from '@/pages/operations/BranchSelect';
 
 import { StatementTable, profitRow, sectionRows, type StatementRow } from './StatementTable';
 
@@ -14,13 +17,26 @@ interface ProfitAndLossReportProps {
   endDate: string;
 }
 
+/** Profit and loss for the whole organization, or one branch once branches are set up. */
 export function ProfitAndLossReport({ startDate, endDate }: ProfitAndLossReportProps) {
+  const [branchId, setBranchId] = useState('');
+  return (
+    <div className="stack">
+      <div style={{ maxWidth: 320 }}>
+        <BranchSelect value={branchId} onChange={setBranchId} />
+      </div>
+      <ProfitAndLossBody startDate={startDate} endDate={endDate} branchId={branchId} />
+    </div>
+  );
+}
+
+function ProfitAndLossBody({ startDate, endDate, branchId }: ProfitAndLossReportProps & { branchId: string }) {
   const { t } = useAppContent();
   const { organization } = useAuth();
   const currency = organization?.currency ?? 'INR';
   const { data, loading, error, reload } = useAsync(
-    () => reportsApi.profitAndLoss({ start_date: startDate, end_date: endDate }),
-    [startDate, endDate],
+    () => reportsApi.profitAndLoss({ start_date: startDate, end_date: endDate, branchId: branchId || undefined }),
+    [startDate, endDate, branchId],
   );
 
   if (loading) return <LoadingBlock label={t('reports.profitAndLoss.loading')} />;

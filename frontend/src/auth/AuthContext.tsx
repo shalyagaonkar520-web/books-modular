@@ -48,9 +48,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [initializing, setInitializing] = useState(true);
 
-  // Restore the session from the httpOnly refresh cookie on first load.
+  // Restore the session from the httpOnly refresh cookie on first load. The public customer
+  // portal (/p/<token>) is opened by customers without an account: no session to restore.
   useEffect(() => {
     let active = true;
+    if (window.location.pathname.startsWith('/p/')) {
+      setInitializing(false);
+      return () => {
+        active = false;
+      };
+    }
     authApi
       .me()
       .then((response) => {

@@ -1,10 +1,15 @@
 import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 
+import { TallyCard } from '@/pages/insights/TallyCard';
+import { BranchesSettings } from '@/pages/operations/BranchesSettings';
+
+import { CurrencySettings } from './CurrencySettings';
+import { LockDateSettings } from './LockDateSettings';
 import { OrganizationSettings } from './OrganizationSettings';
 
 /**
- * The organization profile. Users, integrations and the activity log are
+ * The organization profile. Users and the activity log are
  * managed in the organization admin panel (/org-admin), not in the app.
  */
 export function SettingsPage() {
@@ -14,6 +19,10 @@ export function SettingsPage() {
     <div className="stack">
       <PageHeader title={t('settings.title')} subtitle={t('settings.subtitle')} />
       <OrganizationSettings />
+      <LockDateSettings />
+      <CurrencySettings />
+      <BranchesSettings />
+      <TallyCard />
     </div>
   );
 }

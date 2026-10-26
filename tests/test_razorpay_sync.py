@@ -30,13 +30,24 @@ class FakeRazorpay:
         self.is_configured = True
         self.fail_with = fail_with
         self.pages_served = 0
+        # The org whose checkout created these payments; stamped into notes the
+        # way create-order does, unless a test sets organization_id itself.
+        self.org_id = None
+
+    def _tagged(self, entity):
+        notes = entity.get("notes")
+        if self.org_id is None or (isinstance(notes, dict) and "organization_id" in notes) or "_untagged" in entity:
+            return {k: v for k, v in entity.items() if k != "_untagged"}
+        return {**entity, "notes": {**(notes if isinstance(notes, dict) else {}), "organization_id": self.org_id}}
 
     def iter_payments(self, from_ts=None, to_ts=None, page_size=100, max_pages=500):
         if self.fail_with:
             raise self.fail_with
         page_size = min(page_size, 100)
         window = [
-            p for p in self.payments if (from_ts is None or p["created_at"] >= from_ts) and (to_ts is None or p["created_at"] <= to_ts)
+            self._tagged(p)
+            for p in self.payments
+            if (from_ts is None or p["created_at"] >= from_ts) and (to_ts is None or p["created_at"] <= to_ts)
         ]
         page_number = 0
         for start in range(0, max(len(window), 1), page_size):
@@ -116,12 +127,13 @@ def sync_org(client):
 
 
 @pytest.fixture()
-def fake_api(monkeypatch):
+def fake_api(monkeypatch, sync_org):
     """Install a FakeRazorpay in front of the sync service."""
     holder = {}
 
     def install(fake):
         holder["fake"] = fake
+        fake.org_id = sync_org["org"]["id"]
         monkeypatch.setattr(razorpay_sync, "get_razorpay_service", lambda: fake)
         return fake
 
@@ -562,3 +574,84 @@ def test_raw_reference_never_stores_card_or_credential_data(client, sync_org, fa
     assert "token_secret_value" not in stored
     assert detail["raw_reference"]["card"] == {"last4": "1111", "network": "Visa", "type": "credit", "issuer": "HDFC"}
     assert detail["method_detail"] == "Visa credit ****1111"
+
+
+# --------------------------------------------------------------------------- #
+# Tenant isolation and failure handling
+# --------------------------------------------------------------------------- #
+def test_payments_of_other_organizations_are_never_imported(client, sync_org, fake_api):
+    """The keys are platform-wide; only payments tagged with this org belong to it."""
+    fake_api(
+        FakeRazorpay(
+            payments=[
+                payment_entity("pay_mine_1", 100000),
+                payment_entity("pay_theirs_1", 100000, notes={"organization_id": "org_someone_else"}),
+                {**payment_entity("pay_untagged_1", 100000), "_untagged": True},
+            ]
+        )
+    )
+    body = client.post("/api/razorpay/sync", headers=sync_org["h"], json={"full": True}).json()
+    assert body["sync"]["records_created"] == 1
+    assert body["sync"]["records_skipped"] == 2
+    items = client.get("/api/razorpay/payments", headers=sync_org["h"]).json()["items"]
+    assert [row["razorpay_payment_id"] for row in items] == ["pay_mine_1"]
+
+
+def test_a_clashing_insert_does_not_lose_the_rest_of_the_page(client, sync_org, fake_api, monkeypatch):
+    """An IntegrityError on one payment rolls back only that payment."""
+    from sqlalchemy import insert
+
+    from backend.models import PaymentRecord, new_id
+    from backend.services import razorpay_posting
+
+    org_id = sync_org["org"]["id"]
+    real_find = razorpay_posting.find_contact_for_payment
+
+    def racing_find(db, org, email, contact, name):
+        if email == "clash@example.com":
+            # Another run inserts the same payment id first.
+            db.execute(
+                insert(PaymentRecord).values(
+                    id=new_id(), organization_id=org_id, razorpay_payment_id="pay_clash_2", amount=1, currency="INR"
+                )
+            )
+        return real_find(db, org, email, contact, name)
+
+    monkeypatch.setattr(razorpay_posting, "find_contact_for_payment", racing_find)
+    fake_api(
+        FakeRazorpay(
+            payments=[
+                payment_entity("pay_clash_1", 100000),
+                payment_entity("pay_clash_2", 100000, email="clash@example.com"),
+                payment_entity("pay_clash_3", 100000),
+            ]
+        )
+    )
+    body = client.post("/api/razorpay/sync", headers=sync_org["h"], json={"full": True}).json()
+    assert body["sync"]["records_created"] == 2
+    assert body["sync"]["records_skipped"] == 1
+    ids = {row["razorpay_payment_id"] for row in client.get("/api/razorpay/payments", headers=sync_org["h"]).json()["items"]}
+    assert {"pay_clash_1", "pay_clash_3"} <= ids
+
+
+def test_a_partial_run_does_not_move_the_incremental_window(client, sync_org, fake_api):
+    from backend.db import SessionLocal
+
+    fake_api(FakeRazorpay(payments=[payment_entity("pay_part_1", 100000), {"entity": "payment", "created_at": int(time.time())}]))
+    body = client.post("/api/razorpay/sync", headers=sync_org["h"], json={"full": True}).json()
+    assert body["sync"]["status"] == "partial"
+    with SessionLocal() as db:
+        assert razorpay_sync.last_successful_sync(db, sync_org["org"]["id"]) is None
+
+
+def test_sync_errors_are_readable_not_raw_sdk_text(client, sync_org, fake_api, monkeypatch):
+    def explode(*args, **kwargs):
+        raise ValueError("HTTPSConnectionPool(host='api.razorpay.com', port=443): urllib3 internals")
+
+    monkeypatch.setattr(razorpay_sync, "apply_categorisation", explode)
+    fake_api(FakeRazorpay(payments=[payment_entity("pay_err_1", 100000)]))
+    body = client.post("/api/razorpay/sync", headers=sync_org["h"], json={"full": True}).json()
+    assert body["sync"]["records_failed"] == 1
+    message = body["sync"]["error_message"]
+    assert "urllib3" not in message and "HTTPSConnectionPool" not in message
+    assert "pay_err_1" in message

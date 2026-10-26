@@ -149,11 +149,14 @@ def test_settings_defaults_and_validation(client, super_admin, restore_defaults)
 
 
 def test_new_orgs_inherit_global_defaults(client, super_admin, restore_defaults):
-    assert client.put(
-        "/api/platform/settings",
-        headers=super_admin["h"],
-        json={"defaultTaxRate": 5, "defaultPaymentTermsDays": 7, "defaultCurrency": "AED"},
-    ).status_code == 200
+    assert (
+        client.put(
+            "/api/platform/settings",
+            headers=super_admin["h"],
+            json={"defaultTaxRate": 5, "defaultPaymentTermsDays": 7, "defaultCurrency": "AED"},
+        ).status_code
+        == 200
+    )
 
     # Platform-created org, currency omitted -> global default currency.
     created = _create_org(client, super_admin["h"])["organization"]
@@ -161,11 +164,20 @@ def test_new_orgs_inherit_global_defaults(client, super_admin, restore_defaults)
     # An explicit currency still wins.
     explicit = _create_org(client, super_admin["h"], currency="GBP")["organization"]
     assert explicit["currency"] == "GBP" and explicit["defaultTaxRate"] == 5
-    assert client.post(
-        "/api/platform/organizations",
-        headers=super_admin["h"],
-        json={"name": "Bad Cur", "currency": "gb", "adminName": "X Y", "adminEmail": "badcur@platform-org.example.com", "adminPassword": "Str0ngPass!"},
-    ).status_code == 422
+    assert (
+        client.post(
+            "/api/platform/organizations",
+            headers=super_admin["h"],
+            json={
+                "name": "Bad Cur",
+                "currency": "gb",
+                "adminName": "X Y",
+                "adminEmail": "badcur@platform-org.example.com",
+                "adminPassword": "Str0ngPass!",
+            },
+        ).status_code
+        == 422
+    )
 
     # Tenant self-registration.
     ctx = register_org(client, "Inherit")

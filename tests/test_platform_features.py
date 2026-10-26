@@ -46,15 +46,21 @@ def test_admin_crud_and_self_guards(client, super_admin):
     assert created.json()["email"] == email and created.json()["isActive"] is True
 
     # Duplicate email -> 409
-    assert client.post(
-        "/api/platform/admins", headers=super_admin["h"], json={"name": "Dup", "email": email, "password": "Str0ngPass!"}
-    ).status_code == 409
+    assert (
+        client.post(
+            "/api/platform/admins", headers=super_admin["h"], json={"name": "Dup", "email": email, "password": "Str0ngPass!"}
+        ).status_code
+        == 409
+    )
     # Weak password -> 422
-    assert client.post(
-        "/api/platform/admins",
-        headers=super_admin["h"],
-        json={"name": "Weak", "email": f"weak-{uuid.uuid4().hex[:6]}@platform.example.com", "password": "weak"},
-    ).status_code == 422
+    assert (
+        client.post(
+            "/api/platform/admins",
+            headers=super_admin["h"],
+            json={"name": "Weak", "email": f"weak-{uuid.uuid4().hex[:6]}@platform.example.com", "password": "weak"},
+        ).status_code
+        == 422
+    )
 
     # The new admin can log in.
     assert client.post("/api/platform/auth/login", json={"email": email, "password": "Str0ngPass!"}).status_code == 200
@@ -83,11 +89,14 @@ def test_change_password(client, super_admin):
     assert b.post("/api/platform/auth/refresh").status_code == 200
 
     # Wrong current password -> 400.
-    assert a.post(
-        "/api/platform/auth/change-password",
-        headers=auth(ta),
-        json={"currentPassword": "WrongNow1!", "newPassword": "NewPass123!"},
-    ).status_code == 400
+    assert (
+        a.post(
+            "/api/platform/auth/change-password",
+            headers=auth(ta),
+            json={"currentPassword": "WrongNow1!", "newPassword": "NewPass123!"},
+        ).status_code
+        == 400
+    )
 
     ok = a.post(
         "/api/platform/auth/change-password",

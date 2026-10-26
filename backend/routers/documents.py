@@ -1,23 +1,25 @@
 import csv
 import hashlib
 import io
+import logging
 import os
 import re
 import uuid
+import zipfile
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 import openpyxl
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.config import get_settings
 from backend.db import get_db
-from backend.deps import get_current_user, require_write
+from backend.deps import get_current_user, module_write_error, require_write
 from backend.models import (
     Account,
     BankAccount,
@@ -36,6 +38,7 @@ from backend.services import audit, excel_import, numbering
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
 settings = get_settings()
+logger = logging.getLogger("roomanbooks.documents")
 router = APIRouter(prefix="/api/documents", tags=["Documents"])
 
 ALLOWED_TYPES = {
@@ -194,9 +197,13 @@ class ExcelCommitItem(BaseModel):
     data: Dict[str, Any]
 
 
+# One import commits at most this many rows (the preview is built from a file of bounded size).
+MAX_IMPORT_ROWS = 5000
+
+
 class ExcelCommitPayload(BaseModel):
-    items: Optional[List[ExcelCommitItem]] = None
-    sections: Optional[List[ExcelCategorizeSection]] = None
+    items: Optional[List[ExcelCommitItem]] = Field(default=None, max_length=MAX_IMPORT_ROWS)
+    sections: Optional[List[ExcelCategorizeSection]] = Field(default=None, max_length=50)
 
 
 class ExcelCommitResponse(BaseModel):
@@ -267,6 +274,22 @@ def _jsonable(data: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+# An .xlsx is a zip: a small upload can expand to gigabytes ("zip bomb").
+MAX_XLSX_UNCOMPRESSED = 200 * 1024 * 1024
+
+
+def _check_xlsx_size(contents: bytes) -> None:
+    try:
+        with zipfile.ZipFile(io.BytesIO(contents)) as archive:
+            total = sum(info.file_size for info in archive.infolist())
+    except zipfile.BadZipFile as e:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "This file isn't a valid Excel (.xlsx) workbook. Save it as .xlsx or .csv and try again."
+        ) from e
+    if total > MAX_XLSX_UNCOMPRESSED:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "This workbook is too large to import. Split it into smaller files.")
+
+
 @router.post("/import-excel-categorize", response_model=ExcelCategorizeResponse)
 async def import_excel_categorize(
     file: UploadFile = File(...),
@@ -279,9 +302,12 @@ async def import_excel_categorize(
     not be read - so the user reviews a real preview before committing.
     """
     filename = file.filename or "import.xlsx"
-    contents = await file.read()
+    limit = get_settings().max_upload_size_mb * 1024 * 1024
+    contents = await file.read(limit + 1)
     if not contents:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File is empty")
+    if len(contents) > limit:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, f"The file is larger than {get_settings().max_upload_size_mb} MB.")
 
     sections: List[ExcelCategorizeSection] = []
 
@@ -296,10 +322,15 @@ async def import_excel_categorize(
         if section:
             sections.append(section)
     else:
+        _check_xlsx_size(contents)
         try:
-            wb = openpyxl.load_workbook(io.BytesIO(contents), data_only=True)
+            # read_only streams the sheets instead of building them all in memory.
+            wb = openpyxl.load_workbook(io.BytesIO(contents), data_only=True, read_only=True)
         except Exception as e:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Failed to parse Excel workbook: {e}") from e
+            logger.info("Excel import: unreadable workbook %r: %r", filename, e)
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "This file isn't a valid Excel (.xlsx) workbook. Save it as .xlsx or .csv and try again."
+            ) from e
         for sheet_name in wb.sheetnames:
             s_lower = sheet_name.strip().lower()
             if any(x in s_lower for x in ["overview", "guide", "readme", "instruction", "legend"]):
@@ -335,9 +366,25 @@ async def import_excel_categorize(
     )
 
 
+# Expense category words -> default chart-of-accounts code (imports).
+_EXPENSE_KEYWORDS = (
+    ("6300", ("rent", "lease")),
+    ("6500", ("travel", "fuel", "petrol", "diesel", "taxi", "cab", "flight", "train", "hotel", "conveyance")),
+    ("6600", ("internet", "telephone", "phone", "mobile", "broadband", "wifi")),
+    ("6700", ("electric", "utilit", "water", "power")),
+    ("6400", ("salary", "salaries", "wage", "payroll")),
+    ("6000", ("advertis", "marketing", "promotion", "ads")),
+    ("6200", ("office", "stationery", "supplies", "printing")),
+    ("6900", ("repair", "maintenance", "service charge")),
+    ("6100", ("bank charge", "bank fee", "bank")),
+    ("6800", ("professional", "legal", "audit", "consult", "ca fee")),
+)
+
+
 @router.post("/import-excel-commit", response_model=ExcelCommitResponse)
 def import_excel_commit(
     payload: ExcelCommitPayload,
+    request: Request,
     user: User = Depends(require_write),
     db: Session = Depends(get_db),
 ):
@@ -351,14 +398,55 @@ def import_excel_commit(
     # Imported late: the routers import each other's services, and importing at
     # module level here would create a circular import.
     from backend.routers.bills import post_bill
+    from backend.routers.expenses import _post as post_expense
     from backend.routers.invoices import post_invoice
 
     org_id = user.organization_id
+    total_rows = sum(len(sec.rows) for sec in payload.sections or []) + len(payload.items or [])
+    if total_rows > MAX_IMPORT_ROWS:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            f"One import can bring in at most {MAX_IMPORT_ROWS} rows; split the file and import it in parts.",
+        )
     counts: Dict[str, int] = {"customers": 0, "vendors": 0, "invoices": 0, "bills": 0, "expenses": 0}
     skipped: List[str] = []
 
-    expense_acct = db.execute(select(Account).where(Account.organization_id == org_id, Account.type == "expense")).scalars().first()
-    bank_acct = db.execute(select(BankAccount).where(BankAccount.organization_id == org_id)).scalars().first()
+    # The import creates records of other modules (invoices, bills...): each
+    # needs the same access as creating it by hand - plan, the user's module
+    # access, a connected app's scope - not just access to Documents.
+    wanted = {sec.category.lower() for sec in payload.sections or []} | {i.category.lower() for i in payload.items or []}
+    for category in sorted(wanted & set(counts)):
+        error = module_write_error(user, (category,), request)
+        if error:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, f"You can't import {category}: {error}")
+
+    expense_accounts = {
+        a.code: a
+        for a in db.execute(
+            select(Account).where(Account.organization_id == org_id, Account.type == "expense", Account.is_active.is_(True))
+        ).scalars()
+    }
+    expense_acct = expense_accounts.get("6990") or next((a for a in expense_accounts.values() if a.subtype == "operating"), None)
+
+    def _expense_account(category: str) -> Optional[Account]:
+        """The ledger account an expense category belongs to; Other Expenses when nothing fits."""
+        text = category.lower()
+        for code, words in _EXPENSE_KEYWORDS:
+            if code in expense_accounts and any(w in text for w in words):
+                return expense_accounts[code]
+        named = next((a for a in expense_accounts.values() if a.subtype == "operating" and text and text in a.name.lower()), None)
+        return named or expense_acct
+
+    # Paid from a bank account (the primary one first), else cash.
+    bank_acct = (
+        db.execute(
+            select(BankAccount)
+            .where(BankAccount.organization_id == org_id, BankAccount.is_active.is_(True))
+            .order_by((BankAccount.type == "bank").desc(), BankAccount.is_primary.desc(), BankAccount.created_at)
+        )
+        .scalars()
+        .first()
+    )
 
     # Exactly one source of rows. Callers have sent both `sections` and an
     # `items` copy of the same rows, and appending both imported everything
@@ -440,8 +528,11 @@ def import_excel_commit(
             if amount is None or when is None:
                 skipped.append(f"Row {index} (expense): missing {'amount' if amount is None else 'date'}")
                 continue
+            if amount <= 0:
+                skipped.append(f"Row {index} (expense): the amount must be more than zero")
+                continue
             if not expense_acct or not bank_acct:
-                skipped.append(f"Row {index} (expense): no expense or bank account set up yet")
+                skipped.append(f"Row {index} (expense): add a bank account in Banking first - expenses are paid from it")
                 continue
             payee = str(d.get("payee") or "").strip()
             expense = Expense(
@@ -461,9 +552,21 @@ def import_excel_commit(
             category = str(d.get("category") or "").strip()
             if category:
                 expense.category = category[:50]
+                expense.account_id = _expense_account(category).id
             if payee:
                 expense.vendor_id = _find_or_create_contact(payee, "vendor", None).id
-            db.add(expense)
+            # Post it like an expense entered by hand: the ledger and the bank balance move.
+            # A row that cannot be posted (e.g. not enough cash) is skipped, not the whole import.
+            try:
+                with db.begin_nested():
+                    db.add(expense)
+                    db.flush()
+                    db.refresh(expense)
+                    post_expense(db, expense, user)
+            except HTTPException as exc:
+                hint = " Add a bank account in Banking and import again." if bank_acct.type == "cash" else ""
+                skipped.append(f"Row {index} (expense): {exc.detail}{hint}")
+                continue
             counts["expenses"] += 1
 
         elif cat in ("invoices", "bills"):
@@ -471,6 +574,9 @@ def import_excel_commit(
             if not name or amount is None or when is None:
                 missing = "customer/vendor name" if not name else ("amount" if amount is None else "date")
                 skipped.append(f"Row {index} ({cat[:-1]}): missing {missing}")
+                continue
+            if amount <= 0:
+                skipped.append(f"Row {index} ({cat[:-1]}): the amount must be more than zero")
                 continue
             # due_date is NOT NULL on the model; with no Due Date column the
             # document's own date is the only non-invented value available.
@@ -481,6 +587,17 @@ def import_excel_commit(
 
             if cat == "invoices":
                 customer = _find_or_create_contact(name, "customer", d.get("email"))
+                reference = str(d.get("invoice_number") or "")[:50] or None
+                if (
+                    reference
+                    and db.execute(
+                        select(Invoice.id).where(
+                            Invoice.organization_id == org_id, Invoice.customer_id == customer.id, Invoice.reference == reference
+                        )
+                    ).first()
+                ):
+                    skipped.append(f"Row {index} (invoice): {name} already has invoice {reference}")
+                    continue
                 invoice = Invoice(
                     organization_id=org_id,
                     invoice_number=numbering.next_number(db, org_id, "invoice"),
@@ -512,6 +629,21 @@ def import_excel_commit(
                 counts["invoices"] += 1
             else:
                 vendor = _find_or_create_contact(name, "vendor", d.get("email"))
+                vendor_number = str(d.get("bill_number") or "")[:50] or None
+                if (
+                    vendor_number
+                    and db.execute(
+                        select(Bill.id).where(
+                            Bill.organization_id == org_id,
+                            Bill.vendor_id == vendor.id,
+                            Bill.vendor_bill_number == vendor_number,
+                            Bill.date == when,
+                            Bill.total == amount,
+                        )
+                    ).first()
+                ):
+                    skipped.append(f"Row {index} (bill): {name}'s bill {vendor_number} of {when.isoformat()} is already in the books")
+                    continue
                 bill = Bill(
                     organization_id=org_id,
                     bill_number=numbering.next_number(db, org_id, "bill"),

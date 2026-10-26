@@ -21,11 +21,14 @@ DEFAULT_ACCOUNTS = [
     ("1300", "Input GST", "asset", "tax"),
     ("1400", "Prepaid Expenses", "asset", "other_current_asset"),
     ("1500", "Furniture and Equipment", "asset", "fixed_asset"),
+    ("1590", "Accumulated Depreciation", "asset", "accumulated_depreciation"),
     ("1900", "Undeposited Funds", "asset", "other_current_asset"),
     # Liabilities
     ("2000", "Accounts Payable", "liability", "accounts_payable"),
     ("2100", "Output GST", "liability", "tax"),
+    ("2110", "GST Payable (Reverse Charge)", "liability", "tax"),
     ("2200", "TDS Payable", "liability", "other_current_liability"),
+    ("2210", "TCS Payable", "liability", "other_current_liability"),
     ("2300", "Salaries Payable", "liability", "other_current_liability"),
     ("2310", "Provident Fund Payable", "liability", "other_current_liability"),
     ("2320", "Professional Tax Payable", "liability", "other_current_liability"),
@@ -40,6 +43,7 @@ DEFAULT_ACCOUNTS = [
     ("4200", "Consulting Revenue", "income", "sales"),
     ("4300", "Discount Given", "income", "contra_income"),
     ("4900", "Other Income", "income", "other_income"),
+    ("4950", "Gain or Loss on Asset Disposal", "income", "other_income"),
     # Expenses
     ("5000", "Cost of Goods Sold", "expense", "cogs"),
     ("5100", "Subcontractor Costs", "expense", "cogs"),
@@ -58,6 +62,7 @@ DEFAULT_ACCOUNTS = [
     ("6950", "Depreciation Expense", "expense", "operating"),
     ("6990", "Other Expenses", "expense", "operating"),
     ("7000", "Inventory Adjustments", "expense", "operating"),
+    ("7100", "Exchange Gain or Loss", "expense", "operating"),
 ]
 
 SYSTEM_CODES = {
@@ -67,7 +72,9 @@ SYSTEM_CODES = {
     "1300",
     "2000",
     "2100",
+    "2110",
     "2200",
+    "2210",
     "2300",
     "2310",
     "2320",
@@ -80,6 +87,9 @@ SYSTEM_CODES = {
     "2400",
     "6400",
     "7000",
+    "1590",
+    "4950",
+    "7100",
 }
 
 
@@ -103,7 +113,17 @@ def bootstrap_accounts(db: Session, organization_id: str) -> Dict[str, Account]:
 def get_account_by_code(db: Session, organization_id: str, code: str) -> Account:
     account = db.execute(select(Account).where(Account.organization_id == organization_id, Account.code == code)).scalar_one_or_none()
     if account is None:
-        raise RuntimeError(f"System account {code} missing for organization {organization_id}")
+        default = next((row for row in DEFAULT_ACCOUNTS if row[0] == code), None)
+        if default is None:
+            raise RuntimeError(f"System account {code} missing for organization {organization_id}")
+        # A system account added to the defaults after this organization was
+        # created (e.g. 2110 reverse-charge GST): create it on first use.
+        _, name, acc_type, subtype = default
+        account = Account(
+            organization_id=organization_id, code=code, name=name, type=acc_type, subtype=subtype, is_system=code in SYSTEM_CODES
+        )
+        db.add(account)
+        db.flush()
     return account
 
 

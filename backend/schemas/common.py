@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Generic, List, Optional, TypeVar
 
@@ -33,9 +33,15 @@ class APIModel(BaseModel):
 
     @field_serializer("*", when_used="json")
     def _serialize_decimals(self, value):
-        """Emit money/quantity values as JSON numbers rather than strings."""
+        """Emit money/quantity values as JSON numbers rather than strings, and timestamps with
+        their timezone: every stored time is UTC, but SQLite (and timestamp-without-time-zone
+        columns) hand them back naive, which a browser would read as local time."""
         if isinstance(value, Decimal):
             return float(value)
+        if isinstance(value, datetime):
+            return (value if value.tzinfo else value.replace(tzinfo=UTC)).isoformat()
+        if isinstance(value, list) and value and isinstance(value[0], Decimal):
+            return [float(v) if isinstance(v, Decimal) else v for v in value]
         return value
 
 

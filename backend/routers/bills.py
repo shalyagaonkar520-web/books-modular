@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Optional
@@ -14,11 +15,12 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
-from backend.models import Bill, BillLine, Contact, Item, Organization, User
+from backend.models import Bill, BillLine, Branch, Contact, Item, Organization, Project, User
+from backend.routers.invoices import fc_fields
 from backend.schemas.common import Message, Page
 from backend.schemas.purchases import BillCreate, BillListItem, BillOut, BillStats, BillStatusUpdate, BillUpdate
 from backend.schemas.sales import LineOut
-from backend.services import audit, export_service, inventory, ledger, numbering
+from backend.services import approvals, audit, doc_flow, export_service, fx, inventory, ledger, numbering, stock
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.documents import compute_lines, group_by_account, totals
 from backend.services.email_service import get_smtp_connection, sender_identity
@@ -26,6 +28,7 @@ from backend.services.money import money, qty
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
 router = APIRouter(prefix="/api/bills", tags=["Purchases"])
+logger = logging.getLogger("roomanbooks.bills")
 OPEN_STATUSES = ("open", "partially_paid")
 
 
@@ -49,6 +52,11 @@ def line_out(line: BillLine) -> LineOut:
         amount=line.amount,
         tax_amount=line.tax_amount,
         item_name=line.item.name if line.item else None,
+        fc_rate=line.fc_rate if line.fc_rate is not None else line.rate,
+        fc_amount=line.fc_amount if line.fc_amount is not None else line.amount,
+        batch_number=line.batch_number,
+        expiry_date=line.expiry_date,
+        serial_numbers=line.serial_numbers,
     )
 
 
@@ -72,6 +80,18 @@ def to_out(bill: Bill) -> BillOut:
         balance_due=money(bill.balance_due),
         notes=bill.notes,
         lines=[line_out(line) for line in bill.lines],
+        place_of_supply=bill.place_of_supply,
+        reverse_charge=bill.reverse_charge,
+        tds_section=bill.tds_section,
+        tds_rate=bill.tds_rate,
+        tds_amount=bill.tds_amount,
+        warehouse_id=bill.warehouse_id,
+        branch_id=bill.branch_id,
+        project_id=bill.project_id,
+        approval_status=bill.approval_status,
+        approval_note=bill.approval_note,
+        approved_total=bill.approved_total,
+        **fc_fields(bill),
         created_at=bill.created_at,
         updated_at=bill.updated_at,
     )
@@ -92,6 +112,9 @@ def to_list_item(bill: Bill) -> BillListItem:
         total=bill.total,
         amount_paid=bill.amount_paid,
         balance_due=money(bill.balance_due),
+        currency=bill.currency,
+        fc_total=fc_fields(bill)["fc_total"],
+        fc_balance_due=fc_fields(bill)["fc_balance_due"],
     )
 
 
@@ -106,13 +129,30 @@ def _apply_payload(db: Session, bill: Bill, payload: BillCreate, org_id: str) ->
     bill.subject = payload.subject
     bill.date = payload.date
     bill.due_date = payload.due_date or (payload.date + timedelta(days=vendor.payment_terms_days))
-    bill.discount_amount = money(payload.discount_amount)
     bill.notes = payload.notes
-    bill.subtotal = subtotal
-    bill.tax_total = tax_total
-    bill.total = totals(subtotal, bill.discount_amount, tax_total)
+    bill.warehouse_id = stock.resolve_warehouse(db, org_id, payload.warehouse_id).id if payload.warehouse_id else None
+    bill.branch_id = get_or_404(db, Branch, payload.branch_id, org_id, "Branch").id if payload.branch_id else None
+    bill.project_id = get_or_404(db, Project, payload.project_id, org_id, "Project").id if payload.project_id else None
+    bill.place_of_supply = payload.place_of_supply
+    bill.reverse_charge = payload.reverse_charge
+    bill.tds_section = payload.tds_section if payload.tds_rate > 0 else None
+    bill.tds_rate = payload.tds_rate
+    # Lines are entered in the vendor's currency; the books get base amounts.
+    bill.currency, bill.exchange_rate = fx.resolve(db, org_id, vendor, payload.exchange_rate)
+    fc_discount = money(payload.discount_amount)
+    fc_taxable = totals(subtotal, fc_discount, Decimal("0"))
+    fc_tds = money(fc_taxable * payload.tds_rate / Decimal("100"))
+    bill.fc_subtotal, bill.fc_discount_amount, bill.fc_tax_total = subtotal, fc_discount, tax_total
+    # The vendor is paid the value, plus GST unless we pay it under reverse
+    # charge, less the TDS we withhold for the government.
+    bill.fc_total = money(fc_taxable + (Decimal("0") if payload.reverse_charge else tax_total) - fc_tds)
+    base = fx.convert(computed, fc_discount, bill.exchange_rate)
+    bill.subtotal, bill.discount_amount, bill.tax_total = base.subtotal, base.discount, base.tax_total
+    taxable = totals(base.subtotal, base.discount, Decimal("0"))
+    bill.tds_amount = fx.to_base(fc_tds, bill.exchange_rate)
+    bill.total = money(taxable + (Decimal("0") if payload.reverse_charge else base.tax_total) - bill.tds_amount)
     bill.lines.clear()
-    for position, line in enumerate(computed):
+    for position, (line, base_line) in enumerate(zip(computed, base.lines, strict=True)):
         bill.lines.append(
             BillLine(
                 item_id=line.item.id if line.item else None,
@@ -120,10 +160,15 @@ def _apply_payload(db: Session, bill: Bill, payload: BillCreate, org_id: str) ->
                 position=position,
                 description=line.spec.description,
                 quantity=line.quantity,
-                rate=line.rate,
+                rate=base_line.rate,
                 tax_rate=line.tax_rate,
-                amount=line.amount,
-                tax_amount=line.tax_amount,
+                amount=base_line.amount,
+                tax_amount=base_line.tax_amount,
+                fc_rate=line.rate,
+                fc_amount=line.amount,
+                batch_number=(line.spec.batch_number or "").strip() or None,
+                expiry_date=line.spec.expiry_date,
+                serial_numbers=", ".join(stock.parse_serials(line.spec.serial_numbers)) or None,
             )
         )
 
@@ -167,6 +212,7 @@ def _unreceive_at_average_cost(item: Item, on_hand: Decimal, quantity: Decimal, 
 
 def post_bill(db: Session, bill: Bill, user: User) -> None:
     """Journal: Dr expense/inventory accounts, Dr Input GST; Cr AP total, Cr Purchase Discounts."""
+    approvals.ensure_approved(db, bill, "bill", user)
     org_id = bill.organization_id
     # As with invoices, a vendor may be pointed at its own payables account.
     ap = bill.vendor.ledger_account or get_account_by_code(db, org_id, "2000")
@@ -182,7 +228,19 @@ def post_bill(db: Session, bill: Bill, user: User) -> None:
             debit_pairs.append((inventory_acct.id, line.amount))
             on_hand = _stock_on_hand(db, item)
             inventory.adjust_stock(
-                db, item, line.quantity, bill.date, "bill_stock", bill.id, f"Received on {bill.bill_number}", user.id, rate=Decimal("0")
+                db,
+                item,
+                line.quantity,
+                bill.date,
+                "bill_stock",
+                bill.id,
+                f"Received on {bill.bill_number}",
+                user.id,
+                rate=Decimal("0"),
+                warehouse_id=bill.warehouse_id,
+                batch_number=line.batch_number,
+                expiry_date=line.expiry_date,
+                serial_numbers=stock.parse_serials(line.serial_numbers) if item.track_serial else None,
             )
             _receive_at_average_cost(item, on_hand, qty(line.quantity), money(line.rate))
         else:
@@ -195,6 +253,13 @@ def post_bill(db: Session, bill: Bill, user: User) -> None:
         lines.append((input_gst.id, bill.tax_total, Decimal("0"), f"GST on {bill.bill_number}", bill.vendor_id))
     if bill.discount_amount > 0:
         lines.append((discount_acct.id, Decimal("0"), bill.discount_amount, f"Discount on {bill.bill_number}", bill.vendor_id))
+    if bill.reverse_charge and bill.tax_total > 0:
+        # We owe the GST ourselves; the input credit above is still ours.
+        rcm = get_account_by_code(db, org_id, "2110")
+        lines.append((rcm.id, Decimal("0"), bill.tax_total, f"Reverse charge GST on {bill.bill_number}", bill.vendor_id))
+    if bill.tds_amount > 0:
+        tds = get_account_by_code(db, org_id, "2200")
+        lines.append((tds.id, Decimal("0"), bill.tds_amount, f"TDS {bill.tds_section} on {bill.bill_number}", bill.vendor_id))
     lines.append((ap.id, Decimal("0"), bill.total, f"Bill {bill.bill_number}", bill.vendor_id))
     ledger.post_entry(
         db, org_id, bill.date, lines, "bill", bill.id, reference=bill.vendor_bill_number or bill.bill_number, created_by=user.id
@@ -218,6 +283,9 @@ def unpost_bill(db: Session, bill: Bill, user: User, reason: str) -> None:
                 user.id,
                 rate=Decimal("0"),
                 allow_negative=True,
+                warehouse_id=bill.warehouse_id,
+                batch_number=line.batch_number,
+                serial_numbers=stock.parse_serials(line.serial_numbers) if line.item.track_serial else None,
             )
 
 
@@ -429,18 +497,21 @@ def send_bill_via_gmail(
     msg["From"] = f"{sender_name} <{sender_email}>"
     msg["To"] = payload.to_email
 
-    vendor_name = bill.vendor.display_name if bill.vendor else "Vendor"
+    from html import escape
+
+    # Everything a user typed is escaped: the email is HTML from our sender.
+    vendor_name = escape(bill.vendor.display_name if bill.vendor else "Vendor")
     html = f"""<!DOCTYPE html><html><body style="font-family:sans-serif;padding:24px;background:#f8fafc;color:#1e293b;">
     <div style="max-width:550px;margin:0 auto;background:#fff;padding:28px;border-radius:10px;border:1px solid #e2e8f0;">
     <h2 style="color:#0f172a;margin-top:0;">Rooman Technologies - Purchase Bill Voucher</h2>
     <p>Dear <strong>{vendor_name}</strong>,</p>
-    <p>Please find attached voucher details for Purchase Bill <strong>{bill.bill_number}</strong> (Vendor Ref: {bill.vendor_bill_number or "N/A"}).</p>
+    <p>Please find attached voucher details for Purchase Bill <strong>{bill.bill_number}</strong> (Vendor Ref: {escape(bill.vendor_bill_number or "N/A")}).</p>
     <div style="background:#f1f5f9;padding:16px;border-radius:6px;margin:16px 0;">
       <div>Bill Amount: <strong>₹{bill.total:,.2f}</strong></div>
       <div>Due Date: <strong>{bill.due_date.strftime("%d %b %Y")}</strong></div>
       <div>Balance Outstanding: <strong>₹{bill.balance_due:,.2f}</strong></div>
     </div>
-    {f'<p style="background:#eff6ff;padding:12px;border-left:4px solid #2563eb;"><strong>Note:</strong> {payload.custom_notes}</p>' if payload.custom_notes else ""}
+    {f'<p style="background:#eff6ff;padding:12px;border-left:4px solid #2563eb;"><strong>Note:</strong> {escape(payload.custom_notes or "")}</p>' if payload.custom_notes else ""}
     <p>Warm regards,<br/><strong>Accounts Payable Team</strong><br/>Rooman Technologies</p>
     </div></body></html>"""
 
@@ -450,25 +521,36 @@ def send_bill_via_gmail(
         part.add_header("Content-Disposition", "attachment", filename=f"Bill_{bill.bill_number}.pdf")
         msg.attach(part)
 
+    server = None
     try:
         server = get_smtp_connection()
         server.sendmail(sender_email, payload.to_email, msg.as_string())
-        server.quit()
     except Exception as e:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Gmail SMTP error: {e}")
+        logger.error("Emailing bill %s to %s failed", bill.id, payload.to_email, exc_info=e)
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "The email could not be sent. Check the address, or ask your administrator to check the email settings.",
+        ) from e
+    finally:
+        if server is not None:
+            try:
+                server.quit()
+            except Exception:
+                pass
 
     audit.record(db, user, "email", "bill", bill.id, f"Emailed bill {bill.bill_number} to {payload.to_email}")
     db.commit()
-    return {"success": True, "message": f"Bill {bill.bill_number} emailed to {payload.to_email} via Gmail SMTP"}
+    return {"success": True, "message": f"Bill {bill.bill_number} emailed to {payload.to_email}."}
 
 
-@router.post("", response_model=BillOut, status_code=status.HTTP_201_CREATED)
-def create_bill(payload: BillCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def create_bill_record(db: Session, user: User, payload: BillCreate, recurring_profile_id: Optional[str] = None) -> Bill:
+    """Create (and, when open, post) a bill without committing; see create_invoice_record."""
     bill = Bill(
         organization_id=user.organization_id,
         bill_number=numbering.next_number(db, user.organization_id, "bill"),
         status="draft",
         created_by=user.id,
+        recurring_profile_id=recurring_profile_id,
     )
     _apply_payload(db, bill, payload, user.organization_id)
     db.add(bill)
@@ -477,6 +559,12 @@ def create_bill(payload: BillCreate, user: User = Depends(require_write), db: Se
         bill.status = "open"
         post_bill(db, bill, user)
     audit.record(db, user, "create", "bill", bill.id, f"Created bill {bill.bill_number} ({bill.status})")
+    return bill
+
+
+@router.post("", response_model=BillOut, status_code=status.HTTP_201_CREATED)
+def create_bill(payload: BillCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+    bill = create_bill_record(db, user, payload)
     db.commit()
     return get_bill(bill.id, user, db)
 
@@ -518,6 +606,7 @@ def change_status(bill_id: str, payload: BillStatusUpdate, user: User = Depends(
         if bill.status != "draft":
             unpost_bill(db, bill, user, "Bill voided")
         bill.status = "void"
+        doc_flow.release_bill(db, bill)
     elif target == "draft":
         if bill.status != "open" or bill.amount_paid > 0:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only unpaid open bills can be reverted to draft")
@@ -542,6 +631,7 @@ def delete_bill(bill_id: str, user: User = Depends(require_write), db: Session =
     # it would silently leave the books unbalanced.
     if bill.status not in ("draft", "void"):
         unpost_bill(db, bill, user, "Bill deleted")
+    doc_flow.release_bill(db, bill)
     db.delete(bill)
     audit.record(db, user, "delete", "bill", bill_id, f"Deleted bill {number}")
     db.commit()

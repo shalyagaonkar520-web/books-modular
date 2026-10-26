@@ -184,11 +184,13 @@ def test_invoice_list_filters_and_stats(client, org):
 
 
 def test_unapplied_customer_advance(client, org):
+    """With nothing owed, money received is kept as the customer's advance."""
     h = org["h"]
+    fresh = client.post("/api/contacts", headers=h, json={"type": "customer", "displayName": "Advance Only Ltd"}).json()
     res = client.post(
         "/api/customer-payments",
         headers=h,
-        json={"customerId": org["customer"]["id"], "bankAccountId": org["bank"]["id"], "date": "2026-09-02", "amount": 1500},
+        json={"customerId": fresh["id"], "bankAccountId": org["bank"]["id"], "date": "2026-09-02", "amount": 1500},
     )
     assert res.status_code == 201 and res.json()["invoiceId"] is None
     assert trial_balance_ok(client, h)
@@ -249,4 +251,59 @@ def test_unpaid_sent_invoice_can_be_deleted_and_reverses_the_ledger(client, org)
     refused = client.delete(f"/api/invoices/{paid['id']}", headers=h)
     assert refused.status_code == 400
     assert "payments" in refused.json()["detail"].lower()
+    assert trial_balance_ok(client, h)
+
+
+def test_payment_without_invoice_is_applied_to_oldest_unpaid_invoices(client):
+    from tests.conftest import TODAY, auth, register_org, trial_balance_ok
+
+    ctx = register_org(client, "AutoApply")
+    h = auth(ctx["token"])
+    cash = client.post(
+        "/api/banking/accounts",
+        headers=h,
+        json={"name": "Cash", "type": "cash", "openingBalance": 0, "openingBalanceDate": "2026-01-01", "isPrimary": True},
+    ).json()
+    cust = client.post("/api/contacts", headers=h, json={"type": "customer", "displayName": "Auto Apply Co"}).json()
+
+    def invoice(day: str, due: str, rate: int):
+        res = client.post(
+            "/api/invoices",
+            headers=h,
+            json={
+                "customerId": cust["id"],
+                "date": day,
+                "dueDate": due,
+                "status": "sent",
+                "lines": [{"description": "x", "quantity": 1, "rate": rate, "taxRate": 18}],
+            },
+        )
+        assert res.status_code == 201, res.text
+        return res.json()
+
+    newer = invoice("2026-02-01", "2026-03-01", 20)  # 23.60
+    older = invoice("2026-01-01", "2026-02-01", 10)  # 11.80
+
+    def receive(amount):
+        res = client.post(
+            "/api/customer-payments",
+            headers=h,
+            json={"customerId": cust["id"], "bankAccountId": cash["id"], "date": TODAY, "amount": amount, "reference": "UPI-1"},
+        )
+        assert res.status_code == 201, res.text
+        return res.json()
+
+    first = receive(20)
+    assert first["invoiceId"] == older["id"] and first["amount"] == 11.8
+    assert client.get(f"/api/invoices/{older['id']}", headers=h).json()["balanceDue"] == 0
+    assert client.get(f"/api/invoices/{newer['id']}", headers=h).json()["balanceDue"] == 15.4
+    assert client.get("/api/reports/receivables-aging", headers=h).json()["total"] == 15.4
+
+    receive(50)  # pays the rest of the newer invoice; 34.60 is kept as the customer's advance
+    assert client.get(f"/api/invoices/{newer['id']}", headers=h).json()["balanceDue"] == 0
+    assert client.get("/api/reports/receivables-aging", headers=h).json()["total"] == 0
+    payments = client.get("/api/customer-payments", headers=h, params={"customer_id": cust["id"]}).json()
+    items = payments["items"] if isinstance(payments, dict) else payments
+    advances = [p for p in items if p["customerId"] == cust["id"] and p["invoiceId"] is None]
+    assert [p["amount"] for p in advances] == [34.6]
     assert trial_balance_ok(client, h)

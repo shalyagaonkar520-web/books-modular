@@ -17,6 +17,8 @@ class ItemBase(APIModel):
     name: str = Field(min_length=1, max_length=200)
     type: ItemType = "goods"
     sku: str = Field(min_length=1, max_length=50)
+    # Printed barcode scanned at the Point of Sale; unique within the organization.
+    barcode: Optional[str] = Field(default=None, max_length=64)
     unit: str = Field(default="pcs", max_length=20)
     hsn_sac: Optional[str] = Field(default=None, max_length=20)
     tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
@@ -30,6 +32,7 @@ class ItemBase(APIModel):
     purchase_description: Optional[str] = None
     preferred_vendor_id: Optional[str] = None
     track_inventory: bool = False
+    track_serial: bool = False
     opening_stock: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("99999999"))
     opening_stock_rate: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("999999999.99"))
     reorder_level: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("99999999"))
@@ -39,6 +42,9 @@ class ItemBase(APIModel):
     def _service_has_no_inventory(self):
         if self.type == "service":
             self.track_inventory = False
+        if not self.track_inventory:
+            self.track_serial = False
+        if self.type == "service":
             self.opening_stock = Decimal("0")
             self.opening_stock_rate = Decimal("0")
             self.reorder_level = Decimal("0")
@@ -49,6 +55,11 @@ class ItemBase(APIModel):
 class ItemCreate(ItemBase):
     # An entry rule, so it sits here rather than on ItemBase: ItemOut extends
     # ItemBase too, and a legacy row must still be readable.
+    @field_validator("barcode")
+    @classmethod
+    def _barcode(cls, value: Optional[str]) -> Optional[str]:
+        return validators.barcode(value)
+
     @field_validator("image_url")
     @classmethod
     def _image_url(cls, value: Optional[str]) -> Optional[str]:
@@ -59,6 +70,7 @@ class ItemUpdate(APIModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     type: Optional[ItemType] = None
     sku: Optional[str] = Field(default=None, min_length=1, max_length=50)
+    barcode: Optional[str] = Field(default=None, max_length=64)
     unit: Optional[str] = Field(default=None, max_length=20)
     hsn_sac: Optional[str] = Field(default=None, max_length=20)
     tax_rate: Optional[Decimal] = Field(default=None, ge=0, le=100)
@@ -72,6 +84,7 @@ class ItemUpdate(APIModel):
     purchase_description: Optional[str] = None
     preferred_vendor_id: Optional[str] = None
     track_inventory: Optional[bool] = None
+    track_serial: Optional[bool] = None
     opening_stock: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("99999999"))
     opening_stock_rate: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("999999999.99"))
     reorder_level: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("99999999"))
@@ -87,6 +100,7 @@ class ItemUpdate(APIModel):
         "selling_price",
         "cost_price",
         "track_inventory",
+        "track_serial",
         "opening_stock",
         "opening_stock_rate",
         "reorder_level",
@@ -96,6 +110,11 @@ class ItemUpdate(APIModel):
     def _required_columns_not_null(cls, value, info: ValidationInfo):
         # Omitting a field keeps it; null is not a value these columns can hold.
         return validators.not_null(value, to_camel(info.field_name))
+
+    @field_validator("barcode")
+    @classmethod
+    def _barcode(cls, value: Optional[str]) -> Optional[str]:
+        return validators.barcode(value)
 
     @field_validator("image_url")
     @classmethod
@@ -122,6 +141,9 @@ class InventoryAdjustmentCreate(APIModel):
     quantity_delta: Decimal = Field(ge=-MAX_QUANTITY, le=MAX_QUANTITY)
     reason: str = Field(min_length=1, max_length=120)
     notes: Optional[str] = None
+    warehouse_id: Optional[str] = None
+    batch_number: Optional[str] = Field(default=None, max_length=60)
+    expiry_date: Optional[date] = None
 
 
 class InventoryAdjustmentOut(APIModel):

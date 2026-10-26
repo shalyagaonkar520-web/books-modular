@@ -22,6 +22,9 @@ export interface PaymentInvoiceContext {
   invoiceNumber: string;
   customerId: string;
   balanceDue: number;
+  /** Foreign-currency invoice: its currency and balance in that currency. */
+  currency?: string | null;
+  fcBalanceDue?: number | null;
 }
 
 interface RecordPaymentModalProps {
@@ -41,7 +44,7 @@ export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers 
   // The bank/cash account list is Admin/Viewer-only to read. A payment must name
   // one, and there is no staff-readable account picker yet, so for Staff the form
   // cannot be completed - don't fetch (and 403), and show a message instead.
-  const { can } = useAuth();
+  const { can, organization } = useAuth();
   const canReadAccounts = can('admin', 'viewer');
   const customerMode = !invoice;
 
@@ -53,6 +56,8 @@ export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers 
   const [mode, setMode] = useState<string>(PAYMENT_MODES[0].value);
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
+  const [exchangeRate, setExchangeRate] = useState('');
+  const baseCurrency = organization?.currency ?? 'INR';
 
   // Admin/viewer read the full banking list (with balances); staff use the
   // balance-free options endpoint so they can still record payments.
@@ -85,11 +90,12 @@ export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers 
     setCustomerId(invoice?.customerId ?? '');
     setInvoiceId('');
     setDate(todayIso());
-    setAmount(invoice ? String(invoice.balanceDue) : '');
+    setAmount(invoice ? String(invoice.currency && invoice.currency !== baseCurrency ? (invoice.fcBalanceDue ?? 0) : invoice.balanceDue) : '');
+    setExchangeRate('');
     setMode(PAYMENT_MODES[0].value);
     setReference('');
     setNotes('');
-  }, [open, invoice, reset]);
+  }, [open, invoice, reset, baseCurrency]);
 
   // Default to the primary bank account once the list arrives.
   useEffect(() => {
@@ -102,12 +108,17 @@ export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers 
     () => (customerMode ? openInvoices.data?.items.find((item) => item.id === invoiceId) ?? null : null),
     [customerMode, openInvoices.data, invoiceId],
   );
-  const maxAmount = invoice ? invoice.balanceDue : selectedInvoice?.balanceDue ?? null;
+  const docCurrency = (invoice ? invoice.currency : selectedInvoice?.currency) || baseCurrency;
+  const foreign = docCurrency !== baseCurrency;
+  const fcBalance = invoice ? invoice.fcBalanceDue : selectedInvoice?.fcBalanceDue;
+  const maxAmount = foreign ? (fcBalance ?? null) : invoice ? invoice.balanceDue : (selectedInvoice?.balanceDue ?? null);
+  const money = (value: number) => formatCurrency(value, docCurrency);
 
   const chooseInvoice = (value: string) => {
     setInvoiceId(value);
     const picked = openInvoices.data?.items.find((item) => item.id === value);
-    setAmount(picked ? String(picked.balanceDue) : '');
+    const pickedForeign = Boolean(picked?.currency && picked.currency !== baseCurrency);
+    setAmount(picked ? String(pickedForeign ? (picked.fcBalanceDue ?? 0) : picked.balanceDue) : '');
   };
 
   const submit = async () => {
@@ -126,7 +137,7 @@ export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers 
       return;
     }
     if (maxAmount !== null && value > round2(maxAmount)) {
-      setError(t('paymentsReceived.recordModal.exceedsBalance', { amount: formatCurrency(maxAmount) }));
+      setError(t('paymentsReceived.recordModal.exceedsBalance', { amount: money(maxAmount) }));
       return;
     }
     const result = await run(() =>
@@ -136,6 +147,7 @@ export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers 
         bankAccountId,
         date,
         amount: value,
+        exchangeRate: foreign && parseNumber(exchangeRate) > 0 ? parseNumber(exchangeRate) : null,
         mode,
         reference: reference.trim() || null,
         notes: notes.trim() || null,
@@ -185,7 +197,7 @@ export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers 
               </div>
               <div className="detail-item">
                 <dt>{t('paymentsReceived.recordModal.balanceDue')}</dt>
-                <dd className="num strong">{formatCurrency(invoice.balanceDue)}</dd>
+                <dd className="num strong">{foreign ? money(invoice.fcBalanceDue ?? 0) : formatCurrency(invoice.balanceDue)}</dd>
               </div>
             </dl>
           ) : (
@@ -237,11 +249,23 @@ export function RecordPaymentModal({ open, onClose, onSaved, invoice, customers 
               max={maxAmount !== null ? String(maxAmount) : undefined}
               required
               value={amount}
-              prefix="₹"
+              prefix={foreign ? docCurrency : '₹'}
               error={fieldErrors.amount}
-              hint={maxAmount !== null ? t('paymentsReceived.recordModal.amountHint', { amount: formatCurrency(maxAmount) }) : undefined}
+              hint={maxAmount !== null ? t('paymentsReceived.recordModal.amountHint', { amount: money(maxAmount) }) : undefined}
               onChange={(event) => setAmount(event.target.value)}
             />
+            {foreign ? (
+              <TextField
+                label={t('payments.form.exchangeRate')}
+                type="number"
+                min="0"
+                step="0.000001"
+                value={exchangeRate}
+                hint={t('payments.form.exchangeRateHint', { base: baseCurrency, code: docCurrency })}
+                error={fieldErrors.exchangeRate}
+                onChange={(event) => setExchangeRate(event.target.value)}
+              />
+            ) : null}
             <SelectField
               label={t('paymentsReceived.recordModal.mode')}
               value={mode}

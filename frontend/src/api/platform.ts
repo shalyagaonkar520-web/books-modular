@@ -48,12 +48,25 @@ export interface ChartPoint {
 export type OrgApprovalStatus = 'approved' | 'pending' | 'rejected';
 
 /** An organization's app content: what its users see, the shared copy beneath it, and what it customizes. */
+/** What an organization's admin panel may edit in its app content (set by the platform admin). */
+export interface PanelContentAccess {
+  modules: string[];
+  branding: boolean;
+  general: boolean;
+  /** Still following the subscription plan (nothing chosen yet). */
+  isDefault: boolean;
+  /** Modules of the accepted plan; null = every module. */
+  planModules?: string[] | null;
+}
+
 export interface OrgAppContent {
   organizationId: string;
   organizationName: string;
   content: AppContent;
   shared: AppContent;
   overridden: { branding: string[]; modules: string[]; texts: string[] };
+  /** Only for the org admin panel: the parts it may edit. */
+  editable?: PanelContentAccess | null;
 }
 
 /** Trial → (plan approved) active; a trial that runs out without a plan is expired. */
@@ -108,6 +121,10 @@ export interface ApproveSubscriptionBody {
 export interface OrgSummary extends OrgSubscriptionFields {
   id: string;
   name: string;
+  /** Short unique code; the default admin panel login is admin@<code>. */
+  code?: string | null;
+  /** Whether the organization has an admin panel login yet. */
+  hasPanelAdmin?: boolean;
   isSuspended: boolean;
   /** Absent on older payloads, which predate approval — treat as approved. */
   approvalStatus?: OrgApprovalStatus;
@@ -182,6 +199,8 @@ export interface PlatformDashboard {
 export interface OrgDetail extends OrgSubscriptionFields {
   id: string;
   name: string;
+  /** Short unique code; the default admin panel login is admin@<code>. */
+  code?: string | null;
   legalName?: string | null;
   gstin?: string | null;
   email?: string | null;
@@ -278,12 +297,25 @@ export interface OrgPanelAdminItem {
   createdAt: string;
   /** Who created it (a platform admin's name or email), when known. */
   createdBy?: string | null;
+  /** Still on the default ID / a temporary password: the admin must choose their own at sign-in. */
+  mustChangeCredentials?: boolean;
+  /** When the admin asked for a password reset (pending), else null. */
+  resetRequestedAt?: string | null;
 }
 
-export interface CreatePanelAdminBody {
-  name: string;
-  email: string;
+/** A generated login ID and temporary password, returned once. */
+export interface PanelTempCredentials {
+  admin: OrgPanelAdminItem;
+  loginId: string;
   password: string;
+}
+
+/** A forgot-password request waiting for the platform admin. */
+export interface PanelResetRequest {
+  admin: OrgPanelAdminItem;
+  organizationId: string;
+  organizationName: string;
+  organizationCode?: string | null;
 }
 
 export interface UpdatePanelAdminBody {
@@ -293,10 +325,6 @@ export interface UpdatePanelAdminBody {
   password?: string;
 }
 
-/** Approving (which starts the free trial) can create the organization's admin panel login in the same step. */
-export interface ApproveOrganizationBody {
-  panelAdmin?: CreatePanelAdminBody;
-}
 
 // ---------------------------------------------------------------------------
 // Users
@@ -475,14 +503,25 @@ export const platformApi = {
     /** Soft delete: locks every user out but keeps the data. Reversible via restore. */
     archive: (id: string) => platformClient.post<OrgDetail>(`/platform/organizations/${id}/archive`),
     restore: (id: string) => platformClient.post<OrgDetail>(`/platform/organizations/${id}/restore`),
-    approve: (id: string, body?: ApproveOrganizationBody) =>
-      platformClient.post<OrgDetail>(`/platform/organizations/${id}/approve`, body),
+    approve: (id: string) => platformClient.post<OrgDetail>(`/platform/organizations/${id}/approve`),
     /** Logins for the organization's admin panel (/org-admin). */
     panelAdmins: {
       list: (orgId: string, signal?: AbortSignal) =>
         platformClient.get<OrgPanelAdminItem[]>(`/platform/organizations/${orgId}/panel-admins`, undefined, signal),
-      create: (orgId: string, body: CreatePanelAdminBody) =>
-        platformClient.post<OrgPanelAdminItem>(`/platform/organizations/${orgId}/panel-admins`, body),
+      /** What this organization's admin panel may edit in its app content. */
+      contentAccess: (orgId: string, signal?: AbortSignal) =>
+        platformClient.get<PanelContentAccess>(`/platform/organizations/${orgId}/panel-content-access`, undefined, signal),
+      /** Module keys plus 'branding' / 'general'; null = back to the plan's modules. */
+      setContentAccess: (orgId: string, keys: string[] | null) =>
+        platformClient.put<PanelContentAccess>(`/platform/organizations/${orgId}/panel-content-access`, { keys }),
+      /** admin@<code> with a random temporary password (returned once). */
+      createDefault: (orgId: string) =>
+        platformClient.post<PanelTempCredentials>(`/platform/organizations/${orgId}/panel-admins/default`),
+      /** A new random temporary password (also approves a pending forgot-password request). */
+      resetPassword: (id: string) => platformClient.post<PanelTempCredentials>(`/platform/panel-admins/${id}/reset-password`),
+      dismissReset: (id: string) => platformClient.post<OrgPanelAdminItem>(`/platform/panel-admins/${id}/dismiss-reset`),
+      resetRequests: (signal?: AbortSignal) =>
+        platformClient.get<PanelResetRequest[]>('/platform/panel-reset-requests', undefined, signal),
       update: (id: string, body: UpdatePanelAdminBody) =>
         platformClient.patch<OrgPanelAdminItem>(`/platform/panel-admins/${id}`, body),
       remove: (id: string) => platformClient.delete<Message>(`/platform/panel-admins/${id}`),

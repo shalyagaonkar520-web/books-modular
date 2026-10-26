@@ -117,3 +117,38 @@ export function round2(value: number): number {
 export function round3(value: number): number {
   return Math.round((value + Number.EPSILON) * 1000) / 1000;
 }
+
+interface FcDoc {
+  currency?: string | null;
+  exchangeRate?: number;
+  subtotal: number;
+  discountAmount: number;
+  taxTotal: number;
+  total: number;
+  amountPaid: number;
+  balanceDue: number;
+  fcSubtotal?: number | null;
+  fcDiscountAmount?: number | null;
+  fcTaxTotal?: number | null;
+  fcTotal?: number | null;
+  fcAmountPaid?: number | null;
+  fcBalanceDue?: number | null;
+}
+
+/** An invoice or bill in its own currency (falls back to the base figures for base-currency documents). */
+export function documentCurrency<T extends FcDoc>(doc: T, baseCurrency = 'INR') {
+  const code = doc.currency || baseCurrency;
+  const foreign = code !== baseCurrency;
+  return {
+    code,
+    foreign,
+    rate: doc.exchangeRate ?? 1,
+    subtotal: foreign ? (doc.fcSubtotal ?? 0) : doc.subtotal,
+    discount: foreign ? (doc.fcDiscountAmount ?? 0) : doc.discountAmount,
+    tax: foreign ? (doc.fcTaxTotal ?? 0) : doc.taxTotal,
+    total: foreign ? (doc.fcTotal ?? 0) : doc.total,
+    paid: foreign ? (doc.fcAmountPaid ?? 0) : doc.amountPaid,
+    balance: foreign ? (doc.fcBalanceDue ?? 0) : doc.balanceDue,
+    format: (amount: number | null | undefined) => formatCurrency(amount, code),
+  };
+}

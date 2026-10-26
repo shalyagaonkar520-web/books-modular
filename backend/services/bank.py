@@ -124,9 +124,22 @@ def check_cash_overdraft(db: Session, bank_acct: BankAccount, withdrawal_amount:
 
 
 def remove_movements(db: Session, source_type: str, source_id: str) -> None:
-    for tx in db.execute(
-        select(BankTransaction).where(BankTransaction.source_type == source_type, BankTransaction.source_id == source_id)
-    ).scalars():
+    """Delete a document's bank movements. A reconciled one is confirmed against the bank
+    statement, so it is refused: un-reconcile it (or undo the statement match) first."""
+    from fastapi import HTTPException
+    from fastapi import status as http_status
+
+    rows = list(
+        db.execute(
+            select(BankTransaction).where(BankTransaction.source_type == source_type, BankTransaction.source_id == source_id)
+        ).scalars()
+    )
+    if any(tx.is_reconciled for tx in rows):
+        raise HTTPException(
+            http_status.HTTP_400_BAD_REQUEST,
+            "This is reconciled with the bank statement. Undo the match in Banking (or untick Reconciled) before changing or deleting it.",
+        )
+    for tx in rows:
         db.delete(tx)
 
 

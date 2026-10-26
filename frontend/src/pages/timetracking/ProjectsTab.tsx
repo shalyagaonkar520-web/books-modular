@@ -19,6 +19,8 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatNumber, titleCase } from '@/utils/format';
 import { statusLabel, statusTone } from '@/utils/status';
 
+import { ProfitabilityModal } from '@/pages/operations/ProfitabilityModal';
+
 import { InvoiceTimeModal } from './InvoiceTimeModal';
 import { ProjectModal } from './ProjectModal';
 
@@ -37,6 +39,7 @@ export function ProjectsTab({ onProjectsChanged }: { onProjectsChanged: () => vo
   const [statusFilter, setStatusFilter] = useState('');
   const [modal, setModal] = useState<{ open: boolean; project: Project | null }>({ open: false, project: null });
   const [invoiceTarget, setInvoiceTarget] = useState<Project | null>(null);
+  const [profitTarget, setProfitTarget] = useState<Project | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   const [lastInvoice, setLastInvoice] = useState<Invoice | null>(null);
 
@@ -124,6 +127,9 @@ export function ProjectsTab({ onProjectsChanged }: { onProjectsChanged: () => vo
                 footer={
                   canWrite ? (
                     <div className="row">
+                      <Button size="sm" onClick={() => setProfitTarget(project)}>
+                        {t('ops.profit.button')}
+                      </Button>
                       <Button size="sm" onClick={() => setModal({ open: true, project })}>
                         {t('timeTracking.projects.editButton')}
                       </Button>
@@ -187,6 +193,8 @@ export function ProjectsTab({ onProjectsChanged }: { onProjectsChanged: () => vo
           })}
         </div>
       )}
+
+      {profitTarget ? <ProfitabilityModal project={profitTarget} onClose={() => setProfitTarget(null)} /> : null}
 
       <ProjectModal
         open={modal.open}

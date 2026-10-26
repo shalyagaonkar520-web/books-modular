@@ -267,6 +267,18 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
               </div>
             ))}
           </div>
+          {commitResult.skipped.length ? (
+            <div className="alert alert-warning" style={{ textAlign: 'left', maxHeight: 220, overflowY: 'auto' }}>
+              <strong>{t('header.excel.skippedTitle', { count: commitResult.skipped.length })}</strong>
+              <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                {commitResult.skipped.map((reason, i) => (
+                  <li key={i} className="small">
+                    {reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
       ) : categorized ? (
         <div>

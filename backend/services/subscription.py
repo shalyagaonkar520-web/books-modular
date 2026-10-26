@@ -114,9 +114,13 @@ def active_plan(org: Organization) -> Optional[Dict[str, Any]]:
 
 
 def paid_modules(org: Optional[Organization]) -> Optional[set]:
-    """Module keys of the accepted plan, or None when every module is open (trial, or an org from before plans)."""
+    """Module keys of the accepted plan, or None when every module is open (trial, or an org from before plans).
+
+    The core modules are always part of it, so one added to the catalog later
+    (the Point of Sale) reaches plans accepted before it existed.
+    """
     plan = active_plan(org) if org is not None else None
-    return set(plan["modules"]) if plan else None
+    return set(plan["modules"]) | set(module_pricing.core_keys()) if plan else None
 
 
 def pending_request(org: Organization) -> Optional[Dict[str, Any]]:

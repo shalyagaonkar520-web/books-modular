@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Trash2 } from 'lucide-react';
 
+import { currenciesApi } from '@/api/advancedAccounting';
+import { priceListsApi, warehousesApi } from '@/api/inventoryOps';
 import { contactsApi, invoicesApi, itemsApi } from '@/api/endpoints';
 import type { Contact, Invoice, Item } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
@@ -16,7 +18,9 @@ import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { addDaysIso, formatCurrency, formatQuantity, parseNumber, round2, round3, todayIso } from '@/utils/format';
+import { stateFromGstin, stateOptions, TCS_RATES } from '@/utils/gst';
 import { taxRatesWith } from '@/utils/status';
+import { BranchSelect } from '@/pages/operations/BranchSelect';
 
 interface LineDraft {
   key: string;
@@ -27,6 +31,8 @@ interface LineDraft {
   quantity: string;
   rate: string;
   taxRate: string;
+  batchNumber: string;
+  serialNumbers: string;
 }
 
 let lineCounter = 0;
@@ -40,6 +46,8 @@ const newLine = (taxRate: string = FALLBACK_LINE_TAX_RATE): LineDraft => ({
   quantity: '1',
   rate: '0',
   taxRate,
+  batchNumber: '',
+  serialNumbers: '',
 });
 
 // Match the backend, which rounds quantity to 3dp and rate to 2dp before
@@ -73,8 +81,17 @@ export function InvoiceFormPage() {
   // The form has no project/line-account pickers, but an existing invoice may
   // carry both - preserve them so editing does not silently strip them.
   const [projectId, setProjectId] = useState('');
+  const [placeOfSupply, setPlaceOfSupply] = useState('');
+  const [tcsRate, setTcsRate] = useState('0');
+  const [exchangeRate, setExchangeRate] = useState('');
+  const [warehouseId, setWarehouseId] = useState('');
+  const [branchId, setBranchId] = useState('');
 
   const customers = useAsync((signal) => contactsApi.list({ type: 'customer', page_size: 200 }, signal), []);
+  const currencies = useAsync(() => currenciesApi.list(), []);
+  const warehouses = useAsync(() => warehousesApi.list(), []);
+  const priceListId = useMemo(() => customers.data?.items.find((c) => c.id === customerId)?.priceListId ?? null, [customers.data, customerId]);
+  const priceList = useAsync(async () => (priceListId ? priceListsApi.prices(priceListId) : []), [priceListId]);
   const items = useAsync((signal) => itemsApi.list({ page_size: 200 }, signal), []);
   const existing = useAsync(async () => (invoiceId ? invoicesApi.get(invoiceId) : null), [invoiceId]);
 
@@ -95,9 +112,14 @@ export function InvoiceFormPage() {
     setSalesperson(loaded.salesperson ?? '');
     setNotes(loaded.notes ?? '');
     setTerms(loaded.terms ?? '');
-    setDiscountAmount(String(loaded.discountAmount));
+    setDiscountAmount(String(loaded.fcDiscountAmount ?? loaded.discountAmount));
     setKeepSent(loaded.status === 'sent' || loaded.status === 'overdue');
     setProjectId(loaded.projectId ?? '');
+    setPlaceOfSupply(loaded.placeOfSupply ?? '');
+    setTcsRate(String(loaded.tcsRate ?? 0));
+    setExchangeRate(loaded.exchangeRate && loaded.exchangeRate !== 1 ? String(loaded.exchangeRate) : '');
+    setWarehouseId(loaded.warehouseId ?? '');
+    setBranchId(loaded.branchId ?? '');
     setLines(
       loaded.lines.length
         ? loaded.lines.map((line) => ({
@@ -106,8 +128,11 @@ export function InvoiceFormPage() {
             accountId: line.accountId ?? '',
             description: line.description,
             quantity: String(line.quantity),
-            rate: String(line.rate),
+            // In the invoice's own currency (equal to rate for base-currency invoices).
+            rate: String(line.fcRate ?? line.rate),
             taxRate: String(line.taxRate),
+            batchNumber: line.batchNumber ?? '',
+            serialNumbers: line.serialNumbers ?? '',
           }))
         : [newLine()],
     );
@@ -132,7 +157,7 @@ export function InvoiceFormPage() {
     updateLine(key, {
       itemId,
       description: item.salesDescription || item.description || item.name,
-      rate: String(item.sellingPrice),
+      rate: String(priceList.data?.find((p) => p.itemId === item.id)?.rate ?? item.sellingPrice),
       taxRate: String(item.taxRate),
     });
   };
@@ -140,7 +165,18 @@ export function InvoiceFormPage() {
   const subtotal = round2(lines.reduce((sum, line) => sum + lineAmount(line), 0));
   const taxTotal = round2(lines.reduce((sum, line) => sum + lineTax(line), 0));
   const discount = round2(parseNumber(discountAmount));
-  const total = round2(subtotal - discount + taxTotal);
+  const beforeTcs = round2(subtotal - discount + taxTotal);
+  const tcsAmount = round2((beforeTcs * parseNumber(tcsRate)) / 100);
+  const total = round2(beforeTcs + tcsAmount);
+  const baseCurrency = organization?.currency ?? 'INR';
+  // The customer list holds only the first 200 customers: an existing foreign-currency
+  // invoice still knows its own currency, so the exchange-rate field stays visible.
+  const invoiceCurrency =
+    loaded && customerId === loaded.customerId && loaded.currency && loaded.exchangeRate !== undefined && loaded.exchangeRate !== 1 ? loaded.currency : null;
+  const customerCurrency = customerList.find((c) => c.id === customerId)?.currency || invoiceCurrency || baseCurrency;
+  const foreign = customerCurrency !== baseCurrency;
+  const money = (amount: number) => formatCurrency(amount, customerCurrency);
+  const customerState = stateFromGstin(customerList.find((c) => c.id === customerId)?.gstin) ?? customerList.find((c) => c.id === customerId)?.placeOfSupply;
 
   const submit = async (status: 'draft' | 'sent') => {
     if (!customerId) {
@@ -176,6 +212,11 @@ export function InvoiceFormPage() {
       notes: notes.trim() || null,
       terms: terms.trim() || null,
       status,
+      placeOfSupply: placeOfSupply || null,
+      tcsRate: parseNumber(tcsRate),
+      exchangeRate: foreign && parseNumber(exchangeRate) > 0 ? parseNumber(exchangeRate) : null,
+      warehouseId: warehouseId || null,
+      branchId: branchId || null,
       lines: lines.map((line) => ({
         itemId: line.itemId || null,
         accountId: line.accountId || null,
@@ -183,6 +224,8 @@ export function InvoiceFormPage() {
         quantity: parseNumber(line.quantity),
         rate: round2(parseNumber(line.rate)),
         taxRate: parseNumber(line.taxRate),
+        batchNumber: line.batchNumber.trim() || null,
+        serialNumbers: line.serialNumbers.trim() || null,
       })),
     };
     const saved = await run<Invoice>(() => (invoiceId ? invoicesApi.update(invoiceId, payload) : invoicesApi.create(payload)));
@@ -254,8 +297,24 @@ export function InvoiceFormPage() {
               onChange={(event) => {
                 setCustomerId(event.target.value);
                 syncDueDate(event.target.value, date);
+                const code = customerList.find((c) => c.id === event.target.value)?.currency;
+                const saved = currencies.data?.find((c) => c.code === code)?.exchangeRate;
+                setExchangeRate(saved ? String(saved) : '');
               }}
             />
+            {foreign ? (
+              <TextField
+                label={`${t('invoices.form.exchangeRate')} (${customerCurrency})`}
+                type="number"
+                min="0"
+                step="0.000001"
+                required
+                value={exchangeRate}
+                hint={t('invoices.form.exchangeRateHint', { base: baseCurrency, code: customerCurrency })}
+                error={fieldErrors.exchangeRate}
+                onChange={(event) => setExchangeRate(event.target.value)}
+              />
+            ) : null}
             <TextField
               label={t('invoices.form.date')}
               type="date"
@@ -305,6 +364,25 @@ export function InvoiceFormPage() {
               hint={t('invoices.form.subjectHint')}
               error={fieldErrors.subject}
               onChange={(event) => setSubject(event.target.value)}
+            />
+            <BranchSelect value={branchId} onChange={setBranchId} />
+            {(warehouses.data?.length ?? 0) > 1 ? (
+              <SelectField
+                label={t('docflow.form.warehouse')}
+                value={warehouseId}
+                placeholder={t('docflow.form.warehouseDefault')}
+                options={(warehouses.data ?? []).filter((w) => w.isActive).map((w) => ({ value: w.id, label: w.name }))}
+                onChange={(event) => setWarehouseId(event.target.value)}
+              />
+            ) : null}
+            <SelectField
+              label={t('invoices.form.placeOfSupply')}
+              value={placeOfSupply}
+              placeholder={customerState ? t('invoices.form.placeOfSupplyDefault', { code: customerState }) : t('invoices.form.placeOfSupplyUnknown')}
+              options={stateOptions}
+              hint={t('invoices.form.placeOfSupplyHint')}
+              error={fieldErrors.placeOfSupply}
+              onChange={(event) => setPlaceOfSupply(event.target.value)}
             />
           </div>
         </Card>
@@ -358,6 +436,25 @@ export function InvoiceFormPage() {
                             {t('invoices.form.line.inStock', { quantity: formatQuantity(item.stockOnHand), unit: item.unit })}
                           </small>
                         ) : null}
+                        {item?.trackInventory ? (
+                          <input
+                            className="input input-sm"
+                            placeholder={t('docflow.lines.batch')}
+                            aria-label={t('docflow.lines.batch')}
+                            value={line.batchNumber}
+                            onChange={(event) => updateLine(line.key, { batchNumber: event.target.value })}
+                          />
+                        ) : null}
+                        {item?.trackSerial ? (
+                          <textarea
+                            className="input input-sm"
+                            rows={2}
+                            placeholder={t('ops.serials.placeholder', { count: line.quantity })}
+                            aria-label={t('ops.serials.label')}
+                            value={line.serialNumbers}
+                            onChange={(event) => updateLine(line.key, { serialNumbers: event.target.value })}
+                          />
+                        ) : null}
                       </td>
                       <td>
                         <input
@@ -404,7 +501,7 @@ export function InvoiceFormPage() {
                           ))}
                         </select>
                       </td>
-                      <td className="align-right num">{formatCurrency(lineAmount(line))}</td>
+                      <td className="align-right num">{money(lineAmount(line))}</td>
                       <td className="align-right">
                         <button
                           type="button"
@@ -447,24 +544,43 @@ export function InvoiceFormPage() {
               error={fieldErrors.discountAmount}
               onChange={(event) => setDiscountAmount(event.target.value)}
             />
+            <SelectField
+              label={t('invoices.form.tcs')}
+              value={tcsRate}
+              options={TCS_RATES.map((rate) => ({ value: String(rate), label: rate ? `${rate}%` : t('invoices.form.tcsNone') }))}
+              hint={t('invoices.form.tcsHint')}
+              onChange={(event) => setTcsRate(event.target.value)}
+            />
             <div className="form-section">
               <div className="totals-list">
                 <div>
                   <span>{t('invoices.form.totals.subtotal')}</span>
-                  <span>{formatCurrency(subtotal)}</span>
+                  <span>{money(subtotal)}</span>
                 </div>
                 <div>
                   <span>{t('invoices.form.totals.discount')}</span>
-                  <span>{discount > 0 ? `- ${formatCurrency(discount)}` : formatCurrency(0)}</span>
+                  <span>{discount > 0 ? `- ${money(discount)}` : money(0)}</span>
                 </div>
                 <div>
                   <span>{t('invoices.form.totals.tax')}</span>
-                  <span>{formatCurrency(taxTotal)}</span>
+                  <span>{money(taxTotal)}</span>
                 </div>
+                {tcsAmount > 0 ? (
+                  <div>
+                    <span>{t('invoices.form.totals.tcs')}</span>
+                    <span>{money(tcsAmount)}</span>
+                  </div>
+                ) : null}
                 <div className="grand">
                   <span>{t('invoices.form.totals.total')}</span>
-                  <span>{formatCurrency(total)}</span>
+                  <span>{money(total)}</span>
                 </div>
+                {foreign && parseNumber(exchangeRate) > 0 ? (
+                  <div className="text-subtle small">
+                    <span>{t('invoices.form.inBase', { base: baseCurrency, amount: formatCurrency(round2(total * parseNumber(exchangeRate)), baseCurrency) })}</span>
+                    <span />
+                  </div>
+                ) : null}
               </div>
             </div>
           </Card>

@@ -4,10 +4,10 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Literal, Optional
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from backend.schemas.common import MAX_MONEY, APIModel
-from backend.schemas.sales import LineInput, LineOut, PaymentMode
+from backend.schemas.sales import LineInput, LineOut, PaymentMode, validate_state
 
 BillStatus = Literal["draft", "open", "partially_paid", "paid", "void", "overdue"]
 # An expense is always paid out of a bank/cash/card account the moment it is
@@ -31,12 +31,31 @@ class BillCreate(APIModel):
     notes: Optional[str] = None
     lines: List[LineInput] = Field(min_length=1)
     status: Literal["draft", "open"] = "open"
+    place_of_supply: Optional[str] = Field(default=None, max_length=2)
+    # GST payable by us instead of the vendor (section 9(3)/9(4)).
+    reverse_charge: bool = False
+    # TDS withheld from the vendor: Income-tax section (194C, 194J ...) and rate.
+    tds_section: Optional[str] = Field(default=None, max_length=20)
+    tds_rate: Decimal = Field(default=Decimal("0"), ge=0, le=30)
+    exchange_rate: Optional[Decimal] = Field(default=None, gt=0, le=Decimal("1000000"))
+    # Warehouse goods are received into; null = the default warehouse.
+    warehouse_id: Optional[str] = None
+    branch_id: Optional[str] = None
+    # Project the cost is charged to (project profitability).
+    project_id: Optional[str] = None
 
     @model_validator(mode="after")
     def _due_after_date(self):
         if self.due_date and self.due_date < self.date:
             raise ValueError("Due date cannot be before the bill date")
+        if self.tds_rate > 0 and not self.tds_section:
+            raise ValueError("Choose the TDS section for the rate deducted")
         return self
+
+    @field_validator("place_of_supply")
+    @classmethod
+    def _state(cls, value: Optional[str]) -> Optional[str]:
+        return validate_state(value)
 
 
 class BillUpdate(BillCreate):
@@ -62,6 +81,25 @@ class BillOut(APIModel):
     balance_due: Decimal
     notes: Optional[str] = None
     lines: List[LineOut] = []
+    place_of_supply: Optional[str] = None
+    reverse_charge: bool = False
+    tds_section: Optional[str] = None
+    tds_rate: Decimal = Decimal("0")
+    tds_amount: Decimal = Decimal("0")
+    warehouse_id: Optional[str] = None
+    branch_id: Optional[str] = None
+    project_id: Optional[str] = None
+    approval_status: Optional[str] = None
+    approval_note: Optional[str] = None
+    approved_total: Optional[Decimal] = None
+    currency: Optional[str] = None
+    exchange_rate: Decimal = Decimal("1")
+    fc_subtotal: Optional[Decimal] = None
+    fc_discount_amount: Optional[Decimal] = None
+    fc_tax_total: Optional[Decimal] = None
+    fc_total: Optional[Decimal] = None
+    fc_amount_paid: Optional[Decimal] = None
+    fc_balance_due: Optional[Decimal] = None
     created_at: datetime
     updated_at: datetime
 
@@ -80,6 +118,9 @@ class BillListItem(APIModel):
     total: Decimal
     amount_paid: Decimal
     balance_due: Decimal
+    currency: Optional[str] = None
+    fc_total: Optional[Decimal] = None
+    fc_balance_due: Optional[Decimal] = None
 
 
 class BillStatusUpdate(APIModel):
@@ -100,7 +141,9 @@ class VendorPaymentCreate(APIModel):
     bill_id: Optional[str] = None
     bank_account_id: str
     date: date
+    # In the bill's currency when it is a foreign-currency bill.
     amount: Decimal = Field(gt=0, le=MAX_MONEY)
+    exchange_rate: Optional[Decimal] = Field(default=None, gt=0, le=Decimal("1000000"))
     mode: PaymentMode = "bank_transfer"
     reference: Optional[str] = Field(default=None, max_length=120)
     notes: Optional[str] = None
@@ -120,6 +163,9 @@ class VendorPaymentOut(APIModel):
     mode: str
     reference: Optional[str] = None
     notes: Optional[str] = None
+    currency: Optional[str] = None
+    exchange_rate: Decimal = Decimal("1")
+    fc_amount: Optional[Decimal] = None
     created_at: datetime
 
 
@@ -140,6 +186,8 @@ class ExpenseCreate(APIModel):
     payment_method: ExpensePaymentMethod = "bank_transfer"
     receipt_url: Optional[str] = Field(default=None, max_length=500)
     status: ExpenseStatus = "paid"
+    branch_id: Optional[str] = None
+    project_id: Optional[str] = None
 
 
 class ExpenseUpdate(ExpenseCreate):
@@ -176,4 +224,8 @@ class ExpenseOut(APIModel):
     reference: Optional[str] = None
     notes: Optional[str] = None
     is_billable: bool
+    branch_id: Optional[str] = None
+    project_id: Optional[str] = None
+    distance_km: Optional[Decimal] = None
+    rate_per_km: Optional[Decimal] = None
     created_at: datetime

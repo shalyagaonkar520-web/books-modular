@@ -115,8 +115,15 @@ def get_org_app_content(db: Session, org_id: str) -> AppContent:
 
 def save_org_app_content(db: Session, org_id: str, content: AppContent) -> Dict[str, Any]:
     """Keep only the fields that differ from the shared content. An empty text means "use the shared text"."""
+    from backend.services import module_pricing  # module_pricing imports this module
+
     shared = get_app_content(db).model_dump(by_alias=True)
     doc = content.model_dump(by_alias=True)
+    # A module a switched-on module depends on stays on (invoices need customers).
+    switched_on = [k for k, v in doc["modules"].items() if v and k in module_pricing.module_keys()]
+    for key in module_pricing.resolve(switched_on):
+        if key in doc["modules"]:
+            doc["modules"][key] = True
     overrides = {
         "branding": {k: doc["branding"][k] for k in _BRANDING_FIELDS if doc["branding"][k] != shared["branding"][k]},
         "modules": {k: v for k, v in doc["modules"].items() if k in shared["modules"] and v != shared["modules"][k]},

@@ -20,23 +20,29 @@ def test_catalog_keys_match_app_content_modules():
     assert module_pricing.module_keys() == list(default_document()["modules"].keys())
     known = set(module_pricing.module_keys())
     for m in module_pricing.catalog()["modules"]:
-        assert set(m["requires"]) <= known and m["price"] > 0 and m["label"] and m["description"]
+        assert set(m["requires"]) <= known and m["price"] >= 0 and m["label"] and m["description"]
+    # Only the Point of Sale is free; it comes with every plan.
+    assert [m["key"] for m in module_pricing.catalog()["modules"] if m["price"] == 0] == ["pos"]
 
 
 def test_resolve_and_quote():
     assert module_pricing.resolve(["paymentsMade"]) == ["vendors", "bills", "paymentsMade"]
     assert module_pricing.resolve(["receivablesPayables"]) == ["customers", "invoices", "vendors", "bills", "receivablesPayables"]
+    core = ["items", "customers", "invoices", "paymentsReceived", "pos", "accounting", "reports"]
+    assert module_pricing.core_keys() == core
+    # Every plan includes the core modules; the choice is added on top.
     q = module_pricing.quote(["invoices"])
     assert q == {
-        "modules": ["customers", "invoices"],
+        "modules": core,
         "basePrice": 499,
-        "modulesTotal": 398,
-        "monthlyPrice": 897,
+        "modulesTotal": 1244,
+        "monthlyPrice": 1743,
         "billingCycle": "monthly",
-        "planPrice": 897,
+        "planPrice": 1743,
     }
+    assert module_pricing.quote(["payroll"])["modules"] == [*core, "payroll"]
     yearly = module_pricing.quote(["invoices"], "yearly")
-    assert yearly["billingCycle"] == "yearly" and yearly["monthlyPrice"] == 897 and yearly["planPrice"] == 8970
+    assert yearly["billingCycle"] == "yearly" and yearly["monthlyPrice"] == 1743 and yearly["planPrice"] == 17430
     with pytest.raises(ValueError):
         module_pricing.quote(["invoices"], "weekly")
     with pytest.raises(ValueError):
@@ -52,7 +58,7 @@ def test_public_pricing_needs_no_auth():
     assert body["baseIncludes"] == ["Dashboard", "Settings"]
     assert [m["key"] for m in body["modules"]] == module_pricing.module_keys()
     first = body["modules"][0]
-    assert set(first) == {"key", "label", "description", "price", "requires"}
+    assert set(first) == {"key", "label", "description", "price", "requires", "core"}
 
 
 def test_set_org_modules_keeps_branding_and_text_overrides(client):

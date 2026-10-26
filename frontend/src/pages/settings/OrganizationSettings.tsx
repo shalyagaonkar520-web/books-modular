@@ -32,6 +32,8 @@ interface FormState {
   invoiceNotes: string;
   defaultTaxRate: string;
   defaultPaymentTermsDays: string;
+  mileageRate: string;
+  upiId: string;
 }
 
 function toForm(org: Organization): FormState {
@@ -53,6 +55,8 @@ function toForm(org: Organization): FormState {
     defaultTaxRate: org.defaultTaxRate !== undefined && org.defaultTaxRate !== null ? String(org.defaultTaxRate) : '',
     defaultPaymentTermsDays:
       org.defaultPaymentTermsDays !== undefined && org.defaultPaymentTermsDays !== null ? String(org.defaultPaymentTermsDays) : '',
+    mileageRate: org.mileageRate !== undefined && org.mileageRate !== null ? String(org.mileageRate) : '',
+    upiId: org.upiId ?? '',
   };
 }
 
@@ -93,6 +97,8 @@ export function OrganizationSettings() {
       fiscalYearStartMonth: Number(form.fiscalYearStartMonth),
       invoiceTerms: form.invoiceTerms.trim() || null,
       invoiceNotes: form.invoiceNotes.trim() || null,
+      mileageRate: form.mileageRate.trim() !== '' ? Number(form.mileageRate) : null,
+      upiId: form.upiId.trim() || null,
     };
     // Only send the defaults when filled in, so a blank field leaves the stored value alone.
     if (form.defaultTaxRate.trim() !== '') body.defaultTaxRate = Number(form.defaultTaxRate);
@@ -218,6 +224,27 @@ export function OrganizationSettings() {
             onChange={set('invoiceNotes')}
             error={fieldErrors.invoiceNotes}
           />
+          <div className="form-grid">
+            <TextField
+              label={t('ops.org.upiId')}
+              value={form.upiId}
+              maxLength={100}
+              onChange={set('upiId')}
+              error={fieldErrors.upiId}
+              hint={t('ops.org.upiIdHint')}
+            />
+            <TextField
+              label={t('ops.org.mileageRate')}
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="0.01"
+              value={form.mileageRate}
+              onChange={set('mileageRate')}
+              error={fieldErrors.mileageRate}
+              hint={t('ops.org.mileageRateHint')}
+            />
+          </div>
         </div>
       </div>
     </Card>

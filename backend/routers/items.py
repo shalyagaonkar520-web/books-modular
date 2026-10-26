@@ -21,7 +21,7 @@ from backend.schemas.items import (
     ItemOut,
     ItemUpdate,
 )
-from backend.services import audit, inventory, ledger, numbering
+from backend.services import audit, inventory, ledger, numbering, stock
 from backend.services.money import money, qty
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
@@ -95,6 +95,20 @@ def _has_stock_movements(db: Session, item: Item) -> bool:
     )
 
 
+def _barcode_taken(db: Session, org_id: str, barcode: Optional[str], exclude_id: Optional[str] = None) -> Optional[Item]:
+    """The other item in the organization that already has this barcode, if any."""
+    if not barcode:
+        return None
+    stmt = select(Item).where(Item.organization_id == org_id, Item.barcode == barcode)
+    if exclude_id:
+        stmt = stmt.where(Item.id != exclude_id)
+    return db.execute(stmt).scalars().first()
+
+
+def _barcode_conflict(item: Item, barcode: str) -> HTTPException:
+    return HTTPException(status.HTTP_409_CONFLICT, f"Barcode {barcode} is already used by '{item.name}' ({item.sku})")
+
+
 def _sku_taken(db: Session, org_id: str, sku: str, exclude_id: Optional[str] = None) -> bool:
     stmt = select(Item.id).where(Item.organization_id == org_id, func.upper(Item.sku) == sku.upper())
     if exclude_id:
@@ -127,6 +141,7 @@ def list_items(
             or_(
                 func.lower(Item.name).like(q),
                 func.lower(Item.sku).like(q),
+                func.lower(Item.barcode).like(q),
                 func.lower(Item.description).like(q),
                 func.lower(Item.hsn_sac).like(q),
             )
@@ -155,6 +170,9 @@ def create_item(payload: ItemCreate, user: User = Depends(require_write), db: Se
     data = payload.model_dump()
     if _sku_taken(db, user.organization_id, data["sku"]):
         raise HTTPException(status.HTTP_409_CONFLICT, f"An item with SKU '{data['sku']}' already exists")
+    other = _barcode_taken(db, user.organization_id, data.get("barcode"))
+    if other:
+        raise _barcode_conflict(other, data["barcode"])
     _validate_refs(db, user.organization_id, data)
     item = Item(organization_id=user.organization_id, **data)
     item.stock_on_hand = item.opening_stock if item.track_inventory else Decimal("0")
@@ -175,6 +193,10 @@ def update_item(item_id: str, payload: ItemUpdate, user: User = Depends(require_
         data["sku"] = data["sku"].upper()
         if _sku_taken(db, user.organization_id, data["sku"], exclude_id=item.id):
             raise HTTPException(status.HTTP_409_CONFLICT, f"An item with SKU '{data['sku']}' already exists")
+    if data.get("barcode"):
+        other = _barcode_taken(db, user.organization_id, data["barcode"], exclude_id=item.id)
+        if other:
+            raise _barcode_conflict(other, data["barcode"])
     _validate_refs(db, user.organization_id, data)
 
     new_type = data.get("type", item.type)
@@ -302,11 +324,22 @@ def create_adjustment(payload: InventoryAdjustmentCreate, user: User = Depends(r
         reason=payload.reason,
         notes=payload.notes,
         created_by=user.id,
+        warehouse_id=stock.resolve_warehouse(db, user.organization_id, payload.warehouse_id).id if payload.warehouse_id else None,
     )
     db.add(adj)
     db.flush()
     inventory.adjust_stock(
-        db, item, adj.quantity_delta, adj.date, "inventory_adjustment", adj.id, f"{adj.reason} ({adj.adjustment_number})", user.id
+        db,
+        item,
+        adj.quantity_delta,
+        adj.date,
+        "inventory_adjustment",
+        adj.id,
+        f"{adj.reason} ({adj.adjustment_number})",
+        user.id,
+        warehouse_id=adj.warehouse_id,
+        batch_number=payload.batch_number,
+        expiry_date=payload.expiry_date,
     )
     audit.record(db, user, "create", "inventory_adjustment", adj.id, f"{adj.adjustment_number}: {item.name} {adj.quantity_delta:+}")
     db.commit()

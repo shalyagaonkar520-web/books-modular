@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
 from backend.models import (
+    Branch,
     Contact,
     ExternalPaymentProof,
     Invoice,
@@ -36,7 +37,7 @@ from backend.schemas.sales import (
     InvoiceUpdate,
     LineOut,
 )
-from backend.services import audit, export_service, inventory, ledger, numbering
+from backend.services import approvals, audit, doc_flow, export_service, fx, inventory, ledger, numbering, stock
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.documents import compute_lines, group_by_account, totals
 from backend.services.email_service import send_due_reminder_email, send_invoice_email
@@ -68,7 +69,30 @@ def line_out(line: InvoiceLine) -> LineOut:
         amount=line.amount,
         tax_amount=line.tax_amount,
         item_name=line.item.name if line.item else None,
+        fc_rate=line.fc_rate if line.fc_rate is not None else line.rate,
+        fc_amount=line.fc_amount if line.fc_amount is not None else line.amount,
+        batch_number=line.batch_number,
+        serial_numbers=line.serial_numbers,
     )
+
+
+def fc_fields(doc) -> dict:
+    """The document's own-currency figures. Documents from before multi-currency
+    have none stored and are in the base currency, so the base figures stand in."""
+    foreign = doc.exchange_rate is not None and doc.exchange_rate != 1
+    stored = foreign or (doc.fc_total or 0) > 0
+    total = doc.fc_total if stored else doc.total
+    paid = doc.fc_amount_paid if stored else doc.amount_paid
+    return {
+        "currency": doc.currency,
+        "exchange_rate": doc.exchange_rate or 1,
+        "fc_subtotal": doc.fc_subtotal if stored else doc.subtotal,
+        "fc_discount_amount": doc.fc_discount_amount if stored else doc.discount_amount,
+        "fc_tax_total": doc.fc_tax_total if stored else doc.tax_total,
+        "fc_total": total,
+        "fc_amount_paid": paid,
+        "fc_balance_due": money(total - paid),
+    }
 
 
 def to_out(inv: Invoice) -> InvoiceOut:
@@ -98,6 +122,19 @@ def to_out(inv: Invoice) -> InvoiceOut:
         terms=inv.terms,
         sent_at=inv.sent_at,
         lines=[line_out(line) for line in inv.lines],
+        place_of_supply=inv.place_of_supply,
+        tcs_rate=inv.tcs_rate,
+        tcs_amount=inv.tcs_amount,
+        irn=inv.irn,
+        irn_ack_no=inv.irn_ack_no,
+        irn_ack_date=inv.irn_ack_date,
+        eway_bill_no=inv.eway_bill_no,
+        warehouse_id=inv.warehouse_id,
+        branch_id=inv.branch_id,
+        approval_status=inv.approval_status,
+        approval_note=inv.approval_note,
+        approved_total=inv.approved_total,
+        **fc_fields(inv),
         created_at=inv.created_at,
         updated_at=inv.updated_at,
     )
@@ -116,6 +153,9 @@ def to_list_item(inv: Invoice) -> InvoiceListItem:
         amount_paid=inv.amount_paid,
         balance_due=money(inv.balance_due),
         reference=inv.reference,
+        currency=inv.currency,
+        fc_total=fc_fields(inv)["fc_total"],
+        fc_balance_due=fc_fields(inv)["fc_balance_due"],
     )
 
 
@@ -144,14 +184,26 @@ def _apply_payload(db: Session, inv: Invoice, payload: InvoiceCreate, org_id: st
     inv.order_number = payload.order_number
     inv.subject = payload.subject
     inv.salesperson = payload.salesperson
-    inv.discount_amount = money(payload.discount_amount)
     inv.notes = payload.notes
     inv.terms = payload.terms
-    inv.subtotal = subtotal
-    inv.tax_total = tax_total
-    inv.total = totals(subtotal, inv.discount_amount, tax_total)
+    inv.warehouse_id = stock.resolve_warehouse(db, org_id, payload.warehouse_id).id if payload.warehouse_id else None
+    inv.branch_id = get_or_404(db, Branch, payload.branch_id, org_id, "Branch").id if payload.branch_id else None
+    inv.place_of_supply = payload.place_of_supply
+    inv.tcs_rate = payload.tcs_rate
+    # Lines are entered in the customer's currency; the books get base amounts.
+    inv.currency, inv.exchange_rate = fx.resolve(db, org_id, customer, payload.exchange_rate)
+    fc_discount = money(payload.discount_amount)
+    fc_before_tcs = totals(subtotal, fc_discount, tax_total)
+    # TCS is collected on the full sale value, GST included.
+    fc_tcs = money(fc_before_tcs * payload.tcs_rate / Decimal("100"))
+    inv.fc_subtotal, inv.fc_discount_amount, inv.fc_tax_total = subtotal, fc_discount, tax_total
+    inv.fc_total = money(fc_before_tcs + fc_tcs)
+    base = fx.convert(computed, fc_discount, inv.exchange_rate)
+    inv.subtotal, inv.discount_amount, inv.tax_total = base.subtotal, base.discount, base.tax_total
+    inv.tcs_amount = fx.to_base(fc_tcs, inv.exchange_rate)
+    inv.total = money(totals(base.subtotal, base.discount, base.tax_total) + inv.tcs_amount)
     inv.lines.clear()
-    for position, line in enumerate(computed):
+    for position, (line, base_line) in enumerate(zip(computed, base.lines, strict=True)):
         inv.lines.append(
             InvoiceLine(
                 item_id=line.item.id if line.item else None,
@@ -159,16 +211,25 @@ def _apply_payload(db: Session, inv: Invoice, payload: InvoiceCreate, org_id: st
                 position=position,
                 description=line.spec.description,
                 quantity=line.quantity,
-                rate=line.rate,
+                rate=base_line.rate,
                 tax_rate=line.tax_rate,
-                amount=line.amount,
-                tax_amount=line.tax_amount,
+                amount=base_line.amount,
+                tax_amount=base_line.tax_amount,
+                fc_rate=line.rate,
+                fc_amount=line.amount,
+                batch_number=(line.spec.batch_number or "").strip() or None,
+                serial_numbers=", ".join(stock.parse_serials(line.spec.serial_numbers)) or None,
             )
         )
 
 
-def post_invoice(db: Session, inv: Invoice, user: User) -> None:
-    """Journal: Dr AR total, Dr Discount; Cr income accounts, Cr Output GST. Plus COGS for tracked goods."""
+def post_invoice(db: Session, inv: Invoice, user: User, allow_negative_stock: bool = False) -> None:
+    """Journal: Dr AR total, Dr Discount; Cr income accounts, Cr Output GST. Plus COGS for tracked goods.
+
+    ``allow_negative_stock``: sell goods not (yet) counted in, as the Point of
+    Sale may when the organization allows it.
+    """
+    approvals.ensure_approved(db, inv, "invoice", user)
     org_id = inv.organization_id
     # A customer can be pointed at its own receivables account; most are not,
     # and fall back to the org-wide one.
@@ -188,6 +249,9 @@ def post_invoice(db: Session, inv: Invoice, user: User) -> None:
         lines.append((account_id, Decimal("0"), amount, f"Invoice {inv.invoice_number}", inv.customer_id))
     if inv.tax_total > 0:
         lines.append((output_gst.id, Decimal("0"), inv.tax_total, f"GST on {inv.invoice_number}", inv.customer_id))
+    if inv.tcs_amount > 0:
+        tcs_payable = get_account_by_code(db, org_id, "2210")
+        lines.append((tcs_payable.id, Decimal("0"), inv.tcs_amount, f"TCS on {inv.invoice_number}", inv.customer_id))
     ledger.post_entry(db, org_id, inv.date, lines, "invoice", inv.id, reference=inv.invoice_number, created_by=user.id)
 
     # Perpetual inventory: relieve stock and recognise COGS at cost.
@@ -198,7 +262,19 @@ def post_invoice(db: Session, inv: Invoice, user: User) -> None:
         item = line.item
         if item and item.track_inventory:
             inventory.adjust_stock(
-                db, item, -line.quantity, inv.date, "invoice_stock", inv.id, f"Sold on {inv.invoice_number}", user.id, rate=Decimal("0")
+                db,
+                item,
+                -line.quantity,
+                inv.date,
+                "invoice_stock",
+                inv.id,
+                f"Sold on {inv.invoice_number}",
+                user.id,
+                rate=Decimal("0"),
+                allow_negative=allow_negative_stock,
+                warehouse_id=inv.warehouse_id,
+                batch_number=line.batch_number,
+                serial_numbers=stock.parse_serials(line.serial_numbers) if line.item.track_serial else None,
             )
             cost = money(line.quantity * money(item.cost_price))
             if cost > 0:
@@ -216,7 +292,18 @@ def unpost_invoice(db: Session, inv: Invoice, user: User, reason: str) -> None:
     for line in inv.lines:
         if line.item and line.item.track_inventory:
             inventory.adjust_stock(
-                db, line.item, line.quantity, today, "invoice_stock", inv.id, f"{reason} {inv.invoice_number}", user.id, rate=Decimal("0")
+                db,
+                line.item,
+                line.quantity,
+                today,
+                "invoice_stock",
+                inv.id,
+                f"{reason} {inv.invoice_number}",
+                user.id,
+                rate=Decimal("0"),
+                warehouse_id=inv.warehouse_id,
+                batch_number=line.batch_number,
+                serial_numbers=stock.parse_serials(line.serial_numbers) if line.item.track_serial else None,
             )
 
 
@@ -570,7 +657,7 @@ def send_invoice_via_gmail(
         error = res.get("error", "Gmail SMTP send failed")
         if issued_now:
             error = f"{error}. The invoice has been marked as sent; the email can be retried."
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail=error)
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=error)
 
     audit.record(
         db,
@@ -584,13 +671,20 @@ def send_invoice_via_gmail(
     return res
 
 
-@router.post("", response_model=InvoiceOut, status_code=status.HTTP_201_CREATED)
-def create_invoice(payload: InvoiceCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+def create_invoice_record(
+    db: Session, user: User, payload: InvoiceCreate, recurring_profile_id: Optional[str] = None, allow_negative_stock: bool = False
+) -> Invoice:
+    """Create (and, when sent, post) an invoice without committing.
+
+    Shared by the endpoint, quote / sales order conversion and recurring
+    profiles, so each can commit the invoice together with its own changes.
+    """
     inv = Invoice(
         organization_id=user.organization_id,
         invoice_number=numbering.next_number(db, user.organization_id, "invoice"),
         status="draft",
         created_by=user.id,
+        recurring_profile_id=recurring_profile_id,
     )
     _apply_payload(db, inv, payload, user.organization_id)
     db.add(inv)
@@ -598,8 +692,14 @@ def create_invoice(payload: InvoiceCreate, user: User = Depends(require_write), 
     if payload.status == "sent":
         inv.status = "sent"
         inv.sent_at = datetime.now(UTC)
-        post_invoice(db, inv, user)
+        post_invoice(db, inv, user, allow_negative_stock)
     audit.record(db, user, "create", "invoice", inv.id, f"Created invoice {inv.invoice_number} ({inv.status})")
+    return inv
+
+
+@router.post("", response_model=InvoiceOut, status_code=status.HTTP_201_CREATED)
+def create_invoice(payload: InvoiceCreate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+    inv = create_invoice_record(db, user, payload)
     db.commit()
     return get_invoice(inv.id, user, db)
 
@@ -609,6 +709,8 @@ def update_invoice(invoice_id: str, payload: InvoiceUpdate, user: User = Depends
     inv = get_or_404(db, Invoice, invoice_id, user.organization_id, "Invoice")
     if inv.status in ("paid", "partially_paid", "void") or inv.amount_paid > 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invoices with payments or voided invoices cannot be edited")
+    if inv.irn:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This invoice has an e-invoice IRN; cancel the IRN and clear it before editing")
     was_posted = inv.status == "sent"
     if was_posted:
         unpost_invoice(db, inv, user, "Invoice edited")
@@ -646,6 +748,7 @@ def change_status(invoice_id: str, payload: InvoiceStatusUpdate, user: User = De
         # Release billed time so it can go on a replacement invoice, as delete does.
         for entry in db.execute(select(TimeEntry).where(TimeEntry.invoice_id == inv.id)).scalars():
             entry.invoice_id = None
+        doc_flow.release_invoice(db, inv)
     elif target == "draft":
         if inv.status != "sent" or inv.amount_paid > 0:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only unpaid sent invoices can be reverted to draft")
@@ -665,6 +768,7 @@ def delete_invoice(invoice_id: str, user: User = Depends(require_write), db: Ses
         unpost_invoice(db, inv, user, "Invoice deleted")
     for entry in db.execute(select(TimeEntry).where(TimeEntry.invoice_id == inv.id)).scalars():
         entry.invoice_id = None
+    doc_flow.release_invoice(db, inv)
     for rz in db.execute(select(RazorpayPayment).where(RazorpayPayment.invoice_id == inv.id)).scalars():
         rz.invoice_id = None
     for ref in db.execute(select(PaymentRefund).where(PaymentRefund.invoice_id == inv.id)).scalars():

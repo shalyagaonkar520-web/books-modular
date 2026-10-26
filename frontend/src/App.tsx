@@ -4,7 +4,7 @@ import { PlatformAuthProvider } from '@/auth/PlatformAuthContext';
 import { PlatformApp } from '@/pages/platform/PlatformApp';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ModuleGuard } from '@/app/ModuleGuard';
-import { RequireAuth, RequireEmployeePortal, RequireGuest, RequireMainApp, RequireRole } from '@/auth/RouteGuards';
+import { RequireAuth, RequireEmployeePortal, RequireGuest, RequireMainApp, RequireRole, RequireWrite } from '@/auth/RouteGuards';
 import { AcceptInvitePage } from '@/pages/auth/AcceptInvitePage';
 import { EmployeePortalPage } from '@/pages/portal/EmployeePortalPage';
 import { AccountingPage } from '@/pages/accounting/AccountingPage';
@@ -12,6 +12,8 @@ import { FinancialDashboardPage } from '@/pages/financial/FinancialDashboardPage
 import { ReceivablesPayablesDashboard } from '@/pages/financial/ReceivablesPayablesDashboard';
 import { RazorpayPaymentsPage } from '@/pages/payments/RazorpayPaymentsPage';
 import { BankingPage } from '@/pages/banking/BankingPage';
+import { BankStatementPage } from '@/pages/operations/BankStatementPage';
+import { InsightsPage } from '@/pages/insights/InsightsPage';
 import { BillFormPage } from '@/pages/purchases/BillFormPage';
 import { BillsPage } from '@/pages/purchases/BillsPage';
 import { ContactsPage } from '@/pages/contacts/ContactsPage';
@@ -25,6 +27,9 @@ import { InvoiceViewPage } from '@/pages/sales/InvoiceViewPage';
 import { InvoicesPage } from '@/pages/sales/InvoicesPage';
 import { ItemsPage } from '@/pages/items/ItemsPage';
 import { ItemFormPage } from '@/pages/items/ItemFormPage';
+import { PosPage } from '@/pages/pos/PosPage';
+import { PosSalesPage } from '@/pages/pos/PosSalesPage';
+import { PosSettingsPage } from '@/pages/pos/PosSettingsPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { LandingPage } from '@/pages/Landing/LandingPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -38,6 +43,18 @@ import { ReportsPage } from '@/pages/reports/ReportsPage';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
 import { TimeTrackingPage } from '@/pages/timetracking/TimeTrackingPage';
 import { OrgAdminApp } from '@/pages/orgadmin/OrgAdminApp';
+import { DocumentFormPage } from '@/pages/docflow/DocumentFormPage';
+import { DocumentListPage } from '@/pages/docflow/DocumentListPage';
+import { DocumentViewPage } from '@/pages/docflow/DocumentViewPage';
+import { RecurringProfilesPage } from '@/pages/docflow/RecurringProfilesPage';
+import { RefundsPage } from '@/pages/docflow/RefundsPage';
+import { GstFilingPage } from '@/pages/gst/GstFilingPage';
+import { BudgetsPage } from '@/pages/accounting/BudgetsPage';
+import { FixedAssetsPage } from '@/pages/accounting/FixedAssetsPage';
+import { InventoryPage } from '@/pages/inventory/InventoryPage';
+import { AutomationPage } from '@/pages/automation/AutomationPage';
+import { AiAssistantPage } from '@/pages/ai/AiAssistantPage';
+import { DocumentPortalPage } from '@/pages/portal/DocumentPortalPage';
 import { SubscriptionPage } from '@/pages/subscription/SubscriptionPage';
 
 export function App() {
@@ -75,6 +92,8 @@ export function App() {
 
         {/* Always public — the landing page */}
         <Route path="/" element={<LandingPage />} />
+        {/* Customer portal: a shared invoice or quote, opened without logging in */}
+        <Route path="/p/:token" element={<DocumentPortalPage />} />
 
         {/* Auth pages — only for guests (redirect to /dashboard if already logged in) */}
         <Route element={<RequireGuest />}>
@@ -98,14 +117,25 @@ export function App() {
             <Route element={<ModuleGuard />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/items" element={<ItemsPage />} />
-            <Route path="/items/new" element={<ItemFormPage />} />
+            <Route path="/items/new" element={<RequireWrite><ItemFormPage /></RequireWrite>} />
             <Route path="/items/:itemId/edit" element={<ItemFormPage />} />
+            <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="/pos" element={<RequireWrite><PosPage /></RequireWrite>} />
+            <Route path="/pos/sales" element={<PosSalesPage />} />
+            <Route
+              path="/pos/settings"
+              element={
+                <RequireRole roles={['admin']}>
+                  <PosSettingsPage />
+                </RequireRole>
+              }
+            />
 
             <Route path="/customers" element={<ContactsPage type="customer" />} />
-            <Route path="/customers/new" element={<ContactFormPage type="customer" />} />
+            <Route path="/customers/new" element={<RequireWrite><ContactFormPage type="customer" /></RequireWrite>} />
             <Route path="/customers/:contactId/edit" element={<ContactFormPage type="customer" />} />
             <Route path="/vendors" element={<ContactsPage type="vendor" />} />
-            <Route path="/vendors/new" element={<ContactFormPage type="vendor" />} />
+            <Route path="/vendors/new" element={<RequireWrite><ContactFormPage type="vendor" /></RequireWrite>} />
             <Route path="/vendors/:contactId/edit" element={<ContactFormPage type="vendor" />} />
 
             <Route path="/invoices" element={<InvoicesPage />} />
@@ -113,13 +143,36 @@ export function App() {
             <Route path="/invoices/:invoiceId" element={<InvoiceViewPage />} />
             <Route path="/invoices/:invoiceId/edit" element={<InvoiceFormPage />} />
             <Route path="/payments-received" element={<PaymentsReceivedPage />} />
+            <Route path="/quotes" element={<DocumentListPage key="estimate" kind="estimate" />} />
+            <Route path="/quotes/new" element={<DocumentFormPage key="estimate-new" kind="estimate" />} />
+            <Route path="/quotes/:docId" element={<DocumentViewPage key="estimate-view" kind="estimate" />} />
+            <Route path="/quotes/:docId/edit" element={<DocumentFormPage key="estimate-edit" kind="estimate" />} />
+            <Route path="/sales-orders" element={<DocumentListPage key="sales_order" kind="sales_order" />} />
+            <Route path="/sales-orders/new" element={<DocumentFormPage key="sales_order-new" kind="sales_order" />} />
+            <Route path="/sales-orders/:docId" element={<DocumentViewPage key="sales_order-view" kind="sales_order" />} />
+            <Route path="/sales-orders/:docId/edit" element={<DocumentFormPage key="sales_order-edit" kind="sales_order" />} />
+            <Route path="/credit-notes" element={<DocumentListPage key="credit_note" kind="credit_note" />} />
+            <Route path="/credit-notes/new" element={<DocumentFormPage key="credit_note-new" kind="credit_note" />} />
+            <Route path="/credit-notes/:docId" element={<DocumentViewPage key="credit_note-view" kind="credit_note" />} />
+            <Route path="/credit-notes/:docId/edit" element={<DocumentFormPage key="credit_note-edit" kind="credit_note" />} />
+            <Route path="/recurring-invoices" element={<RecurringProfilesPage key="invoice" kind="invoice" />} />
+            <Route path="/refunds" element={<RefundsPage />} />
 
             <Route path="/bills" element={<BillsPage />} />
-            <Route path="/bills/new" element={<BillFormPage />} />
+            <Route path="/bills/new" element={<RequireWrite><BillFormPage /></RequireWrite>} />
             <Route path="/bills/:billId/edit" element={<BillFormPage />} />
             <Route path="/expense-dashboard" element={<ExpenseDashboardPage />} />
             <Route path="/expenses" element={<ExpensesPage />} />
             <Route path="/payments-made" element={<PaymentsMadePage />} />
+            <Route path="/purchase-orders" element={<DocumentListPage key="purchase_order" kind="purchase_order" />} />
+            <Route path="/purchase-orders/new" element={<DocumentFormPage key="purchase_order-new" kind="purchase_order" />} />
+            <Route path="/purchase-orders/:docId" element={<DocumentViewPage key="purchase_order-view" kind="purchase_order" />} />
+            <Route path="/purchase-orders/:docId/edit" element={<DocumentFormPage key="purchase_order-edit" kind="purchase_order" />} />
+            <Route path="/vendor-credits" element={<DocumentListPage key="vendor_credit" kind="vendor_credit" />} />
+            <Route path="/vendor-credits/new" element={<DocumentFormPage key="vendor_credit-new" kind="vendor_credit" />} />
+            <Route path="/vendor-credits/:docId" element={<DocumentViewPage key="vendor_credit-view" kind="vendor_credit" />} />
+            <Route path="/vendor-credits/:docId/edit" element={<DocumentFormPage key="vendor_credit-edit" kind="vendor_credit" />} />
+            <Route path="/recurring-bills" element={<RecurringProfilesPage key="bill" kind="bill" />} />
 
             <Route
               path="/financial-dashboard"
@@ -139,6 +192,14 @@ export function App() {
               }
             />
             <Route
+              path="/banking/:accountId/statement"
+              element={
+                <RequireRole roles={['admin', 'viewer']}>
+                  <BankStatementPage />
+                </RequireRole>
+              }
+            />
+            <Route
               path="/razorpay-payments"
               element={
                 <RequireRole roles={['admin', 'viewer']}>
@@ -147,6 +208,55 @@ export function App() {
               }
             />
             <Route path="/time-tracking" element={<TimeTrackingPage />} />
+            <Route
+              path="/gst-filing"
+              element={
+                <RequireRole roles={['admin', 'viewer']}>
+                  <GstFilingPage />
+                </RequireRole>
+              }
+            />
+            <Route path="/ai-assistant" element={<AiAssistantPage />} />
+            <Route
+              path="/insights"
+              element={
+                <RequireRole roles={['admin', 'viewer']}>
+                  <InsightsPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/automation"
+              element={
+                <RequireRole roles={['admin', 'viewer']}>
+                  <AutomationPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/fixed-assets"
+              element={
+                <RequireRole roles={['admin', 'viewer']}>
+                  <FixedAssetsPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/budgets"
+              element={
+                <RequireRole roles={['admin', 'viewer']}>
+                  <BudgetsPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/recurring-journals"
+              element={
+                <RequireRole roles={['admin', 'viewer']}>
+                  <RecurringProfilesPage key="journal" kind="journal" />
+                </RequireRole>
+              }
+            />
             <Route
               path="/accounting"
               element={

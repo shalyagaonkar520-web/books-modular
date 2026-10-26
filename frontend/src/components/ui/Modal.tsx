@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 import { useAppContent } from '@/app/AppContentContext';
@@ -46,7 +47,9 @@ export function Modal({ open, title, subtitle, size = 'md', onClose, footer, chi
 
   if (!open) return null;
 
-  return (
+  // Rendered at the end of <body>: inside a card (backdrop-filter / transform) a
+  // fixed overlay would only cover that card.
+  return createPortal(
     <div className="modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <div className={`modal-card modal-${size}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={cardRef}>
         <header className="modal-header">
@@ -61,7 +64,8 @@ export function Modal({ open, title, subtitle, size = 'md', onClose, footer, chi
         <div className="modal-body">{children}</div>
         {footer ? <footer className="modal-footer">{footer}</footer> : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

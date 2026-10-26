@@ -8,14 +8,14 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
-from backend.models import Account, BankAccount, Contact, Expense, Organization, User
-from backend.schemas.common import Message, Page
+from backend.models import Account, BankAccount, Branch, Contact, Expense, Organization, Project, User
+from backend.schemas.common import MAX_MONEY, APIModel, Message, Page
 from backend.schemas.purchases import ExpenseCreate, ExpenseOut, ExpenseUpdate
 from backend.services import audit, bank, export_service, ledger, numbering
 from backend.services.chart_of_accounts import get_account_by_code
@@ -57,6 +57,10 @@ def to_out(e: Expense) -> ExpenseOut:
         reference=e.reference,
         notes=e.notes,
         is_billable=e.is_billable,
+        branch_id=e.branch_id,
+        project_id=e.project_id,
+        distance_km=e.distance_km,
+        rate_per_km=e.rate_per_km,
         created_at=e.created_at,
     )
 
@@ -101,6 +105,8 @@ def _apply(db: Session, e: Expense, payload: ExpenseCreate, org_id: str) -> None
     e.reference = payload.reference
     e.notes = payload.notes
     e.is_billable = payload.is_billable
+    e.branch_id = get_or_404(db, Branch, payload.branch_id, org_id, "Branch").id if payload.branch_id else None
+    e.project_id = get_or_404(db, Project, payload.project_id, org_id, "Project").id if payload.project_id else None
 
 
 def _post(db: Session, e: Expense, user: User) -> None:
@@ -250,6 +256,64 @@ def create_expense(payload: ExpenseCreate, user: User = Depends(require_write), 
     return get_expense(e.id, user, db)
 
 
+class MileageClaim(APIModel):
+    date: date
+    distance_km: Decimal = Field(gt=0, le=Decimal("100000"))
+    # Null = the organization's mileage rate.
+    rate_per_km: Optional[Decimal] = Field(default=None, gt=0, le=Decimal("1000"))
+    paid_through_account_id: str
+    # Null = Travel Expense (6500).
+    account_id: Optional[str] = None
+    from_place: Optional[str] = Field(default=None, max_length=120)
+    to_place: Optional[str] = Field(default=None, max_length=120)
+    purpose: Optional[str] = Field(default=None, max_length=500)
+    customer_id: Optional[str] = None
+    is_billable: bool = False
+    branch_id: Optional[str] = None
+    project_id: Optional[str] = None
+
+
+@router.post("/mileage", response_model=ExpenseOut, status_code=status.HTTP_201_CREATED)
+def create_mileage_claim(payload: MileageClaim, user: User = Depends(require_write), db: Session = Depends(get_db)):
+    """Reimburse travel by distance: amount = km x rate per km, booked as an expense."""
+    org = db.get(Organization, user.organization_id)
+    rate = payload.rate_per_km or org.mileage_rate
+    if not rate:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Enter the rate per km, or set a default mileage rate in Settings")
+    account_id = payload.account_id or get_account_by_code(db, user.organization_id, "6500").id
+    route = " to ".join(p for p in (payload.from_place, payload.to_place) if p)
+    note = " - ".join(p for p in (f"{payload.distance_km} km @ {money(rate)}/km", route, payload.purpose) if p)
+    amount = money(Decimal(payload.distance_km) * Decimal(rate))
+    if amount <= 0 or amount > MAX_MONEY:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The claim amount is out of range")
+    body = ExpenseCreate(
+        date=payload.date,
+        account_id=account_id,
+        paid_through_account_id=payload.paid_through_account_id,
+        customer_id=payload.customer_id,
+        amount=amount,
+        notes=note,
+        is_billable=payload.is_billable,
+        category="Mileage",
+        payment_method="bank_transfer",
+        branch_id=payload.branch_id,
+        project_id=payload.project_id,
+    )
+    e = Expense(
+        organization_id=user.organization_id, expense_number=numbering.next_number(db, user.organization_id, "expense"), created_by=user.id
+    )
+    _apply(db, e, body, user.organization_id)
+    e.distance_km = payload.distance_km
+    e.rate_per_km = money(rate)
+    db.add(e)
+    db.flush()
+    db.refresh(e)
+    _post(db, e, user)
+    audit.record(db, user, "create", "expense", e.id, f"Mileage claim {e.expense_number}: {payload.distance_km} km for {e.total}")
+    db.commit()
+    return get_expense(e.id, user, db)
+
+
 @router.put("/{expense_id}", response_model=ExpenseOut)
 def update_expense(expense_id: str, payload: ExpenseUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)):
     e = get_or_404(db, Expense, expense_id, user.organization_id, "Expense")
@@ -301,7 +365,10 @@ def send_expense_via_gmail(
         pdf_filename=f"Expense_{e.expense_number}.pdf",
     )
     if not result.get("success"):
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Gmail SMTP error: {result.get('error')}")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            result.get("error") or "The email could not be sent. Check the address, or ask your administrator to check the email settings.",
+        )
     audit.record(db, user, "email", "expense", e.id, f"Emailed expense {e.expense_number} to {payload.to_email}")
     db.commit()
     return result

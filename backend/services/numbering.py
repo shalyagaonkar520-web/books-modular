@@ -17,6 +17,15 @@ PREFIXES = {
     "journal": "JRN",
     "inventory_adjustment": "ADJ",
     "employee": "EMP",
+    "estimate": "QT",
+    "sales_order": "SO",
+    "credit_note": "CN",
+    "purchase_order": "PO",
+    "vendor_credit": "VC",
+    "refund": "RFD",
+    "fixed_asset": "FA",
+    "transfer_order": "TO",
+    "assembly": "ASM",
 }
 
 

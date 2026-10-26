@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 
+import { PageErrorBoundary } from '@/components/ErrorBoundary';
 import { useAppContent } from '@/app/AppContentContext';
 import { SubscriptionProvider, useSubscription } from '@/app/SubscriptionContext';
 import { SubscriptionLockScreen } from '@/pages/subscription/SubscriptionLockScreen';
@@ -45,7 +46,7 @@ function AppShell() {
       <div className="app-body">
         {locked ? null : <Sidebar open={sidebarOpen} onNavigate={() => setSidebarOpen(false)} />}
         <main className="app-main" id="main-content">
-          {locked ? <SubscriptionLockScreen /> : <Outlet />}
+          <PageErrorBoundary>{locked ? <SubscriptionLockScreen /> : <Outlet />}</PageErrorBoundary>
         </main>
       </div>
     </div>

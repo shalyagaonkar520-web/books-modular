@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Landmark, Trash2 } from 'lucide-react';
+import { FileUp, Landmark, Trash2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 import { emptyPage } from '@/api/client';
 import { accountingApi, bankingApi } from '@/api/endpoints';
@@ -40,6 +41,7 @@ export function BankingPage() {
   const { canWrite } = useAuth();
   const toast = useToast();
 
+  const navigate = useNavigate();
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [startDate, setStartDate] = useState('');
@@ -253,6 +255,9 @@ export function BankingPage() {
             <Button onClick={() => setAccountModal({ open: true, account: null })}>{t('banking.addAccount')}</Button>
             <Button onClick={() => setTransferModalOpen(true)} disabled={accounts.length < 2}>
               {t('banking.transfer')}
+            </Button>
+            <Button icon={<FileUp size={15} />} onClick={() => selectedAccount && navigate(`/banking/${selectedAccount.id}/statement`)} disabled={!selectedAccount}>
+              {t('ops.bank.open')}
             </Button>
             <Button variant="primary" onClick={() => setTransactionModalOpen(true)} disabled={!selectedAccount}>
               {t('banking.addTransaction')}

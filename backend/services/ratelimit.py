@@ -27,17 +27,14 @@ class RateLimiter:
         self._hits: Dict[str, Deque[float]] = defaultdict(deque)
         self._lock = threading.Lock()
 
-    def check(self, key: str) -> None:
+    def check(self, key: str, message: str = "Too many attempts. Please wait a minute and try again.") -> None:
         now = time.monotonic()
         with self._lock:
             bucket = self._hits[key]
             while bucket and now - bucket[0] > self.window:
                 bucket.popleft()
             if len(bucket) >= self.limit:
-                raise HTTPException(
-                    status.HTTP_429_TOO_MANY_REQUESTS,
-                    "Too many attempts. Please wait a minute and try again.",
-                )
+                raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, message)
             bucket.append(now)
 
     def reset(self) -> None:
@@ -127,3 +124,10 @@ def client_ip(request: Request) -> str:
         if not _is_trusted(hop, networks):
             return hop
     return peer
+
+
+# Messages sent on the platform's own email / WhatsApp accounts, per organization per hour:
+# enough for real work, too few for spam that would get the shared sender blocked.
+outbound_email_limiter = RateLimiter(limit=200, window_seconds=3600)
+outbound_whatsapp_limiter = RateLimiter(limit=100, window_seconds=3600)
+OUTBOUND_LIMIT_MESSAGE = "Too many messages sent from your organization in the last hour. Please try again later."

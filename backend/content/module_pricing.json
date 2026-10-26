@@ -11,35 +11,51 @@
     {
       "key": "items",
       "label": "Items",
-      "description": "Products and services catalogue with stock",
+      "description": "Products, warehouses, batches, serial numbers and price lists",
       "price": 199,
-      "requires": []
+      "requires": [],
+      "core": true
     },
     {
       "key": "customers",
       "label": "Customers",
       "description": "Customer records, contacts and balances",
       "price": 99,
-      "requires": []
+      "requires": [],
+      "core": true
     },
     {
       "key": "invoices",
       "label": "Invoices",
-      "description": "GST invoices, quotes and payment reminders",
+      "description": "GST invoices, quotes, sales orders, credit notes, recurring invoices, UPI QR and WhatsApp",
       "price": 299,
       "requires": [
         "customers"
-      ]
+      ],
+      "core": true
     },
     {
       "key": "paymentsReceived",
       "label": "Payments received",
-      "description": "Record and apply customer payments",
+      "description": "Customer payments, advances and refunds",
       "price": 149,
       "requires": [
         "invoices",
         "customers"
-      ]
+      ],
+      "core": true
+    },
+    {
+      "key": "pos",
+      "label": "Point of Sale",
+      "description": "Scan barcodes at the counter and take cash, UPI or card; every sale is a paid invoice",
+      "price": 0,
+      "requires": [
+        "items",
+        "invoices",
+        "paymentsReceived"
+      ],
+      "core": true
     },
     {
       "key": "expenseDashboard",
@@ -60,7 +76,7 @@
     {
       "key": "bills",
       "label": "Bills",
-      "description": "Vendor bills and purchase tracking",
+      "description": "Bills, purchase orders, vendor credits and recurring bills",
       "price": 249,
       "requires": [
         "vendors"
@@ -69,7 +85,7 @@
     {
       "key": "expenses",
       "label": "Expenses",
-      "description": "Record and categorise business expenses",
+      "description": "Business expenses, mileage claims and receipts",
       "price": 149,
       "requires": []
     },
@@ -103,7 +119,7 @@
     {
       "key": "banking",
       "label": "Banking",
-      "description": "Bank accounts, statements and reconciliation",
+      "description": "Bank accounts, statement import, auto-match and reconciliation",
       "price": 249,
       "requires": []
     },
@@ -119,23 +135,25 @@
     {
       "key": "timeTracking",
       "label": "Time tracking",
-      "description": "Projects, timesheets and billable hours",
+      "description": "Projects, timesheets, billable hours and project profitability",
       "price": 199,
       "requires": []
     },
     {
       "key": "accounting",
       "label": "Accountant",
-      "description": "Chart of accounts, journals and ledgers",
+      "description": "Chart of accounts, journals, fixed assets, budgets, branches and multi-currency",
       "price": 299,
-      "requires": []
+      "requires": [],
+      "core": true
     },
     {
       "key": "reports",
       "label": "Reports",
-      "description": "Profit and loss, balance sheet, GST and more",
+      "description": "Profit and loss, balance sheet, cash flow, GST returns and statements",
       "price": 199,
-      "requires": []
+      "requires": [],
+      "core": true
     },
     {
       "key": "documents",

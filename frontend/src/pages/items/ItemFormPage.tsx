@@ -15,6 +15,8 @@ import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { parseNumber } from '@/utils/format';
 import { taxRatesWith, UNITS } from '@/utils/status';
+import { CustomFieldsCard } from '@/pages/automation/DocumentExtrasCards';
+import { CompositeItemCard } from './CompositeItemCard';
 
 const UNIT_OPTIONS = UNITS.map((unit) => ({ value: unit, label: unit }));
 
@@ -27,6 +29,7 @@ interface SelectOptions {
 interface FormState {
   name: string;
   sku: string;
+  barcode: string;
   type: ItemType;
   unit: string;
   hsnSac: string;
@@ -40,6 +43,7 @@ interface FormState {
   preferredVendorId: string;
   purchaseDescription: string;
   trackInventory: boolean;
+  trackSerial: boolean;
   openingStock: string;
   openingStockRate: string;
   reorderLevel: string;
@@ -53,6 +57,7 @@ function initialForm(item: Item | null, defaultTaxRate?: number): FormState {
   return {
     name: item?.name ?? '',
     sku: item?.sku ?? '',
+    barcode: item?.barcode ?? '',
     type: item?.type ?? 'goods',
     unit: item?.unit ?? 'pcs',
     hsnSac: item?.hsnSac ?? '',
@@ -66,6 +71,7 @@ function initialForm(item: Item | null, defaultTaxRate?: number): FormState {
     preferredVendorId: item?.preferredVendorId ?? '',
     purchaseDescription: item?.purchaseDescription ?? '',
     trackInventory: item?.trackInventory ?? false,
+    trackSerial: item?.trackSerial ?? false,
     openingStock: item ? String(item.openingStock) : '0',
     openingStockRate: item ? String(item.openingStockRate) : '0',
     reorderLevel: item ? String(item.reorderLevel) : '0',
@@ -105,13 +111,25 @@ export function ItemFormPage() {
   if (isEdit && existing.error) return <ErrorBlock message={existing.error} onRetry={existing.reload} />;
 
   return (
-    <ItemForm
-      key={existing.data?.id ?? 'new'}
-      item={existing.data ?? null}
-      options={refs.data ?? null}
-      optionsError={refs.error}
-      onDone={() => navigate('/items')}
-    />
+    <>
+      <ItemForm
+        key={existing.data?.id ?? 'new'}
+        item={existing.data ?? null}
+        options={refs.data ?? null}
+        optionsError={refs.error}
+        onDone={() => navigate('/items')}
+      />
+      {existing.data?.trackInventory ? (
+        <div className="form-section">
+          <CompositeItemCard itemId={existing.data.id} onChanged={existing.reload} />
+        </div>
+      ) : null}
+      {existing.data ? (
+        <div className="form-section">
+          <CustomFieldsCard entity="item" entityId={existing.data.id} />
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -125,7 +143,7 @@ interface ItemFormProps {
 function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
   const { t } = useAppContent();
   const toast = useToast();
-  const { organization } = useAuth();
+  const { organization, canWrite } = useAuth();
   const [form, setForm] = useState<FormState>(() => initialForm(item, organization?.defaultTaxRate));
   const taxOptions = taxRatesWith(organization?.defaultTaxRate, item?.taxRate).map((rate) => ({ value: String(rate), label: `${rate}%` }));
   const { submitting, error, fieldErrors, run } = useSubmit();
@@ -141,6 +159,7 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
     const payload: Partial<Item> = {
       name: form.name.trim(),
       sku: form.sku.trim(),
+      barcode: form.barcode.trim() || null,
       type: form.type,
       unit: form.unit,
       hsnSac: form.hsnSac.trim() || null,
@@ -154,6 +173,7 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
       preferredVendorId: form.preferredVendorId || null,
       purchaseDescription: form.purchaseDescription.trim() || null,
       trackInventory: tracks,
+      trackSerial: tracks && form.trackSerial,
       openingStock: tracks ? parseNumber(form.openingStock) : 0,
       openingStockRate: tracks ? parseNumber(form.openingStockRate) : 0,
       reorderLevel: tracks ? parseNumber(form.reorderLevel) : 0,
@@ -186,6 +206,16 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
         <div className="form-grid">
           <TextField label={t('items.form.name')} required value={form.name} error={fieldErrors.name} onChange={(event) => set('name', event.target.value)} />
           <TextField label={t('items.form.sku')} required value={form.sku} error={fieldErrors.sku} hint={t('items.form.skuHint')} onChange={(event) => set('sku', event.target.value)} />
+          <TextField
+            label={t('pos.item.barcode')}
+            value={form.barcode}
+            maxLength={64}
+            inputMode="text"
+            autoComplete="off"
+            error={fieldErrors.barcode}
+            hint={t('pos.item.barcodeHint')}
+            onChange={(event) => set('barcode', event.target.value)}
+          />
           <SelectField label={t('items.form.type')} value={form.type} options={typeOptions} error={fieldErrors.type} onChange={(event) => set('type', event.target.value as ItemType)} />
           <SelectField label={t('items.form.unit')} value={form.unit} options={UNIT_OPTIONS} error={fieldErrors.unit} onChange={(event) => set('unit', event.target.value)} />
           <TextField label={t('items.form.hsnSac')} value={form.hsnSac} error={fieldErrors.hsnSac} onChange={(event) => set('hsnSac', event.target.value)} />
@@ -276,6 +306,14 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
             onChange={(event) => set('trackInventory', event.target.checked)}
           />
           {form.trackInventory ? (
+            <CheckboxField
+              label={t('ops.serials.track')}
+              hint={t('ops.serials.trackHint')}
+              checked={form.trackSerial}
+              onChange={(event) => set('trackSerial', event.target.checked)}
+            />
+          ) : null}
+          {form.trackInventory ? (
             <div className="form-grid-3">
               <TextField
                 label={t('items.form.openingStock')}
@@ -325,9 +363,11 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
             <Button variant="secondary" onClick={onDone} disabled={submitting}>
               {t('items.form.cancel')}
             </Button>
-            <Button variant="primary" loading={submitting} onClick={save}>
-              {item ? t('items.form.saveChanges') : t('items.form.create')}
-            </Button>
+            {canWrite ? (
+              <Button variant="primary" loading={submitting} onClick={save}>
+                {item ? t('items.form.saveChanges') : t('items.form.create')}
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>

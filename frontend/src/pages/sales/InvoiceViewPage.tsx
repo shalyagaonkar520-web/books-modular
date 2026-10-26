@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Ban, CreditCard, FileDown, FileSpreadsheet, IndianRupee, Mail, Pencil, Printer, Send, Trash2 } from 'lucide-react';
+import { ArrowLeft, Ban, FileDown, FileSpreadsheet, IndianRupee, Mail, Pencil, Printer, Send } from 'lucide-react';
 
 import { customerPaymentsApi, invoicesApi } from '@/api/endpoints';
 import type { CustomerPayment, Invoice } from '@/api/types';
@@ -17,14 +17,19 @@ import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
+import { useDownload } from '@/hooks/useDownload';
 import { useSubmit } from '@/hooks/useSubmit';
-import { formatCurrency, formatDate, formatPercent, formatQuantity } from '@/utils/format';
+import { documentCurrency, formatCurrency, formatDate, formatPercent, formatQuantity } from '@/utils/format';
 import { paymentModeLabel, type Translate, statusLabel, statusTone } from '@/utils/status';
 
-import { PayOnlineModal } from './PayOnlineModal';
+import { ApprovalBanner, CustomFieldsCard, ShareLinkCard } from '@/pages/automation/DocumentExtrasCards';
+import { ReminderDraftButton, WhatsAppButton } from '@/pages/insights/InvoiceOutreach';
+import { InvoiceCreditsCard } from '@/pages/docflow/InvoiceCreditsCard';
+
+import { InvoiceGstCard } from './InvoiceGstCard';
 import { RecordPaymentModal, type PaymentInvoiceContext } from './RecordPaymentModal';
 
-type Pending = { kind: 'send' | 'void' } | { kind: 'deletePayment'; payment: CustomerPayment };
+type Pending = { kind: 'send' | 'void' };
 
 const modeLabel = (mode: string, t: Translate): string => paymentModeLabel(mode, t);
 
@@ -33,12 +38,12 @@ export function InvoiceViewPage() {
   const { invoiceId = '' } = useParams<{ invoiceId: string }>();
   const navigate = useNavigate();
   const toast = useToast();
+  const { download, downloading } = useDownload();
   const { organization } = useAuth();
   const { submitting, error: actionError, run, reset } = useSubmit();
 
   const [pending, setPending] = useState<Pending | null>(null);
   const [payingOpen, setPayingOpen] = useState(false);
-  const [payOnlineOpen, setPayOnlineOpen] = useState(false);
   const [mailModalOpen, setMailModalOpen] = useState(false);
 
   const invoice = useAsync(() => invoicesApi.get(invoiceId), [invoiceId]);
@@ -46,7 +51,7 @@ export function InvoiceViewPage() {
 
   const data = invoice.data;
   const paymentContext = useMemo<PaymentInvoiceContext | undefined>(
-    () => (data ? { id: data.id, invoiceNumber: data.invoiceNumber, customerId: data.customerId, balanceDue: data.balanceDue } : undefined),
+    () => (data ? { id: data.id, invoiceNumber: data.invoiceNumber, customerId: data.customerId, balanceDue: data.balanceDue, currency: data.currency, fcBalanceDue: data.fcBalanceDue } : undefined),
     [data],
   );
 
@@ -57,15 +62,6 @@ export function InvoiceViewPage() {
 
   const runPending = async () => {
     if (!pending || !data) return;
-    if (pending.kind === 'deletePayment') {
-      const result = await run(() => customerPaymentsApi.remove(pending.payment.id));
-      if (result) {
-        toast.success(result.message);
-        setPending(null);
-        refresh();
-      }
-      return;
-    }
     const result = await run(() => invoicesApi.setStatus(data.id, pending.kind === 'send' ? 'sent' : 'void'));
     if (result) {
       toast.success(
@@ -93,28 +89,6 @@ export function InvoiceViewPage() {
     },
     { key: 'reference', header: t('invoices.view.payments.col.reference'), render: (row) => row.reference ?? '—' },
     { key: 'amount', header: t('invoices.view.payments.col.amount'), align: 'right', render: (row) => <span className="num strong">{formatCurrency(row.amount)}</span> },
-    {
-      key: 'actions',
-      header: t('invoices.view.payments.col.actions'),
-      align: 'right',
-      render: (row) => (
-        <IfCanWrite>
-          <span className="row-actions">
-            <button
-              type="button"
-              className="action-btn is-danger"
-              aria-label={t('invoices.view.payments.deleteAria', { number: row.paymentNumber })}
-              onClick={() => {
-                reset();
-                setPending({ kind: 'deletePayment', payment: row });
-              }}
-            >
-              <Trash2 size={15} />
-            </button>
-          </span>
-        </IfCanWrite>
-      ),
-    },
   ];
 
   if (invoice.loading) return <LoadingBlock label={t('invoices.view.loading')} />;
@@ -130,12 +104,13 @@ export function InvoiceViewPage() {
   const canEdit = data.status === 'draft' || ((data.status === 'sent' || data.status === 'overdue') && data.amountPaid === 0);
   const canPay = data.status !== 'void' && data.balanceDue > 0;
   const paymentRows = payments.data?.items ?? [];
+  const fc = documentCurrency(data, organization?.currency ?? 'INR');
 
   return (
     <>
       <PageHeader
         title={t('invoices.view.title', { number: data.invoiceNumber })}
-        subtitle={t('invoices.view.subtitle', { customer: data.customerName, total: formatCurrency(data.total) })}
+        subtitle={t('invoices.view.subtitle', { customer: data.customerName, total: fc.format(fc.total) })}
         breadcrumb={[t('invoices.view.breadcrumb.sales'), t('invoices.view.breadcrumb.invoices')]}
         actions={
           <>
@@ -148,26 +123,32 @@ export function InvoiceViewPage() {
             <Button
               variant="secondary"
               icon={<FileDown size={15} style={{ color: '#dc2626' }} />}
-              onClick={() => invoicesApi.downloadPdf(data.id, data.invoiceNumber)}
+              disabled={downloading}
+              onClick={() => void download(() => invoicesApi.downloadPdf(data.id, data.invoiceNumber))}
             >
               {t('invoices.view.downloadPdf')}
             </Button>
             <Button
               variant="secondary"
               icon={<FileSpreadsheet size={15} style={{ color: '#15803d' }} />}
-              onClick={() => invoicesApi.downloadExcel(data.id, data.invoiceNumber)}
+              disabled={downloading}
+              onClick={() => void download(() => invoicesApi.downloadExcel(data.id, data.invoiceNumber))}
             >
               {t('invoices.view.downloadExcel')}
             </Button>
-            <Button
-              variant="secondary"
-              icon={<Mail size={15} style={{ color: '#ea4335' }} />}
-              onClick={() => setMailModalOpen(true)}
-            >
-              {t('invoices.view.sendGmail')}
-            </Button>
+            <IfCanWrite>
+              <Button
+                variant="secondary"
+                icon={<Mail size={15} style={{ color: '#ea4335' }} />}
+                onClick={() => setMailModalOpen(true)}
+              >
+                {t('invoices.view.sendGmail')}
+              </Button>
+            </IfCanWrite>
             <IfCanWrite>
               <>
+                <ReminderDraftButton invoice={data} />
+                <WhatsAppButton invoice={data} />
                 {canEdit ? (
                   <Button icon={<Pencil size={15} />} onClick={() => navigate(`/invoices/${data.id}/edit`)}>
                     {t('invoices.view.edit')}
@@ -186,14 +167,6 @@ export function InvoiceViewPage() {
                 ) : null}
                 {canPay ? (
                   <>
-                    <Button
-                      variant="primary"
-                      icon={<CreditCard size={15} />}
-                      onClick={() => setPayOnlineOpen(true)}
-                      style={{ backgroundColor: '#16a34a', borderColor: '#16a34a', color: '#ffffff' }}
-                    >
-                      {t('invoices.view.payOnline')}
-                    </Button>
                     <Button variant="secondary" icon={<IndianRupee size={15} />} onClick={() => setPayingOpen(true)}>
                       {t('invoices.view.recordPayment')}
                     </Button>
@@ -216,6 +189,7 @@ export function InvoiceViewPage() {
           </>
         }
       />
+      <ApprovalBanner kind="invoice" id={data.id} status={data.status} total={data.total} approvalStatus={data.approvalStatus} approvalNote={data.approvalNote} approvedTotal={data.approvedTotal} onChanged={refresh} />
 
       <div className="stack printable">
         <Card>
@@ -262,7 +236,7 @@ export function InvoiceViewPage() {
               </div>
               <div className="detail-item">
                 <dt>{t('invoices.view.balanceDue')}</dt>
-                <dd className="num strong">{formatCurrency(data.balanceDue)}</dd>
+                <dd className="num strong">{fc.format(fc.balance)}</dd>
               </div>
             </dl>
           </div>
@@ -300,12 +274,12 @@ export function InvoiceViewPage() {
                       </span>
                     </td>
                     <td className="align-right num">{formatQuantity(line.quantity)}</td>
-                    <td className="align-right num">{formatCurrency(line.rate)}</td>
+                    <td className="align-right num">{fc.format(fc.foreign ? (line.fcRate ?? line.rate) : line.rate)}</td>
                     <td className="align-right num">
                       {formatPercent(line.taxRate)}
                       {typeof line.taxAmount === 'number' ? <small className="text-subtle"> ({formatCurrency(line.taxAmount)})</small> : null}
                     </td>
-                    <td className="align-right num strong">{formatCurrency(line.amount ?? line.quantity * line.rate)}</td>
+                    <td className="align-right num strong">{fc.format(fc.foreign ? (line.fcAmount ?? line.amount) : (line.amount ?? line.quantity * line.rate))}</td>
                   </tr>
                 ))}
               </tbody>
@@ -315,28 +289,34 @@ export function InvoiceViewPage() {
             <div className="totals-list">
               <div>
                 <span>{t('invoices.view.totals.subtotal')}</span>
-                <span>{formatCurrency(data.subtotal)}</span>
+                <span>{fc.format(fc.subtotal)}</span>
               </div>
               <div>
                 <span>{t('invoices.view.totals.discount')}</span>
-                <span>{data.discountAmount > 0 ? `- ${formatCurrency(data.discountAmount)}` : formatCurrency(0)}</span>
+                <span>{fc.discount > 0 ? `- ${fc.format(fc.discount)}` : fc.format(0)}</span>
               </div>
               <div>
                 <span>{t('invoices.view.totals.tax')}</span>
-                <span>{formatCurrency(data.taxTotal)}</span>
+                <span>{fc.format(fc.tax)}</span>
               </div>
               <div className="grand">
                 <span>{t('invoices.view.totals.total')}</span>
-                <span>{formatCurrency(data.total)}</span>
+                <span>{fc.format(fc.total)}</span>
               </div>
               <div>
                 <span>{t('invoices.view.totals.paid')}</span>
-                <span className="text-success">{formatCurrency(data.amountPaid)}</span>
+                <span className="text-success">{fc.format(fc.paid)}</span>
               </div>
               <div className="grand">
                 <span>{t('invoices.view.totals.balanceDue')}</span>
-                <span>{formatCurrency(data.balanceDue)}</span>
+                <span>{fc.format(fc.balance)}</span>
               </div>
+              {fc.foreign ? (
+                <div className="text-subtle small">
+                  <span>{t('invoices.view.inBase', { rate: fc.rate, base: organization?.currency ?? 'INR' })}</span>
+                  <span>{formatCurrency(data.total, organization?.currency ?? 'INR')}</span>
+                </div>
+              ) : null}
             </div>
           </div>
         </Card>
@@ -373,18 +353,17 @@ export function InvoiceViewPage() {
             <DataTable columns={paymentColumns} rows={paymentRows} rowKey={(row) => row.id} caption={t('invoices.view.payments.caption')} />
           )}
         </Card>
+
+        <InvoiceCreditsCard invoice={data} onChanged={refresh} />
+
+        <InvoiceGstCard invoice={data} onChanged={refresh} />
+
+        <ShareLinkCard kind="invoice" id={data.id} status={data.status} />
+
+        <CustomFieldsCard entity="invoice" entityId={data.id} />
       </div>
 
       <RecordPaymentModal open={payingOpen} invoice={paymentContext} onClose={() => setPayingOpen(false)} onSaved={refresh} />
-
-      {data ? (
-        <PayOnlineModal
-          open={payOnlineOpen}
-          onClose={() => setPayOnlineOpen(false)}
-          invoice={data}
-          onPaymentSuccess={refresh}
-        />
-      ) : null}
 
       {mailModalOpen ? (
         <SendInvoiceDetailGmailModal
@@ -400,8 +379,8 @@ export function InvoiceViewPage() {
 
       <ConfirmDialog
         open={!!pending}
-        title={pending?.kind === 'send' ? t('invoices.confirm.sendTitle') : pending?.kind === 'void' ? t('invoices.confirm.voidTitle') : t('invoices.view.deletePayment.title')}
-        confirmLabel={pending?.kind === 'send' ? t('invoices.confirm.sendConfirm') : pending?.kind === 'void' ? t('invoices.confirm.voidConfirm') : t('invoices.view.deletePayment.confirm')}
+        title={pending?.kind === 'send' ? t('invoices.confirm.sendTitle') : t('invoices.confirm.voidTitle')}
+        confirmLabel={pending?.kind === 'send' ? t('invoices.confirm.sendConfirm') : t('invoices.confirm.voidConfirm')}
         tone={pending?.kind === 'send' ? 'primary' : 'danger'}
         busy={submitting}
         onCancel={() => setPending(null)}
@@ -413,10 +392,6 @@ export function InvoiceViewPage() {
               <p>{t('invoices.confirm.sendBody', { number: data.invoiceNumber })}</p>
             ) : pending?.kind === 'void' ? (
               <p>{t('invoices.confirm.voidBody', { number: data.invoiceNumber })}</p>
-            ) : pending?.kind === 'deletePayment' ? (
-              <p>
-                {t('invoices.view.deletePayment.body', { number: pending.payment.paymentNumber, amount: formatCurrency(pending.payment.amount) })}
-              </p>
             ) : null}
           </>
         }

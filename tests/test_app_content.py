@@ -140,12 +140,14 @@ def test_org_customization_only_reaches_that_org(client, admin_h, two_orgs):
     body["branding"]["appName"] = "Brand A Books"
     body["branding"]["primaryColor"] = "#dc2626"
     body["modules"][FIRST_MODULE] = False
+    # The Point of Sale needs items, so it goes off with them (else items stay on).
+    body["modules"]["pos"] = False
     body["texts"][FIRST_TEXT] = "A only"
     res = client.put(_org_url(a["org"]["id"]), json=body, headers=admin_h)
     assert res.status_code == 200, res.text
     out = res.json()
     assert out["organizationName"] == a["org"]["name"]
-    assert out["overridden"] == {"branding": ["appName", "primaryColor"], "modules": [FIRST_MODULE], "texts": [FIRST_TEXT]}
+    assert out["overridden"] == {"branding": ["appName", "primaryColor"], "modules": [FIRST_MODULE, "pos"], "texts": [FIRST_TEXT]}
     assert out["content"]["texts"][FIRST_TEXT] == "A only" and out["shared"] == BACKEND_DEFAULT
 
     mine = client.get("/api/app-content", headers=a["h"]).json()
@@ -216,3 +218,22 @@ def test_corrupt_org_overrides_fall_back_to_shared(client, admin_h, two_orgs):
         platform_settings.set_value(db, f"{APP_CONTENT_KEY}:org:{a['org']['id']}", json.dumps({"branding": {"primaryColor": "red"}}))
         db.commit()
     assert client.get("/api/app-content", headers=a["h"]).json() == BACKEND_DEFAULT
+
+
+def test_org_cannot_switch_off_a_module_others_need():
+    """Invoices need customers: saving invoices on with customers off keeps customers on."""
+    from backend.db import SessionLocal
+    from backend.schemas.app_content import AppContent
+    from backend.services import app_content
+
+    with SessionLocal() as db:
+        doc = app_content.get_app_content(db).model_dump(by_alias=True)
+        doc["modules"]["customers"] = False
+        doc["modules"]["invoices"] = True
+        doc["modules"]["payroll"] = False
+        overrides = app_content.save_org_app_content(db, "org-dep-test", AppContent.model_validate(doc))
+        assert "customers" not in overrides["modules"]
+        assert overrides["modules"]["payroll"] is False
+        assert app_content.get_org_app_content(db, "org-dep-test").modules["customers"] is True
+        app_content.delete_org_app_content(db, "org-dep-test")
+        db.commit()

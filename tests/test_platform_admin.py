@@ -185,23 +185,50 @@ def test_create_list_update_reset_delete_user(client, super_admin, org):
 def test_create_user_validations(client, super_admin, org):
     org_id = org["org"]["id"]
     # weak password
-    assert client.post(
-        "/api/platform/users",
-        headers=super_admin["h"],
-        json={"organizationId": org_id, "name": "X", "email": f"a-{uuid.uuid4().hex[:6]}@x.example.com", "password": "weak", "role": "staff"},
-    ).status_code == 422
+    assert (
+        client.post(
+            "/api/platform/users",
+            headers=super_admin["h"],
+            json={
+                "organizationId": org_id,
+                "name": "X",
+                "email": f"a-{uuid.uuid4().hex[:6]}@x.example.com",
+                "password": "weak",
+                "role": "staff",
+            },
+        ).status_code
+        == 422
+    )
     # bad role
-    assert client.post(
-        "/api/platform/users",
-        headers=super_admin["h"],
-        json={"organizationId": org_id, "name": "Xy", "email": f"b-{uuid.uuid4().hex[:6]}@x.example.com", "password": "Str0ngPass!", "role": "root"},
-    ).status_code == 422
+    assert (
+        client.post(
+            "/api/platform/users",
+            headers=super_admin["h"],
+            json={
+                "organizationId": org_id,
+                "name": "Xy",
+                "email": f"b-{uuid.uuid4().hex[:6]}@x.example.com",
+                "password": "Str0ngPass!",
+                "role": "root",
+            },
+        ).status_code
+        == 422
+    )
     # unknown org
-    assert client.post(
-        "/api/platform/users",
-        headers=super_admin["h"],
-        json={"organizationId": "nope", "name": "Xy", "email": f"c-{uuid.uuid4().hex[:6]}@x.example.com", "password": "Str0ngPass!", "role": "staff"},
-    ).status_code == 404
+    assert (
+        client.post(
+            "/api/platform/users",
+            headers=super_admin["h"],
+            json={
+                "organizationId": "nope",
+                "name": "Xy",
+                "email": f"c-{uuid.uuid4().hex[:6]}@x.example.com",
+                "password": "Str0ngPass!",
+                "role": "staff",
+            },
+        ).status_code
+        == 404
+    )
 
 
 # --------------------------------------------------------------------------- #

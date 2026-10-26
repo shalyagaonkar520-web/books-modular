@@ -12,10 +12,11 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from backend.config import get_settings
 from backend.db import SessionLocal, create_all
-from backend.services import razorpay_scheduler
+from backend.services import idempotency, razorpay_scheduler, recurring, webhook_dispatcher, workflows
 
 settings = get_settings()
 logger = logging.getLogger("roomanbooks")
@@ -29,9 +30,15 @@ async def lifespan(_app: FastAPI):
         create_all()
     logger.info("Rooman Books API started (env=%s, db=%s)", settings.environment, "sqlite" if settings.is_sqlite else "postgresql")
     razorpay_scheduler.start()
+    webhook_dispatcher.start()
+    recurring.start()
+    workflows.start()
     try:
         yield
     finally:
+        await workflows.stop()
+        await recurring.stop()
+        await webhook_dispatcher.stop()
         await razorpay_scheduler.stop()
 
 
@@ -50,12 +57,16 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID", "Idempotency-Key"],
     )
+
+    # Connected apps' retried writes (Idempotency-Key) answer with the first response.
+    app.middleware("http")(idempotency.middleware)
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
         request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
+        request.state.request_id = request_id
         started = time.perf_counter()
         response = await call_next(request)
         duration_ms = (time.perf_counter() - started) * 1000
@@ -69,33 +80,52 @@ def create_app() -> FastAPI:
             logger.info("%s %s -> %s (%.1f ms) rid=%s", request.method, request.url.path, response.status_code, duration_ms, request_id)
         return response
 
+    def _request_id(request: Request) -> str:
+        return getattr(request.state, "request_id", None) or uuid.uuid4().hex[:12]
+
+    @app.exception_handler(IntegrityError)
+    async def integrity_error(request: Request, exc: IntegrityError):
+        # A unique / foreign-key rule in the database refused the write (e.g. a
+        # duplicate number, or a record still in use). The endpoint did not
+        # check it first; answer 409 with a readable message instead of a 500.
+        request_id = _request_id(request)
+        logger.warning("Integrity error on %s %s rid=%s: %s", request.method, request.url.path, request_id, exc.orig)
+        message = str(exc.orig).lower()
+        if "unique" in message or "duplicate" in message:
+            detail = "This would create a duplicate of an existing record. Change the number, name or email and try again."
+        elif "foreign key" in message:
+            detail = "This record is linked to other records, so it cannot be changed or removed this way."
+        else:
+            detail = "The change conflicts with existing data and was not saved."
+        return JSONResponse(status_code=409, content={"detail": detail, "requestId": request_id}, headers={"X-Request-ID": request_id})
+
+    @app.exception_handler(OperationalError)
+    async def database_unavailable(request: Request, exc: OperationalError):
+        # Locked, restarting or unreachable database: worth retrying, not a bug in the request.
+        request_id = _request_id(request)
+        logger.error("Database unavailable on %s %s rid=%s: %s", request.method, request.url.path, request_id, exc.orig)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": f"The service is busy right now. Please try again in a moment (reference {request_id}).",
+                "requestId": request_id,
+            },
+            headers={"X-Request-ID": request_id, "Retry-After": "5"},
+        )
+
     @app.exception_handler(Exception)
     async def unhandled_exception(request: Request, exc: Exception):  # pragma: no cover - safety net
-        logger.exception("Unhandled error on %s %s", request.method, request.url.path)
-        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+        request_id = _request_id(request)
+        logger.exception("Unhandled error on %s %s rid=%s", request.method, request.url.path, request_id)
+        # The reference matches the server log line above, so a reported error can be traced.
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Something went wrong on our side. Please try again (reference {request_id}).", "requestId": request_id},
+            headers={"X-Request-ID": request_id},
+        )
 
     from backend.deps import require_full_app_access, require_module, require_subscription
-    from backend.routers import (
-        accounting,
-        auth,
-        banking,
-        bills,
-        contacts,
-        dashboard,
-        documents,
-        employee_portal,
-        expenses,
-        invoices,
-        items,
-        org_admin,
-        organization,
-        payments,
-        payroll,
-        projects,
-        razorpay,
-        reports,
-        subscription,
-    )
+    from backend.routers import auth, employee_portal, org_admin, payments, razorpay, subscription
 
     # auth (login, /me, change-password, sessions) and the employee portal
     # stay reachable by every role, including the restricted "employee"
@@ -122,45 +152,22 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(subscription.router)
     app.include_router(employee_portal.router, dependencies=[Depends(require_subscription)])
-    # Writes to a module outside the organization's accepted plan answer 403
-    # (deps.require_module); the module keys are those of module_pricing.json.
-    plan_modules = {
-        items: ("items",),
-        contacts: ("customers", "vendors"),
-        invoices: ("invoices",),
-        bills: ("bills",),
-        expenses: ("expenses",),
-        banking: ("banking",),
-        accounting: ("accounting",),
-        projects: ("timeTracking",),
-        documents: ("documents",),
-        payroll: ("payroll",),
-    }
-    for module in (
-        organization,
-        items,
-        contacts,
-        invoices,
-        bills,
-        expenses,
-        banking,
-        accounting,
-        projects,
-        documents,
-        payroll,
-        reports,
-        dashboard,
-    ):
+    # Every feature is declared once in backend/features.py: mounted here behind
+    # require_full_app_access, plus require_module when it is sold in a plan
+    # (writes outside the organization's accepted plan answer 403).
+    from backend import features
+
+    for feature in features.FEATURES:
         guards = [Depends(require_full_app_access)]
-        if module in plan_modules:
-            guards.append(Depends(require_module(*plan_modules[module])))
-        app.include_router(module.router, dependencies=guards)
+        if feature.plan_keys:
+            guards.append(Depends(require_module(*feature.plan_keys)))
+        for router in feature.load_routers():
+            app.include_router(router, dependencies=guards)
     app.include_router(payments.router)
     app.include_router(razorpay.router)
     from backend.routes import email
 
     app.include_router(email.router)
-    app.include_router(items.adjustments_router, dependencies=[Depends(require_full_app_access), Depends(require_module("items"))])
 
     # Super-admin (platform operator) console. Its auth endpoints are open so an
     # admin can log in; every other platform route is cross-tenant and guarded
@@ -170,6 +177,16 @@ def create_app() -> FastAPI:
 
     app.include_router(platform_admin.auth_router)
     app.include_router(platform_admin.router, dependencies=[Depends(require_superuser)])
+
+    # Connected apps: managed by the platform admin; an app calls
+    # /api/connect/v1 with its key, and the rest of the API within its scopes.
+    from backend.routers import connected_apps
+
+    app.include_router(connected_apps.platform_router, dependencies=[Depends(require_superuser)])
+    from backend.routers import platform_email
+
+    app.include_router(platform_email.router, dependencies=[Depends(require_superuser)])
+    app.include_router(connected_apps.connect_router)
 
     # Organization admin panel. Its own logins (created by a platform admin),
     # its own token type: tenant and platform tokens are rejected, and a panel
@@ -185,6 +202,10 @@ def create_app() -> FastAPI:
     from backend.routers import platform_site, public_site
 
     app.include_router(public_site.router)
+    # Customer portal: opened from a shared link with no login (token-guarded).
+    from backend.routers import portal
+
+    app.include_router(portal.public_router)
     app.include_router(public_site.tenant_router)
     app.include_router(platform_site.router, dependencies=[Depends(require_superuser)])
 

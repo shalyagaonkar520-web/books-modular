@@ -5,19 +5,22 @@ import { ApiScopeProvider, type ApiScopeValue } from '@/api/ApiScope';
 import { orgPanelClient } from '@/api/orgPanelClient';
 import { OrgPanelAuthProvider, useOrgPanelAuth } from '@/auth/OrgPanelAuthContext';
 import { OrgAdminLayout } from '@/components/layout/OrgAdminLayout';
+import { AppContentPage } from '@/pages/platform/AppContentPage';
 import { LoadingBlock } from '@/components/ui/Feedback';
 
 import { OrgAdminActivityPage } from './OrgAdminActivityPage';
 import { OrgAdminDashboardPage } from './OrgAdminDashboardPage';
-import { OrgAdminIntegrationsPage } from './OrgAdminIntegrationsPage';
 import { OrgAdminLoginPage } from './OrgAdminLoginPage';
 import { OrgAdminOrganizationPage } from './OrgAdminOrganizationPage';
+import { OrgAdminSetupPage } from './OrgAdminSetupPage';
 import { OrgAdminUsersPage } from './OrgAdminUsersPage';
 
 /** Only signed-in panel admins get past this; everyone else goes to the panel's own sign-in. */
 function RequireOrgPanelAuth() {
   const { admin } = useOrgPanelAuth();
   if (!admin) return <Navigate to="/org-admin/login" replace />;
+  // A default login or a reset password must be replaced before anything else.
+  if (admin.mustChangeCredentials) return <Navigate to="/org-admin/setup" replace />;
   return <Outlet />;
 }
 
@@ -32,7 +35,7 @@ function OrgPanelApiScope() {
     () => ({
       client: orgPanelClient,
       prefix: '/org-admin',
-      capabilities: { userDashboard: false, employeeInvites: false },
+      capabilities: { userDashboard: false, employeeInvites: false, customInvites: true },
       actor: { userId: null, isAdmin: true },
       onOrganizationSaved: refreshMe,
     }),
@@ -59,6 +62,18 @@ function OrgAdminRoutes() {
   return (
     <Routes>
       <Route path="login" element={admin ? <Navigate to="/org-admin" replace /> : <OrgAdminLoginPage />} />
+      <Route
+        path="setup"
+        element={
+          !admin ? (
+            <Navigate to="/org-admin/login" replace />
+          ) : admin.mustChangeCredentials ? (
+            <OrgAdminSetupPage />
+          ) : (
+            <Navigate to="/org-admin" replace />
+          )
+        }
+      />
 
       <Route element={<RequireOrgPanelAuth />}>
         <Route element={<OrgPanelApiScope />}>
@@ -66,7 +81,7 @@ function OrgAdminRoutes() {
             <Route index element={<OrgAdminDashboardPage />} />
             <Route path="users" element={<OrgAdminUsersPage />} />
             <Route path="organization" element={<OrgAdminOrganizationPage />} />
-            <Route path="integrations" element={<OrgAdminIntegrationsPage />} />
+            <Route path="app-content" element={<AppContentPage mode="organization" />} />
             <Route path="activity" element={<OrgAdminActivityPage />} />
           </Route>
         </Route>

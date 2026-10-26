@@ -17,6 +17,7 @@ import { formatCurrency, formatDate, formatDateTime } from '@/utils/format';
 import { CreateOrganizationModal } from './CreateOrganizationModal';
 import { OrgDetailDrawer } from './OrgDetailDrawer';
 import { OpenInAppMenu, OrgApprovalButtons, OrgRowMenu, OrgStatusBadge, useOrgApproval, useOrgLifecycle } from './orgActions';
+import { CreateAdminLoginButton } from './PanelAdminForms';
 import { orgPlanLabel } from './subscriptionActions';
 
 const PAGE_SIZE = 25;
@@ -143,7 +144,10 @@ export function OrganizationsPage() {
           {row.approvalStatus === 'pending' ? (
             <OrgApprovalButtons org={row} approval={approval} />
           ) : (
-            <OpenInAppMenu org={row} variant="ghost" />
+            <>
+              {row.hasPanelAdmin === false ? <CreateAdminLoginButton org={row} variant="ghost" onCreated={() => orgs.reload()} /> : null}
+              <OpenInAppMenu org={row} variant="ghost" />
+            </>
           )}
           <OrgRowMenu org={row} onView={() => setOpenOrgId(row.id)} lifecycle={lifecycle} approval={approval} />
         </div>

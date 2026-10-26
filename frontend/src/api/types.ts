@@ -47,6 +47,12 @@ export interface Organization {
   fiscalYearStartMonth: number;
   invoiceTerms?: string | null;
   invoiceNotes?: string | null;
+  /** Books are closed up to and including this date (null = open). */
+  lockDate?: string | null;
+  /** Default reimbursement per km for mileage claims. */
+  mileageRate?: number | null;
+  /** UPI ID customers pay to (QR code on invoices). */
+  upiId?: string | null;
   /** Default GST % for new items and new document lines. */
   defaultTaxRate?: number;
   /** Default payment terms (days) for new customers and vendors. */
@@ -102,6 +108,8 @@ export interface Item {
   name: string;
   type: ItemType;
   sku: string;
+  /** Printed barcode scanned at the Point of Sale; unique within the organization. */
+  barcode?: string | null;
   unit: string;
   hsnSac?: string | null;
   taxRate: number;
@@ -118,6 +126,8 @@ export interface Item {
   preferredVendorId?: string | null;
   preferredVendorName?: string | null;
   trackInventory: boolean;
+  /** Every unit carries its own serial number. */
+  trackSerial?: boolean;
   openingStock: number;
   openingStockRate: number;
   stockOnHand: number;
@@ -179,6 +189,11 @@ export interface Contact {
   outstandingBalance: number;
   createdAt: string;
   updatedAt: string;
+  /** GST state code of the place of supply; null = from the GSTIN. */
+  placeOfSupply?: string | null;
+  /** ISO code its invoices / bills are raised in; null = the base currency. */
+  currency?: string | null;
+  priceListId?: string | null;
 }
 
 export interface ContactSummary {
@@ -203,6 +218,13 @@ export interface DocumentLine {
   taxAmount?: number;
   itemName?: string | null;
   accountName?: string | null;
+  /** The line in the document's own currency. */
+  fcRate?: number | null;
+  fcAmount?: number | null;
+  batchNumber?: string | null;
+  expiryDate?: string | null;
+  /** Serial numbers of the units, comma separated. */
+  serialNumbers?: string | null;
 }
 
 export type InvoiceStatus = 'draft' | 'sent' | 'partially_paid' | 'paid' | 'void' | 'overdue';
@@ -233,6 +255,27 @@ export interface Invoice {
   notes?: string | null;
   terms?: string | null;
   sentAt?: string | null;
+  placeOfSupply?: string | null;
+  tcsRate?: number;
+  tcsAmount?: number;
+  irn?: string | null;
+  irnAckNo?: string | null;
+  irnAckDate?: string | null;
+  ewayBillNo?: string | null;
+  currency?: string | null;
+  exchangeRate?: number;
+  fcSubtotal?: number | null;
+  fcDiscountAmount?: number | null;
+  fcTaxTotal?: number | null;
+  fcTotal?: number | null;
+  fcAmountPaid?: number | null;
+  fcBalanceDue?: number | null;
+  warehouseId?: string | null;
+  branchId?: string | null;
+  approvalStatus?: string | null;
+  approvalNote?: string | null;
+  /** Total at the time of approval; raising the total above it needs re-approval. */
+  approvedTotal?: number | null;
   lines: DocumentLine[];
   createdAt: string;
   updatedAt: string;
@@ -250,6 +293,9 @@ export interface InvoiceListItem {
   amountPaid: number;
   balanceDue: number;
   reference?: string | null;
+  currency?: string | null;
+  fcTotal?: number | null;
+  fcBalanceDue?: number | null;
 }
 
 export interface DocumentStats {
@@ -278,6 +324,9 @@ export interface CustomerPayment {
   reference?: string | null;
   notes?: string | null;
   createdAt: string;
+  currency?: string | null;
+  exchangeRate?: number;
+  fcAmount?: number | null;
 }
 
 export type BillStatus = 'draft' | 'open' | 'partially_paid' | 'paid' | 'void' | 'overdue';
@@ -300,6 +349,26 @@ export interface Bill {
   amountPaid: number;
   balanceDue: number;
   notes?: string | null;
+  placeOfSupply?: string | null;
+  reverseCharge?: boolean;
+  tdsSection?: string | null;
+  tdsRate?: number;
+  tdsAmount?: number;
+  currency?: string | null;
+  exchangeRate?: number;
+  fcSubtotal?: number | null;
+  fcDiscountAmount?: number | null;
+  fcTaxTotal?: number | null;
+  fcTotal?: number | null;
+  fcAmountPaid?: number | null;
+  fcBalanceDue?: number | null;
+  warehouseId?: string | null;
+  branchId?: string | null;
+  projectId?: string | null;
+  approvalStatus?: string | null;
+  approvalNote?: string | null;
+  /** Total at the time of approval; raising the total above it needs re-approval. */
+  approvedTotal?: number | null;
   lines: DocumentLine[];
   createdAt: string;
   updatedAt: string;
@@ -317,6 +386,9 @@ export interface BillListItem {
   total: number;
   amountPaid: number;
   balanceDue: number;
+  currency?: string | null;
+  fcTotal?: number | null;
+  fcBalanceDue?: number | null;
 }
 
 export interface VendorPayment {
@@ -334,6 +406,9 @@ export interface VendorPayment {
   reference?: string | null;
   notes?: string | null;
   createdAt: string;
+  currency?: string | null;
+  exchangeRate?: number;
+  fcAmount?: number | null;
 }
 
 export interface Expense {
@@ -355,6 +430,10 @@ export interface Expense {
   reference?: string | null;
   notes?: string | null;
   isBillable: boolean;
+  branchId?: string | null;
+  projectId?: string | null;
+  distanceKm?: number | null;
+  ratePerKm?: number | null;
   /** Set on creation but not exposed by the edit form; echoed back on update so
    * the server does not reset them to its ExpenseUpdate defaults. */
   category?: string | null;
@@ -503,6 +582,8 @@ export interface Project {
   billingMethod: 'hourly' | 'fixed';
   hourlyRate: number;
   budgetHours: number;
+  /** What an hour of work costs the business. */
+  costRate?: number;
   status: 'active' | 'completed' | 'on_hold';
   loggedHours: number;
   billableHours: number;

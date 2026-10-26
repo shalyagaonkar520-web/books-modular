@@ -1,6 +1,7 @@
 import html
 import logging
 import smtplib
+import ssl
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -69,7 +70,7 @@ def get_smtp_connection():
     if not settings.smtp_configured:
         raise SmtpNotConfigured("Email is not configured. Set SMTP_USER and SMTP_PASSWORD in the server environment.")
     server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30)
-    server.starttls()
+    server.starttls(context=ssl.create_default_context())
     server.login(settings.smtp_user, settings.smtp_password)
     return server
 
@@ -286,11 +287,18 @@ def send_invoice_email(
 
 
 def send_custom_message_email(
-    to_email: str, subject: str, message: str, recipient_name: Optional[str] = None, company_name: Optional[str] = None
+    to_email: str,
+    subject: str,
+    message: str,
+    recipient_name: Optional[str] = None,
+    company_name: Optional[str] = None,
+    attachment: Optional[tuple[str, bytes]] = None,
 ) -> Dict[str, Any]:
-    """Send a custom communication email to a customer, client, or other recipient via Gmail SMTP."""
+    """Send a custom communication email to a customer, client, or other recipient via Gmail SMTP.
+
+    ``attachment`` = (file name, PDF bytes)."""
     try:
-        msg = MIMEMultipart("alternative")
+        msg = MIMEMultipart("mixed" if attachment else "alternative")
         msg["Subject"] = _header(subject)
         msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
         msg["To"] = _header(to_email)
@@ -335,6 +343,10 @@ def send_custom_message_email(
 </html>
 """
         msg.attach(MIMEText(html_body, "html"))
+        if attachment:
+            part = MIMEApplication(attachment[1], _subtype="pdf")
+            part.add_header("Content-Disposition", "attachment", filename=attachment[0])
+            msg.attach(part)
 
         server = get_smtp_connection()
         server.sendmail(_smtp().smtp_user, to_email, msg.as_string())
@@ -926,7 +938,7 @@ def verify_smtp_credentials(host: str, port: int, username: str, password: str) 
     """Log in to the mail server with these details. Raises if they are rejected."""
     server = smtplib.SMTP(host, port, timeout=20)
     try:
-        server.starttls()
+        server.starttls(context=ssl.create_default_context())
         server.login(username, password)
     finally:
         try:

@@ -16,6 +16,7 @@ export type AppModuleKey =
   | 'customers'
   | 'invoices'
   | 'paymentsReceived'
+  | 'pos'
   | 'expenseDashboard'
   | 'vendors'
   | 'bills'
@@ -63,13 +64,14 @@ export interface AppModuleMeta {
 
 /** Every module that can be switched off, in sidebar order. Dashboard and Settings are always on. */
 export const APP_MODULES: AppModuleMeta[] = [
-  { key: 'items', label: 'Items', routes: ['/items'] },
+  { key: 'items', label: 'Items', routes: ['/items', '/inventory'] },
   { key: 'customers', label: 'Customers', routes: ['/customers'] },
-  { key: 'invoices', label: 'Invoices', routes: ['/invoices'] },
-  { key: 'paymentsReceived', label: 'Payments received', routes: ['/payments-received'] },
+  { key: 'invoices', label: 'Invoices', routes: ['/invoices', '/quotes', '/sales-orders', '/credit-notes', '/recurring-invoices'] },
+  { key: 'paymentsReceived', label: 'Payments received', routes: ['/payments-received', '/refunds'] },
+  { key: 'pos', label: 'Point of Sale', routes: ['/pos'] },
   { key: 'expenseDashboard', label: 'Expense dashboard', routes: ['/expense-dashboard'] },
   { key: 'vendors', label: 'Vendors', routes: ['/vendors'] },
-  { key: 'bills', label: 'Bills', routes: ['/bills'] },
+  { key: 'bills', label: 'Bills', routes: ['/bills', '/purchase-orders', '/vendor-credits', '/recurring-bills'] },
   { key: 'expenses', label: 'Expenses', routes: ['/expenses'] },
   { key: 'paymentsMade', label: 'Payments made', routes: ['/payments-made'] },
   { key: 'financialHub', label: 'Financial Hub', routes: ['/financial-dashboard'] },
@@ -77,8 +79,8 @@ export const APP_MODULES: AppModuleMeta[] = [
   { key: 'banking', label: 'Banking', routes: ['/banking'] },
   { key: 'razorpay', label: 'Razorpay payments', routes: ['/razorpay-payments'] },
   { key: 'timeTracking', label: 'Time tracking', routes: ['/time-tracking'] },
-  { key: 'accounting', label: 'Accountant', routes: ['/accounting'] },
-  { key: 'reports', label: 'Reports', routes: ['/reports'] },
+  { key: 'accounting', label: 'Accountant', routes: ['/accounting', '/fixed-assets', '/budgets', '/recurring-journals'] },
+  { key: 'reports', label: 'Reports', routes: ['/reports', '/gst-filing'] },
   { key: 'documents', label: 'Documents', routes: ['/documents'] },
   { key: 'payroll', label: 'Payroll', routes: ['/payroll'] },
 ];
@@ -98,12 +100,23 @@ export const TEXT_GROUP_LABELS: Record<string, string> = {
   header: 'Header',
   dashboard: 'Dashboard',
   items: 'Items',
+  inventory: 'Inventory control',
   customers: 'Customers',
   vendors: 'Vendors',
   invoices: 'Invoices',
+  quotes: 'Quotes',
+  salesOrders: 'Sales orders',
+  creditNotes: 'Credit notes',
+  recurringInvoices: 'Recurring invoices',
+  refunds: 'Refunds',
+  docflow: 'Quotes, orders & credits (shared)',
+  recurring: 'Recurring profiles (shared)',
   paymentsReceived: 'Payments received',
   expenseDashboard: 'Expense dashboard',
   bills: 'Bills',
+  purchaseOrders: 'Purchase orders',
+  vendorCredits: 'Vendor credits',
+  recurringBills: 'Recurring bills',
   expenses: 'Expenses',
   paymentsMade: 'Payments made',
   financialHub: 'Financial Hub',
@@ -112,7 +125,11 @@ export const TEXT_GROUP_LABELS: Record<string, string> = {
   razorpay: 'Razorpay payments',
   timeTracking: 'Time tracking',
   accounting: 'Accountant',
+  assets: 'Fixed assets',
+  budgets: 'Budgets',
+  recurringJournals: 'Recurring journals',
   reports: 'Reports',
+  gst: 'GST filing',
   documents: 'Documents',
   payroll: 'Payroll',
   settings: 'Settings',

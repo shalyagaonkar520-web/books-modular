@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Trash2 } from 'lucide-react';
 
+import { currenciesApi } from '@/api/advancedAccounting';
+import { warehousesApi } from '@/api/inventoryOps';
 import { accountingApi, billsApi, contactsApi, itemsApi } from '@/api/endpoints';
 import type { Contact, Item } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { SelectField, TextAreaField, TextField } from '@/components/ui/Field';
+import { CheckboxField, SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -15,7 +17,10 @@ import { useAuth } from '@/auth/AuthContext';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { addDaysIso, formatCurrency, parseNumber, round2, round3, todayIso } from '@/utils/format';
+import { TDS_SECTIONS } from '@/utils/gst';
 import { taxRatesWith } from '@/utils/status';
+import { ApprovalBanner, CustomFieldsCard } from '@/pages/automation/DocumentExtrasCards';
+import { BranchSelect, ProjectSelect } from '@/pages/operations/BranchSelect';
 
 interface LineDraft {
   key: string;
@@ -25,6 +30,9 @@ interface LineDraft {
   quantity: string;
   rate: string;
   taxRate: string;
+  batchNumber: string;
+  serialNumbers: string;
+  expiryDate: string;
 }
 
 let nextLineKey = 1;
@@ -33,7 +41,7 @@ let nextLineKey = 1;
 const FALLBACK_LINE_TAX_RATE = '0';
 
 function emptyLine(taxRate: string = FALLBACK_LINE_TAX_RATE): LineDraft {
-  return { key: `line-${nextLineKey++}`, itemId: '', accountId: '', description: '', quantity: '1', rate: '0', taxRate };
+  return { key: `line-${nextLineKey++}`, itemId: '', accountId: '', description: '', quantity: '1', rate: '0', taxRate, batchNumber: '', expiryDate: '', serialNumbers: '' };
 }
 
 
@@ -54,7 +62,7 @@ export function BillFormPage() {
   // bill - so only fetch the accounts when the role can read them, otherwise the
   // whole form 403s on open. The per-line account picker then falls back to the
   // "Default expense account" option and the server applies its default.
-  const { can, organization } = useAuth();
+  const { can, canWrite, organization } = useAuth();
   const canReadAccounts = can('admin', 'viewer');
   // New lines (never existing ones) start at the organization's default tax rate.
   const defaultLineTaxRate = organization?.defaultTaxRate !== undefined ? String(organization.defaultTaxRate) : FALLBACK_LINE_TAX_RATE;
@@ -85,6 +93,15 @@ export function BillFormPage() {
   const [dueDateTouched, setDueDateTouched] = useState(false);
   const [discountAmount, setDiscountAmount] = useState('0');
   const [notes, setNotes] = useState('');
+  const [tdsSection, setTdsSection] = useState('');
+  const [tdsRate, setTdsRate] = useState('0');
+  const [reverseCharge, setReverseCharge] = useState(false);
+  const [exchangeRate, setExchangeRate] = useState('');
+  const [warehouseId, setWarehouseId] = useState('');
+  const [branchId, setBranchId] = useState('');
+  const [projectId, setProjectId] = useState('');
+  const warehouses = useAsync(() => warehousesApi.list(), []);
+  const currencies = useAsync(() => currenciesApi.list(), []);
   const [lines, setLines] = useState<LineDraft[]>(() => [emptyLine(defaultLineTaxRate)]);
   const [loadedId, setLoadedId] = useState<string | null>(null);
 
@@ -102,8 +119,15 @@ export function BillFormPage() {
     setDate(bill.date);
     setDueDate(bill.dueDate);
     setDueDateTouched(true);
-    setDiscountAmount(String(bill.discountAmount));
+    setDiscountAmount(String(bill.fcDiscountAmount ?? bill.discountAmount));
     setNotes(bill.notes ?? '');
+    setTdsSection(bill.tdsSection ?? '');
+    setTdsRate(String(bill.tdsRate ?? 0));
+    setReverseCharge(Boolean(bill.reverseCharge));
+    setExchangeRate(bill.exchangeRate && bill.exchangeRate !== 1 ? String(bill.exchangeRate) : '');
+    setWarehouseId(bill.warehouseId ?? '');
+    setBranchId(bill.branchId ?? '');
+    setProjectId(bill.projectId ?? '');
     setLines(
       bill.lines.length > 0
         ? bill.lines.map((line) => ({
@@ -112,8 +136,12 @@ export function BillFormPage() {
             accountId: line.accountId ?? '',
             description: line.description,
             quantity: String(line.quantity),
-            rate: String(line.rate),
+            // In the bill's own currency (equal to rate for base-currency bills).
+            rate: String(line.fcRate ?? line.rate),
             taxRate: String(line.taxRate),
+            batchNumber: line.batchNumber ?? '',
+            expiryDate: line.expiryDate ?? '',
+            serialNumbers: line.serialNumbers ?? '',
           }))
         : [emptyLine()],
     );
@@ -130,7 +158,15 @@ export function BillFormPage() {
   const subtotal = round2(lines.reduce((sum, line) => sum + lineAmount(line), 0));
   const taxTotal = round2(lines.reduce((sum, line) => sum + round2((lineAmount(line) * parseNumber(line.taxRate, 0)) / 100), 0));
   const discount = round2(parseNumber(discountAmount, 0));
-  const grandTotal = round2(subtotal - discount + taxTotal);
+  const baseCurrency = organization?.currency ?? 'INR';
+  // The vendor list holds only the first 200 vendors: an existing foreign-currency
+  // bill still knows its own currency, so the exchange-rate field stays visible.
+  const billCurrency = bill && vendorId === bill.vendorId && bill.currency && bill.exchangeRate !== undefined && bill.exchangeRate !== 1 ? bill.currency : null;
+  const vendorCurrency = vendor?.currency || billCurrency || baseCurrency;
+  const foreign = vendorCurrency !== baseCurrency;
+  const tdsAmount = round2(((subtotal - discount) * parseNumber(tdsRate, 0)) / 100);
+  // Under reverse charge the vendor is not paid the GST; TDS is withheld from them.
+  const grandTotal = round2(subtotal - discount + (reverseCharge ? 0 : taxTotal) - tdsAmount);
 
   const updateLine = (key: string, patch: Partial<LineDraft>) => {
     setLines((current) => current.map((line) => (line.key === key ? { ...line, ...patch } : line)));
@@ -177,6 +213,13 @@ export function BillFormPage() {
       discountAmount: discount,
       notes: notes.trim() || null,
       status,
+      reverseCharge,
+      exchangeRate: foreign && parseNumber(exchangeRate, 0) > 0 ? parseNumber(exchangeRate, 0) : null,
+      warehouseId: warehouseId || null,
+      branchId: branchId || null,
+      projectId: projectId || null,
+      tdsSection: parseNumber(tdsRate, 0) > 0 ? tdsSection || null : null,
+      tdsRate: parseNumber(tdsRate, 0),
       lines: lines.map((line) => ({
         itemId: line.itemId || null,
         accountId: line.accountId || null,
@@ -184,6 +227,9 @@ export function BillFormPage() {
         quantity: parseNumber(line.quantity, 0),
         rate: parseNumber(line.rate, 0),
         taxRate: parseNumber(line.taxRate, 0),
+        batchNumber: line.batchNumber.trim() || null,
+        expiryDate: line.expiryDate || null,
+        serialNumbers: line.serialNumbers.trim() || null,
       })),
     };
     const result = await run(() => (billId ? billsApi.update(billId, body) : billsApi.create(body)));
@@ -238,6 +284,18 @@ export function BillFormPage() {
           </Button>
         }
       />
+      {bill ? (
+        <ApprovalBanner
+          kind="bill"
+          id={bill.id}
+          status={bill.status}
+          total={bill.total}
+          approvalStatus={bill.approvalStatus}
+          approvalNote={bill.approvalNote}
+          approvedTotal={bill.approvedTotal}
+          onChanged={existing.reload}
+        />
+      ) : null}
 
       <Card>
         <FormError message={error} />
@@ -251,8 +309,37 @@ export function BillFormPage() {
               placeholder={t('bills.form.vendorPlaceholder')}
               error={fieldErrors.vendorId}
               options={(refs.data?.vendors ?? []).map((option) => ({ value: option.id, label: option.displayName }))}
-              onChange={(event) => setVendorId(event.target.value)}
+              onChange={(event) => {
+                setVendorId(event.target.value);
+                const code = refs.data?.vendors.find((v) => v.id === event.target.value)?.currency;
+                const saved = currencies.data?.find((c) => c.code === code)?.exchangeRate;
+                setExchangeRate(saved ? String(saved) : '');
+              }}
             />
+            <BranchSelect value={branchId} onChange={setBranchId} />
+            <ProjectSelect value={projectId} onChange={setProjectId} />
+            {(warehouses.data?.length ?? 0) > 1 ? (
+              <SelectField
+                label={t('docflow.form.warehouse')}
+                value={warehouseId}
+                placeholder={t('docflow.form.warehouseDefault')}
+                options={(warehouses.data ?? []).filter((w) => w.isActive).map((w) => ({ value: w.id, label: w.name }))}
+                onChange={(event) => setWarehouseId(event.target.value)}
+              />
+            ) : null}
+            {foreign ? (
+              <TextField
+                label={`${t('bills.form.exchangeRate')} (${vendorCurrency})`}
+                type="number"
+                min="0"
+                step="0.000001"
+                required
+                value={exchangeRate}
+                hint={t('invoices.form.exchangeRateHint', { base: baseCurrency, code: vendorCurrency })}
+                error={fieldErrors.exchangeRate}
+                onChange={(event) => setExchangeRate(event.target.value)}
+              />
+            ) : null}
             <TextField
               label={t('bills.form.vendorBillNumber')}
               value={vendorBillNumber}
@@ -305,6 +392,7 @@ export function BillFormPage() {
 
         <div className="form-section">
           <h2 className="form-section-title">{t('bills.form.lineItems')}</h2>
+          <div className="table-wrap">
           <table className="line-items-table">
             <thead>
               <tr>
@@ -340,6 +428,35 @@ export function BillFormPage() {
                         ))}
                       </select>
                       {item?.trackInventory ? <small className="text-muted">{t('bills.form.line.stockHint')}</small> : null}
+                      {item?.trackInventory ? (
+                        <div className="row">
+                          <input
+                            className="input input-sm"
+                            placeholder={t('docflow.lines.batch')}
+                            aria-label={t('docflow.lines.batch')}
+                            value={line.batchNumber}
+                            onChange={(event) => updateLine(line.key, { batchNumber: event.target.value })}
+                          />
+                          <input
+                            className="input input-sm"
+                            type="date"
+                            aria-label={t('docflow.lines.expiry')}
+                            title={t('docflow.lines.expiry')}
+                            value={line.expiryDate}
+                            onChange={(event) => updateLine(line.key, { expiryDate: event.target.value })}
+                          />
+                        </div>
+                      ) : null}
+                      {item?.trackSerial ? (
+                        <textarea
+                          className="input input-sm"
+                          rows={2}
+                          placeholder={t('ops.serials.placeholder', { count: line.quantity })}
+                          aria-label={t('ops.serials.label')}
+                          value={line.serialNumbers}
+                          onChange={(event) => updateLine(line.key, { serialNumbers: event.target.value })}
+                        />
+                      ) : null}
                     </td>
                     <td>
                       <select
@@ -418,6 +535,7 @@ export function BillFormPage() {
               })}
             </tbody>
           </table>
+          </div>
           <div className="row">
             <Button variant="secondary" size="sm" icon={<Plus size={14} />} onClick={() => setLines((current) => [...current, emptyLine(defaultLineTaxRate)])}>
               {t('bills.form.addLine')}
@@ -438,6 +556,35 @@ export function BillFormPage() {
               onChange={(event) => setDiscountAmount(event.target.value)}
             />
             <TextAreaField label={t('bills.form.notes')} value={notes} error={fieldErrors.notes} onChange={(event) => setNotes(event.target.value)} />
+            <SelectField
+              label={t('bills.form.tdsSection')}
+              value={tdsSection}
+              placeholder={t('bills.form.tdsNone')}
+              options={TDS_SECTIONS.map((s) => ({ value: s.section, label: `${s.label} (${s.rate}%)` }))}
+              error={fieldErrors.tdsSection}
+              onChange={(event) => {
+                const picked = TDS_SECTIONS.find((s) => s.section === event.target.value);
+                setTdsSection(event.target.value);
+                setTdsRate(picked ? String(picked.rate) : '0');
+              }}
+            />
+            <TextField
+              label={t('bills.form.tdsRate')}
+              type="number"
+              min="0"
+              max="30"
+              step="0.001"
+              value={tdsRate}
+              disabled={!tdsSection}
+              error={fieldErrors.tdsRate}
+              onChange={(event) => setTdsRate(event.target.value)}
+            />
+            <CheckboxField
+              label={t('bills.form.reverseCharge')}
+              hint={t('bills.form.reverseChargeHint')}
+              checked={reverseCharge}
+              onChange={(event) => setReverseCharge(event.target.checked)}
+            />
           </div>
           <div className="totals-list">
             <div>
@@ -452,9 +599,21 @@ export function BillFormPage() {
               <span>{t('bills.form.taxTotal')}</span>
               <span>{formatCurrency(taxTotal)}</span>
             </div>
+            {reverseCharge && taxTotal > 0 ? (
+              <div>
+                <span>{t('bills.form.reverseChargeLine')}</span>
+                <span>-{formatCurrency(taxTotal)}</span>
+              </div>
+            ) : null}
+            {tdsAmount > 0 ? (
+              <div>
+                <span>{t('bills.form.tdsLine', { section: tdsSection })}</span>
+                <span>-{formatCurrency(tdsAmount)}</span>
+              </div>
+            ) : null}
             <div className="grand">
               <span>{t('bills.form.grandTotal')}</span>
-              <span>{formatCurrency(grandTotal)}</span>
+              <span>{formatCurrency(grandTotal, vendorCurrency)}</span>
             </div>
           </div>
         </div>
@@ -464,7 +623,9 @@ export function BillFormPage() {
             {isEdit ? t('bills.form.footerEdit') : t('bills.form.footerNew')}
           </span>
           <div className="row">
-            {isEdit && isOpenBill ? (
+            {!canWrite ? (
+              <span className="small text-subtle">{t('common.readOnly.body')}</span>
+            ) : isEdit && isOpenBill ? (
               <Button variant="primary" loading={submitting} onClick={() => void save('open')}>
                 {t('bills.form.saveChanges')}
               </Button>
@@ -481,6 +642,7 @@ export function BillFormPage() {
           </div>
         </div>
       </Card>
+      {bill ? <CustomFieldsCard entity="bill" entityId={bill.id} /> : null}
     </>
   );
 }

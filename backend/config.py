@@ -35,7 +35,10 @@ class Settings(BaseSettings):
     cors_origins: List[str] | str = Field(default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"])
     allow_public_signup: bool = Field(default=True, description="If false, only invited users can join")
     require_org_approval: bool = Field(
-        default=True, description="REQUIRE_ORG_APPROVAL: new sign-ups wait for a super-admin to approve the organization"
+        # Off: a sign-up starts its free trial at once; the platform admin's
+        # decision comes after the trial, when the organization requests a plan.
+        default=False,
+        description="REQUIRE_ORG_APPROVAL: new sign-ups wait for a super-admin to approve the organization",
     )
     login_rate_limit_per_minute: int = 10
     # Comma-separated IPs/CIDRs of reverse proxies whose X-Forwarded-For header
@@ -56,6 +59,19 @@ class Settings(BaseSettings):
     smtp_from: str = Field(default="", description="SMTP_FROM email address")
     app_url: str = Field(default="http://localhost:3000", description="Frontend application URL")
 
+    # AI assistant (Claude API). The key is read from the environment only; with
+    # no key the AI features answer 503 and the rest of the app is unaffected.
+    anthropic_api_key: str = Field(default="", description="ANTHROPIC_API_KEY")
+    ai_model: str = Field(default="claude-opus-5-5", description="Claude model used by the AI assistant")
+
+    # WhatsApp Cloud API (Meta). Off until the token and phone number id are set.
+    whatsapp_token: str = Field(default="", description="WHATSAPP_TOKEN (permanent system-user token)")
+    whatsapp_phone_number_id: str = Field(default="", description="WHATSAPP_PHONE_NUMBER_ID")
+    whatsapp_api_version: str = Field(default="v21.0", description="Graph API version")
+    # Approved message template with one body parameter; empty = free-form text (24-hour window only).
+    whatsapp_template: str = Field(default="", description="WHATSAPP_TEMPLATE")
+    whatsapp_template_language: str = Field(default="en", description="WHATSAPP_TEMPLATE_LANGUAGE")
+
     # Razorpay gateway
     # Credentials are read from the environment only. Never hardcode them here:
     # this file is committed to Git, so a default value is a leaked secret.
@@ -71,6 +87,24 @@ class Settings(BaseSettings):
     razorpay_sync_overlap_minutes: int = Field(
         default=60, ge=0, le=1440, description="Re-scan window before the last sync so late captures are not missed"
     )
+
+    # Connected apps (services/integrations.py): other apps using Books with a
+    # scoped API key, and webhooks Books sends them.
+    integration_rate_limit_per_minute: int = Field(default=300, ge=10, le=10000, description="API requests per minute per connected app")
+    webhooks_enabled: bool = Field(default=True, description="Run the webhook delivery loop")
+    webhook_allowed_hosts: List[str] | str = Field(
+        default_factory=list, description="WEBHOOK_ALLOWED_HOSTS: comma-separated internal hosts webhooks may reach (other Rooman apps)"
+    )
+    webhook_allow_private: bool | None = Field(
+        default=None, description="WEBHOOK_ALLOW_PRIVATE: allow webhooks to private/local addresses (default: only outside production)"
+    )
+
+    @field_validator("webhook_allowed_hosts", mode="before")
+    @classmethod
+    def _split_hosts(cls, value):
+        if isinstance(value, str):
+            return [host.strip().lower() for host in value.split(",") if host.strip()]
+        return [str(host).strip().lower() for host in (value or [])]
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -147,6 +181,10 @@ def get_settings() -> Settings:
             raise RuntimeError("SECRET_KEY must be set in production")
         # Ephemeral key for local development only. Tokens are invalidated on restart.
         settings.secret_key = secrets.token_urlsafe(48)
+    if settings.is_production and len(settings.secret_key) < 32:
+        raise RuntimeError("SECRET_KEY must be at least 32 characters in production")
+    if settings.webhook_allow_private is None:
+        settings.webhook_allow_private = not settings.is_production
     if settings.is_production and settings.auto_create_tables:
         # Migrations are the source of truth in production.
         settings.auto_create_tables = False

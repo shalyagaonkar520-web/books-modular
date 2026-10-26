@@ -10,15 +10,9 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
-import { RazorpayIntegrationSettings, type RazorpayIntegrationApi } from '@/pages/settings/RazorpayIntegrationSettings';
 import { titleCase } from '@/utils/format';
 
-// The Razorpay keys are platform-wide, so they are set here and nowhere else.
-const RAZORPAY_KEYS_API: RazorpayIntegrationApi = {
-  loadStatus: platformApi.razorpay.status,
-  connect: platformApi.razorpay.connect,
-  disconnect: platformApi.razorpay.disconnect,
-};
+import { EmailSettings } from '../settings/EmailSettings';
 
 export function PlatformSettingsPage() {
   const toast = useToast();
@@ -86,7 +80,7 @@ export function PlatformSettingsPage() {
 
           <NewOrgDefaultsCard settings={data} onSaved={setData} />
 
-          <RazorpayIntegrationSettings api={RAZORPAY_KEYS_API} />
+          <EmailSettings />
 
           <Card title="Environment & integrations" subtitle="Read-only status of the running deployment.">
             <dl className="detail-grid">

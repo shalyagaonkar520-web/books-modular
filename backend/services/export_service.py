@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import contextvars
+import html
 import io
+import re
 from datetime import date, datetime
+from decimal import Decimal
+from types import SimpleNamespace
 from typing import List, Optional
 
 from openpyxl import Workbook
@@ -12,7 +17,8 @@ from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import HRFlowable, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Paragraph as _RLParagraph
 
 from backend.models import (
     AuditLog,
@@ -29,10 +35,122 @@ from backend.models import (
     VendorPayment,
 )
 
+# The PDFs below put user text (names, addresses, notes, line descriptions)
+# inside ReportLab's mini-markup. Text such as "a<b" or "R&D;" breaks the
+# parser (a 500 on every PDF download and "email with PDF"), and tags such as
+# <img src=...> would be obeyed. So every paragraph goes through Paragraph()
+# below: only the formatting tags this module writes itself (b, i, br, font
+# color) stay markup; everything else is shown as text.
+_OWN_TAGS = re.compile(r"</?[bi]>|<br\s*/?>|<font color=(?:'[#\w]+'|\"[#\w]+\")>|</font>", re.IGNORECASE)
+_BARE_AMP = re.compile(r"&(?!(?:#\d+|#x[0-9a-f]+|[a-z]+);)", re.IGNORECASE)
+
+
+def _text(value: str) -> str:
+    return _BARE_AMP.sub("&amp;", value).replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _safe_markup(text: str) -> str:
+    out, pos = [], 0
+    for match in _OWN_TAGS.finditer(text):
+        out.append(_text(text[pos : match.start()]))
+        out.append(match.group())
+        pos = match.end()
+    out.append(_text(text[pos:]))
+    return "".join(out)
+
+
+def Paragraph(text, *args, **kwargs):  # noqa: N802 - drop-in for reportlab's Paragraph
+    text = "" if text is None else str(text)
+    try:
+        return _RLParagraph(_safe_markup(text), *args, **kwargs)
+    except ValueError:
+        # Unbalanced user text that looks like one of our tags (e.g. "x <b>y"):
+        # print the whole paragraph as plain text rather than fail the PDF.
+        plain = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+        return _RLParagraph(html.escape(_OWN_TAGS.sub("", plain)).replace("\n", "<br/>"), *args, **kwargs)
+
+
+# Our own totals rows are the only formulas these workbooks may contain.
+_OWN_FORMULA = re.compile(r"^=SUM\([A-Z]+\d+:[A-Z]+\d+\)$")
+
+
+def _save(wb: Workbook, buf: io.BytesIO) -> None:
+    """Save, storing any user text that starts with "=" as text, not a formula
+    (a contact named =HYPERLINK(...) must not run when the export is opened)."""
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for cell in row:
+                if cell.data_type == "f" and not (isinstance(cell.value, str) and _OWN_FORMULA.match(cell.value)):
+                    cell.data_type = "s"
+    wb.save(buf)
+
+
+# The currency the PDF being built prints amounts in (an invoice in USD prints USD).
+_PDF_CURRENCY: contextvars.ContextVar[str] = contextvars.ContextVar("pdf_currency", default="INR")
+
 
 def _fmt_curr(val: Optional[float]) -> str:
     amount = float(val or 0.0)
-    return f"INR {amount:,.2f}"
+    return f"{_PDF_CURRENCY.get()} {amount:,.2f}"
+
+
+def _in_document_currency(invoice):
+    """A read-only stand-in for a foreign-currency invoice with its own-currency
+    figures, so the PDF prints what the customer was actually charged."""
+    rate = Decimal(str(invoice.exchange_rate or 1))
+
+    def fc_line(line):
+        tax = (Decimal(str(line.tax_amount)) / rate).quantize(Decimal("0.01"))
+        return SimpleNamespace(
+            item=line.item,
+            description=line.description,
+            quantity=line.quantity,
+            tax_rate=line.tax_rate,
+            rate=line.fc_rate if line.fc_rate is not None else line.rate,
+            amount=line.fc_amount if line.fc_amount is not None else line.amount,
+            tax_amount=tax,
+        )
+
+    fields = {
+        name: getattr(invoice, name)
+        for name in (
+            "invoice_number",
+            "date",
+            "due_date",
+            "status",
+            "reference",
+            "notes",
+            "terms",
+            "customer",
+            "order_number",
+            "subject",
+            "salesperson",
+            "place_of_supply",
+            "tcs_amount",
+            "irn",
+            "currency",
+        )
+    }
+    return SimpleNamespace(
+        **fields,
+        lines=[fc_line(line) for line in invoice.lines],
+        subtotal=invoice.fc_subtotal,
+        discount_amount=invoice.fc_discount_amount,
+        tax_total=invoice.fc_tax_total,
+        total=invoice.fc_total,
+        amount_paid=invoice.fc_amount_paid,
+        balance_due=invoice.fc_total - invoice.fc_amount_paid,
+    )
+
+
+def _org_lines(address: str, city_state: str, gstin: str, email: str) -> str:
+    """The supplier block of a PDF, leaving out whatever the organization has not filled in."""
+    lines = [x for x in (address, city_state) if x]
+    if gstin:
+        lines.append(f"GSTIN: {gstin}")
+    if email:
+        lines.append(f"Email: {email}")
+    return "<br/>".join(lines)
 
 
 def _fmt_date(d: Optional[date | datetime]) -> str:
@@ -45,6 +163,17 @@ def _fmt_date(d: Optional[date | datetime]) -> str:
 
 def generate_invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
     """Generate a high-quality, professional GST Tax Invoice PDF document."""
+    base = (org.currency if org else None) or "INR"
+    code = invoice.currency or base
+    token = _PDF_CURRENCY.set(code)
+    try:
+        return _invoice_pdf(_in_document_currency(invoice) if code != base else invoice, org)
+    finally:
+        _PDF_CURRENCY.reset(token)
+
+
+def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
+    accent = (org.brand_color if org and org.brand_color else None) or "#2563eb"
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -70,7 +199,7 @@ def generate_invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -
         fontName="Helvetica-Bold",
         fontSize=12,
         leading=16,
-        textColor=colors.HexColor("#2563eb"),
+        textColor=colors.HexColor(accent),
     )
     bold_label = ParagraphStyle(
         "BoldLabel",
@@ -114,12 +243,10 @@ def generate_invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -
 
     # Org Info & Header
     org_name = (org.name if org else None) or "Rooman Technologies Pvt Ltd"
-    org_addr = (org.address if org else None) or "Rooman House, #12 Rajajinagar"
-    org_city_state = ", ".join(
-        filter(None, [org.city if org else "Bengaluru", org.state if org else "Karnataka", org.postal_code if org else "560010"])
-    )
-    org_gstin = (org.gstin if org else None) or "29AABCR1234F1Z5"
-    org_email = (org.email if org else None) or "shalya@rooman.com"
+    org_addr = (org.address if org else None) or ""
+    org_city_state = ", ".join(filter(None, [org.city if org else None, org.state if org else None, org.postal_code if org else None]))
+    org_gstin = (org.gstin if org else None) or ""
+    org_email = (org.email if org else None) or ""
 
     header_table_data = [
         [
@@ -127,7 +254,7 @@ def generate_invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -
             Paragraph("<b>TAX INVOICE</b>", subtitle_style),
         ],
         [
-            Paragraph(f"{org_addr}<br/>{org_city_state}<br/>GSTIN: {org_gstin}<br/>Email: {org_email}", value_style),
+            Paragraph(_org_lines(org_addr, org_city_state, org_gstin, org_email), value_style),
             Paragraph(
                 f"<b>Invoice #:</b> {invoice.invoice_number}<br/>"
                 f"<b>Date:</b> {_fmt_date(invoice.date)}<br/>"
@@ -219,7 +346,7 @@ def generate_invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -
     t_lines.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(accent if org and org.brand_color else "#1e293b")),
                 ("ALIGN", (0, 0), (0, -1), "CENTER"),
                 ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -280,16 +407,44 @@ def generate_invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -
     t_wrap.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
     story.append(t_wrap)
 
+    # Pay by UPI: a QR any UPI app opens with the amount filled in (INR invoices with a balance).
+    if org and org.upi_id and balance > 0 and _PDF_CURRENCY.get() == "INR" and invoice.status in ("sent", "partially_paid", "overdue"):
+        from backend.services import upi
+
+        uri = upi.pay_uri(org.upi_id, org.legal_name or org.name, Decimal(str(balance)), f"Invoice {invoice.invoice_number}")
+        t_upi = Table(
+            [
+                [
+                    upi.qr_drawing(uri, 84),
+                    Paragraph(
+                        f"<b>Scan to pay with any UPI app</b><br/>UPI ID: {_text(org.upi_id)}<br/>Amount: {_fmt_curr(balance)}", value_style
+                    ),
+                ]
+            ],
+            colWidths=[96, 444],
+        )
+        t_upi.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+        story.append(Spacer(1, 10))
+        story.append(t_upi)
+
+    if org and org.signature_label:
+        story.append(Spacer(1, 18))
+        story.append(
+            Paragraph(
+                f"For <b>{_text(org.legal_name or org.name)}</b><br/><br/><br/>{_text(org.signature_label)}",
+                ParagraphStyle("Signature", parent=styles["Normal"], fontSize=9, leading=12, alignment=2),
+            )
+        )
     story.append(Spacer(1, 25))
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cbd5e1"), spaceAfter=10))
-    story.append(
-        Paragraph(
-            "<i>This is a computer-generated GST Tax Invoice issued by Rooman Technologies Pvt Ltd. For inquiries, email shalya@rooman.com</i>",
-            ParagraphStyle(
-                "Footnote", parent=styles["Normal"], fontSize=7.5, leading=10, textColor=colors.HexColor("#64748b"), alignment=1
-            ),
-        )
+    footnote = ParagraphStyle(
+        "Footnote", parent=styles["Normal"], fontSize=7.5, leading=10, textColor=colors.HexColor("#64748b"), alignment=1
     )
+    if org and org.document_footer:
+        story.append(Paragraph(_text(org.document_footer).replace("\n", "<br/>"), footnote))
+    issuer = _text(org.legal_name or org.name) if org else "the supplier"
+    contact = f" For inquiries, email {_text(org.email)}" if org and org.email else ""
+    story.append(Paragraph(f"<i>This is a computer-generated GST Tax Invoice issued by {issuer}.{contact}</i>", footnote))
 
     doc.build(story)
     return buffer.getvalue()
@@ -482,7 +637,7 @@ def generate_invoice_excel(invoice: Invoice, org: Optional[Organization] = None)
         ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
 
     buf = io.BytesIO()
-    wb.save(buf)
+    _save(wb, buf)
     return buf.getvalue()
 
 
@@ -568,7 +723,7 @@ def generate_invoices_list_excel(invoices: List[Invoice], org: Optional[Organiza
         ws.column_dimensions[col_letter].width = max(max_len + 3, 14)
 
     buf = io.BytesIO()
-    wb.save(buf)
+    _save(wb, buf)
     return buf.getvalue()
 
 
@@ -602,7 +757,7 @@ def generate_bill_pdf(bill: Bill, org: Optional[Organization] = None) -> bytes:
             [
                 [Paragraph(f"<b>{org_name}</b>", title_style), Paragraph("<b>PURCHASE BILL VOUCHER</b>", sub_style)],
                 [
-                    Paragraph(f"Accounts Payable Dept<br/>GSTIN: {(org.gstin if org else None) or '29AABCR1234F1Z5'}", val_style),
+                    Paragraph("Accounts Payable Dept" + (f"<br/>GSTIN: {org.gstin}" if org and org.gstin else ""), val_style),
                     Paragraph(
                         f"<b>Bill #:</b> {bill.bill_number}<br/><b>Vendor Ref:</b> {getattr(bill, 'vendor_bill_number', None) or 'N/A'}<br/><b>Date:</b> {_fmt_date(bill.date)}<br/><b>Due:</b> {_fmt_date(bill.due_date)}<br/><b>Status:</b> {bill.status.upper()}",
                         val_style,
@@ -799,7 +954,7 @@ def generate_bills_list_excel(bills: List[Bill], org: Optional[Organization] = N
         ws.column_dimensions[col_letter].width = max(max_len + 3, 14)
 
     buf = io.BytesIO()
-    wb.save(buf)
+    _save(wb, buf)
     return buf.getvalue()
 
 
@@ -914,7 +1069,7 @@ def generate_customer_payments_list_excel(payments: List[CustomerPayment], org: 
         ws.column_dimensions[col_letter].width = max(max_len + 3, 14)
 
     buf = io.BytesIO()
-    wb.save(buf)
+    _save(wb, buf)
     return buf.getvalue()
 
 
@@ -1074,7 +1229,7 @@ def generate_vendor_payments_list_excel(payments: List[VendorPayment], org: Opti
         ws.column_dimensions[col_letter].width = max(max_len + 3, 14)
 
     buf = io.BytesIO()
-    wb.save(buf)
+    _save(wb, buf)
     return buf.getvalue()
 
 
@@ -1222,7 +1377,7 @@ def generate_expenses_list_excel(expenses: List[Expense], org: Optional[Organiza
         ws.column_dimensions[col_letter].width = max(max_len + 3, 14)
 
     buf = io.BytesIO()
-    wb.save(buf)
+    _save(wb, buf)
     return buf.getvalue()
 
 
@@ -1313,7 +1468,7 @@ def generate_contacts_list_excel(contacts: List[Contact], contact_type: str = "c
         ws.column_dimensions[col_letter].width = max(max_len + 3, 14)
 
     buf = io.BytesIO()
-    wb.save(buf)
+    _save(wb, buf)
     return buf.getvalue()
 
 
@@ -1402,12 +1557,10 @@ def generate_overall_dashboard_report_pdf(
     story = []
 
     org_name = (org.name if org else None) or "Rooman Technologies Pvt Ltd"
-    org_addr = (org.address if org else None) or "Rooman House, #12 Rajajinagar"
-    org_city_state = ", ".join(
-        filter(None, [org.city if org else "Bengaluru", org.state if org else "Karnataka", org.postal_code if org else "560010"])
-    )
-    org_gstin = (org.gstin if org else None) or "29AABCR1234F1Z5"
-    org_email = (org.email if org else None) or "shalya@rooman.com"
+    org_addr = (org.address if org else None) or ""
+    org_city_state = ", ".join(filter(None, [org.city if org else None, org.state if org else None, org.postal_code if org else None]))
+    org_gstin = (org.gstin if org else None) or ""
+    org_email = (org.email if org else None) or ""
 
     header_table_data = [
         [
@@ -1415,7 +1568,7 @@ def generate_overall_dashboard_report_pdf(
             Paragraph("<b>OVERALL FINANCIAL REPORT</b>", subtitle_style),
         ],
         [
-            Paragraph(f"{org_addr}<br/>{org_city_state}<br/>GSTIN: {org_gstin}<br/>Email: {org_email}", value_style),
+            Paragraph(_org_lines(org_addr, org_city_state, org_gstin, org_email), value_style),
             Paragraph(
                 f"<b>Period:</b> {period_label}<br/>"
                 f"<b>Generated:</b> {datetime.now().strftime('%d %b %Y, %I:%M %p')}<br/>"

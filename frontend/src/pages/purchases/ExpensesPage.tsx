@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { FileDown, FileSpreadsheet, Mail, Pencil, Plus, Receipt, Trash2 } from 'lucide-react';
+import { Car, FileDown, FileSpreadsheet, Mail, Pencil, Plus, Receipt, Trash2 } from 'lucide-react';
 
 import { ApiError } from '@/api/client';
 import { accountingApi, bankingApi, contactsApi, expensesApi } from '@/api/endpoints';
@@ -21,6 +21,8 @@ import { useAsync } from '@/hooks/useAsync';
 import { useDownload } from '@/hooks/useDownload';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatCurrency, formatDate, formatPercent, round2, todayIso } from '@/utils/format';
+
+import { MileageModal } from '@/pages/operations/MileageModal';
 
 import { ExpenseFormModal, type ExpenseRefs } from './ExpenseFormModal';
 
@@ -48,6 +50,7 @@ export function ExpensesPage() {
   const [vendorId, setVendorId] = useState('');
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(() => searchParams.get('new') === '1');
+  const [claimingMileage, setClaimingMileage] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Expense | null>(null);
   const [mailExpense, setMailExpense] = useState<Expense | null>(null);
@@ -108,9 +111,14 @@ export function ExpensesPage() {
     const expenseId = searchParams.get('expense');
     if (!expenseId) return;
     let cancelled = false;
-    void expensesApi.get(expenseId).then((expense) => {
-      if (!cancelled) setEditing(expense);
-    });
+    void expensesApi
+      .get(expenseId)
+      .then((expense) => {
+        if (!cancelled) setEditing(expense);
+      })
+      .catch(() => {
+        if (!cancelled) toast.error('That expense could not be opened. It may have been deleted.');
+      });
     const next = new URLSearchParams(searchParams);
     next.delete('expense');
     setSearchParams(next, { replace: true });
@@ -273,6 +281,9 @@ export function ExpensesPage() {
               {t('common.extractExcel')}
             </Button>
             <IfCanWrite>
+              <Button variant="secondary" icon={<Car size={15} />} disabled={!refs.data} onClick={() => setClaimingMileage(true)}>
+                {t('ops.mileage.button')}
+              </Button>
               <Button variant="primary" icon={<Plus size={15} />} onClick={() => setCreating(true)}>
                 {t('expenses.record')}
               </Button>
@@ -411,6 +422,17 @@ export function ExpensesPage() {
           onSaved={() => {
             setEditing(null);
             closeCreate();
+            refreshAll();
+          }}
+        />
+      ) : null}
+
+      {claimingMileage && refs.data ? (
+        <MileageModal
+          refs={refs.data}
+          onClose={() => setClaimingMileage(false)}
+          onSaved={() => {
+            setClaimingMileage(false);
             refreshAll();
           }}
         />

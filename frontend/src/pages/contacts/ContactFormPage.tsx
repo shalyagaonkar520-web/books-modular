@@ -8,6 +8,8 @@ reloaded.
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { currenciesApi } from '@/api/advancedAccounting';
+import { priceListsApi } from '@/api/inventoryOps';
 import { accountingApi, contactsApi } from '@/api/endpoints';
 import type { Contact, ContactKind, ContactType, GstTreatment } from '@/api/types';
 import { Button } from '@/components/ui/Button';
@@ -19,16 +21,12 @@ import { useAuth } from '@/auth/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
+import { stateFromGstin, stateOptions } from '@/utils/gst';
 import { GST_TREATMENTS } from '@/utils/status';
+import { CustomFieldsCard } from '@/pages/automation/DocumentExtrasCards';
 
 const SALUTATIONS = ['Mr.', 'Ms.', 'Mrs.', 'Dr.', 'Prof.'];
 const LANGUAGES = ['English', 'Hindi', 'Kannada', 'Tamil', 'Telugu', 'Malayalam', 'Marathi', 'Gujarati', 'Bengali'];
-
-function formatVendorMaskedName(name: string | null | undefined, isVendor: boolean): string {
-  if (!name) return '';
-  if (!isVendor || name.length <= 10) return name;
-  return name.slice(0, 10) + '*'.repeat(name.length - 10);
-}
 
 interface FormState {
   contactType: ContactKind;
@@ -49,6 +47,9 @@ interface FormState {
   bankAccountNumberConfirm: string;
   bankIfsc: string;
   gstTreatment: GstTreatment;
+  placeOfSupply: string;
+  currency: string;
+  priceListId: string;
   language: string;
   ledgerAccountId: string;
   paymentTermsDays: string;
@@ -60,17 +61,17 @@ interface FormState {
 /** Payment terms a brand-new contact starts with when the organization sets no default. */
 const FALLBACK_PAYMENT_TERMS_DAYS = 30;
 
-function initialForm(contact: Contact | null, type: ContactType, defaultPaymentTermsDays?: number): FormState {
+function initialForm(contact: Contact | null, defaultPaymentTermsDays?: number): FormState {
   const displayName = contact?.displayName ?? '';
   const contactPerson = contact?.contactPerson ?? '';
   return {
     contactType: contact?.contactType ?? 'business',
-    displayName: formatVendorMaskedName(displayName, type === 'vendor'),
+    displayName,
     companyName: contact?.companyName ?? '',
     salutation: contact?.salutation ?? '',
     firstName: contact?.firstName ?? '',
     lastName: contact?.lastName ?? '',
-    contactPerson: formatVendorMaskedName(contactPerson, type === 'vendor'),
+    contactPerson,
     email: contact?.email ?? '',
     phone: contact?.phone ?? '',
     mobile: contact?.mobile ?? '',
@@ -84,6 +85,9 @@ function initialForm(contact: Contact | null, type: ContactType, defaultPaymentT
     language: contact?.language ?? '',
     ledgerAccountId: contact?.ledgerAccountId ?? '',
     gstTreatment: contact?.gstTreatment ?? 'unregistered',
+    placeOfSupply: contact?.placeOfSupply ?? '',
+    currency: contact?.currency ?? '',
+    priceListId: contact?.priceListId ?? '',
     paymentTermsDays: String(contact ? contact.paymentTermsDays : (defaultPaymentTermsDays ?? FALLBACK_PAYMENT_TERMS_DAYS)),
     billingAddress: contact?.billingAddress ?? '',
     shippingAddress: contact?.shippingAddress ?? '',
@@ -126,9 +130,9 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
   // Reading the chart of accounts is Admin/Viewer only, but Staff may create
   // contacts - so only ask for the accounts when the signed-in role is allowed
   // them, otherwise the form 403s on open for a role that is entitled to use it.
-  const { can, organization } = useAuth();
+  const { can, canWrite, organization } = useAuth();
   const canChooseAccount = can('admin', 'viewer');
-  const [form, setForm] = useState<FormState>(() => initialForm(contact, type, organization?.defaultPaymentTermsDays));
+  const [form, setForm] = useState<FormState>(() => initialForm(contact, organization?.defaultPaymentTermsDays));
   const { submitting, error, fieldErrors, run } = useSubmit();
   // Receivables for a customer, payables for a vendor - the only accounts it
   // makes sense to point a contact at.
@@ -136,6 +140,8 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
     () => (canChooseAccount ? accountingApi.accounts({ type: type === 'customer' ? 'asset' : 'liability' }) : Promise.resolve([])),
     [type, canChooseAccount],
   );
+  const currencies = useAsync(() => currenciesApi.list(), []);
+  const priceLists = useAsync(() => priceListsApi.list(), []);
   const [phoneError, setPhoneError] = useState<string | undefined>();
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((current) => ({ ...current, [key]: value }));
@@ -148,7 +154,7 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
     form.bankAccountNumber.trim() !== form.bankAccountNumberConfirm.trim();
 
   function setDisplayName(value: string) {
-    set('displayName', formatVendorMaskedName(value, type === 'vendor'));
+    set('displayName', value);
   }
 
   function setPhone(value: string) {
@@ -189,8 +195,8 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
       toast.error(t('vendors.form.accountMismatch'));
       return;
     }
-    const displayName = formatVendorMaskedName(form.displayName.trim(), type === 'vendor');
-    const contactPerson = form.contactPerson.trim() ? formatVendorMaskedName(form.contactPerson.trim(), type === 'vendor') : null;
+    const displayName = form.displayName.trim();
+    const contactPerson = form.contactPerson.trim() || null;
     const payload: Partial<Contact> = {
       type,
       contactType: form.contactType,
@@ -212,6 +218,9 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
       language: form.language.trim() || null,
       ledgerAccountId: form.ledgerAccountId || null,
       gstTreatment: form.gstTreatment,
+      placeOfSupply: form.placeOfSupply || null,
+      currency: form.currency || null,
+      priceListId: form.priceListId || null,
       paymentTermsDays: Number.parseInt(form.paymentTermsDays, 10) || 0,
       billingAddress: form.billingAddress.trim() || null,
       shippingAddress: form.shippingAddress.trim() || null,
@@ -372,6 +381,31 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
             error={fieldErrors.gstTreatment}
             onChange={(event) => set('gstTreatment', event.target.value as GstTreatment)}
           />
+          <SelectField
+            label={t('customers.form.placeOfSupply')}
+            value={form.placeOfSupply}
+            placeholder={stateFromGstin(form.gstin) ? t('customers.form.placeOfSupplyFromGstin', { code: stateFromGstin(form.gstin) ?? '' }) : t('customers.form.placeOfSupplyNone')}
+            options={stateOptions}
+            hint={t('customers.form.placeOfSupplyHint')}
+            error={fieldErrors.placeOfSupply}
+            onChange={(event) => set('placeOfSupply', event.target.value)}
+          />
+          <SelectField
+            label={t('customers.form.currency')}
+            value={form.currency}
+            placeholder={currencies.data?.find((c) => c.isBase)?.code ?? 'INR'}
+            options={(currencies.data ?? []).filter((c) => !c.isBase).map((c) => ({ value: c.code, label: `${c.code} - ${c.name}` }))}
+            hint={t('customers.form.currencyHint')}
+            error={fieldErrors.currency}
+            onChange={(event) => set('currency', event.target.value)}
+          />
+          <SelectField
+            label={t('customers.form.priceList')}
+            value={form.priceListId}
+            placeholder={t('customers.form.priceListNone')}
+            options={(priceLists.data ?? []).filter((pl) => pl.isActive && pl.kind === (type === 'customer' ? 'sales' : 'purchase')).map((pl) => ({ value: pl.id, label: pl.name }))}
+            onChange={(event) => set('priceListId', event.target.value)}
+          />
           <TextField
             label={t('customers.form.paymentTerms')}
             type="number"
@@ -413,6 +447,7 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
       </section>
       </div>
 
+      {contact ? <CustomFieldsCard entity="contact" entityId={contact.id} /> : null}
       <div className="form-actions-bar">
         <div className="row-between">
           <span className="text-subtle small">{contact ? t('customers.form.editingExisting') : t(isCustomer ? 'customers.form.creatingNew' : 'vendors.form.creatingNew')}</span>
@@ -420,9 +455,11 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
             <Button variant="secondary" onClick={onDone} disabled={submitting}>
               {t('customers.form.cancel')}
             </Button>
-            <Button variant="primary" loading={submitting} onClick={save}>
-              {contact ? t('customers.form.saveChanges') : t(isCustomer ? 'customers.form.create' : 'vendors.form.create')}
-            </Button>
+            {canWrite ? (
+              <Button variant="primary" loading={submitting} onClick={save}>
+                {contact ? t('customers.form.saveChanges') : t(isCustomer ? 'customers.form.create' : 'vendors.form.create')}
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>

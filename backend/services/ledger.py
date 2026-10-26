@@ -15,12 +15,34 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.models import Account, JournalEntry, JournalLine
+from backend.models import Account, Bill, Expense, Invoice, JournalEntry, JournalLine, Organization
 from backend.services import numbering
 from backend.services.money import money
 
 # (account_id, debit, credit, description, contact_id)
 LineSpec = Tuple[str, Decimal, Decimal, Optional[str], Optional[str]]
+
+
+def lock_date(db: Session, organization_id: str) -> Optional[date]:
+    org = db.get(Organization, organization_id)
+    return org.lock_date if org else None
+
+
+def ensure_open(db: Session, organization_id: str, entry_date: date, action: str = "record") -> None:
+    """Refuse to touch the books on or before the organization's lock date.
+
+    Every posting goes through post_entry and every void, edit or delete of a
+    posted document through reverse_entries_for_source, so checking here locks
+    a closed period against all of them at once.
+    """
+    locked = lock_date(db, organization_id)
+    if locked and entry_date <= locked:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"The books are locked up to {locked.strftime('%d %b %Y')}. "
+            f"You cannot {action} a transaction dated {entry_date.strftime('%d %b %Y')}; "
+            "an admin can move the lock date in Settings.",
+        )
 
 
 def post_entry(
@@ -34,7 +56,11 @@ def post_entry(
     notes: Optional[str] = None,
     created_by: Optional[str] = None,
     is_reversal: bool = False,
+    branch_id: Optional[str] = None,
 ) -> JournalEntry:
+    ensure_open(db, organization_id, entry_date)
+    if branch_id is None:
+        branch_id = _source_branch(db, source_type, source_id)
     cleaned: List[LineSpec] = []
     total_debit = Decimal("0")
     total_credit = Decimal("0")
@@ -73,6 +99,7 @@ def post_entry(
         is_reversal=is_reversal,
         total=total_debit,
         created_by=created_by,
+        branch_id=branch_id,
     )
     for position, (account_id, debit, credit, description, contact_id) in enumerate(cleaned):
         entry.lines.append(
@@ -88,6 +115,18 @@ def post_entry(
     db.add(entry)
     db.flush()
     return entry
+
+
+# Documents that carry a branch; their entries (and reversals) are tagged with it.
+_BRANCH_SOURCES = {"invoice": Invoice, "invoice_cogs": Invoice, "bill": Bill, "expense": Expense}
+
+
+def _source_branch(db: Session, source_type: str, source_id: Optional[str]) -> Optional[str]:
+    model = _BRANCH_SOURCES.get(source_type)
+    if model is None or not source_id:
+        return None
+    doc = db.get(model, source_id)
+    return doc.branch_id if doc is not None else None
 
 
 def reverse_entries_for_source(
@@ -112,7 +151,7 @@ def reverse_entries_for_source(
         .scalars()
         .all()
     )
-    reversals: List[JournalEntry] = []
+    pending: List[JournalEntry] = []
     for entry in entries:
         already = db.execute(
             select(JournalEntry.id).where(
@@ -122,8 +161,14 @@ def reverse_entries_for_source(
                 JournalEntry.reference == f"REV:{entry.entry_number}",
             )
         ).first()
-        if already:
-            continue
+        if not already:
+            pending.append(entry)
+    # Checked for all of them before anything is posted, so a locked entry
+    # never leaves the document half reversed.
+    for entry in pending:
+        ensure_open(db, organization_id, entry.date, "change")
+    reversals: List[JournalEntry] = []
+    for entry in pending:
         lines: List[LineSpec] = [(line.account_id, line.credit, line.debit, line.description, line.contact_id) for line in entry.lines]
         reversals.append(
             post_entry(
@@ -137,6 +182,7 @@ def reverse_entries_for_source(
                 notes=f"{note} of {entry.entry_number}",
                 created_by=created_by,
                 is_reversal=True,
+                branch_id=entry.branch_id,
             )
         )
     return reversals
@@ -148,8 +194,9 @@ def account_balances(
     start: Optional[date] = None,
     end: Optional[date] = None,
     account_ids: Optional[Iterable[str]] = None,
+    branch_id: Optional[str] = None,
 ) -> dict:
-    """Return {account_id: (debit_total, credit_total)} for the period."""
+    """Return {account_id: (debit_total, credit_total)} for the period (optionally one branch)."""
     stmt = (
         select(JournalLine.account_id, JournalLine.debit, JournalLine.credit)
         .join(JournalEntry, JournalEntry.id == JournalLine.entry_id)
@@ -161,6 +208,8 @@ def account_balances(
         stmt = stmt.where(JournalEntry.date <= end)
     if account_ids is not None:
         stmt = stmt.where(JournalLine.account_id.in_(list(account_ids)))
+    if branch_id:
+        stmt = stmt.where(JournalEntry.branch_id == branch_id)
     totals: dict = {}
     for account_id, debit, credit in db.execute(stmt):
         d, c = totals.get(account_id, (Decimal("0"), Decimal("0")))

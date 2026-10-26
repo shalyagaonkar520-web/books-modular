@@ -21,6 +21,9 @@ export interface VendorPaymentBill {
   vendorId: string;
   vendorName: string;
   balanceDue: number;
+  /** Foreign-currency bill: its currency and balance in that currency. */
+  currency?: string | null;
+  fcBalanceDue?: number | null;
 }
 
 interface RecordVendorPaymentModalProps {
@@ -37,7 +40,10 @@ export function RecordVendorPaymentModal({ bill, onClose, onSaved }: RecordVendo
   // The bank/cash account list is Admin/Viewer-only to read, and a payment must
   // name one. With no staff-readable picker yet, don't fetch (and 403) for Staff;
   // the form shows a message instead of blanking on the error.
-  const { can } = useAuth();
+  const { can, organization } = useAuth();
+  const baseCurrency = organization?.currency ?? 'INR';
+  const isForeign = (b?: VendorPaymentBill | null) => Boolean(b?.currency && b.currency !== baseCurrency);
+  const dueOf = (b: VendorPaymentBill) => (isForeign(b) ? (b.fcBalanceDue ?? 0) : b.balanceDue);
   const canReadAccounts = can('admin', 'viewer');
 
   const refs = useAsync(async () => {
@@ -52,7 +58,8 @@ export function RecordVendorPaymentModal({ bill, onClose, onSaved }: RecordVendo
   const [billId, setBillId] = useState(bill?.id ?? '');
   const [bankAccountId, setBankAccountId] = useState('');
   const [date, setDate] = useState(todayIso);
-  const [amount, setAmount] = useState(bill ? String(bill.balanceDue) : '');
+  const [amount, setAmount] = useState(bill ? String(dueOf(bill)) : '');
+  const [exchangeRate, setExchangeRate] = useState('');
   const [mode, setMode] = useState<string>('bank_transfer');
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
@@ -73,13 +80,16 @@ export function RecordVendorPaymentModal({ bill, onClose, onSaved }: RecordVendo
     return openBills.data?.find((row) => row.id === billId) ?? null;
   }, [bill, billId, openBills.data]);
 
-  const maxAmount = selectedBill ? selectedBill.balanceDue : null;
+  const foreign = isForeign(selectedBill);
+  const docCurrency = foreign && selectedBill?.currency ? selectedBill.currency : baseCurrency;
+  const money = (value: number) => formatCurrency(value, docCurrency);
+  const maxAmount = selectedBill ? dueOf(selectedBill) : null;
   const parsedAmount = parseNumber(amount, 0);
 
   const chooseBill = (nextBillId: string) => {
     setBillId(nextBillId);
     const target = openBills.data?.find((row) => row.id === nextBillId);
-    setAmount(target ? String(target.balanceDue) : '');
+    setAmount(target ? String(dueOf(target)) : '');
   };
 
   const submit = async () => {
@@ -96,7 +106,7 @@ export function RecordVendorPaymentModal({ bill, onClose, onSaved }: RecordVendo
       return;
     }
     if (maxAmount !== null && parsedAmount > maxAmount) {
-      setError(t('paymentsMade.modal.validate.exceeds', { amount: formatCurrency(maxAmount) }));
+      setError(t('paymentsMade.modal.validate.exceeds', { amount: money(maxAmount) }));
       return;
     }
     const result = await run(() =>
@@ -106,6 +116,7 @@ export function RecordVendorPaymentModal({ bill, onClose, onSaved }: RecordVendo
         bankAccountId,
         date,
         amount: parsedAmount,
+        exchangeRate: foreign && parseNumber(exchangeRate, 0) > 0 ? parseNumber(exchangeRate, 0) : null,
         mode,
         reference: reference.trim() || null,
         notes: notes.trim() || null,
@@ -149,7 +160,7 @@ export function RecordVendorPaymentModal({ bill, onClose, onSaved }: RecordVendo
           {bill ? (
             <div className="form-grid">
               <TextField label={t('paymentsMade.modal.bill')} value={bill.billNumber} readOnly disabled />
-              <TextField label={t('paymentsMade.modal.balanceDue')} value={formatCurrency(bill.balanceDue)} readOnly disabled />
+              <TextField label={t('paymentsMade.modal.balanceDue')} value={money(dueOf(bill))} readOnly disabled />
             </div>
           ) : (
             <div className="form-grid">
@@ -217,9 +228,22 @@ export function RecordVendorPaymentModal({ bill, onClose, onSaved }: RecordVendo
               required
               value={amount}
               error={fieldErrors.amount}
-              hint={maxAmount !== null ? t('paymentsMade.modal.amountHint', { amount: formatCurrency(maxAmount) }) : undefined}
+              prefix={foreign ? docCurrency : undefined}
+              hint={maxAmount !== null ? t('paymentsMade.modal.amountHint', { amount: money(maxAmount) }) : undefined}
               onChange={(event) => setAmount(event.target.value)}
             />
+            {foreign ? (
+              <TextField
+                label={t('payments.form.exchangeRate')}
+                type="number"
+                min="0"
+                step="0.000001"
+                value={exchangeRate}
+                hint={t('payments.form.exchangeRateHint', { base: baseCurrency, code: docCurrency })}
+                error={fieldErrors.exchangeRate}
+                onChange={(event) => setExchangeRate(event.target.value)}
+              />
+            ) : null}
             <SelectField
               label={t('paymentsMade.modal.mode')}
               value={mode}

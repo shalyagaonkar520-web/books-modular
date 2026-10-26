@@ -175,7 +175,10 @@ def test_approve_allows_login(client, approval_on, no_smtp):
     assert c.post("/api/auth/refresh").status_code == 200
 
     # No longer pending.
-    pending_ids = {o["id"] for o in client.get("/api/platform/organizations", headers=h, params={"status": "pending", "page_size": 100}).json()["items"]}
+    pending_ids = {
+        o["id"]
+        for o in client.get("/api/platform/organizations", headers=h, params={"status": "pending", "page_size": 100}).json()["items"]
+    }
     assert org_id not in pending_ids
 
     logs = client.get("/api/platform/audit-logs", headers=h, params={"organizationId": org_id}).json()["items"]
@@ -195,9 +198,15 @@ def test_reject_blocks_login_with_reason_then_can_approve(client, approval_on, n
 
     login = _login(c, email)
     assert login.status_code == 403
-    assert login.json()["detail"] == "REGISTRATION_REJECTED: Your organization's registration was declined. Reason: Incomplete business details"
+    assert (
+        login.json()["detail"]
+        == "REGISTRATION_REJECTED: Your organization's registration was declined. Reason: Incomplete business details"
+    )
 
-    rejected_ids = {o["id"] for o in client.get("/api/platform/organizations", headers=h, params={"status": "rejected", "page_size": 100}).json()["items"]}
+    rejected_ids = {
+        o["id"]
+        for o in client.get("/api/platform/organizations", headers=h, params={"status": "rejected", "page_size": 100}).json()["items"]
+    }
     assert org_id in rejected_ids
 
     # Reason is optional; the message then has no "Reason:" suffix.
@@ -324,9 +333,7 @@ def test_migration_backfills_existing_orgs_as_approved():
         )
     alembic("upgrade", "head")
     with engine.connect() as conn:
-        row = conn.execute(
-            sa.text("SELECT approval_status, approved_at, rejection_reason FROM organizations WHERE id = 'legacyorg'")
-        ).one()
+        row = conn.execute(sa.text("SELECT approval_status, approved_at, rejection_reason FROM organizations WHERE id = 'legacyorg'")).one()
     engine.dispose()
     assert row[0] == "approved"
     assert row[1] is None and row[2] is None

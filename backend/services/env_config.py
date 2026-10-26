@@ -21,6 +21,11 @@ def update_env_values(updates: Dict[str, str]) -> None:
     Comments and unrelated keys are preserved. Clears the settings cache so the
     next get_settings() call picks the new values up.
     """
+    for key, value in updates.items():
+        # A line break in a value would add a line of its own to .env - any
+        # setting at all (SECRET_KEY, TRUSTED_PROXIES...). Never write one.
+        if any(ch in str(value) for ch in ("\r", "\n", "\x00")) or not key.replace("_", "").isalnum():
+            raise ValueError(f"Refusing to write {key} to .env: line breaks are not allowed.")
     lines = ENV_PATH.read_text(encoding="utf-8").splitlines() if ENV_PATH.exists() else []
     written = set()
     out = []

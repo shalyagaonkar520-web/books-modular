@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { MailCheck, Send } from 'lucide-react';
 
-import { orgApi } from '@/api/endpoints';
+import { platformEmailApi } from '@/api/platformEmail';
 import { useAppContent } from '@/app/AppContentContext';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -22,10 +22,11 @@ interface FormState {
 
 const EMPTY: FormState = { host: '', port: '587', username: '', password: '', senderName: '' };
 
+/** Platform-wide sender account (platform admin settings): every organization's emails use it. */
 export function EmailSettings() {
   const { t } = useAppContent();
   const toast = useToast();
-  const settings = useAsync(() => orgApi.smtpSettings(), []);
+  const settings = useAsync((signal) => platformEmailApi.get(signal), []);
   const { submitting, error, fieldErrors, run, setError } = useSubmit();
   const testSubmit = useSubmit();
 
@@ -54,7 +55,7 @@ export function EmailSettings() {
       return;
     }
     const saved = await run(() =>
-      orgApi.updateSmtpSettings({
+      platformEmailApi.update({
         host: form.host.trim(),
         port,
         username: form.username.trim(),
@@ -74,7 +75,7 @@ export function EmailSettings() {
       toast.error(t('settings.email.testToRequired'));
       return;
     }
-    const result = await testSubmit.run(() => orgApi.sendSmtpTest(testTo.trim()));
+    const result = await testSubmit.run(() => platformEmailApi.sendTest(testTo.trim()));
     if (result) toast.success(result.message);
   };
 

@@ -14,7 +14,7 @@ import {
   cycleSuffix,
   formatPrice,
   quote,
-  resolveModules,
+  withCore,
   type BillingCycle,
   type ModulePricing,
 } from '@/api/modulePricing';
@@ -147,7 +147,7 @@ export function PlanBuilder({ catalog, onDone }: PlanBuilderProps) {
   // Start from what is being changed: the pending request (that is what "Update request"
   // edits), else the current plan, else a starter set.
   const start = pending ?? plan;
-  const startModules = resolveModules(start?.modules ?? DEFAULT_SELECTED_MODULES, catalog);
+  const startModules = withCore(start?.modules ?? DEFAULT_SELECTED_MODULES, catalog);
   const startCycle: BillingCycle = start?.billingCycle ?? 'monthly';
   const [modules, setModules] = useState<AppModuleKey[]>(startModules);
   const [cycle, setCycle] = useState<BillingCycle>(startCycle);

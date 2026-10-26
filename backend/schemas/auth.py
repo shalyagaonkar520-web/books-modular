@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
+import re
+from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional
 
@@ -158,6 +159,12 @@ class OrganizationOut(APIModel):
     default_payment_terms_days: int
     invoice_terms: Optional[str] = None
     invoice_notes: Optional[str] = None
+    # Books closed up to and including this date (see PUT /api/organization/lock-date).
+    lock_date: Optional[date] = None
+    # Default reimbursement per km for mileage claims.
+    mileage_rate: Optional[Decimal] = None
+    # UPI ID customers pay to (QR code on invoices and the portal).
+    upi_id: Optional[str] = None
     # The active plan's app modules (null = every module: on trial, or an
     # organization from before plans) and its monthly price.
     requested_modules: Optional[List[str]] = None
@@ -189,6 +196,8 @@ class OrganizationUpdate(APIModel):
     default_payment_terms_days: Optional[int] = Field(default=None, ge=0, le=365)
     invoice_terms: Optional[str] = None
     invoice_notes: Optional[str] = None
+    mileage_rate: Optional[Decimal] = Field(default=None, ge=0, le=1000, max_digits=8, decimal_places=2)
+    upi_id: Optional[str] = Field(default=None, max_length=100)
 
     _required = field_validator("name", "country", "fiscal_year_start_month", "default_tax_rate", "default_payment_terms_days")(_not_null)
 
@@ -196,6 +205,16 @@ class OrganizationUpdate(APIModel):
     @classmethod
     def _phone(cls, value: Optional[str]) -> Optional[str]:
         return validators.phone(value)
+
+    @field_validator("upi_id")
+    @classmethod
+    def _upi_id(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or not value.strip():
+            return None
+        value = value.strip()
+        if not re.fullmatch(r"[A-Za-z0-9.\-_]{2,256}@[A-Za-z][A-Za-z0-9]{1,63}", value):
+            raise ValueError("Enter a UPI ID like business@okhdfcbank")
+        return value
 
     @field_validator("postal_code")
     @classmethod
@@ -244,6 +263,9 @@ class InviteUserRequest(APIModel):
     # login belongs to. That employee will then see only their own payslips
     # and profile - never anyone else's, and nothing else in the app.
     employee_id: Optional[str] = None
+    # Staff only: the modules this user may edit (a "custom" invite). Omitted =
+    # every module of the organization's plan. See User.module_access.
+    module_access: Optional[List[str]] = None
 
 
 class InviteInfo(APIModel):
@@ -324,6 +346,13 @@ class SmtpSettingsUpdate(APIModel):
     # retype the app password; blank means "keep the stored one".
     password: Optional[str] = Field(default=None, max_length=255)
     sender_name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("host", "password", "sender_name")
+    @classmethod
+    def _single_line(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and any(ch in value for ch in ("\r", "\n", "\x00")):
+            raise ValueError("Must be a single line.")
+        return value
 
 
 class SmtpTestRequest(APIModel):
