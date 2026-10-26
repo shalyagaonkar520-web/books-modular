@@ -17,6 +17,8 @@ class ItemBase(APIModel):
     name: str = Field(min_length=1, max_length=200)
     type: ItemType = "goods"
     sku: str = Field(min_length=1, max_length=50)
+    # Printed barcode scanned at the Point of Sale; unique within the organization.
+    barcode: Optional[str] = Field(default=None, max_length=64)
     unit: str = Field(default="pcs", max_length=20)
     hsn_sac: Optional[str] = Field(default=None, max_length=20)
     tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
@@ -53,6 +55,11 @@ class ItemBase(APIModel):
 class ItemCreate(ItemBase):
     # An entry rule, so it sits here rather than on ItemBase: ItemOut extends
     # ItemBase too, and a legacy row must still be readable.
+    @field_validator("barcode")
+    @classmethod
+    def _barcode(cls, value: Optional[str]) -> Optional[str]:
+        return validators.barcode(value)
+
     @field_validator("image_url")
     @classmethod
     def _image_url(cls, value: Optional[str]) -> Optional[str]:
@@ -63,6 +70,7 @@ class ItemUpdate(APIModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     type: Optional[ItemType] = None
     sku: Optional[str] = Field(default=None, min_length=1, max_length=50)
+    barcode: Optional[str] = Field(default=None, max_length=64)
     unit: Optional[str] = Field(default=None, max_length=20)
     hsn_sac: Optional[str] = Field(default=None, max_length=20)
     tax_rate: Optional[Decimal] = Field(default=None, ge=0, le=100)
@@ -102,6 +110,11 @@ class ItemUpdate(APIModel):
     def _required_columns_not_null(cls, value, info: ValidationInfo):
         # Omitting a field keeps it; null is not a value these columns can hold.
         return validators.not_null(value, to_camel(info.field_name))
+
+    @field_validator("barcode")
+    @classmethod
+    def _barcode(cls, value: Optional[str]) -> Optional[str]:
+        return validators.barcode(value)
 
     @field_validator("image_url")
     @classmethod

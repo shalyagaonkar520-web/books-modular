@@ -4118,6 +4118,9 @@
     "automation.trigger.deleted": "deleted",
     "automation.trigger.overdue": "overdue",
     "common.readOnly.title": "Read-only access",
-    "common.readOnly.body": "Your account can view records but not create or change them. Ask an administrator if you need access."
+    "common.readOnly.body": "Your account can view records but not create or change them. Ask an administrator if you need access.",
+
+    "pos.item.barcode": "Barcode",
+    "pos.item.barcodeHint": "The number under the product's barcode, scanned at the Point of Sale. Unique for each item."
   }
 }

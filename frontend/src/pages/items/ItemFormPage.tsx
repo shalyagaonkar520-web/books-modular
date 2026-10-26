@@ -29,6 +29,7 @@ interface SelectOptions {
 interface FormState {
   name: string;
   sku: string;
+  barcode: string;
   type: ItemType;
   unit: string;
   hsnSac: string;
@@ -56,6 +57,7 @@ function initialForm(item: Item | null, defaultTaxRate?: number): FormState {
   return {
     name: item?.name ?? '',
     sku: item?.sku ?? '',
+    barcode: item?.barcode ?? '',
     type: item?.type ?? 'goods',
     unit: item?.unit ?? 'pcs',
     hsnSac: item?.hsnSac ?? '',
@@ -157,6 +159,7 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
     const payload: Partial<Item> = {
       name: form.name.trim(),
       sku: form.sku.trim(),
+      barcode: form.barcode.trim() || null,
       type: form.type,
       unit: form.unit,
       hsnSac: form.hsnSac.trim() || null,
@@ -203,6 +206,16 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
         <div className="form-grid">
           <TextField label={t('items.form.name')} required value={form.name} error={fieldErrors.name} onChange={(event) => set('name', event.target.value)} />
           <TextField label={t('items.form.sku')} required value={form.sku} error={fieldErrors.sku} hint={t('items.form.skuHint')} onChange={(event) => set('sku', event.target.value)} />
+          <TextField
+            label={t('pos.item.barcode')}
+            value={form.barcode}
+            maxLength={64}
+            inputMode="text"
+            autoComplete="off"
+            error={fieldErrors.barcode}
+            hint={t('pos.item.barcodeHint')}
+            onChange={(event) => set('barcode', event.target.value)}
+          />
           <SelectField label={t('items.form.type')} value={form.type} options={typeOptions} error={fieldErrors.type} onChange={(event) => set('type', event.target.value as ItemType)} />
           <SelectField label={t('items.form.unit')} value={form.unit} options={UNIT_OPTIONS} error={fieldErrors.unit} onChange={(event) => set('unit', event.target.value)} />
           <TextField label={t('items.form.hsnSac')} value={form.hsnSac} error={fieldErrors.hsnSac} onChange={(event) => set('hsnSac', event.target.value)} />

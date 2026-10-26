@@ -165,6 +165,14 @@ FEATURES: Tuple[Feature, ...] = (
     ),
     Feature("branches", "Branches", ("branches:router",), (), ("/api/branches",), "Branches and locations for reporting."),
     Feature(
+        "pos",
+        "Point of Sale",
+        ("pos:router",),
+        (),
+        ("/api/pos",),
+        "Scan barcodes at the counter and take payment; every sale is a paid invoice.",
+    ),
+    Feature(
         "accounting",
         "Accountant",
         ("accounting:router",),

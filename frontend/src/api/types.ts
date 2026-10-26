@@ -108,6 +108,8 @@ export interface Item {
   name: string;
   type: ItemType;
   sku: string;
+  /** Printed barcode scanned at the Point of Sale; unique within the organization. */
+  barcode?: string | null;
   unit: string;
   hsnSac?: string | null;
   taxRate: number;

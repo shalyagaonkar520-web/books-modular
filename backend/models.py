@@ -392,12 +392,25 @@ class JournalLine(Base):
 # --------------------------------------------------------------------------- #
 class Item(TimestampMixin, OrgScopedMixin, Base):
     __tablename__ = "items"
-    __table_args__ = (UniqueConstraint("organization_id", "sku", name="uq_item_org_sku"),)
+    __table_args__ = (
+        UniqueConstraint("organization_id", "sku", name="uq_item_org_sku"),
+        # A barcode is unique within an organization when set; items without one are not compared.
+        Index(
+            "uq_item_org_barcode",
+            "organization_id",
+            "barcode",
+            unique=True,
+            postgresql_where=text("barcode IS NOT NULL"),
+            sqlite_where=text("barcode IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     type: Mapped[str] = mapped_column(String(10), default="goods", nullable=False)  # goods | service
     sku: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Printed barcode (EAN-13, UPC, Code 128...) scanned at the Point of Sale counter.
+    barcode: Mapped[Optional[str]] = mapped_column(String(64))
     unit: Mapped[str] = mapped_column(String(20), default="pcs", nullable=False)
     hsn_sac: Mapped[Optional[str]] = mapped_column(String(20))
     tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"), nullable=False)
