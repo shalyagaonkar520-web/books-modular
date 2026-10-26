@@ -4320,3 +4320,14 @@ input[type='password']::-ms-clear {
     padding: 0;
   }
 }
+
+.barcode-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.barcode-field .field {
+  width: 100%;
+}

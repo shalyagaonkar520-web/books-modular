@@ -125,6 +125,10 @@ TEXTS = {
     "pos.settings.footerHint": "Printed at the bottom, e.g. your return policy.",
     "pos.settings.save": "Save settings",
     "pos.settings.saved": "Counter settings saved",
+    "pos.item.scanBarcode": "Scan with camera",
+    "pos.scanDialog.title": "Scan the barcode",
+    "pos.scanDialog.subtitle": "Hold the product's barcode inside the frame. It fills in by itself.",
+    "pos.scanDialog.starting": "Starting the camera...",
 }
 
 if __name__ == "__main__":
