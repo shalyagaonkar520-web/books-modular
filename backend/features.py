@@ -168,7 +168,7 @@ FEATURES: Tuple[Feature, ...] = (
         "pos",
         "Point of Sale",
         ("pos:router",),
-        (),
+        ("pos",),
         ("/api/pos",),
         "Scan barcodes at the counter and take payment; every sale is a paid invoice.",
     ),

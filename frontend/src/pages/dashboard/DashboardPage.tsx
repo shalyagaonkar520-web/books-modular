@@ -31,6 +31,7 @@ import { FilterSelect } from '@/components/ui/Toolbar';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
 import { useAsync } from '@/hooks/useAsync';
+import { PosTodayCard } from '@/pages/pos/PosTodayCard';
 import { formatCurrency, formatCurrencyCompact, formatDate, formatNumber, titleCase } from '@/utils/format';
 import { statusLabel, statusTone } from '@/utils/status';
 
@@ -213,6 +214,8 @@ export function DashboardPage() {
           chart={<Sparkline values={profitSparkline} tone={incomeExpense.net >= 0 ? 'positive' : 'negative'} />}
         />
       </div>
+
+      <PosTodayCard currency={currency} />
 
       <div className="grid-2">
         <Card

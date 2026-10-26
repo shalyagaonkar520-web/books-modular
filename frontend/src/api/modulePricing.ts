@@ -71,7 +71,7 @@ export interface ModuleGroup {
 
 /** How the picker groups modules. Modules not listed fall into "Other". */
 export const MODULE_GROUPS: ModuleGroup[] = [
-  { id: 'sales', label: 'Sales', keys: ['items', 'customers', 'invoices', 'paymentsReceived', 'razorpay'] },
+  { id: 'sales', label: 'Sales', keys: ['items', 'customers', 'invoices', 'paymentsReceived', 'pos', 'razorpay'] },
   { id: 'purchases', label: 'Purchases', keys: ['vendors', 'bills', 'expenses', 'paymentsMade', 'expenseDashboard'] },
   { id: 'finance', label: 'Finance', keys: ['banking', 'accounting', 'financialHub', 'receivablesPayables', 'reports'] },
   { id: 'other', label: 'Other', keys: ['timeTracking', 'documents', 'payroll'] },

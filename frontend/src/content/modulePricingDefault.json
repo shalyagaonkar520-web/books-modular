@@ -10,6 +10,7 @@
     { "key": "customers", "label": "Customers", "description": "Customer contacts, balances and statements.", "price": 99, "requires": [], "core": true },
     { "key": "invoices", "label": "Invoices", "description": "GST invoices, credit notes and reminders.", "price": 299, "requires": ["customers"], "core": true },
     { "key": "paymentsReceived", "label": "Payments received", "description": "Record customer payments against invoices.", "price": 149, "requires": ["invoices", "customers"], "core": true },
+    { "key": "pos", "label": "Point of Sale", "description": "Scan barcodes at the counter and take cash, UPI or card.", "price": 0, "requires": ["items", "invoices", "paymentsReceived"], "core": true },
     { "key": "expenseDashboard", "label": "Expense dashboard", "description": "Spending trends and category breakdowns.", "price": 99, "requires": ["expenses"] },
     { "key": "vendors", "label": "Vendors", "description": "Supplier contacts and payables per vendor.", "price": 99, "requires": [] },
     { "key": "bills", "label": "Bills", "description": "Track vendor bills and due dates.", "price": 249, "requires": ["vendors"] },

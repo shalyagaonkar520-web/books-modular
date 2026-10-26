@@ -140,12 +140,14 @@ def test_org_customization_only_reaches_that_org(client, admin_h, two_orgs):
     body["branding"]["appName"] = "Brand A Books"
     body["branding"]["primaryColor"] = "#dc2626"
     body["modules"][FIRST_MODULE] = False
+    # The Point of Sale needs items, so it goes off with them (else items stay on).
+    body["modules"]["pos"] = False
     body["texts"][FIRST_TEXT] = "A only"
     res = client.put(_org_url(a["org"]["id"]), json=body, headers=admin_h)
     assert res.status_code == 200, res.text
     out = res.json()
     assert out["organizationName"] == a["org"]["name"]
-    assert out["overridden"] == {"branding": ["appName", "primaryColor"], "modules": [FIRST_MODULE], "texts": [FIRST_TEXT]}
+    assert out["overridden"] == {"branding": ["appName", "primaryColor"], "modules": [FIRST_MODULE, "pos"], "texts": [FIRST_TEXT]}
     assert out["content"]["texts"][FIRST_TEXT] == "A only" and out["shared"] == BACKEND_DEFAULT
 
     mine = client.get("/api/app-content", headers=a["h"]).json()

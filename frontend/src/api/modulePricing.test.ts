@@ -55,7 +55,7 @@ describe('dependentsOf', () => {
 
 describe('quote', () => {
   // Core modules (what Books needs to run) are in every plan.
-  const core = ['items', 'customers', 'invoices', 'paymentsReceived', 'accounting', 'reports'];
+  const core = ['items', 'customers', 'invoices', 'paymentsReceived', 'pos', 'accounting', 'reports'];
   const coreTotal = 199 + 99 + 299 + 149 + 299 + 199;
 
   it('prices the core modules plus the selection on top of the base fee, monthly by default', () => {
@@ -86,7 +86,7 @@ describe('quote', () => {
   });
 
   it('adds the core modules to a selection', () => {
-    expect(withCore(['bills'], catalog)).toEqual([...core.slice(0, 4), 'vendors', 'bills', 'accounting', 'reports']);
+    expect(withCore(['bills'], catalog)).toEqual([...core.slice(0, 5), 'vendors', 'bills', 'accounting', 'reports']);
   });
 });
 

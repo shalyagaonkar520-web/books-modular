@@ -258,7 +258,7 @@ def test_admin_requests_monthly_and_yearly(client, tenant):
     res = _request(client, h, ["paymentsReceived", "items"])
     assert res.status_code == 200, res.text
     pending = res.json()["pendingRequest"]
-    expected = ["items", "customers", "invoices", "paymentsReceived", "accounting", "reports"]  # the core modules
+    expected = ["items", "customers", "invoices", "paymentsReceived", "pos", "accounting", "reports"]  # the core modules
     assert pending["modules"] == expected == _plan(["paymentsReceived", "items"]) and pending["billingCycle"] == "monthly"
     assert pending["monthlyPrice"] == pending["planPrice"] == _price(expected) == 499 + 199 + 99 + 299 + 149 + 299 + 199
     assert pending["requestedAt"] and res.json()["status"] == "trial" and res.json()["plan"] is None

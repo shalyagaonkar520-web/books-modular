@@ -27,7 +27,7 @@ const TRIAL = {
 
 const STARTER = ['items', 'customers', 'invoices', 'paymentsReceived'];
 /** Included in every plan: 199 + 99 + 299 + 149 + 299 + 199 = ₹1,244 a month. */
-const CORE = ['items', 'customers', 'invoices', 'paymentsReceived', 'accounting', 'reports'];
+const CORE = ['items', 'customers', 'invoices', 'paymentsReceived', 'pos', 'accounting', 'reports'];
 const CORE_LABELS = ['Items', 'Customers', 'Invoices', 'Payments received', 'Accountant', 'Reports'];
 
 function LocationProbe() {

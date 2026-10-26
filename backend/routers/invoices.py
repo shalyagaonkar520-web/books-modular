@@ -223,8 +223,12 @@ def _apply_payload(db: Session, inv: Invoice, payload: InvoiceCreate, org_id: st
         )
 
 
-def post_invoice(db: Session, inv: Invoice, user: User) -> None:
-    """Journal: Dr AR total, Dr Discount; Cr income accounts, Cr Output GST. Plus COGS for tracked goods."""
+def post_invoice(db: Session, inv: Invoice, user: User, allow_negative_stock: bool = False) -> None:
+    """Journal: Dr AR total, Dr Discount; Cr income accounts, Cr Output GST. Plus COGS for tracked goods.
+
+    ``allow_negative_stock``: sell goods not (yet) counted in, as the Point of
+    Sale may when the organization allows it.
+    """
     approvals.ensure_approved(db, inv, "invoice", user)
     org_id = inv.organization_id
     # A customer can be pointed at its own receivables account; most are not,
@@ -267,6 +271,7 @@ def post_invoice(db: Session, inv: Invoice, user: User) -> None:
                 f"Sold on {inv.invoice_number}",
                 user.id,
                 rate=Decimal("0"),
+                allow_negative=allow_negative_stock,
                 warehouse_id=inv.warehouse_id,
                 batch_number=line.batch_number,
                 serial_numbers=stock.parse_serials(line.serial_numbers) if line.item.track_serial else None,
@@ -666,7 +671,9 @@ def send_invoice_via_gmail(
     return res
 
 
-def create_invoice_record(db: Session, user: User, payload: InvoiceCreate, recurring_profile_id: Optional[str] = None) -> Invoice:
+def create_invoice_record(
+    db: Session, user: User, payload: InvoiceCreate, recurring_profile_id: Optional[str] = None, allow_negative_stock: bool = False
+) -> Invoice:
     """Create (and, when sent, post) an invoice without committing.
 
     Shared by the endpoint, quote / sales order conversion and recurring
@@ -685,7 +692,7 @@ def create_invoice_record(db: Session, user: User, payload: InvoiceCreate, recur
     if payload.status == "sent":
         inv.status = "sent"
         inv.sent_at = datetime.now(UTC)
-        post_invoice(db, inv, user)
+        post_invoice(db, inv, user, allow_negative_stock)
     audit.record(db, user, "create", "invoice", inv.id, f"Created invoice {inv.invoice_number} ({inv.status})")
     return inv
 

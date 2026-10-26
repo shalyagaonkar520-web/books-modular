@@ -27,7 +27,7 @@ const ADMIN = {
 };
 
 /** Included in every plan: ₹499 base + ₹1,244 of modules = ₹1,743 a month. */
-const CORE = ['items', 'customers', 'invoices', 'paymentsReceived', 'accounting', 'reports'];
+const CORE = ['items', 'customers', 'invoices', 'paymentsReceived', 'pos', 'accounting', 'reports'];
 
 const REQUEST = {
   modules: CORE,
@@ -145,7 +145,7 @@ describe('Organization subscriptions (super admin)', () => {
 
     await waitFor(() =>
       expect(bodyOf(calls, '/api/platform/organizations/org1/subscription/approve')).toEqual({
-        modules: ['items', 'customers', 'invoices', 'paymentsReceived', 'razorpay', 'accounting', 'reports'],
+        modules: ['items', 'customers', 'invoices', 'paymentsReceived', 'pos', 'razorpay', 'accounting', 'reports'],
         billingCycle: 'monthly',
       }),
     );
@@ -208,7 +208,7 @@ describe('Organization subscriptions (super admin)', () => {
     renderDrawer();
     const card = await screen.findByRole('region', { name: 'Subscription' });
     expect(within(card).getByText('Active')).toBeInTheDocument();
-    expect(within(card).getByTestId('org-subscription-summary')).toHaveTextContent('6 modules · Monthly · ₹1,743/mo');
+    expect(within(card).getByTestId('org-subscription-summary')).toHaveTextContent('7 modules · Monthly · ₹1,743/mo');
     // No trial to extend once a plan is active.
     expect(within(card).queryByRole('button', { name: 'Extend trial' })).not.toBeInTheDocument();
 

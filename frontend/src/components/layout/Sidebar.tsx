@@ -17,6 +17,7 @@ import {
   Landmark,
   Lightbulb,
   Package,
+  ScanBarcode,
   PiggyBank,
   Receipt,
   Repeat,
@@ -90,6 +91,7 @@ const SINGLE_LINKS: NavEntry[] = [
   { to: '/dashboard', label: 'sidebar.dashboard', icon: Home },
   { to: '/ai-assistant', label: 'sidebar.aiAssistant', icon: Sparkles },
   { to: '/insights', label: 'sidebar.insights', icon: Lightbulb, staffBlocked: true },
+  { to: '/pos', label: 'sidebar.pos', icon: ScanBarcode, module: 'pos' },
   { to: '/items', label: 'sidebar.items', icon: Package, module: 'items' },
   { to: '/inventory', label: 'sidebar.inventory', icon: Warehouse, module: 'items' },
 ];

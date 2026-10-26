@@ -27,6 +27,9 @@ import { InvoiceViewPage } from '@/pages/sales/InvoiceViewPage';
 import { InvoicesPage } from '@/pages/sales/InvoicesPage';
 import { ItemsPage } from '@/pages/items/ItemsPage';
 import { ItemFormPage } from '@/pages/items/ItemFormPage';
+import { PosPage } from '@/pages/pos/PosPage';
+import { PosSalesPage } from '@/pages/pos/PosSalesPage';
+import { PosSettingsPage } from '@/pages/pos/PosSettingsPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { LandingPage } from '@/pages/Landing/LandingPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -117,6 +120,16 @@ export function App() {
             <Route path="/items/new" element={<RequireWrite><ItemFormPage /></RequireWrite>} />
             <Route path="/items/:itemId/edit" element={<ItemFormPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="/pos" element={<RequireWrite><PosPage /></RequireWrite>} />
+            <Route path="/pos/sales" element={<PosSalesPage />} />
+            <Route
+              path="/pos/settings"
+              element={
+                <RequireRole roles={['admin']}>
+                  <PosSettingsPage />
+                </RequireRole>
+              }
+            />
 
             <Route path="/customers" element={<ContactsPage type="customer" />} />
             <Route path="/customers/new" element={<RequireWrite><ContactFormPage type="customer" /></RequireWrite>} />

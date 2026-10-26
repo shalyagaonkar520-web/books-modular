@@ -16,6 +16,7 @@ export type AppModuleKey =
   | 'customers'
   | 'invoices'
   | 'paymentsReceived'
+  | 'pos'
   | 'expenseDashboard'
   | 'vendors'
   | 'bills'
@@ -67,6 +68,7 @@ export const APP_MODULES: AppModuleMeta[] = [
   { key: 'customers', label: 'Customers', routes: ['/customers'] },
   { key: 'invoices', label: 'Invoices', routes: ['/invoices', '/quotes', '/sales-orders', '/credit-notes', '/recurring-invoices'] },
   { key: 'paymentsReceived', label: 'Payments received', routes: ['/payments-received', '/refunds'] },
+  { key: 'pos', label: 'Point of Sale', routes: ['/pos'] },
   { key: 'expenseDashboard', label: 'Expense dashboard', routes: ['/expense-dashboard'] },
   { key: 'vendors', label: 'Vendors', routes: ['/vendors'] },
   { key: 'bills', label: 'Bills', routes: ['/bills', '/purchase-orders', '/vendor-credits', '/recurring-bills'] },
