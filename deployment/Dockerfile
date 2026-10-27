@@ -18,7 +18,7 @@ COPY backend ./backend
 COPY database/alembic ./database/alembic
 COPY database/alembic.ini ./database/alembic.ini
 # Admin scripts run inside the container: super-admin and test-company logins.
-COPY scripts/create_superadmin.py scripts/create_test_org.py ./scripts/
+COPY scripts/create_superadmin.py scripts/create_test_org.py scripts/set_password.py ./scripts/
 COPY deployment/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
