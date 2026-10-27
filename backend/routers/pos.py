@@ -15,20 +15,33 @@ from typing import Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import Field, field_validator
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_admin, require_write
-from backend.models import BankAccount, Contact, ContactRefund, CreditNote, Invoice, Item, Organization, PosSale, User
+from backend.models import (
+    BankAccount,
+    Contact,
+    ContactRefund,
+    CreditNote,
+    Invoice,
+    Item,
+    Organization,
+    PosSale,
+    PosScan,
+    PosScannerSession,
+    User,
+)
 from backend.routers import credit_notes as credit_notes_router
 from backend.routers.invoices import create_invoice_record
 from backend.routers.payments import _apply_invoice_payment, _record_customer_payment
+from backend.schemas import validators
 from backend.schemas.common import MAX_MONEY, MAX_QUANTITY, APIModel
 from backend.schemas.documents_flow import CreditNoteCreate, RefundCreate
 from backend.schemas.sales import CustomerPaymentCreate, InvoiceCreate, LineInput
-from backend.services import audit, bank, credits, doc_flow, numbering
+from backend.services import audit, bank, credits, doc_flow, numbering, upi
 from backend.services.doc_flow import CREDIT_NOTE
 from backend.services.money import money, qty
 from backend.services.tenancy import get_or_404
@@ -839,3 +852,160 @@ def update_settings(payload: PosSettings, user: User = Depends(require_admin), d
     audit.record(db, user, "update", "organization", org.id, "Updated Point of Sale settings")
     db.commit()
     return _settings_out(db, org)
+
+
+# --------------------------------------------------------------------------- #
+# A phone as the counter's scanner
+# --------------------------------------------------------------------------- #
+# A session lasts a working day; the counter can close it sooner.
+SCANNER_SESSION_HOURS = 12
+# How many codes one poll hands back (a phone cannot scan faster than this in a second).
+MAX_SCANS_PER_POLL = 200
+
+
+class ScannerSessionOut(APIModel):
+    id: str
+    expires_at: dt.datetime
+    connected: bool
+    phone_user_name: Optional[str] = None
+    counter_user_name: Optional[str] = None
+    closed: bool
+
+
+class ScannerQrOut(APIModel):
+    svg: str
+
+
+class ScanIn(APIModel):
+    code: str = Field(min_length=1, max_length=64)
+
+    @field_validator("code")
+    @classmethod
+    def _code(cls, value: str) -> str:
+        cleaned = validators.barcode(value)
+        if not cleaned:
+            raise ValueError("Scan a barcode")
+        return cleaned
+
+
+class ScanOut(APIModel):
+    seq: int
+    code: str
+
+
+class ScanPollOut(APIModel):
+    session: ScannerSessionOut
+    scans: List[ScanOut]
+
+
+def _now() -> dt.datetime:
+    return dt.datetime.now(dt.UTC)
+
+
+def _aware(value: dt.datetime) -> dt.datetime:
+    # SQLite hands back naive datetimes; they were stored in UTC.
+    return value if value.tzinfo else value.replace(tzinfo=dt.UTC)
+
+
+def _scanner_session(db: Session, user: User, session_id: str, *, open_only: bool) -> PosScannerSession:
+    found = db.execute(
+        select(PosScannerSession).where(PosScannerSession.id == session_id, PosScannerSession.organization_id == user.organization_id)
+    ).scalar_one_or_none()
+    if found is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This scanner link is not valid. Show the QR code on the counter again.")
+    if open_only and (found.closed_at is not None or _aware(found.expires_at) <= _now()):
+        raise HTTPException(status.HTTP_410_GONE, "This scanner link has ended. Show a new QR code on the counter.")
+    return found
+
+
+def _scanner_out(db: Session, found: PosScannerSession) -> ScannerSessionOut:
+    names = _cashier_names(db, [found.phone_user_id, found.created_by])
+    return ScannerSessionOut(
+        id=found.id,
+        expires_at=_aware(found.expires_at),
+        connected=found.connected_at is not None,
+        phone_user_name=names.get(found.phone_user_id),
+        counter_user_name=names.get(found.created_by),
+        closed=found.closed_at is not None or _aware(found.expires_at) <= _now(),
+    )
+
+
+@router.post("/scanner-sessions", response_model=ScannerSessionOut, status_code=status.HTTP_201_CREATED)
+def open_scanner_session(user: User = Depends(require_write), db: Session = Depends(get_db)):
+    """Open a session for a phone to scan into this counter (its link goes in a QR code)."""
+    # Sessions that ended are of no further use: clear them (their scans go with them).
+    db.execute(
+        delete(PosScannerSession).where(
+            PosScannerSession.organization_id == user.organization_id,
+            (PosScannerSession.expires_at < _now() - dt.timedelta(days=1)) | (PosScannerSession.closed_at.is_not(None)),
+        )
+    )
+    found = PosScannerSession(
+        organization_id=user.organization_id, created_by=user.id, expires_at=_now() + dt.timedelta(hours=SCANNER_SESSION_HOURS)
+    )
+    db.add(found)
+    db.commit()
+    return _scanner_out(db, found)
+
+
+@router.get("/scanner-sessions/{session_id}/qr", response_model=ScannerQrOut)
+def scanner_qr(
+    session_id: str, url: str = Query(min_length=10, max_length=500), user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """The QR code of the session's link (the counter's own address + /pos/remote/<id>)."""
+    found = _scanner_session(db, user, session_id, open_only=True)
+    if not url.startswith(("https://", "http://")) or not url.endswith(f"/pos/remote/{found.id}"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The QR code can only hold this session's scanner link")
+    return ScannerQrOut(svg=upi.qr_svg(url, 240))
+
+
+@router.post("/scanner-sessions/{session_id}/connect", response_model=ScannerSessionOut)
+def connect_phone(session_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
+    """The phone opened the link: the counter shows it as connected."""
+    found = _scanner_session(db, user, session_id, open_only=True)
+    found.connected_at = found.connected_at or _now()
+    found.phone_user_id = user.id
+    db.commit()
+    return _scanner_out(db, found)
+
+
+@router.post("/scanner-sessions/{session_id}/scans", response_model=ScanOut, status_code=status.HTTP_201_CREATED)
+def send_scan(session_id: str, payload: ScanIn, user: User = Depends(require_write), db: Session = Depends(get_db)):
+    """One code the phone read, for the counter to add to its bill."""
+    found = _scanner_session(db, user, session_id, open_only=True)
+    # One UPDATE numbers the scan, so two quick scans never share a number.
+    db.execute(
+        update(PosScannerSession)
+        .where(PosScannerSession.id == found.id)
+        .values(last_seq=PosScannerSession.last_seq + 1)
+        .execution_options(synchronize_session=False)
+    )
+    seq = db.execute(select(PosScannerSession.last_seq).where(PosScannerSession.id == found.id)).scalar_one()
+    db.add(PosScan(session_id=found.id, seq=seq, code=payload.code))
+    if found.connected_at is None:
+        found.connected_at = _now()
+        found.phone_user_id = user.id
+    db.commit()
+    return ScanOut(seq=seq, code=payload.code)
+
+
+@router.get("/scanner-sessions/{session_id}/scans", response_model=ScanPollOut)
+def poll_scans(session_id: str, after: int = Query(0, ge=0), user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """What the phone scanned since ``after`` (the counter asks about once a second)."""
+    found = _scanner_session(db, user, session_id, open_only=False)
+    rows = db.execute(
+        select(PosScan.seq, PosScan.code)
+        .where(PosScan.session_id == found.id, PosScan.seq > after)
+        .order_by(PosScan.seq)
+        .limit(MAX_SCANS_PER_POLL)
+    ).all()
+    return ScanPollOut(session=_scanner_out(db, found), scans=[ScanOut(seq=r.seq, code=r.code) for r in rows])
+
+
+@router.delete("/scanner-sessions/{session_id}", response_model=ScannerSessionOut)
+def close_scanner_session(session_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
+    """Stop taking scans from the phone."""
+    found = _scanner_session(db, user, session_id, open_only=False)
+    found.closed_at = found.closed_at or _now()
+    db.commit()
+    return _scanner_out(db, found)

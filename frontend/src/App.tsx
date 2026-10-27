@@ -30,6 +30,7 @@ import { ItemFormPage } from '@/pages/items/ItemFormPage';
 import { PosPage } from '@/pages/pos/PosPage';
 import { PosSalesPage } from '@/pages/pos/PosSalesPage';
 import { PosSettingsPage } from '@/pages/pos/PosSettingsPage';
+import { RemoteScannerPage } from '@/pages/pos/RemoteScannerPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { LandingPage } from '@/pages/Landing/LandingPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -122,6 +123,7 @@ export function App() {
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/pos" element={<RequireWrite><PosPage /></RequireWrite>} />
             <Route path="/pos/sales" element={<PosSalesPage />} />
+            <Route path="/pos/remote/:sessionId" element={<RequireWrite><RemoteScannerPage /></RequireWrite>} />
             <Route
               path="/pos/settings"
               element={

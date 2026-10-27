@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Flashlight, Minus, Plus, ScanBarcode, Trash2, WifiOff, X } from 'lucide-react';
+import { Flashlight, Minus, Plus, ScanBarcode, Smartphone, Trash2, WifiOff, X } from 'lucide-react';
 
 import { ApiError } from '@/api/client';
 import { newClientId, posApi, type PosMode, type PosSale, type PosSaleCreate } from '@/api/pos';
@@ -23,6 +23,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
 import { formatCurrency, formatQuantity, parseNumber, round2, todayIso } from '@/utils/format';
 
+import { PhoneScannerDialog, usePhoneLink } from './PhoneScanner';
 import { printReceipt, Receipt } from './Receipt';
 import { useBarcodeScanner } from './useBarcodeScanner';
 import { useOnline } from './useOnline';
@@ -147,6 +148,16 @@ export function PosPage() {
   );
 
   const scanner = useBarcodeScanner((scanned) => void addCode(scanned));
+  const phone = usePhoneLink((scanned) => void addCode(scanned));
+  const [phoneDialog, setPhoneDialog] = useState(false);
+  const phoneConnected = Boolean(phone.session && phone.session.connected && !phone.session.closed);
+  // The QR dialog has done its job once the phone is in.
+  useEffect(() => {
+    if (phoneDialog && phoneConnected) {
+      setPhoneDialog(false);
+      toast.success(t('pos.phone.connected', { name: phone.session?.phoneUserName ?? '' }));
+    }
+  }, [phoneDialog, phoneConnected, phone.session?.phoneUserName, t, toast]);
 
   const submitCode = (event: FormEvent) => {
     event.preventDefault();
@@ -255,6 +266,19 @@ export function PosPage() {
               {t('pos.add')}
             </Button>
           </form>
+          {phoneConnected ? (
+            <div className="pos-phone-banner" role="status">
+              <Smartphone size={18} aria-hidden="true" />
+              <span>{t('pos.phone.linked', { name: phone.session?.phoneUserName ?? '' })}</span>
+              <Button size="sm" variant="ghost" onClick={() => void phone.close()}>
+                {t('pos.phone.disconnect')}
+              </Button>
+            </div>
+          ) : (
+            <Button className="pos-phone-btn" icon={<Smartphone size={16} />} onClick={() => setPhoneDialog(true)} disabled={locked}>
+              {t('pos.phone.use')}
+            </Button>
+          )}
         </section>
 
         <section className="pos-bill card" aria-label={t('pos.bill')}>
@@ -340,6 +364,17 @@ export function PosPage() {
           </div>
         </section>
       </div>
+
+      {phoneDialog ? (
+        <PhoneScannerDialog
+          session={phone.session}
+          onOpen={phone.open}
+          onCancel={() => {
+            setPhoneDialog(false);
+            if (!phoneConnected) void phone.close();
+          }}
+        />
+      ) : null}
 
       {payOpen ? (
         <PaySheet

@@ -684,6 +684,39 @@ class PosSale(TimestampMixin, OrgScopedMixin, Base):
     payment: Mapped[Optional[CustomerPayment]] = relationship()
 
 
+class PosScannerSession(TimestampMixin, OrgScopedMixin, Base):
+    """A phone lent to a counter as its barcode scanner.
+
+    The counter opens a session and shows its link as a QR code; a phone
+    signed in to the same organization opens it and sends what its camera
+    reads, and the counter picks the codes up (pos_scans).
+    """
+
+    __tablename__ = "pos_scanner_sessions"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    created_by: Mapped[Optional[str]] = mapped_column(String(32))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # When a phone first opened it, and who was signed in on it.
+    connected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    phone_user_id: Mapped[Optional[str]] = mapped_column(String(32))
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_seq: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+
+
+class PosScan(Base):
+    """One code a phone scanned for a counter, numbered in order within its session."""
+
+    __tablename__ = "pos_scans"
+    __table_args__ = (UniqueConstraint("session_id", "seq", name="uq_pos_scan_session_seq"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    session_id: Mapped[str] = mapped_column(String(32), ForeignKey("pos_scanner_sessions.id", ondelete="CASCADE"), nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 # --------------------------------------------------------------------------- #
 # Purchases
 # --------------------------------------------------------------------------- #

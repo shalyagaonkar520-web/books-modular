@@ -118,6 +118,34 @@ export interface PosReturnCreate {
   date?: string;
 }
 
+export interface ScannerSession {
+  id: string;
+  expiresAt: string;
+  connected: boolean;
+  phoneUserName?: string | null;
+  counterUserName?: string | null;
+  closed: boolean;
+}
+
+export interface ScanPoll {
+  session: ScannerSession;
+  scans: Array<{ seq: number; code: string }>;
+}
+
+export const scannerApi = {
+  open: () => api.post<ScannerSession>('/pos/scanner-sessions'),
+  qr: (id: string, url: string) => api.get<{ svg: string }>(`/pos/scanner-sessions/${id}/qr`, { url }),
+  connect: (id: string) => api.post<ScannerSession>(`/pos/scanner-sessions/${id}/connect`),
+  send: (id: string, code: string) => api.post<{ seq: number; code: string }>(`/pos/scanner-sessions/${id}/scans`, { code }),
+  poll: (id: string, after: number) => api.get<ScanPoll>(`/pos/scanner-sessions/${id}/scans`, { after }),
+  close: (id: string) => api.delete<ScannerSession>(`/pos/scanner-sessions/${id}`),
+};
+
+/** The link a phone opens to scan for a counter (also what its QR code holds). */
+export function scannerLink(sessionId: string): string {
+  return `${window.location.origin}/pos/remote/${sessionId}`;
+}
+
 export const posApi = {
   lookup: (code: string) => api.get<PosItem>('/pos/lookup', { code }),
   createSale: (body: PosSaleCreate) => api.post<PosSale>('/pos/sales', body),
