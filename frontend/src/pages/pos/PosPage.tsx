@@ -107,7 +107,7 @@ export function PosPage() {
   const locked = bill.pending !== null;
 
   const addCode = useCallback(
-    async (raw: string) => {
+    async (raw: string, quantity = 1) => {
       const value = raw.trim();
       if (!value) return;
       if (locked) {
@@ -120,7 +120,7 @@ export function PosPage() {
         setBill((current) => {
           const existing = current.lines.find((line) => line.itemId === item.id);
           const lines = existing
-            ? current.lines.map((line) => (line.itemId === item.id ? { ...line, quantity: line.quantity + 1 } : line))
+            ? current.lines.map((line) => (line.itemId === item.id ? { ...line, quantity: line.quantity + quantity } : line))
             : [
                 ...current.lines,
                 {
@@ -130,7 +130,7 @@ export function PosPage() {
                   unit: item.unit,
                   rate: item.sellingPrice,
                   taxRate: item.taxRate,
-                  quantity: 1,
+                  quantity,
                   trackInventory: item.trackInventory,
                   stockOnHand: item.stockOnHand,
                 },
@@ -148,16 +148,16 @@ export function PosPage() {
   );
 
   const scanner = useBarcodeScanner((scanned) => void addCode(scanned));
-  const phone = usePhoneLink((scanned) => void addCode(scanned));
+  const phone = usePhoneLink((scanned, quantity) => void addCode(scanned, quantity));
   const [phoneDialog, setPhoneDialog] = useState(false);
   const phoneConnected = Boolean(phone.session && phone.session.connected && !phone.session.closed);
   // The QR dialog has done its job once the phone is in.
   useEffect(() => {
     if (phoneDialog && phoneConnected) {
       setPhoneDialog(false);
-      toast.success(t('pos.phone.connected', { name: phone.session?.phoneUserName ?? '' }));
+      toast.success(t('pos.phone.connected'));
     }
-  }, [phoneDialog, phoneConnected, phone.session?.phoneUserName, t, toast]);
+  }, [phoneDialog, phoneConnected, t, toast]);
 
   const submitCode = (event: FormEvent) => {
     event.preventDefault();
@@ -269,7 +269,7 @@ export function PosPage() {
           {phoneConnected ? (
             <div className="pos-phone-banner" role="status">
               <Smartphone size={18} aria-hidden="true" />
-              <span>{t('pos.phone.linked', { name: phone.session?.phoneUserName ?? '' })}</span>
+              <span>{t('pos.phone.linked')}</span>
               <Button size="sm" variant="ghost" onClick={() => void phone.close()}>
                 {t('pos.phone.disconnect')}
               </Button>
@@ -367,7 +367,7 @@ export function PosPage() {
 
       {phoneDialog ? (
         <PhoneScannerDialog
-          session={phone.session}
+          link={phone.link}
           onOpen={phone.open}
           onCancel={() => {
             setPhoneDialog(false);

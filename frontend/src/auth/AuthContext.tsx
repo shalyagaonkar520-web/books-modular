@@ -49,10 +49,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [initializing, setInitializing] = useState(true);
 
   // Restore the session from the httpOnly refresh cookie on first load. The public customer
-  // portal (/p/<token>) is opened by customers without an account: no session to restore.
+  // portal (/p/<token>) and a counter's phone scanner (/scan/<key>) are opened without an
+  // account: no session to restore.
   useEffect(() => {
     let active = true;
-    if (window.location.pathname.startsWith('/p/')) {
+    if (window.location.pathname.startsWith('/p/') || window.location.pathname.startsWith('/scan/')) {
       setInitializing(false);
       return () => {
         active = false;

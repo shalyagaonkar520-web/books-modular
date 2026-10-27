@@ -122,28 +122,54 @@ export interface ScannerSession {
   id: string;
   expiresAt: string;
   connected: boolean;
-  phoneUserName?: string | null;
   counterUserName?: string | null;
   closed: boolean;
 }
 
-export interface ScanPoll {
-  session: ScannerSession;
-  scans: Array<{ seq: number; code: string }>;
+/** A just-opened session: ``token`` is the secret key for the QR link, shown only now. */
+export interface OpenedScannerSession extends ScannerSession {
+  token: string;
 }
 
+export interface ScanPoll {
+  session: ScannerSession;
+  scans: Array<{ seq: number; code: string; quantity: number }>;
+}
+
+/** The counter's side (signed in). */
 export const scannerApi = {
-  open: () => api.post<ScannerSession>('/pos/scanner-sessions'),
+  open: () => api.post<OpenedScannerSession>('/pos/scanner-sessions'),
   qr: (id: string, url: string) => api.get<{ svg: string }>(`/pos/scanner-sessions/${id}/qr`, { url }),
-  connect: (id: string) => api.post<ScannerSession>(`/pos/scanner-sessions/${id}/connect`),
-  send: (id: string, code: string) => api.post<{ seq: number; code: string }>(`/pos/scanner-sessions/${id}/scans`, { code }),
   poll: (id: string, after: number) => api.get<ScanPoll>(`/pos/scanner-sessions/${id}/scans`, { after }),
   close: (id: string) => api.delete<ScannerSession>(`/pos/scanner-sessions/${id}`),
 };
 
+export interface PhoneSession {
+  organizationName: string;
+  counterUserName?: string | null;
+  expiresAt: string;
+}
+
+export interface PhoneNewItem {
+  barcode: string;
+  name: string;
+  sellingPrice: number;
+  taxRate: number;
+  unit: string;
+}
+
+/** The phone's side: no sign-in, the key in the QR link is the permission. */
+export const phoneScanApi = {
+  open: (token: string) => api.get<PhoneSession>(`/pos-scan/${encodeURIComponent(token)}`),
+  lookup: (token: string, code: string) => api.get<PosItem>(`/pos-scan/${encodeURIComponent(token)}/lookup`, { code }),
+  send: (token: string, code: string, quantity: number) =>
+    api.post<{ seq: number; code: string; quantity: number }>(`/pos-scan/${encodeURIComponent(token)}/scans`, { code, quantity }),
+  newItem: (token: string, body: PhoneNewItem) => api.post<PosItem>(`/pos-scan/${encodeURIComponent(token)}/items`, body),
+};
+
 /** The link a phone opens to scan for a counter (also what its QR code holds). */
-export function scannerLink(sessionId: string): string {
-  return `${window.location.origin}/pos/remote/${sessionId}`;
+export function scannerLink(token: string): string {
+  return `${window.location.origin}/scan/${token}`;
 }
 
 export const posApi = {

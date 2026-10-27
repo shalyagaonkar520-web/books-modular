@@ -206,6 +206,10 @@ def create_app() -> FastAPI:
     from backend.routers import portal
 
     app.include_router(portal.public_router)
+    # The phone scanner of a Point of Sale counter: opened from its QR code, no login (key-guarded).
+    from backend.routers import pos as pos_router
+
+    app.include_router(pos_router.public_router)
     app.include_router(public_site.tenant_router)
     app.include_router(platform_site.router, dependencies=[Depends(require_superuser)])
 

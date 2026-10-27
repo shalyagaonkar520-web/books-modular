@@ -30,7 +30,7 @@ import { ItemFormPage } from '@/pages/items/ItemFormPage';
 import { PosPage } from '@/pages/pos/PosPage';
 import { PosSalesPage } from '@/pages/pos/PosSalesPage';
 import { PosSettingsPage } from '@/pages/pos/PosSettingsPage';
-import { RemoteScannerPage } from '@/pages/pos/RemoteScannerPage';
+import { PhoneScanPage } from '@/pages/pos/PhoneScanPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { LandingPage } from '@/pages/Landing/LandingPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -95,6 +95,8 @@ export function App() {
         <Route path="/" element={<LandingPage />} />
         {/* Customer portal: a shared invoice or quote, opened without logging in */}
         <Route path="/p/:token" element={<DocumentPortalPage />} />
+        {/* Phone scanner of a Point of Sale counter: opened from its QR code, no login (the link's key) */}
+        <Route path="/scan/:token" element={<PhoneScanPage />} />
 
         {/* Auth pages — only for guests (redirect to /dashboard if already logged in) */}
         <Route element={<RequireGuest />}>
@@ -123,7 +125,6 @@ export function App() {
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/pos" element={<RequireWrite><PosPage /></RequireWrite>} />
             <Route path="/pos/sales" element={<PosSalesPage />} />
-            <Route path="/pos/remote/:sessionId" element={<RequireWrite><RemoteScannerPage /></RequireWrite>} />
             <Route
               path="/pos/settings"
               element={

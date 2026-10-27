@@ -704,17 +704,20 @@ class PosSale(TimestampMixin, OrgScopedMixin, Base):
 class PosScannerSession(TimestampMixin, OrgScopedMixin, Base):
     """A phone lent to a counter as its barcode scanner.
 
-    The counter opens a session and shows its link as a QR code; a phone
-    signed in to the same organization opens it and sends what its camera
-    reads, and the counter picks the codes up (pos_scans).
+    The counter opens a session and shows its link as a QR code. The link
+    carries a secret key (only its SHA-256 is kept), so the phone needs no
+    sign-in: whoever holds the key may look items up, add new ones and send
+    codes to that counter's bill until the session ends (12 hours, or the
+    counter disconnects). The counter picks the codes up from pos_scans.
     """
 
     __tablename__ = "pos_scanner_sessions"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    token_hash: Mapped[Optional[str]] = mapped_column(String(64), unique=True, index=True)
     created_by: Mapped[Optional[str]] = mapped_column(String(32))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    # When a phone first opened it, and who was signed in on it.
+    # When a phone first opened it (phone_user_id: kept from sign-in phones; unused now).
     connected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     phone_user_id: Mapped[Optional[str]] = mapped_column(String(32))
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
@@ -731,6 +734,7 @@ class PosScan(Base):
     session_id: Mapped[str] = mapped_column(String(32), ForeignKey("pos_scanner_sessions.id", ondelete="CASCADE"), nullable=False)
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
     code: Mapped[str] = mapped_column(String(64), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Qty, default=Decimal("1"), server_default="1", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
