@@ -24,6 +24,7 @@ import { FilterSelect, SearchInput, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
 import { formatCurrency, formatDate, formatDateTime, formatPercent, formatQuantity, parseNumber, todayIso } from '@/utils/format';
 import { type Tone } from '@/utils/status';
+import { PhoneItemsLink } from '@/pages/pos/PhoneItemsLink';
 
 const PAGE_SIZE = 25;
 
@@ -256,13 +257,21 @@ export function ItemsPage() {
         subtitle={t('items.subtitle')}
         actions={
           <IfCanWrite>
-            <Button
-              variant="primary"
-              icon={<Plus size={15} />}
-              onClick={() => navigate('/items/new')}
-            >
-              {t('items.new')}
-            </Button>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              <PhoneItemsLink
+                onChanged={() => {
+                  list.reload();
+                  summary.reload();
+                }}
+              />
+              <Button
+                variant="primary"
+                icon={<Plus size={15} />}
+                onClick={() => navigate('/items/new')}
+              >
+                {t('items.new')}
+              </Button>
+            </div>
           </IfCanWrite>
         }
       />

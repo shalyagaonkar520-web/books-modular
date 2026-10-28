@@ -64,13 +64,16 @@ async function nativeDetector(): Promise<BarcodeDetectorLike | null> {
   }
 }
 
-export function useBarcodeScanner(onCode: (code: string) => void, dedupeMs = 1500) {
+/** ``isPaused``: while it answers true, codes are ignored (no beep) - e.g. while a confirmation is open. */
+export function useBarcodeScanner(onCode: (code: string) => void, dedupeMs = 1500, isPaused?: () => boolean) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const stopLoopRef = useRef<(() => void) | null>(null);
   const lastRef = useRef<{ code: string; at: number }>({ code: '', at: 0 });
   const onCodeRef = useRef(onCode);
   onCodeRef.current = onCode;
+  const isPausedRef = useRef(isPaused);
+  isPausedRef.current = isPaused;
   const [active, setActive] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<ScannerError | null>(null);
@@ -80,7 +83,7 @@ export function useBarcodeScanner(onCode: (code: string) => void, dedupeMs = 150
   const handle = useCallback(
     (raw: string) => {
       const code = raw.trim();
-      if (!code) return;
+      if (!code || isPausedRef.current?.()) return;
       const now = Date.now();
       if (code === lastRef.current.code && now - lastRef.current.at < dedupeMs) return;
       lastRef.current = { code, at: now };

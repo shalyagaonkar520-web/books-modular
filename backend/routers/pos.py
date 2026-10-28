@@ -27,6 +27,7 @@ from backend.models import (
     Contact,
     ContactRefund,
     CreditNote,
+    InventoryAdjustment,
     Invoice,
     Item,
     Organization,
@@ -43,7 +44,7 @@ from backend.schemas.common import MAX_MONEY, MAX_QUANTITY, APIModel
 from backend.schemas.documents_flow import CreditNoteCreate, RefundCreate
 from backend.schemas.sales import CustomerPaymentCreate, InvoiceCreate, LineInput
 from backend.security import hash_token
-from backend.services import audit, bank, credits, doc_flow, numbering, upi
+from backend.services import audit, bank, credits, doc_flow, inventory, numbering, upi
 from backend.services.doc_flow import CREDIT_NOTE
 from backend.services.money import money, qty
 from backend.services.ratelimit import RateLimiter
@@ -870,8 +871,12 @@ _phone_new_items = RateLimiter(limit=30, window_seconds=60)
 SCAN_LINK_PATH = "/scan/"
 
 
+ScannerPurpose = Literal["sale", "items"]
+
+
 class ScannerSessionOut(APIModel):
     id: str
+    purpose: str
     expires_at: dt.datetime
     connected: bool
     counter_user_name: Optional[str] = None
@@ -924,6 +929,7 @@ def _scanner_session(db: Session, user: User, session_id: str) -> PosScannerSess
 def _scanner_out(db: Session, found: PosScannerSession) -> ScannerSessionOut:
     return ScannerSessionOut(
         id=found.id,
+        purpose=found.purpose,
         expires_at=_aware(found.expires_at),
         connected=found.connected_at is not None,
         counter_user_name=_cashier_names(db, [found.created_by]).get(found.created_by),
@@ -932,8 +938,12 @@ def _scanner_out(db: Session, found: PosScannerSession) -> ScannerSessionOut:
 
 
 @router.post("/scanner-sessions", response_model=OpenedScannerSession, status_code=status.HTTP_201_CREATED)
-def open_scanner_session(user: User = Depends(require_write), db: Session = Depends(get_db)):
-    """Open a session for a phone to scan into this counter; its key goes in the QR link."""
+def open_scanner_session(
+    purpose: ScannerPurpose = Query("sale", description="sale: onto the counter's bill; items: add stock or new items"),
+    user: User = Depends(require_write),
+    db: Session = Depends(get_db),
+):
+    """Open a session for a phone to scan into this counter (or the Items screen); its key goes in the QR link."""
     # Sessions that ended are of no further use: clear them (their scans go with them).
     db.execute(
         delete(PosScannerSession).where(
@@ -946,10 +956,11 @@ def open_scanner_session(user: User = Depends(require_write), db: Session = Depe
         organization_id=user.organization_id,
         created_by=user.id,
         token_hash=hash_token(token),
+        purpose=purpose,
         expires_at=_now() + dt.timedelta(hours=SCANNER_SESSION_HOURS),
     )
     db.add(found)
-    audit.record(db, user, "create", "pos_scanner_session", found.id, "Opened a phone scanner link for the counter")
+    audit.record(db, user, "create", "pos_scanner_session", found.id, f"Opened a phone scanner link ({purpose})")
     db.commit()
     return OpenedScannerSession(**_scanner_out(db, found).model_dump(), token=token)
 
@@ -998,6 +1009,7 @@ public_router = APIRouter(prefix="/api/pos-scan", tags=["Point of Sale"])
 
 class PhoneSessionOut(APIModel):
     organization_name: str
+    purpose: str
     counter_user_name: Optional[str] = None
     expires_at: dt.datetime
 
@@ -1021,6 +1033,9 @@ class PhoneNewItemIn(APIModel):
     selling_price: Decimal = Field(ge=0, le=MAX_MONEY)
     tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     unit: str = Field(default="pcs", min_length=1, max_length=20)
+    # Adding items (purpose "items"): what it costs and how many are on the shelf now.
+    cost_price: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
+    opening_stock: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_QUANTITY)
 
     @field_validator("barcode")
     @classmethod
@@ -1068,6 +1083,7 @@ def phone_open(token: str, db: Session = Depends(get_db)):
     org = db.get(Organization, found.organization_id)
     return PhoneSessionOut(
         organization_name=org.legal_name or org.name,
+        purpose=found.purpose,
         counter_user_name=_cashier_names(db, [found.created_by]).get(found.created_by),
         expires_at=_aware(found.expires_at),
     )
@@ -1087,6 +1103,15 @@ def phone_lookup(token: str, code: str = Query(min_length=1, max_length=64), db:
 def phone_send(token: str, payload: PhoneScanIn, db: Session = Depends(get_db)):
     """Put a scanned item (and how many) on the counter's bill."""
     found = _phone_session(db, token)
+    if found.purpose != "sale":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This scanner link adds items, it does not bill them")
+    seq = _record_scan(db, found, payload.code, payload.quantity)
+    db.commit()
+    return ScanOut(seq=seq, code=payload.code, quantity=qty(payload.quantity))
+
+
+def _record_scan(db: Session, found: PosScannerSession, code: str, quantity: Decimal) -> int:
+    """Number and keep a scan for the counter (or the Items screen) to pick up."""
     # One UPDATE numbers the scan, so two quick scans never share a number.
     db.execute(
         update(PosScannerSession)
@@ -1095,10 +1120,58 @@ def phone_send(token: str, payload: PhoneScanIn, db: Session = Depends(get_db)):
         .execution_options(synchronize_session=False)
     )
     seq = db.execute(select(PosScannerSession.last_seq).where(PosScannerSession.id == found.id)).scalar_one()
-    db.add(PosScan(session_id=found.id, seq=seq, code=payload.code, quantity=qty(payload.quantity)))
+    db.add(PosScan(session_id=found.id, seq=seq, code=code, quantity=qty(quantity)))
     found.connected_at = found.connected_at or _now()
+    return seq
+
+
+class PhoneStockIn(APIModel):
+    code: str = Field(min_length=1, max_length=64)
+    quantity: Decimal = Field(gt=0, le=Decimal("100000"))
+
+
+@public_router.post("/{token}/stock", response_model=PosItem, status_code=status.HTTP_201_CREATED)
+def phone_add_stock(token: str, payload: PhoneStockIn, db: Session = Depends(get_db)):
+    """Adding items: goods counted onto the shelf go into stock (an inventory adjustment)."""
+    found = _phone_session(db, token)
+    if found.purpose != "items":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This scanner link bills items; add stock from the Items screen's link")
+    item = find_by_code(db, found.organization_id, payload.code.strip())
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No item with this barcode")
+    if item.type == "service":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"'{item.name}' is a service; it has no stock")
+    if not item.track_inventory:
+        # Counting it in starts tracking its stock from zero.
+        item.track_inventory = True
+        item.stock_on_hand = Decimal("0")
+    adj = InventoryAdjustment(
+        organization_id=found.organization_id,
+        adjustment_number=numbering.next_number(db, found.organization_id, "inventory_adjustment"),
+        item_id=item.id,
+        date=date.today(),
+        quantity_delta=qty(payload.quantity),
+        reason="Stock received (phone scanner)",
+        created_by=found.created_by,
+    )
+    db.add(adj)
+    db.flush()
+    inventory.adjust_stock(
+        db, item, adj.quantity_delta, adj.date, "inventory_adjustment", adj.id, f"{adj.reason} ({adj.adjustment_number})", found.created_by
+    )
+    _record_scan(db, found, item.barcode or payload.code.strip(), payload.quantity)
+    audit.record(
+        db,
+        _counter_user(db, found),
+        "create",
+        "inventory_adjustment",
+        adj.id,
+        f"{adj.adjustment_number}: {item.name} +{adj.quantity_delta} (phone scanner)",
+        organization_id=found.organization_id,
+    )
     db.commit()
-    return ScanOut(seq=seq, code=payload.code, quantity=qty(payload.quantity))
+    db.refresh(item)
+    return PosItem.model_validate(item)
 
 
 def _free_sku(db: Session, org_id: str, barcode: str) -> str:
@@ -1136,11 +1209,19 @@ def phone_new_item(token: str, payload: PhoneNewItemIn, db: Session = Depends(ge
         unit=payload.unit,
         selling_price=money(payload.selling_price),
         tax_rate=payload.tax_rate,
-        cost_price=Decimal("0"),
-        track_inventory=False,
+        cost_price=money(payload.cost_price),
+        # Adding items counts what is on the shelf; a counter adding an unknown
+        # product only needs it priced.
+        track_inventory=found.purpose == "items",
+        opening_stock=qty(payload.opening_stock) if found.purpose == "items" else Decimal("0"),
+        opening_stock_rate=money(payload.cost_price),
+        stock_on_hand=qty(payload.opening_stock) if found.purpose == "items" else Decimal("0"),
     )
     db.add(item)
     db.flush()
+    if found.purpose == "items":
+        inventory.post_opening_stock(db, item, found.created_by)
+        _record_scan(db, found, payload.barcode, payload.opening_stock)
     audit.record(
         db,
         _counter_user(db, found),

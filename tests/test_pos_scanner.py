@@ -153,3 +153,51 @@ def test_opening_a_session_clears_finished_ones(client, org):
     _open(client, org)
     assert client.get(f"/api/pos/scanner-sessions/{first['id']}/scans", headers=org).status_code == 404
     assert client.get(f"/api/pos-scan/{first['token']}").status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# Adding items with the phone (the Items screen's link)
+# --------------------------------------------------------------------------- #
+def test_items_link_adds_stock_and_creates_items_with_opening_stock(client, org):
+    from tests.conftest import trial_balance_ok
+
+    known = _item(client, org, "Tea 250g", "8901030703101", price=120)
+    session = client.post("/api/pos/scanner-sessions", headers=org, params={"purpose": "items"}).json()
+    sid, key = session["id"], session["token"]
+    assert session["purpose"] == "items"
+    assert client.get(f"/api/pos-scan/{key}").json()["purpose"] == "items"
+
+    # A known item: counting 12 onto the shelf starts tracking its stock.
+    res = client.post(f"/api/pos-scan/{key}/stock", json={"code": "8901030703101", "quantity": 12})
+    assert res.status_code == 201, res.text
+    assert res.json()["stockOnHand"] == 12 and res.json()["trackInventory"] is True
+    assert client.post(f"/api/pos-scan/{key}/stock", json={"code": "8901030703101", "quantity": 3}).json()["stockOnHand"] == 15
+    assert client.get(f"/api/items/{known['id']}", headers=org).json()["stockOnHand"] == 15
+    adjustments = client.get("/api/inventory-adjustments", headers=org).json()["items"]
+    assert sorted(a["quantityDelta"] for a in adjustments) == [3, 12]
+
+    # A new barcode: created with its cost and opening stock.
+    new = client.post(
+        f"/api/pos-scan/{key}/items",
+        json={"barcode": "8906011111111", "name": "Biscuit 100g", "sellingPrice": 20, "costPrice": 14, "taxRate": 18, "openingStock": 48},
+    )
+    assert new.status_code == 201, new.text
+    assert new.json()["stockOnHand"] == 48 and new.json()["trackInventory"] is True
+    item = client.get(f"/api/items/{new.json()['id']}", headers=org).json()
+    assert item["costPrice"] == 14 and item["openingStock"] == 48
+
+    # The Items screen sees each one as it happens.
+    poll = client.get(f"/api/pos/scanner-sessions/{sid}/scans", headers=org).json()
+    assert [(s["code"], s["quantity"]) for s in poll["scans"]] == [("8901030703101", 12), ("8901030703101", 3), ("8906011111111", 48)]
+    # An items link does not bill, and a bill link does not add stock.
+    assert client.post(f"/api/pos-scan/{key}/scans", json={"code": "8901030703101"}).status_code == 400
+    sale_key = _open(client, org)["token"]
+    assert client.post(f"/api/pos-scan/{sale_key}/stock", json={"code": "8901030703101", "quantity": 1}).status_code == 400
+    # A new item made at the counter (bill link) is priced, not stocked.
+    counter_new = client.post(
+        f"/api/pos-scan/{sale_key}/items", json={"barcode": "8906022222222", "name": "Gum", "sellingPrice": 5, "openingStock": 9}
+    )
+    assert counter_new.json()["trackInventory"] is False and counter_new.json()["stockOnHand"] == 0
+    assert client.post(f"/api/pos-scan/{key}/stock", json={"code": "000000", "quantity": 1}).status_code == 404
+    assert client.post(f"/api/pos-scan/{key}/stock", json={"code": "8901030703101", "quantity": 0}).status_code == 422
+    assert trial_balance_ok(client, org)

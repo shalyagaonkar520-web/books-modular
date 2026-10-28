@@ -27,6 +27,7 @@ import { PhoneScannerDialog, usePhoneLink } from './PhoneScanner';
 import { printReceipt, Receipt } from './Receipt';
 import { useBarcodeScanner } from './useBarcodeScanner';
 import { useOnline } from './useOnline';
+import { useScannerKeys } from './useScannerKeys';
 
 export interface BillLine {
   itemId: string;
@@ -148,7 +149,11 @@ export function PosPage() {
   );
 
   const scanner = useBarcodeScanner((scanned) => void addCode(scanned));
-  const phone = usePhoneLink((scanned, quantity) => void addCode(scanned, quantity));
+  const phone = usePhoneLink(
+    (scanned, quantity) => void addCode(scanned, quantity),
+    'sale',
+    () => toast.notify(t('pos.phone.ended'), 'info'),
+  );
   const [phoneDialog, setPhoneDialog] = useState(false);
   const phoneConnected = Boolean(phone.session && phone.session.connected && !phone.session.closed);
   // The QR dialog has done its job once the phone is in.
@@ -175,6 +180,9 @@ export function PosPage() {
 
   const discount = parseNumber(bill.discount, 0);
   const totals = useMemo(() => billTotals(bill.lines, discount), [bill.lines, discount]);
+
+  // A Bluetooth / USB scanner adds to the bill wherever the cursor is (not while a dialog is open).
+  useScannerKeys((scanned) => void addCode(scanned), !payOpen && receipt === null && !phoneDialog);
 
   const finished = (sale: PosSale) => {
     setBill(EMPTY_BILL);

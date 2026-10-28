@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -34,10 +34,10 @@ vi.mock('./useBarcodeScanner', async () => {
 });
 
 import { PHONE_LINK_KEY } from './PhoneScanner';
-import { PhoneScanPage } from './PhoneScanPage';
+import { FAST_MODE_KEY, PhoneScanPage } from './PhoneScanPage';
 import { OPEN_BILL_KEY, PosPage } from './PosPage';
 
-const SESSION = { id: 'sess1234', expiresAt: '2026-10-27T22:00:00Z', connected: false, counterUserName: 'Asha', closed: false };
+const SESSION = { id: 'sess1234', purpose: 'sale', expiresAt: '2026-10-27T22:00:00Z', connected: false, counterUserName: 'Asha', closed: false };
 const KEY = 'secret-key-abcdefghijklmnopqrstuvwxyz0123456789';
 const BUTTER = {
   id: 'it-butter',
@@ -68,6 +68,7 @@ function renderPhone() {
 describe('phone as scanner', () => {
   beforeEach(() => {
     sessionStorage.clear();
+    localStorage.removeItem(FAST_MODE_KEY);
     scanned.code = '8901262150101';
   });
   afterEach(() => {
@@ -114,7 +115,7 @@ describe('phone as scanner', () => {
     const sent: Array<{ code: string; quantity: number }> = [];
     let sawAuthHeader = false;
     installMockApi({
-      [`GET /api/pos-scan/${KEY}`]: { organizationName: 'Rooman Mart', counterUserName: 'Asha', expiresAt: SESSION.expiresAt },
+      [`GET /api/pos-scan/${KEY}`]: { organizationName: 'Rooman Mart', purpose: 'sale', counterUserName: 'Asha', expiresAt: SESSION.expiresAt },
       [`GET /api/pos-scan/${KEY}/lookup`]: BUTTER,
       [`POST /api/pos-scan/${KEY}/scans`]: (_url: URL, init: RequestInit) => {
         sawAuthHeader = sawAuthHeader || Boolean((init.headers as Record<string, string> | undefined)?.Authorization);
@@ -141,7 +142,7 @@ describe('phone as scanner', () => {
     const created: unknown[] = [];
     const sent: unknown[] = [];
     installMockApi({
-      [`GET /api/pos-scan/${KEY}`]: { organizationName: 'Rooman Mart', counterUserName: 'Asha', expiresAt: SESSION.expiresAt },
+      [`GET /api/pos-scan/${KEY}`]: { organizationName: 'Rooman Mart', purpose: 'sale', counterUserName: 'Asha', expiresAt: SESSION.expiresAt },
       [`GET /api/pos-scan/${KEY}/lookup`]: () =>
         new Response(JSON.stringify({ detail: 'No item with this barcode' }), { status: 404, headers: { 'content-type': 'application/json' } }),
       [`POST /api/pos-scan/${KEY}/items`]: (_url: URL, init: RequestInit) => {
@@ -177,5 +178,81 @@ describe('phone as scanner', () => {
     renderPhone();
     expect(await screen.findByText(/scanner link ended/i)).toBeInTheDocument();
     expect(screen.getByText(/ask the counter for a new qr code/i)).toBeInTheDocument();
+  });
+
+  it('in Fast scan, sends every scan straight to the bill without a card', async () => {
+    localStorage.setItem(FAST_MODE_KEY, '1');
+    const sent: unknown[] = [];
+    installMockApi({
+      [`GET /api/pos-scan/${KEY}`]: { organizationName: 'Rooman Mart', purpose: 'sale', counterUserName: 'Asha', expiresAt: SESSION.expiresAt },
+      [`GET /api/pos-scan/${KEY}/lookup`]: BUTTER,
+      [`POST /api/pos-scan/${KEY}/scans`]: (_url: URL, init: RequestInit) => {
+        sent.push(JSON.parse(String(init.body)));
+        return { seq: sent.length, code: BUTTER.barcode, quantity: 1 };
+      },
+    });
+    renderPhone();
+    await waitFor(() => expect(sent).toEqual([{ code: '8901262150101', quantity: 1 }]));
+    expect(screen.queryByRole('region', { name: /scanned item/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /fast scan on/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(await screen.findByText(/amul butter x 1 sent to the bill/i)).toBeInTheDocument();
+  });
+
+  it('on an items link, adds the counted quantity to stock and creates new items with their stock', async () => {
+    const stocked: unknown[] = [];
+    installMockApi({
+      [`GET /api/pos-scan/${KEY}`]: { organizationName: 'Rooman Mart', purpose: 'items', counterUserName: 'Asha', expiresAt: SESSION.expiresAt },
+      [`GET /api/pos-scan/${KEY}/lookup`]: BUTTER,
+      [`POST /api/pos-scan/${KEY}/stock`]: (_url: URL, init: RequestInit) => {
+        const body = JSON.parse(String(init.body));
+        stocked.push(body);
+        return { ...BUTTER, stockOnHand: 10 + body.quantity };
+      },
+    });
+    renderPhone();
+    expect(await screen.findByText(/adding items and stock/i)).toBeInTheDocument();
+    const card = await screen.findByRole('region', { name: /scanned item/i });
+    await userEvent.clear(within(card).getByLabelText(/how many to add/i));
+    await userEvent.type(within(card).getByLabelText(/how many to add/i), '24');
+    await userEvent.click(within(card).getByRole('button', { name: /add to stock/i }));
+    await waitFor(() => expect(stocked).toEqual([{ code: '8901262150101', quantity: 24 }]));
+    expect(await screen.findByText(/amul butter \+24 added \(stock now 34\)/i)).toBeInTheDocument();
+  });
+
+  it('on an items link, a new barcode is created with its cost and opening stock', async () => {
+    scanned.code = '8906001234567';
+    const created: unknown[] = [];
+    installMockApi({
+      [`GET /api/pos-scan/${KEY}`]: { organizationName: 'Rooman Mart', purpose: 'items', counterUserName: 'Asha', expiresAt: SESSION.expiresAt },
+      [`GET /api/pos-scan/${KEY}/lookup`]: () =>
+        new Response(JSON.stringify({ detail: 'No item with this barcode' }), { status: 404, headers: { 'content-type': 'application/json' } }),
+      [`POST /api/pos-scan/${KEY}/items`]: (_url: URL, init: RequestInit) => {
+        const body = JSON.parse(String(init.body));
+        created.push(body);
+        return { ...BUTTER, id: 'n2', name: body.name, barcode: body.barcode, stockOnHand: body.openingStock };
+      },
+    });
+    renderPhone();
+    const form = await screen.findByRole('form', { name: /new item/i });
+    await userEvent.type(within(form).getByLabelText(/item name/i), 'Masala Chips');
+    await userEvent.type(within(form).getByLabelText(/^price/i), '20');
+    await userEvent.type(within(form).getByLabelText(/cost price/i), '14');
+    await userEvent.type(within(form).getByLabelText(/how many on the shelf/i), '48');
+    await userEvent.click(within(form).getByRole('button', { name: /create item/i }));
+    await waitFor(() =>
+      expect(created).toEqual([{ barcode: '8906001234567', name: 'Masala Chips', sellingPrice: 20, taxRate: 0, unit: 'pcs', costPrice: 14, openingStock: 48 }]),
+    );
+    expect(await screen.findByText(/masala chips created \(stock 48\)/i)).toBeInTheDocument();
+  });
+
+  it('takes a Bluetooth / USB scanner on the counter even when nobody clicked into the barcode box', async () => {
+    installMockApi({ 'GET /api/pos/lookup': BUTTER });
+    renderWithProviders(<PosPage />);
+    await screen.findByRole('button', { name: /use phone as scanner/i });
+    (document.activeElement as HTMLElement | null)?.blur();
+    // A scanner "types" the code very fast and presses Enter.
+    for (const key of '8901262150101') fireEvent.keyDown(window, { key });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(await screen.findByText('Amul Butter')).toBeInTheDocument();
   });
 });

@@ -715,6 +715,8 @@ class PosScannerSession(TimestampMixin, OrgScopedMixin, Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     token_hash: Mapped[Optional[str]] = mapped_column(String(64), unique=True, index=True)
+    # sale: scans go onto the counter's bill. items: the phone adds stock or creates items (Items screen).
+    purpose: Mapped[str] = mapped_column(String(10), default="sale", server_default="sale", nullable=False)
     created_by: Mapped[Optional[str]] = mapped_column(String(32))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # When a phone first opened it (phone_user_id: kept from sign-in phones; unused now).

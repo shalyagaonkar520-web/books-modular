@@ -118,8 +118,12 @@ export interface PosReturnCreate {
   date?: string;
 }
 
+/** sale: scans go onto the counter's bill. items: the phone adds stock or new items (Items screen). */
+export type ScannerPurpose = 'sale' | 'items';
+
 export interface ScannerSession {
   id: string;
+  purpose: ScannerPurpose;
   expiresAt: string;
   connected: boolean;
   counterUserName?: string | null;
@@ -138,7 +142,7 @@ export interface ScanPoll {
 
 /** The counter's side (signed in). */
 export const scannerApi = {
-  open: () => api.post<OpenedScannerSession>('/pos/scanner-sessions'),
+  open: (purpose: ScannerPurpose = 'sale') => api.post<OpenedScannerSession>('/pos/scanner-sessions', undefined, { purpose }),
   qr: (id: string, url: string) => api.get<{ svg: string }>(`/pos/scanner-sessions/${id}/qr`, { url }),
   poll: (id: string, after: number) => api.get<ScanPoll>(`/pos/scanner-sessions/${id}/scans`, { after }),
   close: (id: string) => api.delete<ScannerSession>(`/pos/scanner-sessions/${id}`),
@@ -146,6 +150,7 @@ export const scannerApi = {
 
 export interface PhoneSession {
   organizationName: string;
+  purpose: ScannerPurpose;
   counterUserName?: string | null;
   expiresAt: string;
 }
@@ -156,6 +161,9 @@ export interface PhoneNewItem {
   sellingPrice: number;
   taxRate: number;
   unit: string;
+  /** Adding items: what it costs and how many are on the shelf now. */
+  costPrice?: number;
+  openingStock?: number;
 }
 
 /** The phone's side: no sign-in, the key in the QR link is the permission. */
@@ -165,6 +173,8 @@ export const phoneScanApi = {
   send: (token: string, code: string, quantity: number) =>
     api.post<{ seq: number; code: string; quantity: number }>(`/pos-scan/${encodeURIComponent(token)}/scans`, { code, quantity }),
   newItem: (token: string, body: PhoneNewItem) => api.post<PosItem>(`/pos-scan/${encodeURIComponent(token)}/items`, body),
+  addStock: (token: string, code: string, quantity: number) =>
+    api.post<PosItem>(`/pos-scan/${encodeURIComponent(token)}/stock`, { code, quantity }),
 };
 
 /** The link a phone opens to scan for a counter (also what its QR code holds). */

@@ -11,13 +11,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ApiError } from '@/api/client';
-import { scannerApi, scannerLink, type ScannerSession } from '@/api/pos';
+import { scannerApi, scannerLink, type ScannerPurpose, type ScannerSession } from '@/api/pos';
 import { useAppContent } from '@/app/AppContentContext';
 import { Button } from '@/components/ui/Button';
 import { FormError } from '@/components/ui/Feedback';
 import { Modal } from '@/components/ui/Modal';
 
 export const PHONE_LINK_KEY = 'rb.pos.phoneLink';
+const storageKey = (purpose: ScannerPurpose) => (purpose === 'sale' ? PHONE_LINK_KEY : `${PHONE_LINK_KEY}.${purpose}`);
 const POLL_MS = 1000;
 
 /** The counter's session; ``token`` is the QR link's key (kept on this device only, for showing the QR again). */
@@ -27,46 +28,55 @@ export interface PhoneLink {
   after: number;
 }
 
-function loadLink(): PhoneLink | null {
+function loadLink(purpose: ScannerPurpose): PhoneLink | null {
   try {
-    const raw = sessionStorage.getItem(PHONE_LINK_KEY);
+    const raw = sessionStorage.getItem(storageKey(purpose));
     return raw ? (JSON.parse(raw) as PhoneLink) : null;
   } catch {
     return null;
   }
 }
 
-function saveLink(link: PhoneLink | null): void {
+function saveLink(purpose: ScannerPurpose, link: PhoneLink | null): void {
   try {
-    if (link) sessionStorage.setItem(PHONE_LINK_KEY, JSON.stringify(link));
-    else sessionStorage.removeItem(PHONE_LINK_KEY);
+    if (link) sessionStorage.setItem(storageKey(purpose), JSON.stringify(link));
+    else sessionStorage.removeItem(storageKey(purpose));
   } catch {
     // Private mode: the link just doesn't survive a reload.
   }
 }
 
-/** The counter's end: open / close the session and feed the phone's scans to ``onScan``. */
-export function usePhoneLink(onScan: (code: string, quantity: number) => void) {
-  const [link, setLink] = useState<PhoneLink | null>(loadLink);
+/**
+ * The counter's (or Items screen's) end: open / close the session and feed the
+ * phone's scans to ``onScan``; ``onEnded`` hears when the link stops working
+ * on its own (12 hours, or closed elsewhere).
+ */
+export function usePhoneLink(onScan: (code: string, quantity: number) => void, purpose: ScannerPurpose = 'sale', onEnded?: () => void) {
+  const [link, setLink] = useState<PhoneLink | null>(() => loadLink(purpose));
+  const onEndedRef = useRef(onEnded);
+  onEndedRef.current = onEnded;
   const afterRef = useRef(link?.after ?? 0);
   const tokenRef = useRef(link?.token ?? '');
   const onScanRef = useRef(onScan);
   onScanRef.current = onScan;
 
-  const remember = useCallback((next: PhoneLink | null) => {
-    setLink(next);
-    saveLink(next);
-  }, []);
+  const remember = useCallback(
+    (next: PhoneLink | null) => {
+      setLink(next);
+      saveLink(purpose, next);
+    },
+    [purpose],
+  );
 
   const open = useCallback(async () => {
-    const opened = await scannerApi.open();
+    const opened = await scannerApi.open(purpose);
     const { token, ...session } = opened;
     afterRef.current = 0;
     tokenRef.current = token;
     const next = { session, token, after: 0 };
     remember(next);
     return next;
-  }, [remember]);
+  }, [purpose, remember]);
 
   const close = useCallback(async () => {
     const current = link;
@@ -93,12 +103,14 @@ export function usePhoneLink(onScan: (code: string, quantity: number) => void) {
         setLink((prev) =>
           next && prev && prev.session.connected === next.session.connected && prev.session.closed === next.session.closed ? prev : next,
         );
-        saveLink(next);
+        saveLink(purpose, next);
+        if (!next) onEndedRef.current?.();
       } catch (error) {
         // The session is gone (cleared, other organization): stop asking.
         if (!stopped && error instanceof ApiError && error.status === 404) {
           setLink(null);
-          saveLink(null);
+          saveLink(purpose, null);
+          onEndedRef.current?.();
         }
       } finally {
         busy = false;
@@ -110,7 +122,7 @@ export function usePhoneLink(onScan: (code: string, quantity: number) => void) {
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [sessionId]);
+  }, [purpose, sessionId]);
 
   return { link, session: link?.session ?? null, open, close };
 }
@@ -120,10 +132,12 @@ export function PhoneScannerDialog({
   link,
   onOpen,
   onCancel,
+  purpose = 'sale',
 }: {
   link: PhoneLink | null;
   onOpen: () => Promise<PhoneLink>;
   onCancel: () => void;
+  purpose?: ScannerPurpose;
 }) {
   const { t } = useAppContent();
   const [qr, setQr] = useState<string | null>(null);
@@ -150,23 +164,27 @@ export function PhoneScannerDialog({
   }, []);
 
   const url = link?.token ? scannerLink(link.token) : '';
+  // A phone cannot open "localhost": the counter must use its network or public address.
+  const onlyThisComputer = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
+  const items = purpose === 'items';
   return (
     <Modal
       open
-      title={t('pos.phone.title')}
-      subtitle={t('pos.phone.subtitle')}
+      title={items ? t('pos.phone.itemsTitle') : t('pos.phone.title')}
+      subtitle={items ? t('pos.phone.itemsSubtitle') : t('pos.phone.subtitle')}
       size="sm"
       onClose={onCancel}
       footer={<Button onClick={onCancel}>{t('pos.phone.cancel')}</Button>}
     >
       <FormError message={error} />
+      {onlyThisComputer ? <p className="pos-camera-error">{t('pos.phone.localhostWarning')}</p> : null}
       <div className="pos-phone-qr">
         {qr ? <img src={qr} alt={t('pos.phone.qrAlt')} width={240} height={240} /> : !error ? <p>{t('pos.phone.preparing')}</p> : null}
       </div>
       <ol className="pos-phone-steps">
         <li>{t('pos.phone.step1')}</li>
         <li>{t('pos.phone.step2')}</li>
-        <li>{t('pos.phone.step3')}</li>
+        <li>{items ? t('pos.phone.itemsStep3') : t('pos.phone.step3')}</li>
       </ol>
       {url ? (
         <p className="pos-phone-link">
