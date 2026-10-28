@@ -192,6 +192,8 @@ TEXTS = {
     "pos.scan.createdLine": "{name} created (stock {stock})",
     "pos.scan.recent": "Recent",
     "pos.scan.pointCameraItems": "Point the camera at a product to add it.",
+    "pos.help.open": "How to use",
+    "pos.help.print": "Print / save as PDF",
 }
 
 if __name__ == "__main__":

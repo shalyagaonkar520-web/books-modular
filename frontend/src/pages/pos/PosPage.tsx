@@ -200,6 +200,9 @@ export function PosPage() {
             <Link className="btn btn-secondary btn-sm" to="/pos/sales">
               <span>{t('pos.salesAndDayEnd')}</span>
             </Link>
+            <Link className="btn btn-ghost btn-sm" to="/pos/help">
+              <span>{t('pos.help.open')}</span>
+            </Link>
             {isAdmin ? (
               <Link className="btn btn-ghost btn-sm" to="/pos/settings">
                 <span>{t('pos.settings.title')}</span>

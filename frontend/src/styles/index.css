@@ -4593,3 +4593,57 @@ input[type='password']::-ms-clear {
 .phone-items-banner {
   margin-top: 0;
 }
+
+/* The Point of Sale manual (How to use). */
+.pos-help .pos-header-actions {
+  margin-bottom: 12px;
+}
+
+.pos-manual {
+  max-width: 860px;
+  padding: 20px 24px;
+  line-height: 1.6;
+}
+
+.pos-manual:hover {
+  transform: none;
+}
+
+.pos-manual h1 {
+  margin-top: 0;
+  font-size: 1.6rem;
+}
+
+.pos-manual h2 {
+  margin-top: 28px;
+  font-size: 1.25rem;
+}
+
+.pos-manual h3 {
+  margin-top: 20px;
+  font-size: 1.05rem;
+}
+
+.pos-manual li {
+  margin: 4px 0;
+}
+
+.pos-manual hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 24px 0;
+}
+
+.pos-manual code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-alt);
+  font-size: 0.875em;
+}
+
+@media print {
+  .pos-manual {
+    max-width: none;
+    padding: 0;
+  }
+}
