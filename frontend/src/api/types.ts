@@ -25,6 +25,8 @@ export interface User {
   customRoleId?: string | null;
   customRoleName?: string | null;
   permissions?: Record<string, 'none' | 'view' | 'edit'> | null;
+  /** The organization's custom plan features; null/absent = every feature. */
+  planFeatures?: string[] | null;
 }
 
 /** What the accept-invite page shows before asking the invitee to set a password. */

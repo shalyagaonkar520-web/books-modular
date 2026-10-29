@@ -141,3 +141,54 @@ def test_requests_chat_between_panel_and_platform(client, org):
         json={"planKey": "custom", "users": 150, "modules": ["pos"], "paymentReference": "UTR999"},
     )
     assert paid.status_code == 200 and paid.json()["pendingRequest"]["maxUsers"] == 150
+
+
+def test_custom_plan_limits_the_organization_to_its_features(client, org):
+    h, sa = org["h"], org["sa"]
+    catalog = client.get("/api/subscription/plans", headers=h).json()
+    assert len(catalog["features"]) == 35
+    assert {f["key"] for f in catalog["features"] if f["core"]} == {
+        "customers",
+        "invoices",
+        "paymentsReceived",
+        "items",
+        "pos",
+        "accounting",
+        "reports",
+    }
+    req = client.post(
+        "/api/subscription/plan-request",
+        headers=h,
+        json={"planKey": "custom", "users": 20, "modules": ["gst", "deliveryChallans"], "paymentReference": "UTR555"},
+    )
+    assert req.status_code == 200, req.text
+    assert req.json()["pendingRequest"]["features"] == [
+        "customers",
+        "deliveryChallans",
+        "invoices",
+        "paymentsReceived",
+        "pos",
+        "items",
+        "accounting",
+        "gst",
+        "reports",
+    ]
+    assert client.post(f"/api/platform/organizations/{org['id']}/subscription/approve", headers=sa).status_code == 200
+
+    sub = client.get("/api/subscription", headers=h).json()
+    assert "gst" in sub["planFeatures"] and "payroll" not in sub["planFeatures"]
+    me = client.get("/api/auth/me", headers=h).json()["user"]
+    assert "deliveryChallans" in me["planFeatures"]
+    # In the plan (chosen or core): open. Outside it: closed, even to the admin.
+    assert client.get("/api/gst/filing-calendar", headers=h).status_code == 200
+    assert client.get("/api/delivery-challans", headers=h).status_code == 200
+    assert client.get("/api/invoices", headers=h).status_code == 200
+    closed = client.get("/api/payroll/employees", headers=h)
+    assert closed.status_code == 403 and "not part of your organization's plan" in closed.json()["detail"]
+    assert client.get("/api/sales-orders", headers=h).status_code == 403
+    # Lookups other screens need stay readable.
+    assert client.get("/api/items", headers=h).status_code == 200
+    # Moving to a plan with every feature opens everything again.
+    later = (datetime.now(UTC) + timedelta(days=30)).isoformat()
+    client.put(f"/api/platform/organizations/{org['id']}/plan", headers=sa, json={"planKey": "u100", "maxUsers": 100, "planEndsAt": later})
+    assert client.get("/api/payroll/employees", headers=h).status_code == 200

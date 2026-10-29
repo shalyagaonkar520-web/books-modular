@@ -97,28 +97,32 @@ def quote(
     """Price of a plan: {planKey, maxUsers, modules, billingCycle, monthlyPrice, planPrice}."""
     if billing_cycle not in ("monthly", "yearly"):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Billing cycle must be monthly or yearly.")
+    from backend.services import permissions
+
     cfg = config(db)
-    every = list(module_pricing.module_keys())
+    every = list(permissions.FEATURE_KEYS)
+    features: Optional[List[str]] = None
     if plan_key == CUSTOM:
         if users is None or not 1 <= users <= MAX_USERS:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Choose between 1 and {MAX_USERS} users.")
-        chosen = [k for k in every if k in set(modules or [])]
         unknown = sorted(set(modules or []) - set(every))
         if unknown:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Unknown feature(s): {', '.join(unknown)}")
-        chosen = sorted(set(chosen) | set(module_pricing.core_keys()), key=every.index)
-        monthly = max(float(cfg["customMinimum"]), math.ceil(_base_for_users(cfg, users) * len(chosen) / len(every)))
+        features = sorted(set(modules or []) | set(permissions.CORE_FEATURES), key=every.index)
+        monthly = max(float(cfg["customMinimum"]), math.ceil(_base_for_users(cfg, users) * len(features) / len(every)))
         max_users = users
     else:
         t = tier(db, plan_key)
         if t is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown plan.")
-        chosen, monthly, max_users = every, float(t["monthly"]), int(t["users"])
+        monthly, max_users = float(t["monthly"]), int(t["users"])
     plan_price = monthly * (float(cfg["yearlyMonths"]) if billing_cycle == "yearly" else 1)
     return {
         "planKey": plan_key,
         "maxUsers": max_users,
-        "modules": chosen,
+        # Every module stays switched on; a custom plan is limited by ``features``.
+        "modules": list(module_pricing.module_keys()),
+        "features": features,
         "billingCycle": billing_cycle,
         "monthlyPrice": round(monthly, 2),
         "planPrice": round(plan_price, 2),
@@ -127,11 +131,12 @@ def quote(
 
 def catalog(db: Session) -> Dict[str, Any]:
     """What the plan page shows: plans, custom rules, the features to choose from and how to pay."""
+    from backend.services import permissions
+
     cfg = config(db)
-    pricing = module_pricing.catalog()
     return {
         **cfg,
-        "features": [{"key": m["key"], "label": m["label"], "core": bool(m.get("core"))} for m in pricing["modules"]],
+        "features": [{**f, "core": f["key"] in permissions.CORE_FEATURES} for f in permissions.catalog()],
     }
 
 

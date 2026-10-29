@@ -4,6 +4,9 @@
  * backend/services/permissions.py, which enforces the same rules on the API.
  */
 export type AccessLevel = 'none' | 'view' | 'edit';
+
+/** In every plan (backend permissions.CORE_FEATURES). */
+export const CORE_FEATURES = ['customers', 'invoices', 'paymentsReceived', 'items', 'pos', 'accounting', 'reports'];
 export type Permissions = Record<string, AccessLevel>;
 
 /** Page prefix -> feature key. Pages not listed (dashboard, profile, settings) are not role-controlled. */

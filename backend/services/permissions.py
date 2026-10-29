@@ -91,6 +91,8 @@ FEATURES: Tuple[PermissionFeature, ...] = (
     PermissionFeature("integrations", "Integrations (Tally, WhatsApp)", "Setup", ("/api/integrations",)),
 )
 FEATURE_KEYS = tuple(f.key for f in FEATURES)
+# Part of every plan: the books cannot work without them.
+CORE_FEATURES = ("customers", "invoices", "paymentsReceived", "items", "pos", "accounting", "reports")
 
 # Never open to a custom role: managing people, roles, the company and its plan.
 ADMIN_ONLY = ("/api/users", "/api/roles", "/api/audit-logs", "/api/subscription", "/api/document-branding", "/api/organization/lock-date")
@@ -180,3 +182,20 @@ def request_error(permissions: Dict[str, str], method: str, path: str, admin_onl
 
 def catalog() -> list:
     return [{"key": f.key, "label": f.label, "group": f.group} for f in FEATURES]
+
+
+def plan_error(plan_features, method: str, path: str) -> Optional[str]:
+    """Why the organization's custom plan does not cover this request (the 403 detail), else None.
+
+    ``plan_features``: the plan's feature keys, or None for every feature.
+    Lookups other screens need stay readable, as for custom roles.
+    """
+    if plan_features is None:
+        return None
+    feature = feature_for_path(path)
+    if feature is None or feature in plan_features or feature in CORE_FEATURES:
+        return None
+    if method.upper() in ("GET", "HEAD", "OPTIONS") and any(_under(path, p) for p in ALWAYS_READABLE):
+        return None
+    label = next(f.label for f in FEATURES if f.key == feature)
+    return f"{label} is not part of your organization's plan. Your admin can add it by changing the plan."

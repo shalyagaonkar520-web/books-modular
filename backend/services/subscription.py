@@ -146,6 +146,7 @@ def pending_request(org: Organization) -> Optional[Dict[str, Any]]:
         "planKey": data.get("planKey"),
         "maxUsers": data.get("maxUsers"),
         "paymentReference": data.get("paymentReference"),
+        "features": data.get("features"),
     }
 
 
@@ -233,6 +234,7 @@ def set_plan(
     org.plan_key = plan_key
     org.max_users = max_users
     org.plan_ends_at = plan_ends_at
+    org.plan_features = None
     org.subscription_status = STATUS_ACTIVE
     org.subscription_decided_at = now
     org.subscription_note = None
@@ -269,6 +271,7 @@ def approve(
             org.plan_price = Decimal(str(pending["planPrice"]))
             priced = {**priced, "monthlyPrice": pending["monthlyPrice"], "planPrice": pending["planPrice"]}
         org.plan_ends_at = period_end(org, cycle, now)
+        org.plan_features = json.dumps(pending["features"]) if pending.get("features") else None
         org.plan_key = pending["planKey"]
         org.max_users = pending.get("maxUsers")
         org.subscription_status = STATUS_ACTIVE
@@ -305,6 +308,7 @@ def cancel_plan(db: Session, org: Organization, now: Optional[datetime] = None) 
     org.plan_key = None
     org.max_users = None
     org.plan_ends_at = None
+    org.plan_features = None
     org.subscription_decided_at = now
     set_org_modules(db, org.id, module_pricing.module_keys())
 
@@ -329,6 +333,7 @@ def summary(org: Organization, user: Optional[User] = None, now: Optional[dateti
         "maxUsers": org.max_users,
         "planEndsAt": org.plan_ends_at,
         "planDaysLeft": plan_days_left(org, now),
+        "planFeatures": plan_features(org),
         **_usage(org),
     }
 
@@ -342,6 +347,17 @@ def _usage(org: Organization) -> Dict[str, Any]:
     if db is None:
         return {}
     return {"usersUsed": plans.users_used(db, org.id), "userLimit": plans.user_limit(db, org)}
+
+
+def plan_features(org: Optional[Organization]) -> Optional[list]:
+    """The custom plan's features while it is active, or None (every feature)."""
+    if org is None or not org.plan_features or org.subscription_status != STATUS_ACTIVE:
+        return None
+    try:
+        keys = json.loads(org.plan_features)
+    except ValueError:
+        return None
+    return [str(k) for k in keys] if isinstance(keys, list) else None
 
 
 def plan_days_left(org: Organization, now: Optional[datetime] = None) -> Optional[int]:

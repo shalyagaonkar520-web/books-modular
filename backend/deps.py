@@ -251,6 +251,10 @@ def require_roles(*roles: str):
     allowed: Iterable[str] = roles or ALL_ROLES
 
     def _guard(request: Request, user: User = Depends(get_current_user)) -> User:
+        # A custom plan closes the features it does not include, for every role.
+        plan_error = permissions.plan_error(subscription.plan_features(user.organization), request.method, request.url.path)
+        if plan_error:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=plan_error)
         if user.role == ROLE_CUSTOM:
             # A custom role is judged by what it allows for this request's
             # feature (View to read, Edit to change), not by the role list.

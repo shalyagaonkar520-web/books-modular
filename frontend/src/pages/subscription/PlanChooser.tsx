@@ -37,6 +37,12 @@ function Chooser({ catalog, planApi, onDone, currentUsers }: { catalog: PlanCata
     [catalog, planKey, cycle, users, features],
   );
   const tooFewUsers = quote !== null && currentUsers !== undefined && quote.maxUsers < currentUsers;
+  const chosenCount = catalog.features.filter((f) => f.core || features.has(f.key)).length;
+  const groups = useMemo(() => {
+    const out = new Map<string, PlanCatalog['features']>();
+    catalog.features.forEach((f) => out.set(f.group ?? 'Features', [...(out.get(f.group ?? 'Features') ?? []), f]));
+    return [...out.entries()];
+  }, [catalog.features]);
 
   useEffect(() => {
     setQr(null);
@@ -123,31 +129,46 @@ function Chooser({ catalog, planApi, onDone, currentUsers }: { catalog: PlanCata
         <div className="plan-custom stack">
           <TextField label="How many users?" type="number" min="1" max="100000" value={users} onChange={(e) => setUsers(e.target.value)} hint="Logins your team needs. You can ask for more later." />
           <fieldset className="plan-features">
-            <legend className="field-label">Features</legend>
-            <div className="form-grid-3">
-              {catalog.features.map((f) => (
-                <label key={f.key} className="checkbox-field">
-                  <input
-                    type="checkbox"
-                    className="checkbox"
-                    checked={f.core || features.has(f.key)}
-                    disabled={f.core}
-                    onChange={(e) =>
-                      setFeatures((current) => {
-                        const next = new Set(current);
-                        if (e.target.checked) next.add(f.key);
-                        else next.delete(f.key);
-                        return next;
-                      })
-                    }
-                  />
-                  <span>
-                    {f.label}
-                    {f.core ? <span className="field-hint">Always included</span> : null}
-                  </span>
-                </label>
-              ))}
+            <legend className="field-label">
+              Features ({chosenCount} of {catalog.features.length})
+            </legend>
+            <div className="row-actions plan-features-quick">
+              <button type="button" className="btn-link small" onClick={() => setFeatures(new Set(catalog.features.map((f) => f.key)))}>
+                Select all
+              </button>
+              <button type="button" className="btn-link small" onClick={() => setFeatures(new Set())}>
+                Only the core features
+              </button>
             </div>
+            {groups.map(([group, list]) => (
+              <div key={group} className="plan-feature-group">
+                <strong className="small">{group}</strong>
+                <div className="form-grid-3">
+                  {list.map((f) => (
+                    <label key={f.key} className="checkbox-field">
+                      <input
+                        type="checkbox"
+                        className="checkbox"
+                        checked={f.core || features.has(f.key)}
+                        disabled={f.core}
+                        onChange={(e) =>
+                          setFeatures((current) => {
+                            const next = new Set(current);
+                            if (e.target.checked) next.add(f.key);
+                            else next.delete(f.key);
+                            return next;
+                          })
+                        }
+                      />
+                      <span className="plan-feature-label">
+                        <span>{f.label}</span>
+                        {f.core ? <span className="field-hint">Always included</span> : null}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
           </fieldset>
         </div>
       ) : null}

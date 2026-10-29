@@ -172,6 +172,9 @@ class Organization(TimestampMixin, Base):
     plan_key: Mapped[Optional[str]] = mapped_column(String(20))
     max_users: Mapped[Optional[int]] = mapped_column(Integer)
     plan_ends_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # A custom plan's features (services/permissions keys, JSON list): anything
+    # else is closed to everyone in the organization. NULL = every feature.
+    plan_features: Mapped[Optional[str]] = mapped_column(Text)
 
     @property
     def is_archived(self) -> bool:
@@ -212,6 +215,12 @@ class User(TimestampMixin, OrgScopedMixin, Base):
     @property
     def custom_role_name(self) -> Optional[str]:
         return self.custom_role.name if self.role == "custom" and self.custom_role else None
+
+    @property
+    def plan_features(self) -> Optional[list]:
+        from backend.services import subscription
+
+        return subscription.plan_features(self.organization)
 
     @property
     def permissions(self) -> Optional[dict]:

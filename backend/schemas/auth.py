@@ -137,6 +137,8 @@ class UserOut(APIModel):
     custom_role_id: Optional[str] = None
     custom_role_name: Optional[str] = None
     permissions: Optional[Dict[str, str]] = None
+    # The organization's custom plan features; None = every feature.
+    plan_features: Optional[List[str]] = None
 
     @field_validator("module_access", mode="before")
     @classmethod

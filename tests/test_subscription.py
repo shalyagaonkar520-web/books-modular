@@ -242,6 +242,7 @@ def test_existing_org_is_unaffected(client):
         "maxUsers": None,
         "planEndsAt": None,
         "planDaysLeft": None,
+        "planFeatures": None,
         "usersUsed": 1,
         "userLimit": None,
     }

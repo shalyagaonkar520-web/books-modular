@@ -5,7 +5,7 @@ import { onUnauthorized, setAccessToken } from '@/api/client';
 import { authApi, orgApi } from '@/api/endpoints';
 import { isRegisterPending, type Organization, type Role, type User } from '@/api/types';
 
-import { accessFor, featureForPath, type AccessLevel } from '@/utils/permissions';
+import { CORE_FEATURES, accessFor, featureForPath, type AccessLevel } from '@/utils/permissions';
 
 import { clearWorkspace } from './workspace';
 
@@ -169,7 +169,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(() => {
     const role = user?.role;
     const custom = role === 'custom';
-    const access = (feature: string | null): AccessLevel => (custom ? accessFor(user?.permissions, feature) : 'edit');
+    // A custom plan closes the features it leaves out, for every role.
+    const inPlan = (feature: string | null) => !feature || !user?.planFeatures || user.planFeatures.includes(feature) || CORE_FEATURES.includes(feature);
+    const access = (feature: string | null): AccessLevel => (!inPlan(feature) ? 'none' : custom ? accessFor(user?.permissions, feature) : 'edit');
     const here = access(featureForPath(pathname));
     return {
       user,
@@ -185,8 +187,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       can: (...roles: Role[]) =>
         custom
           ? (here === 'edit' && (roles.includes('admin') || roles.includes('staff'))) || (here !== 'none' && roles.includes('viewer'))
-          : !!role && roles.includes(role),
-      canWrite: role === 'admin' || role === 'staff' || (custom && here === 'edit'),
+          : here !== 'none' && !!role && roles.includes(role),
+      canWrite: here === 'edit' && (role === 'admin' || role === 'staff' || custom),
       isAdmin: role === 'admin',
       isStaff: role === 'staff',
       isEmployee: role === 'employee',

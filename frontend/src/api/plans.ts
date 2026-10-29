@@ -23,7 +23,8 @@ export interface PlanCatalog {
   customMinimum: number;
   yearlyMonths: number;
   payment: { upiId: string; payeeName: string; bankDetails: string; note: string };
-  features: Array<{ key: string; label: string; core: boolean }>;
+  /** Every feature (the same keys as custom roles), grouped; core ones are in every plan. */
+  features: Array<{ key: string; label: string; group?: string; core: boolean }>;
 }
 
 export interface PlanQuote {

@@ -5031,3 +5031,23 @@ input[type='password']::-ms-clear {
     grid-template-columns: 1fr;
   }
 }
+
+.plan-features-quick {
+  justify-content: flex-start;
+  gap: 16px;
+  margin-bottom: 6px;
+}
+
+.plan-feature-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.plan-feature-label {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}

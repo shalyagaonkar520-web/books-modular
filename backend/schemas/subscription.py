@@ -26,6 +26,7 @@ class SubscriptionPendingOut(SubscriptionPlanOut):
     plan_key: Optional[str] = None
     max_users: Optional[int] = None
     payment_reference: Optional[str] = None
+    features: Optional[List[str]] = None
 
 
 class SubscriptionRejectionOut(APIModel):
@@ -48,6 +49,8 @@ class SubscriptionOut(APIModel):
     max_users: Optional[int] = None
     plan_ends_at: Optional[datetime] = None
     plan_days_left: Optional[int] = None
+    # A custom plan's features; None = every feature.
+    plan_features: Optional[List[str]] = None
     # Logins in use and the most allowed now (the plan's, or the trial's); None = no cap.
     users_used: int = 0
     user_limit: Optional[int] = None
