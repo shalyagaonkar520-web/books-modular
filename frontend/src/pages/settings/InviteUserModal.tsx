@@ -18,18 +18,25 @@ import { EDITABLE_MODULES } from './moduleAccess';
 interface InviteUserModalProps {
   onClose: () => void;
   onInvited: () => void;
+  /** Offer "Create a custom role…": the dialog closes and the role editor opens. */
+  onCreateRole?: () => void;
+  /** Start with this role chosen (e.g. "custom:<id>" right after creating it). */
+  initialRole?: string;
+  /** Keep what was typed when coming back from creating a role. */
+  initialName?: string;
+  initialEmail?: string;
 }
 
-export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
+export function InviteUserModal({ onClose, onInvited, onCreateRole, initialRole, initialName, initialEmail }: InviteUserModalProps) {
   const { t } = useAppContent();
   const toast = useToast();
   const orgApi = useScopedOrgApi();
   // The org admin panel has no payroll, so it cannot link a portal-only employee.
   const { employeeInvites, customInvites, customRoles } = useApiScope().capabilities;
   const { submitting, error, fieldErrors, run, setError } = useSubmit();
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState('staff');
+  const [name, setName] = useState(initialName ?? '');
+  const [email, setEmail] = useState(initialEmail ?? '');
+  const [role, setRole] = useState(initialRole ?? 'staff');
   const [employeeId, setEmployeeId] = useState('');
   // "custom" = a staff user who may edit only the ticked modules.
   const [chosen, setChosen] = useState<Set<string>>(() => new Set());
@@ -134,8 +141,13 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
             ...(customInvites && !customRoles ? [{ value: 'custom', label: 'Custom — choose which modules they can edit' }] : []),
             ...(orgRoles.data ?? []).map((r) => ({ value: `custom:${r.id}`, label: t('settings.invite.role.custom', { name: r.name }) })),
             ...(employeeInvites ? [{ value: 'employee', label: t('settings.invite.role.employee') }] : []),
+            ...(onCreateRole ? [{ value: '__new_role__', label: t('settings.invite.createRole') }] : []),
           ]}
           onChange={(event) => {
+            if (event.target.value === '__new_role__') {
+              onCreateRole?.();
+              return;
+            }
             setRole(event.target.value);
             setEmployeeId('');
           }}

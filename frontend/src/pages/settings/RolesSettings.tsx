@@ -1,5 +1,5 @@
 /** Custom roles (Settings → Users & roles): name a role and click No access / View / Edit for each feature. */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 
 import { useScopedOrgApi, type OrgRole, type RoleFeature } from '@/api/ApiScope';
@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState, ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { TextField } from '@/components/ui/Field';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
+import { Switch } from '@/components/ui/Switch';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
@@ -22,7 +23,16 @@ function summary(role: OrgRole, t: (key: string, vars?: Record<string, string | 
   return t('settings.roles.summary', { edit: values.filter((v) => v === 'edit').length, view: values.filter((v) => v === 'view').length });
 }
 
-export function RolesSettings({ onChanged }: { onChanged: () => void }) {
+interface RolesSettingsProps {
+  onChanged: () => void;
+  /** Bump to open the "New role" editor from elsewhere (the invite dialog). */
+  newRoleSignal?: number;
+  /** A role made from such a request: hand it back. */
+  onCreatedFromRequest?: (role: OrgRole) => void;
+  onRequestClosed?: () => void;
+}
+
+export function RolesSettings({ onChanged, newRoleSignal = 0, onCreatedFromRequest, onRequestClosed }: RolesSettingsProps) {
   const { t } = useAppContent();
   const toast = useToast();
   const orgApi = useScopedOrgApi();
@@ -30,6 +40,13 @@ export function RolesSettings({ onChanged }: { onChanged: () => void }) {
   const catalog = useAsync(() => orgApi.roleCatalog(), []);
   const [editing, setEditing] = useState<OrgRole | 'new' | null>(null);
   const [deleting, setDeleting] = useState<OrgRole | null>(null);
+  const [fromRequest, setFromRequest] = useState(false);
+  useEffect(() => {
+    if (newRoleSignal > 0) {
+      setFromRequest(true);
+      setEditing('new');
+    }
+  }, [newRoleSignal]);
   const remove = useSubmit();
 
   const confirmDelete = async () => {
@@ -114,11 +131,21 @@ export function RolesSettings({ onChanged }: { onChanged: () => void }) {
         <RoleEditor
           role={editing === 'new' ? null : editing}
           catalog={catalog.data}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
+          onClose={() => {
+            setEditing(null);
+            if (fromRequest) {
+              setFromRequest(false);
+              onRequestClosed?.();
+            }
+          }}
+          onSaved={(saved) => {
             setEditing(null);
             roles.reload();
             onChanged();
+            if (fromRequest) {
+              setFromRequest(false);
+              onCreatedFromRequest?.(saved);
+            }
           }}
         />
       ) : null}
@@ -135,7 +162,7 @@ export function RolesSettings({ onChanged }: { onChanged: () => void }) {
   );
 }
 
-function RoleEditor({ role, catalog, onClose, onSaved }: { role: OrgRole | null; catalog: RoleFeature[]; onClose: () => void; onSaved: () => void }) {
+function RoleEditor({ role, catalog, onClose, onSaved }: { role: OrgRole | null; catalog: RoleFeature[]; onClose: () => void; onSaved: (saved: OrgRole) => void }) {
   const { t } = useAppContent();
   const toast = useToast();
   const orgApi = useScopedOrgApi();
@@ -158,7 +185,7 @@ function RoleEditor({ role, catalog, onClose, onSaved }: { role: OrgRole | null;
     const saved = await run(() => (role ? orgApi.updateRole(role.id, body) : orgApi.createRole(body)));
     if (saved) {
       toast.success(t(role ? 'settings.roles.updated' : 'settings.roles.created', { name: saved.name }));
-      onSaved();
+      onSaved(saved);
     }
   };
 
@@ -209,19 +236,25 @@ function RoleEditor({ role, catalog, onClose, onSaved }: { role: OrgRole | null;
             {features.map((feature) => (
               <div key={feature.key} className="role-row">
                 <span>{feature.label}</span>
-                <div className="segmented" role="radiogroup" aria-label={feature.label}>
-                  {LEVELS.map((level) => (
-                    <button
-                      key={level}
-                      type="button"
-                      role="radio"
-                      aria-checked={perms[feature.key] === level}
-                      className={`segmented-option is-${level} ${perms[feature.key] === level ? 'is-active' : ''}`}
-                      onClick={() => setPerms((current) => ({ ...current, [feature.key]: level }))}
-                    >
-                      {t(`settings.roles.level.${level}`)}
-                    </button>
-                  ))}
+                <div className="switch-pair">
+                  {perms[feature.key] !== 'none' ? (
+                    <>
+                      <span className="small text-muted">{t('settings.roles.canEdit')}</span>
+                      <Switch
+                        small
+                        label={`${feature.label}: ${t('settings.roles.canEdit')}`}
+                        checked={perms[feature.key] === 'edit'}
+                        onText={t('settings.roles.level.edit')}
+                        offText={t('settings.roles.level.view')}
+                        onChange={(edit) => setPerms((current) => ({ ...current, [feature.key]: edit ? 'edit' : 'view' }))}
+                      />
+                    </>
+                  ) : null}
+                  <Switch
+                    label={feature.label}
+                    checked={perms[feature.key] !== 'none'}
+                    onChange={(on) => setPerms((current) => ({ ...current, [feature.key]: on ? 'edit' : 'none' }))}
+                  />
                 </div>
               </div>
             ))}

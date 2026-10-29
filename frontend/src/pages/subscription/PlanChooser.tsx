@@ -11,6 +11,7 @@ import { formatRupees, quotePlan, type Cycle, type PlanApi, type PlanCatalog, ty
 import { Button } from '@/components/ui/Button';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { TextField } from '@/components/ui/Field';
+import { Switch } from '@/components/ui/Switch';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 
@@ -145,26 +146,25 @@ function Chooser({ catalog, planApi, onDone, currentUsers }: { catalog: PlanCata
                 <strong className="small">{group}</strong>
                 <div className="form-grid-3">
                   {list.map((f) => (
-                    <label key={f.key} className="checkbox-field">
-                      <input
-                        type="checkbox"
-                        className="checkbox"
+                    <div key={f.key} className="plan-switch-row">
+                      <span className="plan-feature-label">
+                        <span>{f.label}</span>
+                        {f.core ? <span className="field-hint">Always included</span> : null}
+                      </span>
+                      <Switch
+                        label={f.label}
                         checked={f.core || features.has(f.key)}
                         disabled={f.core}
-                        onChange={(e) =>
+                        onChange={(on) =>
                           setFeatures((current) => {
                             const next = new Set(current);
-                            if (e.target.checked) next.add(f.key);
+                            if (on) next.add(f.key);
                             else next.delete(f.key);
                             return next;
                           })
                         }
                       />
-                      <span className="plan-feature-label">
-                        <span>{f.label}</span>
-                        {f.core ? <span className="field-hint">Always included</span> : null}
-                      </span>
-                    </label>
+                    </div>
                   ))}
                 </div>
               </div>

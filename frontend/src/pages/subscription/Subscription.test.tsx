@@ -173,8 +173,8 @@ describe('Subscription page', () => {
     const toPay = () => screen.getByText('To pay now').parentElement as HTMLElement;
     expect(toPay()).toHaveTextContent('₹299');
     // Core features stay ticked; dropping one of two optional features halves the price (never below ₹99).
-    expect(screen.getByRole('checkbox', { name: /Invoices/ })).toBeDisabled();
-    fireEvent.click(screen.getByRole('checkbox', { name: /Payroll/ }));
+    expect(screen.getByRole('switch', { name: /Invoices/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('switch', { name: /Payroll/ }));
     expect(toPay()).toHaveTextContent('₹225');
   });
 

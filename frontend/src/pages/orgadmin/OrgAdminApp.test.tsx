@@ -305,7 +305,7 @@ describe('Organization admin panel', () => {
     const role = within(dialog).getByLabelText(/^Role/) as HTMLSelectElement;
     // Employee invites need the payroll employee list, which the panel does not have.
     // ...but it can invite with one of the organization's custom roles.
-    await waitFor(() => expect(Array.from(role.options).map((option) => option.value)).toEqual(['admin', 'staff', 'viewer', 'custom:r1']));
+    await waitFor(() => expect(Array.from(role.options).map((option) => option.value)).toEqual(['admin', 'staff', 'viewer', 'custom:r1', '__new_role__']));
     expect(calls.some((call) => call.path.startsWith('/api/payroll'))).toBe(false);
     fireEvent.change(within(dialog).getByLabelText(/^Full name/), { target: { value: 'Arun Rao' } });
     fireEvent.change(within(dialog).getByLabelText(/^Email/), { target: { value: 'arun@example.com' } });

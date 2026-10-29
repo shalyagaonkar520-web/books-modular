@@ -53,6 +53,9 @@ export function UsersSettings({ onViewUser }: UsersSettingsProps = {}) {
   const [viewingUser, setViewingUser] = useState<User | null>(null);
   const openUser = onViewUser ?? (canView && isAdmin ? setViewingUser : null);
   const [inviting, setInviting] = useState(false);
+  // "Create a custom role…" from the invite: open the role editor, then come back with the new role chosen.
+  const [newRoleSignal, setNewRoleSignal] = useState(0);
+  const [inviteDraft, setInviteDraft] = useState<{ role?: string } | null>(null);
   const [resetting, setResetting] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -247,11 +250,37 @@ export function UsersSettings({ onViewUser }: UsersSettingsProps = {}) {
             customRoles.reload();
             reload();
           }}
+          newRoleSignal={newRoleSignal}
+          onCreatedFromRequest={(role) => {
+            setInviteDraft({ role: `custom:${role.id}` });
+            setInviting(true);
+          }}
+          onRequestClosed={() => {
+            setInviteDraft(null);
+            setInviting(true);
+          }}
         />
       ) : null}
 
       {viewingUser && canView ? <UserDashboardModal user={viewingUser} onClose={() => setViewingUser(null)} /> : null}
-      {inviting ? <InviteUserModal onClose={() => setInviting(false)} onInvited={reload} /> : null}
+      {inviting ? (
+        <InviteUserModal
+          initialRole={inviteDraft?.role}
+          onClose={() => {
+            setInviting(false);
+            setInviteDraft(null);
+          }}
+          onInvited={reload}
+          onCreateRole={
+            capabilities.customRoles
+              ? () => {
+                  setInviting(false);
+                  setNewRoleSignal((n) => n + 1);
+                }
+              : undefined
+          }
+        />
+      ) : null}
       {resetting ? <ResetPasswordModal user={resetting} onClose={() => setResetting(null)} /> : null}
 
       <ConfirmDialog

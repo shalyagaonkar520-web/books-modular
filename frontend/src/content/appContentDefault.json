@@ -4605,7 +4605,8 @@
     "settings.roles.edit": "Edit",
     "settings.roles.newTitle": "New role",
     "settings.roles.editTitle": "Edit role: {name}",
-    "settings.roles.editorSubtitle": "Click a level for each feature. No access hides it, View shows it read-only, Edit allows changes.",
+    "settings.roles.editorSubtitle": "Switch a feature On to give access, Off to hide it. When it is On, Can edit chooses between View (read-only) and Edit.",
+    "settings.roles.canEdit": "Can edit",
     "settings.roles.name": "Role name",
     "settings.roles.namePlaceholder": "e.g. Cashier, Accountant, Store manager",
     "settings.roles.description": "Description (optional)",
@@ -4632,6 +4633,8 @@
     "settings.export.subtitle": "Every record of your organization in one Excel file: customers, vendors, items, sales, purchases, payments, banking, the ledger, payroll and stock.",
     "settings.export.button": "Export to Excel",
     "settings.export.note": "Includes a trial balance and customer and vendor balances. One sheet per kind of record; passwords and keys are never included. Large organizations may take a minute.",
-    "settings.export.done": "Your books are downloading."
+    "settings.export.done": "Your books are downloading.",
+
+    "settings.invite.createRole": "＋ Create a custom role…"
   }
 }
