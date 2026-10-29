@@ -57,6 +57,29 @@ describe('LoginPage', () => {
     expect(await screen.findByText('Invalid email or password')).toBeInTheDocument();
   });
 
+  it('signs a super admin in to the platform console from the same form', async () => {
+    const { calls } = installMockApi({
+      'GET /api/auth/me': new Response(JSON.stringify({ detail: 'Not authenticated' }), { status: 401, headers: { 'content-type': 'application/json' } }),
+      'POST /api/auth/login': new Response(JSON.stringify({ detail: 'Invalid email or password' }), { status: 401, headers: { 'content-type': 'application/json' } }),
+      'POST /api/platform/auth/login': new Response(
+        JSON.stringify({ accessToken: 'p-token', admin: { id: 'a1', email: 'operator@example.com', name: 'Operator' } }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    });
+
+    renderWithProviders(<LoginPage />);
+
+    fireEvent.change(screen.getByLabelText(/work email/i), { target: { value: 'Operator@Example.com' } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'Op3rator-Pass!' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => {
+      const platform = calls.find((call) => call.path === '/api/platform/auth/login');
+      expect(platform?.body).toEqual({ email: 'operator@example.com', password: 'Op3rator-Pass!' });
+    });
+    expect(screen.queryByText('Invalid email or password')).not.toBeInTheDocument();
+  });
+
   it.each([
     ['PENDING_APPROVAL: Your organization is awaiting approval.', /awaiting approval/i, 'is-pending'],
     ['REGISTRATION_REJECTED: Your registration was rejected.', /registration not approved/i, 'is-rejected'],

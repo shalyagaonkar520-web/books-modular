@@ -16,7 +16,9 @@ import {
 
 import { useAppContent } from '@/app/AppContentContext';
 import { useAuth } from '@/auth/AuthContext';
+import { ApiError } from '@/api/client';
 import { authApi } from '@/api/endpoints';
+import { platformApi } from '@/api/platform';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/Field';
 import { FormError } from '@/components/ui/Feedback';
@@ -192,11 +194,27 @@ export function LoginPage() {
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    const result = await run(async () => {
-      await login(email.trim(), password);
-      return true;
+    const result = await run(async (): Promise<'app' | 'platform'> => {
+      try {
+        await login(email.trim(), password);
+        return 'app';
+      } catch (err) {
+        // Not a Books login: a super admin signs in here too and goes straight to the
+        // platform console (its session cookie is picked up when /platform opens).
+        if (err instanceof ApiError && err.status === 401) {
+          try {
+            await platformApi.auth.login({ email: email.trim().toLowerCase(), password });
+            return 'platform';
+          } catch {
+            // Neither login: show the Books error.
+          }
+        }
+        throw err;
+      }
     });
-    if (result) {
+    if (result === 'platform') {
+      navigate('/platform', { replace: true });
+    } else if (result) {
       const from = (location.state as { from?: string } | null)?.from;
       const destination = from && from !== '/login' ? from : isEmployee ? '/portal' : '/dashboard';
       navigate(destination, { replace: true });
