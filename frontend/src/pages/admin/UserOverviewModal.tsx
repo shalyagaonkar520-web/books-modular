@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Activity, AlertTriangle, Clock, FileText, IndianRupee, Lock, Receipt } from 'lucide-react';
 
-import { orgAdminApi, type OrgAdminUserOverview } from '@/api/orgAdmin';
+import { adminConsoleApi, type OrgAdminUserOverview } from '@/api/adminConsole';
 import type { AuditLog, User } from '@/api/types';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -63,7 +63,7 @@ function ModuleAccessEditor({ data, onSaved }: { data: OrgAdminUserOverview; onS
     });
 
   const changeRole = async (role: string) => {
-    const saved = await roleSubmit.run(() => orgAdminApi.updateUserRole(user.id, role));
+    const saved = await roleSubmit.run(() => adminConsoleApi.updateUserRole(user.id, role));
     if (saved) {
       toast.success(`${user.name} is now ${titleCase(role)}.`);
       onSaved();
@@ -72,7 +72,7 @@ function ModuleAccessEditor({ data, onSaved }: { data: OrgAdminUserOverview; onS
 
   const save = async () => {
     const body = restricted ? modules.map((module) => module.key).filter((key) => chosen.has(key) && inPlan(key)) : null;
-    const saved = await submit.run(() => orgAdminApi.setModuleAccess(user.id, body));
+    const saved = await submit.run(() => adminConsoleApi.setModuleAccess(user.id, body));
     if (saved) {
       toast.success(`Edit access saved for ${user.name}.`);
       onSaved();
@@ -242,7 +242,7 @@ const activityColumns: Array<Column<AuditLog>> = [
 /** Everything about one user of the organization, for its admin panel. */
 export function UserOverviewModal({ user, onClose }: { user: User; onClose: () => void }) {
   const [tab, setTab] = useState('overview');
-  const { data, loading, error, reload } = useAsync((signal) => orgAdminApi.userOverview(user.id, signal), [user.id]);
+  const { data, loading, error, reload } = useAsync((signal) => adminConsoleApi.userOverview(user.id, signal), [user.id]);
 
   let body: React.ReactNode;
   if (loading && !data) body = <LoadingBlock label="Loading user details…" />;

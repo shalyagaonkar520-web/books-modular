@@ -21,7 +21,6 @@ import { useNavigate } from 'react-router-dom';
 import {
   platformApi,
   type OrgDetail,
-  type OrgPanelAdminItem,
   type OrgSummary,
   type PlatformAudit,
   type PlatformInvoice,
@@ -48,7 +47,6 @@ import { formatCurrency, formatDate, formatDateTime, formatPercent, titleCase } 
 import { statusLabel, statusTone } from '@/utils/status';
 
 import { ImpersonateButton } from './ImpersonateButton';
-import { CreateAdminLoginButton, PanelLoginUrl, useResetPanelPassword } from './PanelAdminForms';
 import { ConnectedAppsTab } from './ConnectedAppsTab';
 import { OrgRolesTab } from './orgRoles';
 import { PanelContentAccessTab } from './PanelContentAccessTab';
@@ -101,15 +99,14 @@ interface OrgDetailDrawerProps {
   onChanged: () => void;
 }
 
-type TabId = 'overview' | 'settings' | 'users' | 'roles' | 'panel' | 'permissions' | 'apps' | 'invoices' | 'activity';
+type TabId = 'overview' | 'settings' | 'users' | 'roles' | 'permissions' | 'apps' | 'invoices' | 'activity';
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'settings', label: 'Settings' },
   { id: 'users', label: 'Users' },
   { id: 'roles', label: 'Roles' },
-  { id: 'panel', label: 'Admin panel logins' },
-  { id: 'permissions', label: 'Panel permissions' },
+  { id: 'permissions', label: 'App content access' },
   { id: 'apps', label: 'Connected apps' },
   { id: 'invoices', label: 'Invoices' },
   { id: 'activity', label: 'Activity' },
@@ -272,7 +269,6 @@ export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerPr
             />
           ) : null}
           {tab === 'roles' ? <OrgRolesTab orgId={orgId} /> : null}
-          {tab === 'panel' ? <PanelAdminsTab orgId={orgId} orgName={data.name} orgCode={data.code} /> : null}
           {tab === 'permissions' ? <PanelContentAccessTab orgId={orgId} orgName={data.name} /> : null}
           {tab === 'apps' ? <ConnectedAppsTab orgId={orgId} orgName={data.name} /> : null}
           {tab === 'invoices' ? <OrgInvoicesTab orgId={orgId} currency={data.currency} /> : null}
@@ -1027,189 +1023,6 @@ function OrgUsersTab({ orgId, orgName, onChanged }: { orgId: string; orgName: st
           )
         }
         confirmLabel="Delete user"
-        busy={deleteSubmit.submitting}
-        onConfirm={() => void confirmDelete()}
-        onCancel={() => setDeleting(null)}
-      />
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Admin panel logins tab
-// ---------------------------------------------------------------------------
-
-interface PanelAdminsTabProps {
-  orgId: string;
-  orgName: string;
-  orgCode?: string | null;
-}
-
-function PanelAdminsTab({ orgId, orgName, orgCode }: PanelAdminsTabProps) {
-  const toast = useToast();
-  const list = useAsync((signal) => platformApi.organizations.panelAdmins.list(orgId, signal), [orgId]);
-  const [deleting, setDeleting] = useState<OrgPanelAdminItem | null>(null);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
-  const toggleSubmit = useSubmit();
-  const deleteSubmit = useSubmit();
-  const dismissSubmit = useSubmit();
-  const passwordReset = useResetPanelPassword(orgName, list.reload);
-
-  const rows = list.data ?? [];
-
-  const toggleActive = async (admin: OrgPanelAdminItem) => {
-    setTogglingId(admin.id);
-    const updated = await toggleSubmit.run(() => platformApi.organizations.panelAdmins.update(admin.id, { isActive: !admin.isActive }));
-    setTogglingId(null);
-    if (updated) {
-      toast.success(updated.isActive ? `${updated.email} can sign in to the admin panel again.` : `${updated.email} was disabled.`);
-      list.reload();
-    } else if (toggleSubmit.errorRef.current) {
-      toast.error(toggleSubmit.errorRef.current);
-    }
-  };
-
-  const dismissRequest = async (admin: OrgPanelAdminItem) => {
-    const updated = await dismissSubmit.run(() => platformApi.organizations.panelAdmins.dismissReset(admin.id));
-    if (updated) {
-      toast.success(`Reset request from ${admin.email} declined.`);
-      list.reload();
-    }
-  };
-
-  const confirmDelete = async () => {
-    if (!deleting) return;
-    const result = await deleteSubmit.run(() => platformApi.organizations.panelAdmins.remove(deleting.id));
-    if (result !== null) {
-      toast.success(result?.message || `${deleting.email} was deleted.`);
-      setDeleting(null);
-      list.reload();
-    }
-  };
-
-  const columns: Array<Column<OrgPanelAdminItem>> = [
-    {
-      key: 'name',
-      header: 'Login',
-      render: (row) => (
-        <div className="cell-stack">
-          <span className="strong">{row.name}</span>
-          <small style={{ wordBreak: 'break-all' }}>{row.email}</small>
-        </div>
-      ),
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      render: (row) => (
-        <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-          {row.isActive ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Disabled</Badge>}
-          {row.mustChangeCredentials ? <Badge tone="info">Awaiting first sign-in</Badge> : null}
-          {row.resetRequestedAt ? <Badge tone="warning">Reset requested</Badge> : null}
-        </div>
-      ),
-    },
-    {
-      key: 'lastLogin',
-      header: 'Last login',
-      render: (row) => (row.lastLoginAt ? formatDateTime(row.lastLoginAt) : <span className="text-muted">Never</span>),
-    },
-    {
-      key: 'created',
-      header: 'Created',
-      render: (row) => (
-        <div className="cell-stack">
-          <span>{formatDate(row.createdAt)}</span>
-          {row.createdBy ? <small>by {row.createdBy}</small> : null}
-        </div>
-      ),
-    },
-    {
-      key: 'actions',
-      header: '',
-      align: 'right',
-      render: (row) => (
-        <div className="row-actions">
-          {row.resetRequestedAt ? (
-            <>
-              <Button variant="primary" size="sm" icon={passwordReset.icon} loading={passwordReset.resetting} onClick={() => void passwordReset.reset(row)}>
-                Approve reset
-              </Button>
-              <Button variant="ghost" size="sm" loading={dismissSubmit.submitting} onClick={() => void dismissRequest(row)}>
-                Decline
-              </Button>
-            </>
-          ) : null}
-          <ActionMenu
-            label={`More actions for ${row.email}`}
-            iconOnly
-            disabled={togglingId === row.id}
-            items={[
-              { key: 'password', label: 'Reset password', icon: <KeyRound size={14} />, onSelect: () => void passwordReset.reset(row) },
-              row.isActive
-                ? { key: 'disable', label: 'Disable', icon: <UserX size={14} />, onSelect: () => void toggleActive(row) }
-                : { key: 'enable', label: 'Enable', icon: <UserCheck size={14} />, onSelect: () => void toggleActive(row) },
-              {
-                key: 'delete',
-                label: 'Delete login',
-                icon: <Trash2 size={14} />,
-                danger: true,
-                onSelect: () => {
-                  deleteSubmit.reset();
-                  setDeleting(row);
-                },
-              },
-            ]}
-          />
-        </div>
-      ),
-    },
-  ];
-
-  let body;
-  if (list.loading && !list.data) body = <SkeletonRows rows={3} columns={5} />;
-  else if (list.error && !list.data) body = <ErrorBlock message={list.error} onRetry={list.reload} />;
-  else if (!rows.length)
-    body = (
-      <EmptyState
-        title="No admin panel login yet"
-        description={`Create one for ${orgName}: the ID is admin@${orgCode ?? '<code>'} with a temporary password, and its admin chooses their own ID and password at first sign-in.`}
-      />
-    );
-  else body = <DataTable columns={columns} rows={rows} rowKey={(row) => row.id} caption={`Admin panel logins of ${orgName}`} />;
-
-  return (
-    <div className="stack" aria-busy={list.loading}>
-      <div className="row-between">
-        <PanelLoginUrl />
-        {list.data && !rows.length ? <CreateAdminLoginButton org={{ id: orgId, name: orgName, code: orgCode }} onCreated={list.reload} /> : null}
-      </div>
-      <p className="text-muted small" style={{ margin: 0 }}>
-        These logins open only the organization admin panel. They are separate from the organization's app users. A forgotten
-        password comes here as a reset request.
-      </p>
-
-      {body}
-
-      {passwordReset.modal}
-
-      <ConfirmDialog
-        open={!!deleting}
-        title="Delete admin panel login"
-        message={
-          deleting ? (
-            <>
-              <FormError message={deleteSubmit.error} />
-              <p>
-                Delete the admin panel login <strong>{deleting.email}</strong> ({deleting.name})? They can no longer sign in to
-                {` ${orgName}`}'s admin panel. This cannot be undone.
-              </p>
-            </>
-          ) : (
-            ''
-          )
-        }
-        confirmLabel="Delete login"
         busy={deleteSubmit.submitting}
         onConfirm={() => void confirmDelete()}
         onCancel={() => setDeleting(null)}

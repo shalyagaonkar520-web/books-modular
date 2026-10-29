@@ -76,7 +76,7 @@ def test_scopes_open_only_their_feature(client, tenant, platform_h):
         assert res.status_code == 403, (path, res.status_code, res.text)
     # Other token types' areas never accept a key.
     assert client.get("/api/platform/organizations", headers=h).status_code == 401
-    assert client.get("/api/org-admin/users", headers=h).status_code == 401
+    assert client.get("/api/admin/dashboard", headers=h).status_code == 403
 
 
 def test_a_key_never_reaches_another_organization(client, tenant, platform_h):

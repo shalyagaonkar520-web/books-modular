@@ -26,7 +26,7 @@ import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatDateTime } from '@/utils/format';
 
-import { useCopy } from './PanelAdminForms';
+import { useCopy } from './useCopy';
 
 type Access = 'none' | 'read' | 'write';
 

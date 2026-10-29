@@ -132,7 +132,6 @@ export interface OrgSummary extends OrgSubscriptionFields {
   /** Short unique code; the default admin panel login is admin@<code>. */
   code?: string | null;
   /** Whether the organization has an admin panel login yet. */
-  hasPanelAdmin?: boolean;
   isSuspended: boolean;
   /** Absent on older payloads, which predate approval — treat as approved. */
   approvalStatus?: OrgApprovalStatus;
@@ -248,7 +247,6 @@ export interface OrgDetail extends OrgSubscriptionFields {
   outstandingReceivables: number;
   admins: PlatformUser[];
   /** Logins for the organization's admin panel. Absent on older payloads. */
-  panelAdmins?: OrgPanelAdminItem[];
 }
 
 export interface CreateOrganizationBody {
@@ -299,43 +297,6 @@ export interface RejectOrganizationBody {
 }
 
 /** A login for an organization's admin panel (/org-admin), created by a platform admin. */
-export interface OrgPanelAdminItem {
-  id: string;
-  name: string;
-  email: string;
-  isActive: boolean;
-  lastLoginAt?: string | null;
-  createdAt: string;
-  /** Who created it (a platform admin's name or email), when known. */
-  createdBy?: string | null;
-  /** Still on the default ID / a temporary password: the admin must choose their own at sign-in. */
-  mustChangeCredentials?: boolean;
-  /** When the admin asked for a password reset (pending), else null. */
-  resetRequestedAt?: string | null;
-}
-
-/** A generated login ID and temporary password, returned once. */
-export interface PanelTempCredentials {
-  admin: OrgPanelAdminItem;
-  loginId: string;
-  password: string;
-}
-
-/** A forgot-password request waiting for the platform admin. */
-export interface PanelResetRequest {
-  admin: OrgPanelAdminItem;
-  organizationId: string;
-  organizationName: string;
-  organizationCode?: string | null;
-}
-
-export interface UpdatePanelAdminBody {
-  name?: string;
-  email?: string;
-  isActive?: boolean;
-  password?: string;
-}
-
 
 // ---------------------------------------------------------------------------
 // Users
@@ -517,27 +478,13 @@ export const platformApi = {
     archive: (id: string) => platformClient.post<OrgDetail>(`/platform/organizations/${id}/archive`),
     restore: (id: string) => platformClient.post<OrgDetail>(`/platform/organizations/${id}/restore`),
     approve: (id: string) => platformClient.post<OrgDetail>(`/platform/organizations/${id}/approve`),
-    /** Logins for the organization's admin panel (/org-admin). */
-    panelAdmins: {
-      list: (orgId: string, signal?: AbortSignal) =>
-        platformClient.get<OrgPanelAdminItem[]>(`/platform/organizations/${orgId}/panel-admins`, undefined, signal),
-      /** What this organization's admin panel may edit in its app content. */
-      contentAccess: (orgId: string, signal?: AbortSignal) =>
+    /** What this organization's admins may edit in its app content (Admin console). */
+    contentAccess: {
+      get: (orgId: string, signal?: AbortSignal) =>
         platformClient.get<PanelContentAccess>(`/platform/organizations/${orgId}/panel-content-access`, undefined, signal),
       /** Module keys plus 'branding' / 'general'; null = back to the plan's modules. */
-      setContentAccess: (orgId: string, keys: string[] | null) =>
+      set: (orgId: string, keys: string[] | null) =>
         platformClient.put<PanelContentAccess>(`/platform/organizations/${orgId}/panel-content-access`, { keys }),
-      /** admin@<code> with a random temporary password (returned once). */
-      createDefault: (orgId: string) =>
-        platformClient.post<PanelTempCredentials>(`/platform/organizations/${orgId}/panel-admins/default`),
-      /** A new random temporary password (also approves a pending forgot-password request). */
-      resetPassword: (id: string) => platformClient.post<PanelTempCredentials>(`/platform/panel-admins/${id}/reset-password`),
-      dismissReset: (id: string) => platformClient.post<OrgPanelAdminItem>(`/platform/panel-admins/${id}/dismiss-reset`),
-      resetRequests: (signal?: AbortSignal) =>
-        platformClient.get<PanelResetRequest[]>('/platform/panel-reset-requests', undefined, signal),
-      update: (id: string, body: UpdatePanelAdminBody) =>
-        platformClient.patch<OrgPanelAdminItem>(`/platform/panel-admins/${id}`, body),
-      remove: (id: string) => platformClient.delete<Message>(`/platform/panel-admins/${id}`),
     },
     reject: (id: string, body: RejectOrganizationBody = {}) =>
       platformClient.post<OrgDetail>(`/platform/organizations/${id}/reject`, body),

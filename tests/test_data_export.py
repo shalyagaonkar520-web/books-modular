@@ -5,7 +5,7 @@ from datetime import date
 
 from openpyxl import load_workbook
 
-from tests.conftest import auth, create_panel_admin, invite_and_accept, platform_admin_headers, register_org
+from tests.conftest import auth, invite_and_accept, register_org
 
 D = date.today().isoformat()
 
@@ -100,7 +100,3 @@ def test_export_is_for_administrators_only(client):
         client.post("/api/auth/login", json={"email": "cora@exportb.example.com", "password": "Cora1Pass!"}).json()["accessToken"]
     )
     assert client.get("/api/organization/export", headers=custom).status_code == 403
-
-    panel = create_panel_admin(client, platform_admin_headers(client), ctx["org"]["id"])
-    res = client.get("/api/org-admin/export", headers=panel["h"])
-    assert res.status_code == 200 and "Invoices" in _sheets(res.content)

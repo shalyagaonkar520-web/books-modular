@@ -40,6 +40,8 @@ interface AuthContextValue {
   can: (...roles: Role[]) => boolean;
   canWrite: boolean;
   isAdmin: boolean;
+  /** Reviews other users' changes (read-only everywhere else). */
+  isReviewer: boolean;
   isStaff: boolean;
   isEmployee: boolean;
   /** A custom-role user: what their role allows for a feature (built-in roles: always "edit"). */
@@ -167,7 +169,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // there, View makes the page read-only.
   const { pathname } = useLocation();
   const value = useMemo<AuthContextValue>(() => {
-    const role = user?.role;
+    // A reviewer reads everything like a viewer (and reviews changes on /reviews).
+    const role = user?.role === 'reviewer' ? 'viewer' : user?.role;
     const custom = role === 'custom';
     // A custom plan closes the features it leaves out, for every role.
     const inPlan = (feature: string | null) => !feature || !user?.planFeatures || user.planFeatures.includes(feature) || CORE_FEATURES.includes(feature);
@@ -190,6 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           : here !== 'none' && !!role && roles.includes(role),
       canWrite: here === 'edit' && (role === 'admin' || role === 'staff' || custom),
       isAdmin: role === 'admin',
+      isReviewer: user?.role === 'reviewer',
       isStaff: role === 'staff',
       isEmployee: role === 'employee',
       access,

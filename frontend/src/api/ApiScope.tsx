@@ -1,13 +1,12 @@
 /**
  * An injectable data-access scope for the organization-management screens
- * (users, organization profile, activity log) that both the tenant app's
- * Settings and the organization admin panel (/org-admin) render.
+ * (users, roles, organization profile, activity log) that the Admin console
+ * (/admin) and the super admin's organization drawer render.
  *
  * Without a provider the scope is the tenant `api` client with no path
- * prefix, which is exactly what those screens always used, so the tenant app
- * is unchanged. The panel mounts an `ApiScopeProvider` backed by its own
- * client (orgPanelClient) and the '/org-admin' prefix, and switches off what
- * its backend does not offer via `capabilities`.
+ * prefix. The Admin console switches on everything its admins may use via
+ * `capabilities`; the super admin's drawer points it at
+ * /platform/organizations/{id} with its own client.
  */
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 
@@ -65,8 +64,8 @@ export interface ApiScopeValue {
   prefix: string;
   capabilities: ApiScopeCapabilities;
   /**
-   * Who is acting. `null` means the signed-in tenant user (useAuth). The panel
-   * passes its own: a panel admin is an administrator but not one of the
+   * Who is acting. `null` means the signed-in tenant user (useAuth). The super
+   * admin passes its own: an administrator who is not one of the
    * organization's users.
    */
   actor: { userId: string | null; isAdmin: boolean } | null;
@@ -104,9 +103,17 @@ export function useScopedOrgApi() {
       update: (body: Partial<Organization>) => client.put<Organization>(`${prefix}/organization`, body),
       users: () => client.get<User[]>(`${prefix}/users`),
       planModules: () => client.get<{ planModules: string[] | null }>(`${prefix}/plan-modules`),
-      inviteUser: (body: { name: string; email: string; role: string; employeeId?: string; moduleAccess?: string[]; customRoleId?: string }) =>
+      inviteUser: (body: {
+        name: string;
+        email: string;
+        role: string;
+        employeeId?: string;
+        moduleAccess?: string[];
+        customRoleId?: string;
+        reviewScope?: string[];
+      }) =>
         client.post<User>(`${prefix}/users`, body),
-      updateUser: (id: string, body: { name?: string; role?: string; isActive?: boolean; customRoleId?: string | null }) =>
+      updateUser: (id: string, body: { name?: string; role?: string; isActive?: boolean; customRoleId?: string | null; reviewScope?: string[] }) =>
         client.patch<User>(`${prefix}/users/${id}`, body),
       roles: () => client.get<OrgRole[]>(`${prefix}/roles`),
       roleCatalog: () => client.get<RoleFeature[]>(`${prefix}/roles/catalog`),

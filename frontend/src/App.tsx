@@ -1,6 +1,7 @@
-import { Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { PlatformAuthProvider } from '@/auth/PlatformAuthContext';
+import { AppContentPage } from '@/pages/platform/AppContentPage';
 import { PlatformApp } from '@/pages/platform/PlatformApp';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ModuleGuard } from '@/app/ModuleGuard';
@@ -44,7 +45,18 @@ import { VerifyEmailPage } from '@/pages/auth/VerifyEmailPage';
 import { ReportsPage } from '@/pages/reports/ReportsPage';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
 import { TimeTrackingPage } from '@/pages/timetracking/TimeTrackingPage';
-import { OrgAdminApp } from '@/pages/orgadmin/OrgAdminApp';
+import {
+  AdminActivityPage,
+  AdminConsole,
+  AdminOrganizationPage,
+  AdminPlanPage,
+  AdminUsersPage,
+} from '@/pages/admin/AdminConsole';
+import { AdminOverviewPage } from '@/pages/admin/AdminOverviewPage';
+import { ChangeLogPage } from '@/pages/admin/ChangeLogPage';
+import { SecurityPage } from '@/pages/admin/SecurityPage';
+import { ReviewsPage } from '@/pages/reviews/ReviewsPage';
+import { SupportPage } from '@/pages/support/SupportPage';
 import { DocumentFormPage } from '@/pages/docflow/DocumentFormPage';
 import { DocumentListPage } from '@/pages/docflow/DocumentListPage';
 import { DocumentViewPage } from '@/pages/docflow/DocumentViewPage';
@@ -78,10 +90,8 @@ export function App() {
           }
         />
 
-        {/* The organization admin panel: separate logins created by the platform
-            administrator, with its own session provider inside OrgAdminApp.
-            Needs no tenant session. */}
-        <Route path="/org-admin/*" element={<OrgAdminApp />} />
+        {/* The old separate organization admin panel is now the Admin console inside the app. */}
+        <Route path="/org-admin/*" element={<Navigate to="/admin" replace />} />
 
         {/* Always public — the landing page */}
         <Route path="/" element={<LandingPage />} />
@@ -109,6 +119,27 @@ export function App() {
             <Route element={<AppLayout />}>
             {/* Trial and plan: never module-guarded (admins manage, everyone else reads). */}
             <Route path="/subscription" element={<SubscriptionPage />} />
+            {/* Support (every role) and the Admin console (admins) stay open even while the plan has run out. */}
+            <Route path="/support" element={<SupportPage />} />
+            <Route path="/reviews" element={<ReviewsPage />} />
+            <Route
+              path="/admin"
+              element={
+                <RequireRole roles={['admin']}>
+                  <AdminConsole />
+                </RequireRole>
+              }
+            >
+              <Route index element={<AdminOverviewPage />} />
+              <Route path="users" element={<AdminUsersPage />} />
+              <Route path="changes" element={<ChangeLogPage />} />
+              <Route path="security" element={<SecurityPage />} />
+              <Route path="plan" element={<AdminPlanPage />} />
+              <Route path="organization" element={<AdminOrganizationPage />} />
+              <Route path="app-content" element={<AppContentPage mode="organization" />} />
+              <Route path="activity" element={<AdminActivityPage />} />
+              <Route path="*" element={<Navigate to="/admin" replace />} />
+            </Route>
             <Route element={<ModuleGuard />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/items" element={<ItemsPage />} />

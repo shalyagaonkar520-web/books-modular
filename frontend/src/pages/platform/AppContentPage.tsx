@@ -15,9 +15,8 @@ import {
   type AppContent,
   type AppModuleKey,
 } from '@/api/appContent';
-import { orgAdminApi } from '@/api/orgAdmin';
+import { adminConsoleApi } from '@/api/adminConsole';
 import { platformApi } from '@/api/platform';
-import { OrgPanelApiError } from '@/api/orgPanelClient';
 import { PlatformApiError } from '@/api/platformClient';
 import { useAppContent } from '@/app/AppContentContext';
 import { Badge } from '@/components/ui/Badge';
@@ -84,8 +83,8 @@ function sectionOfPath(path: string): string | null {
 interface AppContentPageProps {
   /**
    * 'platform' (the super-admin console) edits the shared content or, via ?org=,
-   * any organization's copy. 'organization' (the org admin panel) edits only the
-   * signed-in panel admin's organization, through the org panel API.
+   * any organization's copy. 'organization' (the Admin console) edits only the
+   * signed-in admin's organization, through the Admin console API.
    */
   mode?: 'platform' | 'organization';
 }
@@ -106,7 +105,7 @@ export function AppContentPage({ mode = 'platform' }: AppContentPageProps = {}) 
   const remote = useAsync(
     async (signal) => {
       if (ownOrg) {
-        const org = await orgAdminApi.appContent.get(signal);
+        const org = await adminConsoleApi.appContent.get(signal);
         return {
           content: normalizeAppContent(org.content),
           shared: normalizeAppContent(org.shared),
@@ -124,7 +123,7 @@ export function AppContentPage({ mode = 'platform' }: AppContentPageProps = {}) 
   );
   const baseline = remote.data?.shared ?? DEFAULT_APP_CONTENT;
   const orgName = remote.data?.orgName ?? null;
-  // The org admin panel edits only what the platform admin allows (null = everything).
+  // The Admin console edits only what the platform admin allows (null = everything).
   const editable = remote.data && 'editable' in remote.data ? remote.data.editable : null;
   const groupAllowed = (id: string) => {
     if (!editable) return true;
@@ -238,11 +237,11 @@ export function AppContentPage({ mode = 'platform' }: AppContentPageProps = {}) 
     setServerErrors({});
     const updated = await saveSubmit.run(async () => {
       try {
-        if (ownOrg) return normalizeAppContent((await orgAdminApi.appContent.update(draft)).content);
+        if (ownOrg) return normalizeAppContent((await adminConsoleApi.appContent.update(draft)).content);
         if (scope) return normalizeAppContent((await platformApi.appContent.org.update(scope, draft)).content);
         return await platformApi.appContent.update(draft);
       } catch (error) {
-        if ((error instanceof PlatformApiError || error instanceof OrgPanelApiError) && Object.keys(error.pathErrors).length) {
+        if (error instanceof PlatformApiError && Object.keys(error.pathErrors).length) {
           setServerErrors(error.pathErrors);
           expandSectionsFor(Object.keys(error.pathErrors));
         }
@@ -264,7 +263,7 @@ export function AppContentPage({ mode = 'platform' }: AppContentPageProps = {}) 
 
   const reset = async () => {
     const defaults = await resetSubmit.run(async () => {
-      if (ownOrg) return normalizeAppContent((await orgAdminApi.appContent.reset()).content);
+      if (ownOrg) return normalizeAppContent((await adminConsoleApi.appContent.reset()).content);
       return scope ? normalizeAppContent((await platformApi.appContent.org.reset(scope)).content) : platformApi.appContent.reset();
     });
     if (defaults) {

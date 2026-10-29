@@ -12,9 +12,9 @@ from sqlalchemy.orm.attributes import set_committed_value
 
 from backend.config import get_settings
 from backend.db import get_db
-from backend.models import Organization, OrgPanelAdmin, PlatformAdmin, User
-from backend.security import decode_access_token, decode_org_panel_token, decode_platform_token
-from backend.services import integrations, module_pricing, permissions, subscription
+from backend.models import Organization, PlatformAdmin, User
+from backend.security import decode_access_token, decode_platform_token
+from backend.services import change_log, integrations, module_pricing, permissions, subscription
 from backend.services.ratelimit import RateLimiter
 
 _bearer = HTTPBearer(auto_error=False)
@@ -32,6 +32,9 @@ ROLE_EMPLOYEE = "employee"
 # A role the organization admin defines (services/permissions): No access /
 # View / Edit per feature. Checked per request in require_roles below.
 ROLE_CUSTOM = "custom"
+# Sees everything read-only (like a viewer) and reviews the changes of the
+# users / roles in their review scope (services/reviews).
+ROLE_REVIEWER = "reviewer"
 ALL_ROLES = (ROLE_ADMIN, ROLE_STAFF, ROLE_VIEWER)
 WRITE_ROLES = (ROLE_ADMIN, ROLE_STAFF)
 # Accounting, Banking and Razorpay Payments hold sensitive financial data that
@@ -71,6 +74,11 @@ def get_current_user(
     user = db.get(User, payload.get("sub"))
     if not user or not user.is_active or user.role == integrations.INTEGRATION_ROLE:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User is inactive or does not exist")
+    revoked = user.sessions_revoked_at
+    if revoked is not None:
+        revoked = revoked if revoked.tzinfo else revoked.replace(tzinfo=UTC)
+        if int(payload.get("iat") or 0) < int(revoked.timestamp()):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="You were signed out. Please sign in again.")
     org = db.get(Organization, user.organization_id)
     if org is not None and org.is_suspended:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This organization has been suspended. Contact support.")
@@ -80,6 +88,7 @@ def get_current_user(
     # Set when a platform admin is working inside this org via impersonation;
     # audit.record() uses it to attribute changes to the admin.
     user.impersonated_by = payload.get("imp")
+    change_log.set_actor(db, user, name=f"{user.name} (via platform admin {user.impersonated_by})" if user.impersonated_by else None)
     request.state.user = user
     return user
 
@@ -118,6 +127,7 @@ def _connected_app_user(request: Request, token: str, db: Session) -> User:
     set_committed_value(user, "role", ROLE_ADMIN)
     user.impersonated_by = None
     user.connected_app = conn
+    change_log.set_actor(db, user, name=f"{conn.name} (connected app)", role="app")
     now = datetime.now(UTC)
     last = conn.last_used_at
     if last is None or now - (last if last.tzinfo else last.replace(tzinfo=UTC)) > timedelta(minutes=5):
@@ -149,6 +159,7 @@ def get_current_superuser(
     if not admin or not admin.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Administrator is inactive or does not exist")
     request.state.platform_admin = admin
+    change_log.set_actor(db, None, name=f"{admin.name} (platform admin)", role="platform")
     return admin
 
 
@@ -159,53 +170,6 @@ ARCHIVED_ORG_DETAIL = "This organization has been archived. Contact support."
 SUSPENDED_ORG_DETAIL = "This organization has been suspended. Contact support."
 
 
-def org_panel_access_error(org: Organization | None) -> str | None:
-    """Why an organization's admin panel is closed (the 403 detail), else None.
-
-    The panel is open only for an approved organization that is neither
-    archived nor suspended.
-    """
-    if org is None:
-        return None
-    if org.deleted_at is not None:
-        return ARCHIVED_ORG_DETAIL
-    if org.is_suspended:
-        return SUSPENDED_ORG_DETAIL
-    return org_approval_error(org)
-
-
-def get_current_org_panel_admin(
-    request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
-    db: Session = Depends(get_db),
-) -> OrgPanelAdmin:
-    """Authenticate an organization admin-panel login.
-
-    Only a token minted by the panel login (type ``org_panel_access``) is
-    accepted - tenant ``access`` and ``platform_access`` tokens are not - and
-    it resolves to an ``OrgPanelAdmin`` of exactly one organization.
-    """
-    if credentials is None or credentials.scheme.lower() != "bearer":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-    payload = decode_org_panel_token(credentials.credentials)
-    if not payload:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
-    admin = db.get(OrgPanelAdmin, payload.get("sub"))
-    if not admin or not admin.is_active or admin.organization_id != payload.get("org"):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Administrator is inactive or does not exist")
-    org = db.get(Organization, admin.organization_id)
-    if org is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Organization does not exist")
-    error = org_panel_access_error(org)
-    if error:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=error)
-    if admin.must_change_credentials and request.url.path not in _PANEL_SETUP_PATHS:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=PANEL_SETUP_REQUIRED_DETAIL)
-    request.state.org_panel_admin = admin
-    return admin
-
-
-# A default login or a reset password must first be replaced by the admin's own.
 _PANEL_SETUP_PATHS = frozenset({"/api/org-admin/me", "/api/org-admin/auth/setup"})
 PANEL_SETUP_REQUIRED_DETAIL = "SETUP_REQUIRED: Choose your own login ID and password before using the admin panel."
 
@@ -241,6 +205,17 @@ def ensure_subscription_access(user: User) -> None:
         raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=subscription.lock_detail(org))
 
 
+def require_console_admin(user: User = Depends(get_current_user)) -> User:
+    """The organization's admins, for the Admin console.
+
+    Open even while the plan has run out, so an admin can still see the
+    change log, sign-in history and sessions while renewing.
+    """
+    if user.role != ROLE_ADMIN or getattr(user, "connected_app", None) is not None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the organization's admins can open the Admin console.")
+    return user
+
+
 def require_subscription(user: User = Depends(get_current_user)) -> User:
     """Any signed-in role, but only while the organization's app is not locked."""
     ensure_subscription_access(user)
@@ -263,7 +238,7 @@ def require_roles(*roles: str):
             )
             if error:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=error)
-        elif user.role not in allowed:
+        elif (ROLE_VIEWER if user.role == ROLE_REVIEWER else user.role) not in allowed:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
         ensure_subscription_access(user)
         return user

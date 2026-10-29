@@ -933,9 +933,9 @@ input:checked + .zp-slider:before {
 .zoho-dropdown-nav {
   padding: 10px 20px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px 16px;
   border-bottom: 1px solid #f1f5f9;
 }
 

@@ -1,6 +1,6 @@
 /**
  * Requests between an organization and the platform, with their chat. The org
- * admin panel opens requests and writes; the super admin answers and closes.
+ * organization's users open requests and write; the super admin answers and closes.
  * The open conversation refreshes every 10 seconds.
  */
 import { useEffect, useState } from 'react';
@@ -47,16 +47,17 @@ export interface RequestsApi {
 }
 
 const CATEGORIES = [
+  { value: 'problem', label: 'Report an issue' },
+  { value: 'change', label: 'Why was something changed?' },
   { value: 'users', label: 'More users' },
   { value: 'plan', label: 'Plan or payment' },
-  { value: 'problem', label: 'Something is wrong' },
   { value: 'other', label: 'Other' },
 ];
 const categoryLabel = (value: string) => CATEGORIES.find((c) => c.value === value)?.label ?? value;
 
 interface Props {
   api: RequestsApi;
-  /** Who is looking: the organization's panel or the platform. */
+  /** Who is looking: the organization or the platform. */
   side: 'org' | 'platform';
   /** Open the "new request" form at once, filled in (e.g. from "Request more users"). */
   preset?: { subject: string; category: string; message: string } | null;
@@ -96,7 +97,7 @@ export function RequestsBoard({ api, side, preset }: Props) {
         {list.loading ? <LoadingBlock /> : null}
         {list.error ? <ErrorBlock message={list.error} onRetry={list.reload} /> : null}
         {!list.loading && !list.error && (list.data ?? []).length === 0 ? (
-          <EmptyState title="No requests" description={side === 'org' ? 'Need more users, help with a payment, or found a problem? Send a request and chat with the platform team here.' : 'Requests organizations send appear here.'} />
+          <EmptyState title="No requests" description={side === 'org' ? 'Found a problem, want to know why something changed, or need more users? Send a request and chat with the support team here. You also get the answer by email.' : 'Requests organizations send appear here.'} />
         ) : null}
         <ul className="requests-list">
           {(list.data ?? []).map((t) => (

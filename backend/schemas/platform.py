@@ -11,7 +11,6 @@ from pydantic import EmailStr, Field, field_validator
 from backend.schemas import validators
 from backend.schemas.auth import _not_null, _validate_password
 from backend.schemas.common import APIModel
-from backend.schemas.org_admin import OrgPanelAdminOut
 from backend.schemas.subscription import SubscriptionPendingOut, SubscriptionPlanOut
 
 # ISO 4217 style: exactly three upper-case letters.
@@ -115,7 +114,6 @@ class OrgSummary(APIModel):
     # Short unique code; the default admin-panel login is admin@<code>.
     code: Optional[str] = None
     # Whether an admin-panel login exists (the "Create admin login" button).
-    has_panel_admin: bool = False
     is_suspended: bool
     is_archived: bool = False
     deleted_at: Optional[datetime] = None
@@ -197,8 +195,6 @@ class OrgDetail(APIModel):
     collected_amount: float
     outstanding_receivables: float
     admins: List[PlatformUserOut]
-    # The organization's admin-panel logins (see OrgPanelAdmin).
-    panel_admins: List[OrgPanelAdminOut] = []
 
 
 class CreateOrganizationRequest(APIModel):

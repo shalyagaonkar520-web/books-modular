@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tests.conftest import auth, create_panel_admin, invite_and_accept, platform_admin_headers, register_org
+from tests.conftest import auth, invite_and_accept, platform_admin_headers, register_org
 
 
 @pytest.fixture
@@ -107,15 +107,14 @@ def test_user_limit(client, org):
     assert client.get("/api/subscription", headers=h).json()["usersUsed"] == 2
 
 
-def test_requests_chat_between_panel_and_platform(client, org):
+def test_requests_chat_between_the_organization_and_platform(client, org):
     sa = org["sa"]
-    panel = create_panel_admin(client, sa, org["id"])
-    ph = panel["h"]
-    sub = client.get("/api/org-admin/subscription", headers=ph).json()
+    ph = org["h"]
+    sub = client.get("/api/subscription", headers=ph).json()
     assert sub["canManage"] is True and sub["userLimit"] == 100
 
     opened = client.post(
-        "/api/org-admin/requests", headers=ph, json={"subject": "Need 150 users", "category": "users", "message": "We have 150 staff."}
+        "/api/support/requests", headers=ph, json={"subject": "Need 150 users", "category": "users", "message": "We have 150 staff."}
     )
     assert opened.status_code == 201, opened.text
     tid = opened.json()["id"]
@@ -125,18 +124,17 @@ def test_requests_chat_between_panel_and_platform(client, org):
 
     answered = client.post(f"/api/platform/requests/{tid}/messages", headers=sa, json={"message": "Moved you to the 500-user plan."})
     assert answered.status_code == 200 and answered.json()["lastMessageBy"] == "platform"
-    thread = client.get(f"/api/org-admin/requests/{tid}", headers=ph).json()
+    thread = client.get(f"/api/support/requests/{tid}", headers=ph).json()
     assert [m["authorKind"] for m in thread["messages"]] == ["org", "platform"]
-    closed = client.post(f"/api/org-admin/requests/{tid}/status", headers=ph, json={"status": "closed"})
+    closed = client.post(f"/api/support/requests/{tid}/status", headers=ph, json={"status": "closed"})
     assert closed.json()["status"] == "closed"
-    # Another organization's panel cannot see it.
+    # Another organization cannot see it.
     other = register_org(client, "Plansother")
-    other_panel = create_panel_admin(client, sa, other["org"]["id"])
-    assert client.get(f"/api/org-admin/requests/{tid}", headers=other_panel["h"]).status_code == 404
+    assert client.get(f"/api/support/requests/{tid}", headers=auth(other["token"])).status_code == 404
 
-    # The panel can choose and pay for a plan too.
+    # The admin chooses and pays for a plan.
     paid = client.post(
-        "/api/org-admin/subscription/plan-request",
+        "/api/subscription/plan-request",
         headers=ph,
         json={"planKey": "custom", "users": 150, "modules": ["pos"], "paymentReference": "UTR999"},
     )

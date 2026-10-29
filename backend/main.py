@@ -125,7 +125,7 @@ def create_app() -> FastAPI:
         )
 
     from backend.deps import require_full_app_access, require_module, require_subscription
-    from backend.routers import auth, employee_portal, org_admin, payments, razorpay, subscription
+    from backend.routers import admin_console, auth, employee_portal, payments, razorpay, reviews, subscription, support
 
     # auth (login, /me, change-password, sessions) and the employee portal
     # stay reachable by every role, including the restricted "employee"
@@ -151,6 +151,11 @@ def create_app() -> FastAPI:
     # employee portal is locked as well.
     app.include_router(auth.router)
     app.include_router(subscription.router)
+    # Support is open to every role, even while the plan has run out.
+    app.include_router(support.router)
+    # The Admin console (the organization's admins) and reviews; guarded per route.
+    app.include_router(admin_console.router)
+    app.include_router(reviews.router)
     app.include_router(employee_portal.router, dependencies=[Depends(require_subscription)])
     # Every feature is declared once in backend/features.py: mounted here behind
     # require_full_app_access, plus require_module when it is sold in a plan
@@ -187,15 +192,6 @@ def create_app() -> FastAPI:
 
     app.include_router(platform_email.router, dependencies=[Depends(require_superuser)])
     app.include_router(connected_apps.connect_router)
-
-    # Organization admin panel. Its own logins (created by a platform admin),
-    # its own token type: tenant and platform tokens are rejected, and a panel
-    # token reaches nothing but this router. Its auth endpoints are open so a
-    # panel admin can log in.
-    from backend.deps import get_current_org_panel_admin
-
-    app.include_router(org_admin.auth_router)
-    app.include_router(org_admin.router, dependencies=[Depends(get_current_org_panel_admin)])
 
     # Editable public-website content: read openly by the landing page, edited
     # only through the guarded platform router.

@@ -2533,7 +2533,7 @@
     "settings.users.activate": "Activate",
     "settings.users.delete": "Delete",
     "settings.users.title": "Users",
-    "settings.users.subtitle": "Administrators manage everything, staff can record transactions, viewers are read-only",
+    "settings.users.subtitle": "Administrators manage everything, staff record transactions, viewers are read-only, reviewers check other people's changes",
     "settings.users.invite": "Invite user",
     "settings.users.note": "An organization always needs at least one active administrator, and you cannot change your own role or deactivate your own account.",
     "settings.users.loading": "Loading users…",
@@ -4635,6 +4635,13 @@
     "settings.export.note": "Includes a trial balance and customer and vendor balances. One sheet per kind of record; passwords and keys are never included. Large organizations may take a minute.",
     "settings.export.done": "Your books are downloading.",
 
-    "settings.invite.createRole": "＋ Create a custom role…"
+    "settings.invite.createRole": "＋ Create a custom role…",
+
+    "settings.invite.role.reviewer": "Reviewer — reviews the work of the roles or people you pick",
+    "settings.users.role.reviewer": "Reviewer",
+    "settings.users.reviewScope": "Reviews {count} · change",
+    "header.profile.adminConsole": "Admin console",
+    "header.profile.reviews": "Reviews",
+    "header.profile.support": "Support"
   }
 }

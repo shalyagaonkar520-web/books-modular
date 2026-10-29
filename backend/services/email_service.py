@@ -876,7 +876,7 @@ def send_invite_email(
         msg["From"] = f"{_smtp().smtp_sender_name} <{_smtp().smtp_user}>"
         msg["To"] = _header(to_email)
 
-        role_label = {"admin": "Administrator", "staff": "Staff", "viewer": "Viewer"}.get(role, role.title())
+        role_label = {"admin": "Administrator", "staff": "Staff", "viewer": "Viewer", "reviewer": "Reviewer"}.get(role, role.title())
 
         html_body = f"""<!DOCTYPE html>
 <html>

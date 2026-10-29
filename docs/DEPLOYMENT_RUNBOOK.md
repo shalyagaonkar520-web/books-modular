@@ -101,7 +101,7 @@ docker compose -p roomanbooks -f deployment/docker-compose.yml --env-file .env e
 In the browser:
 1. Sign in as a normal user. Open invoices, record a payment and check receivables.
 2. Super admin `/platform`. Open an organization and check its tabs, including Connected apps.
-3. Org admin panel `/org-admin`.
+3. As an organization admin: profile menu → Admin console (`/admin`). Check the Change log, Security and Users & roles tabs; `/org-admin` redirects there.
 4. Light/dark toggle.
 5. A plan request shows the core modules ticked and locked.
 

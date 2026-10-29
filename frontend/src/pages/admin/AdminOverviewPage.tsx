@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Activity, Briefcase, LogIn, MailPlus, UserCheck, UserX, Users } from 'lucide-react';
 
-import { orgAdminApi, type OrgAdminDashboard } from '@/api/orgAdmin';
+import { adminConsoleApi, type OrgAdminDashboard } from '@/api/adminConsole';
 import type { AuditLog, User } from '@/api/types';
 import { Badge } from '@/components/ui/Badge';
 import { Card, StatTile } from '@/components/ui/Card';
@@ -39,10 +39,10 @@ function CountList({ label, rows }: { label: string; rows: Array<[string, number
 }
 
 /** The panel's home: the organization's users and employees at a glance. */
-export function OrgAdminDashboardPage() {
+export function AdminOverviewPage() {
   const navigate = useNavigate();
   const [viewing, setViewing] = useState<User | null>(null);
-  const { data, loading, error, reload } = useAsync((signal) => orgAdminApi.dashboard(signal), []);
+  const { data, loading, error, reload } = useAsync((signal) => adminConsoleApi.dashboard(signal), []);
 
   if (loading && !data) return <LoadingBlock label="Building the dashboard…" />;
   if (error) return <ErrorBlock message={error} onRetry={reload} />;
@@ -121,7 +121,7 @@ export function OrgAdminDashboardPage() {
 
   return (
     <>
-      <PageHeader title="Dashboard" subtitle={`Users and employees of ${data.organizationName}.`} />
+      <PageHeader title="Overview" subtitle={`Users and employees of ${data.organizationName}.`} />
 
       <div className="stat-grid">
         <StatTile label="Users" value={formatNumber(users.total, 0)} sublabel={`${users.active} active`} icon={<Users size={16} />} />
@@ -158,7 +158,7 @@ export function OrgAdminDashboardPage() {
         <Card
           title="Users by role"
           actions={
-            <button type="button" className="btn btn-link btn-sm" onClick={() => navigate('/org-admin/users')}>
+            <button type="button" className="btn btn-link btn-sm" onClick={() => navigate('/admin/users')}>
               <span>Manage users</span>
             </button>
           }
@@ -189,7 +189,7 @@ export function OrgAdminDashboardPage() {
       <Card
         title="Recent activity"
         actions={
-          <button type="button" className="btn btn-link btn-sm" onClick={() => navigate('/org-admin/activity')}>
+          <button type="button" className="btn btn-link btn-sm" onClick={() => navigate('/admin/activity')}>
             <span>Full activity log</span>
           </button>
         }

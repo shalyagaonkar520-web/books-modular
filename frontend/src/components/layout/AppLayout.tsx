@@ -29,7 +29,9 @@ function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const { branding } = useAppContent();
-  const { locked } = useSubscription();
+  const { locked: planLocked } = useSubscription();
+  // Support and the Admin console stay open while the plan has run out.
+  const locked = planLocked && !/^\/(support|admin)(\/|$)/.test(location.pathname);
 
   useEffect(() => {
     setSidebarOpen(false);

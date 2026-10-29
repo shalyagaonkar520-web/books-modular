@@ -13,7 +13,7 @@ from backend.db import SessionLocal
 from backend.models import EmailVerification, Organization, User
 from backend.security import hash_password, hash_token
 from backend.services import module_pricing
-from tests.conftest import auth, create_panel_admin, invite_and_accept, platform_admin_headers, register_org
+from tests.conftest import auth, invite_and_accept, platform_admin_headers, register_org
 
 PASSWORD = "Str0ngPass1"
 
@@ -249,13 +249,12 @@ def test_existing_org_is_unaffected(client):
     assert _enabled_modules(client, h) == _shared_enabled(client)
 
 
-def test_org_admin_panel_works_when_locked(client, tenant, platform_h):
-    panel = create_panel_admin(client, platform_h, tenant["org_id"])
+def test_admin_console_and_support_work_when_locked(client, tenant, platform_h):
     _expire_trial(tenant["org_id"])
     _assert_locked(client.get("/api/items", headers=tenant["h"]))
-    res = client.get("/api/org-admin/organization", headers=panel["h"])
-    assert res.status_code == 200, res.text
-    assert client.get("/api/org-admin/users", headers=panel["h"]).status_code == 200
+    for path in ("/api/admin/dashboard", "/api/admin/changes", "/api/admin/security/sessions", "/api/support/requests"):
+        res = client.get(path, headers=tenant["h"])
+        assert res.status_code == 200, (path, res.text)
 
 
 # --------------------------------------------------------------------------- #

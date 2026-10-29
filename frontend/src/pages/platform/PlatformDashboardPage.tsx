@@ -11,7 +11,6 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { useAsync } from '@/hooks/useAsync';
 
 import { OpenInAppButton, OrgApprovalButtons, OrgStatusBadge, useOrgApproval } from './orgActions';
-import { PanelResetRequestsCard } from './PanelResetRequestsCard';
 import { formatCurrency, formatCurrencyCompact, formatDate, formatDateTime, formatNumber, titleCase } from '@/utils/format';
 
 export function PlatformDashboardPage() {
@@ -94,7 +93,6 @@ export function PlatformDashboardPage() {
         subtitle="Live position across every organization on Rooman Books."
       />
 
-      <PanelResetRequestsCard />
 
       <Card
         title="Pending approvals"

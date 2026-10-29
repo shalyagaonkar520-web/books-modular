@@ -5158,3 +5158,195 @@ input[type='password']::-ms-clear {
   border: 1px solid var(--border);
   border-radius: 8px;
 }
+
+
+/* Admin console (pages/admin) */
+.console-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  scrollbar-width: thin;
+}
+
+.console-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.console-tab:hover {
+  color: var(--text);
+}
+
+.console-tab.is-active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+
+.change-filters {
+  margin-bottom: 12px;
+}
+
+.change-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.change-item {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.change-item.is-flagged {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.change-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.change-head .checkbox {
+  margin-top: 3px;
+}
+
+.change-title {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.change-fields {
+  width: 100%;
+  margin-top: 8px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.change-fields th,
+.change-fields td {
+  padding: 4px 8px;
+  border-top: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.change-fields th {
+  width: 28%;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.change-old {
+  color: var(--danger);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.change-new {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.change-arrow {
+  width: 20px;
+  color: var(--text-muted);
+}
+
+.change-note {
+  margin: 8px 0 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--danger);
+  font-style: italic;
+}
+
+.change-actions {
+  justify-content: flex-start;
+  margin-top: 8px;
+}
+
+.review-toolbar {
+  justify-content: flex-start;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
+.review-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.review-scope-grid {
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .change-fields th {
+    width: 35%;
+  }
+}
+
+
+/* Dark mode: the header and the profile menu (their light colours are fixed in ProfilePage.css). */
+[data-theme='dark'] .app-header {
+  background: rgba(17, 26, 43, 0.9);
+  border-bottom-color: var(--border);
+}
+
+[data-theme='dark'] .brand-text strong,
+[data-theme='dark'] .brand-name {
+  color: var(--text);
+}
+
+[data-theme='dark'] .zoho-header-dropdown,
+[data-theme='dark'] .zoho-dropdown-header {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+[data-theme='dark'] .zoho-dropdown-user strong {
+  color: var(--text);
+}
+
+[data-theme='dark'] .zoho-dropdown-user span,
+[data-theme='dark'] .zoho-dropdown-meta {
+  color: var(--text-muted);
+}
+
+[data-theme='dark'] .zoho-dropdown-meta,
+[data-theme='dark'] .zoho-dropdown-books {
+  background: var(--surface-alt) !important;
+  color: var(--text-muted) !important;
+  border-color: var(--border) !important;
+}
+
+[data-theme='dark'] .zoho-dropdown-nav {
+  border-bottom-color: var(--border);
+}
+
+[data-theme='dark'] .zoho-my-account-link {
+  color: var(--primary-hover);
+}

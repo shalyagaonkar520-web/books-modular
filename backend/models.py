@@ -208,6 +208,11 @@ class User(TimestampMixin, OrgScopedMixin, Base):
     # role == "custom": the organization's role (No access / View / Edit per
     # feature) this user works under. See services/permissions.
     custom_role_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("org_roles.id", name="fk_users_custom_role_id"))
+    # role == "reviewer": whose work they review, as a JSON list of
+    # "user:<id>", "role:<admin|staff|viewer>" and "custom:<role id>".
+    review_scope: Mapped[Optional[str]] = mapped_column(Text)
+    # "Sign out everywhere": access tokens issued before this stop working.
+    sessions_revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     organization: Mapped[Organization] = relationship(back_populates="users")
     custom_role: Mapped[Optional[OrgRole]] = relationship(lazy="joined")
@@ -236,6 +241,18 @@ class User(TimestampMixin, OrgScopedMixin, Base):
         """No password yet: the emailed invite has not been accepted."""
         return self.password_hash is None
 
+    @property
+    def review_targets(self) -> Optional[list]:
+        if self.role != "reviewer" or not self.review_scope:
+            return None
+        import json
+
+        try:
+            value = json.loads(self.review_scope)
+        except ValueError:
+            return None
+        return [str(v) for v in value] if isinstance(value, list) else None
+
 
 class SupportTicket(TimestampMixin, OrgScopedMixin, Base):
     """A request from an organization to the platform (more users, a problem...), with its chat."""
@@ -249,6 +266,9 @@ class SupportTicket(TimestampMixin, OrgScopedMixin, Base):
     # open | closed
     status: Mapped[str] = mapped_column(String(10), default="open", nullable=False, index=True)
     created_by_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    # The user who opened it (any role); replies from the platform are emailed to them.
+    created_by_user_id: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    created_by_email: Mapped[Optional[str]] = mapped_column(String(255))
     last_message_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
     # Who spoke last ("org" | "platform"): the other side has something to read.
     last_message_by: Mapped[str] = mapped_column(String(10), default="org", nullable=False)
@@ -430,6 +450,52 @@ class AuditLog(Base):
     entity_id: Mapped[Optional[str]] = mapped_column(String(64))
     summary: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class ChangeLog(Base):
+    """One saved change to any record: who, when, and each field's old and new value.
+
+    Written automatically for every insert, update and delete
+    (services/change_log). Reviewers mark rows reviewed or flagged.
+    """
+
+    __tablename__ = "change_logs"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    organization_id: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    user_id: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    user_name: Mapped[Optional[str]] = mapped_column(String(160))
+    user_role: Mapped[Optional[str]] = mapped_column(String(20))
+    # create | update | delete
+    action: Mapped[str] = mapped_column(String(10), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
+    entity_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    entity_label: Mapped[Optional[str]] = mapped_column(String(200))
+    # JSON {field: [old, new]}
+    changes: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+    # reviewed | flagged (NULL = waiting)
+    review_status: Mapped[Optional[str]] = mapped_column(String(10), index=True)
+    reviewed_by_id: Mapped[Optional[str]] = mapped_column(String(32))
+    reviewed_by_name: Mapped[Optional[str]] = mapped_column(String(120))
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    review_note: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class LoginEvent(Base):
+    """A sign-in attempt to the app, successful or not."""
+
+    __tablename__ = "login_events"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    organization_id: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    user_id: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    reason: Mapped[Optional[str]] = mapped_column(String(120))
+    ip_address: Mapped[Optional[str]] = mapped_column(String(64))
+    user_agent: Mapped[Optional[str]] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
 
 
 # --------------------------------------------------------------------------- #

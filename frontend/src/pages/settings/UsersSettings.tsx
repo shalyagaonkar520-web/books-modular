@@ -17,6 +17,7 @@ import { useToast } from '@/components/ui/Toast';
 import { formatDate, formatDateTime } from '@/utils/format';
 
 import { InviteUserModal } from './InviteUserModal';
+import { ReviewScopeModal } from './ReviewScopePicker';
 import { RolesSettings } from './RolesSettings';
 import { ResetPasswordModal } from './ResetPasswordModal';
 import { UserDashboardModal } from './UserDashboardModal';
@@ -26,6 +27,7 @@ const ROLE_OPTIONS: Array<{ value: Role; labelKey: string }> = [
   { value: 'admin', labelKey: 'settings.users.role.admin' },
   { value: 'staff', labelKey: 'settings.users.role.staff' },
   { value: 'viewer', labelKey: 'settings.users.role.viewer' },
+  { value: 'reviewer', labelKey: 'settings.users.role.reviewer' },
   { value: 'employee', labelKey: 'settings.users.role.employee' },
 ];
 
@@ -57,6 +59,8 @@ export function UsersSettings({ onViewUser }: UsersSettingsProps = {}) {
   const [newRoleSignal, setNewRoleSignal] = useState(0);
   const [inviteDraft, setInviteDraft] = useState<{ role?: string } | null>(null);
   const [resetting, setResetting] = useState<User | null>(null);
+  // Making someone a reviewer (or changing whose work they review) asks whose work first.
+  const [reviewing, setReviewing] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const action = useSubmit();
@@ -80,16 +84,21 @@ export function UsersSettings({ onViewUser }: UsersSettingsProps = {}) {
     }
   };
 
-  const updateUser = async (target: User, body: { role?: string; isActive?: boolean; customRoleId?: string | null }, successMessage: string) => {
+  const updateUser = async (
+    target: User,
+    body: { role?: string; isActive?: boolean; customRoleId?: string | null; reviewScope?: string[] },
+    successMessage: string,
+  ) => {
     setBusyId(target.id);
     const result = await action.run(() => orgApi.updateUser(target.id, body));
     setBusyId(null);
     if (result) {
       toast.success(successMessage);
       reload();
-    } else if (action.errorRef.current) {
-      toast.error(action.errorRef.current);
+      return true;
     }
+    if (action.errorRef.current) toast.error(action.errorRef.current);
+    return false;
   };
 
   const columns: Array<Column<User>> = [
@@ -125,6 +134,10 @@ export function UsersSettings({ onViewUser }: UsersSettingsProps = {}) {
             disabled={busyId === row.id}
             onChange={(event) => {
               const value = event.target.value;
+              if (value === 'reviewer') {
+                setReviewing(row);
+                return;
+              }
               const customRole = value.startsWith('custom:') ? (customRoles.data ?? []).find((r) => `custom:${r.id}` === value) : undefined;
               const picked = ROLE_OPTIONS.find((option) => option.value === value);
               updateUser(
@@ -155,6 +168,11 @@ export function UsersSettings({ onViewUser }: UsersSettingsProps = {}) {
               </option>
             ))}
           </select>
+          {row.role === 'reviewer' ? (
+            <button type="button" className="btn-link small" onClick={() => setReviewing(row)}>
+              {t('settings.users.reviewScope', { count: String(row.reviewTargets?.length ?? 0) })}
+            </button>
+          ) : null}
         </label>
       ),
     },
@@ -282,6 +300,15 @@ export function UsersSettings({ onViewUser }: UsersSettingsProps = {}) {
         />
       ) : null}
       {resetting ? <ResetPasswordModal user={resetting} onClose={() => setResetting(null)} /> : null}
+      {reviewing ? (
+        <ReviewScopeModal
+          user={reviewing}
+          onClose={() => setReviewing(null)}
+          onSave={(scope) =>
+            updateUser(reviewing, { role: 'reviewer', reviewScope: scope }, t('settings.users.roleChanged', { name: reviewing.name, role: t('settings.users.role.reviewer') }))
+          }
+        />
+      ) : null}
 
       <ConfirmDialog
         open={!!deletingUser}

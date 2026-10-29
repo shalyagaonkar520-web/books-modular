@@ -58,7 +58,6 @@ const trialOrg = (): OrgDetail => ({
   collectedAmount: 0,
   outstandingReceivables: 0,
   admins: [ADMIN],
-  panelAdmins: [],
 });
 
 const summary = (overrides: Partial<OrgSummary>): OrgSummary => ({

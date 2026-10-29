@@ -1,13 +1,10 @@
-"""Organization user management, profile and audit log, shared by the tenant
-app (``/api/users`` ... in ``routers/organization.py``, acting as a tenant
-admin) and the organization admin panel (``/api/org-admin/users`` ... in
-``routers/org_admin.py``, acting as an org panel admin).
+"""Organization user management, profile and audit log for the organization's
+admins (``/api/users`` ... in ``routers/organization.py``, used by the Admin
+console).
 
 Every function takes ``(db, org_id, actor, ...)``: ``org_id`` scopes the work
-to one organization, and ``actor`` - a tenant ``User`` or an ``OrgPanelAdmin``
-- is who the change is attributed to. Rules tied to the actor's own tenant
-account (you cannot demote, deactivate or delete yourself) apply only when the
-actor is a tenant user; the panel admin has no tenant account.
+to one organization, and ``actor`` - the admin - is who the change is
+attributed to. You cannot demote, deactivate or delete yourself.
 """
 
 from __future__ import annotations
@@ -15,14 +12,14 @@ from __future__ import annotations
 import json
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import List, Optional, Union
+from typing import List, Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.config import get_settings
-from backend.models import AuditLog, Document, Employee, Organization, OrgPanelAdmin, RefreshToken, TimeEntry, User
+from backend.models import AuditLog, Document, Employee, Organization, RefreshToken, TimeEntry, User
 from backend.schemas.auth import (
     AdminResetPasswordRequest,
     AuditLogOut,
@@ -34,7 +31,7 @@ from backend.schemas.auth import (
 )
 from backend.schemas.common import Message, Page
 from backend.security import hash_password, hash_token
-from backend.services import audit, module_pricing, org_roles, plans, subscription
+from backend.services import audit, module_pricing, org_roles, plans, reviews, subscription
 from backend.services.email_service import send_invite_email, smtp_configured
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
@@ -43,11 +40,11 @@ settings = get_settings()
 # How long an invite link stays valid before the admin has to resend it.
 INVITE_TOKEN_EXPIRE_DAYS = 7
 
-Actor = Union[User, OrgPanelAdmin]
+Actor = User
 
 
 def _own_user_id(actor: Actor) -> Optional[str]:
-    """The actor's own tenant user id, or None for a panel admin."""
+    """The actor's own user id."""
     return actor.id if isinstance(actor, User) else None
 
 
@@ -143,6 +140,7 @@ def invite_user(db: Session, org_id: str, actor: Actor, payload: InviteUserReque
     if payload.role != "employee":
         plans.check_room_for(db, org)
     custom_role_id = org_roles.resolve(db, org_id, payload.role, payload.custom_role_id)
+    review_scope = reviews.clean_scope(db, org_id, payload.role, payload.review_scope)
 
     raw_token = secrets.token_urlsafe(32)
     new_user = User(
@@ -156,6 +154,7 @@ def invite_user(db: Session, org_id: str, actor: Actor, payload: InviteUserReque
         invite_token_expires_at=datetime.now(UTC) + timedelta(days=INVITE_TOKEN_EXPIRE_DAYS),
         module_access=module_access,
         custom_role_id=custom_role_id,
+        review_scope=review_scope,
     )
     db.add(new_user)
     db.flush()
@@ -198,6 +197,10 @@ def update_user(db: Session, org_id: str, actor: Actor, user_id: str, payload: U
         role = data.get("role", target.role)
         wanted = data.get("custom_role_id") if "custom_role_id" in data else (target.custom_role_id if role == "custom" else None)
         data["custom_role_id"] = org_roles.resolve(db, org_id, role, wanted)
+    if "role" in data or "review_scope" in data:
+        role = data.get("role", target.role)
+        wanted_scope = data.get("review_scope") if "review_scope" in data else target.review_targets
+        data["review_scope"] = reviews.clean_scope(db, org_id, role, wanted_scope, user_id=target.id)
     for field, value in data.items():
         setattr(target, field, value)
     audit.record(db, actor, "update", "user", target.id, f"Updated user {target.email}", organization_id=org_id)

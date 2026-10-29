@@ -4,7 +4,6 @@
  * payment reference goes with the request and a super admin accepts it.
  */
 import { api } from './client';
-import { orgPanelClient } from './orgPanelClient';
 
 export type PlanKey = 'u100' | 'u500' | 'u1000' | 'custom';
 export type Cycle = 'monthly' | 'yearly';
@@ -82,12 +81,6 @@ export const tenantPlanApi: PlanApi = {
   catalog: () => api.get<PlanCatalog>('/subscription/plans'),
   payQr: (amount) => api.get<{ svg: string | null }>('/subscription/pay-qr', { amount }),
   request: (body) => api.post<unknown>('/subscription/plan-request', body),
-};
-
-export const panelPlanApi: PlanApi = {
-  catalog: () => orgPanelClient.get<PlanCatalog>('/org-admin/subscription/plans'),
-  payQr: (amount) => orgPanelClient.get<{ svg: string | null }>('/org-admin/subscription/pay-qr', { amount }),
-  request: (body) => orgPanelClient.post<unknown>('/org-admin/subscription/plan-request', body),
 };
 
 export function formatRupees(amount: number, currency = 'INR'): string {

@@ -139,6 +139,8 @@ class UserOut(APIModel):
     permissions: Optional[Dict[str, str]] = None
     # The organization's custom plan features; None = every feature.
     plan_features: Optional[List[str]] = None
+    # role == "reviewer": whose work they review ("user:<id>", "role:staff", "custom:<role id>").
+    review_targets: Optional[List[str]] = None
 
     @field_validator("module_access", mode="before")
     @classmethod
@@ -264,9 +266,11 @@ class TokenResponse(APIModel):
 class InviteUserRequest(APIModel):
     name: str = Field(min_length=2, max_length=120)
     email: EmailStr
-    role: str = Field(default="staff", pattern="^(admin|staff|viewer|employee|custom)$")
+    role: str = Field(default="staff", pattern="^(admin|staff|viewer|employee|custom|reviewer)$")
     # Required when role is "custom": the organization role the user works under.
     custom_role_id: Optional[str] = None
+    # Required when role is "reviewer": whose work they review (services/reviews).
+    review_scope: Optional[List[str]] = Field(default=None, max_length=200)
     # Required when role is "employee": which Payroll employee record this
     # login belongs to. That employee will then see only their own payslips
     # and profile - never anyone else's, and nothing else in the app.
@@ -296,9 +300,11 @@ class AcceptInviteRequest(APIModel):
 
 class UpdateUserRequest(APIModel):
     name: Optional[str] = Field(default=None, min_length=2, max_length=120)
-    role: Optional[str] = Field(default=None, pattern="^(admin|staff|viewer|employee|custom)$")
+    role: Optional[str] = Field(default=None, pattern="^(admin|staff|viewer|employee|custom|reviewer)$")
     # With role "custom": which organization role.
     custom_role_id: Optional[str] = None
+    # With role "reviewer": whose work they review.
+    review_scope: Optional[List[str]] = Field(default=None, max_length=200)
     is_active: Optional[bool] = None
 
     _required = field_validator("name", "role", "is_active")(_not_null)

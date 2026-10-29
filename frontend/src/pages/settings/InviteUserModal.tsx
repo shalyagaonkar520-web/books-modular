@@ -14,6 +14,7 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { useToast } from '@/components/ui/Toast';
 
 import { EDITABLE_MODULES } from './moduleAccess';
+import { ReviewScopePicker } from './ReviewScopePicker';
 
 interface InviteUserModalProps {
   onClose: () => void;
@@ -38,6 +39,9 @@ export function InviteUserModal({ onClose, onInvited, onCreateRole, initialRole,
   const [email, setEmail] = useState(initialEmail ?? '');
   const [role, setRole] = useState(initialRole ?? 'staff');
   const [employeeId, setEmployeeId] = useState('');
+  // role "reviewer": whose work they review.
+  const [reviewScope, setReviewScope] = useState<string[]>([]);
+  const isReviewer = role === 'reviewer';
   // "custom" = a staff user who may edit only the ticked modules.
   const [chosen, setChosen] = useState<Set<string>>(() => new Set());
   const isCustom = role === 'custom';
@@ -86,6 +90,10 @@ export function InviteUserModal({ onClose, onInvited, onCreateRole, initialRole,
       setError('Tick at least one module this user can edit.');
       return;
     }
+    if (isReviewer && reviewScope.length === 0) {
+      setError('Switch on at least one role or person this reviewer reviews.');
+      return;
+    }
     const created = await run(() =>
       orgApi.inviteUser({
         name: name.trim(),
@@ -94,6 +102,7 @@ export function InviteUserModal({ onClose, onInvited, onCreateRole, initialRole,
         employeeId: role === 'employee' ? employeeId : undefined,
         moduleAccess: isCustom ? chosenKeys : undefined,
         customRoleId: pickedRole?.id,
+        reviewScope: isReviewer ? reviewScope : undefined,
       }),
     );
     if (created) {
@@ -118,7 +127,13 @@ export function InviteUserModal({ onClose, onInvited, onCreateRole, initialRole,
             variant="primary"
             onClick={invite}
             loading={submitting}
-            disabled={!name.trim() || !email.trim() || (role === 'employee' && !employeeId) || (isCustom && chosenKeys.length === 0)}
+            disabled={
+              !name.trim() ||
+              !email.trim() ||
+              (role === 'employee' && !employeeId) ||
+              (isCustom && chosenKeys.length === 0) ||
+              (isReviewer && reviewScope.length === 0)
+            }
           >
             {t('settings.invite.submit')}
           </Button>
@@ -138,6 +153,7 @@ export function InviteUserModal({ onClose, onInvited, onCreateRole, initialRole,
               label: t('settings.invite.role.staff'),
             },
             { value: 'viewer', label: t('settings.invite.role.viewer') },
+            { value: 'reviewer', label: t('settings.invite.role.reviewer') },
             ...(customInvites && !customRoles ? [{ value: 'custom', label: 'Custom — choose which modules they can edit' }] : []),
             ...(orgRoles.data ?? []).map((r) => ({ value: `custom:${r.id}`, label: t('settings.invite.role.custom', { name: r.name }) })),
             ...(employeeInvites ? [{ value: 'employee', label: t('settings.invite.role.employee') }] : []),
@@ -203,6 +219,7 @@ export function InviteUserModal({ onClose, onInvited, onCreateRole, initialRole,
           </fieldset>
         ) : null}
 
+        {isReviewer ? <ReviewScopePicker value={reviewScope} onChange={setReviewScope} /> : null}
         {role === 'employee' ? (
           <SelectField
             label={t('settings.invite.employee')}

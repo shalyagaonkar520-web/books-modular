@@ -107,6 +107,7 @@ def invite_and_accept(
     password: str,
     employee_id: str | None = None,
     custom_role_id: str | None = None,
+    review_scope: list | None = None,
 ) -> dict:
     """Invites a user by email (SMTP mocked) and immediately accepts on their behalf.
 
@@ -120,6 +121,8 @@ def invite_and_accept(
         payload["employeeId"] = employee_id
     if custom_role_id is not None:
         payload["customRoleId"] = custom_role_id
+    if review_scope is not None:
+        payload["reviewScope"] = review_scope
     with patch("backend.services.email_service.smtplib.SMTP") as mock_smtp:
         mock_server = MagicMock()
         mock_smtp.return_value = mock_server
@@ -131,9 +134,6 @@ def invite_and_accept(
     accepted = client.post("/api/auth/accept-invite", json={"token": match.group(1), "password": password})
     assert accepted.status_code == 200, accepted.text
     return res.json()
-
-
-PANEL_PASSWORD = "Pan3lPass!"
 
 
 def platform_admin_headers(client: TestClient) -> dict:
@@ -151,22 +151,6 @@ def platform_admin_headers(client: TestClient) -> dict:
     res = client.post("/api/platform/auth/login", json={"email": email, "password": "Sup3rPass!"})
     assert res.status_code == 200, res.text
     return auth(res.json()["accessToken"])
-
-
-def create_panel_admin(client: TestClient, platform_h: dict, org_id: str, email: str | None = None, password: str = PANEL_PASSWORD) -> dict:
-    """Create an org admin-panel login through the platform API and sign it in."""
-    import uuid
-
-    email = email or f"panel-{uuid.uuid4().hex[:8]}@panel.example.com"
-    res = client.post(
-        f"/api/platform/organizations/{org_id}/panel-admins",
-        headers=platform_h,
-        json={"name": "Pat Panel", "email": email, "password": password},
-    )
-    assert res.status_code == 201, res.text
-    login = client.post("/api/org-admin/auth/login", json={"email": email, "password": password})
-    assert login.status_code == 200, login.text
-    return {"admin": res.json(), "email": email, "password": password, "h": auth(login.json()["accessToken"]), "login": login.json()}
 
 
 @pytest.fixture(scope="session")

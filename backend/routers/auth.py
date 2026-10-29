@@ -6,6 +6,7 @@ import logging
 import secrets
 from datetime import UTC, date, datetime, timedelta
 from functools import lru_cache
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
@@ -15,7 +16,7 @@ from sqlalchemy.orm import Session
 from backend.config import get_settings
 from backend.db import get_db
 from backend.deps import get_current_user, org_approval_error, subscription_sign_in_error
-from backend.models import BankAccount, EmailVerification, Organization, RefreshToken, User
+from backend.models import BankAccount, EmailVerification, LoginEvent, Organization, RefreshToken, User
 from backend.schemas.auth import (
     AcceptInviteRequest,
     AuthResponse,
@@ -474,6 +475,26 @@ def accept_invite(payload: AcceptInviteRequest, db: Session = Depends(get_db)):
     return Message(message="Password set. You can now sign in.")
 
 
+def _login_event(db: Session, request: Request, user: Optional[User], email: str, success: bool, reason: Optional[str] = None) -> None:
+    """Remember a sign-in attempt to a known account (the Admin console's sign-in history)."""
+    if user is None:
+        return
+    db.add(
+        LoginEvent(
+            organization_id=user.organization_id,
+            user_id=user.id,
+            email=email,
+            success=success,
+            reason=reason,
+            ip_address=client_ip(request)[:64],
+            user_agent=(request.headers.get("user-agent") or "")[:255],
+        )
+    )
+    if not success:
+        # The request ends in an error, which would drop it: save it now.
+        db.commit()
+
+
 @router.post("/login", response_model=AuthResponse)
 def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     email_clean = payload.email.strip().lower()
@@ -489,8 +510,10 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
     )
     if not user or not password_ok:
         logger.warning("Login failed for email '%s' (user_found: %s)", email_clean, user is not None)
+        _login_event(db, request, user, email_clean, False, "Wrong password")
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
     if not user.is_active:
+        _login_event(db, request, user, email_clean, False, "Account deactivated")
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has been deactivated")
     # Archived orgs are suspended too, so this covers both.
     if user.organization is not None and user.organization.is_suspended:
@@ -500,6 +523,7 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
         raise HTTPException(status.HTTP_403_FORBIDDEN, approval_error)
     user.last_login_at = datetime.now(UTC)
     access = _issue_tokens(db, user, response, request)
+    _login_event(db, request, user, email_clean, True)
     audit.record(db, user, "login", "user", user.id, f"{user.email} signed in")
     db.commit()
     return _auth_response(access, user)

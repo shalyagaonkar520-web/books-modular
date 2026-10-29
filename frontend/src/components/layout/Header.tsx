@@ -58,7 +58,7 @@ function getStoredDismissedIds(): Set<string> {
 }
 
 export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
-  const { user, organization, logout, canWrite } = useAuth();
+  const { user, organization, logout, canWrite, isAdmin, isReviewer } = useAuth();
   const { t, branding, isModuleEnabled } = useAppContent();
   const createEntries = CREATE_ENTRIES.filter((entry) => isModuleEnabled(entry.module));
   const navigate = useNavigate();
@@ -344,6 +344,40 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
                 >
                   {t('header.profile.myAccount')}
                 </button>
+                {isAdmin ? (
+                  <button
+                    type="button"
+                    className="zoho-my-account-link"
+                    onClick={() => {
+                      setOpenMenu('none');
+                      navigate('/admin');
+                    }}
+                  >
+                    {t('header.profile.adminConsole')}
+                  </button>
+                ) : null}
+                {isAdmin || isReviewer ? (
+                  <button
+                    type="button"
+                    className="zoho-my-account-link"
+                    onClick={() => {
+                      setOpenMenu('none');
+                      navigate('/reviews');
+                    }}
+                  >
+                    {t('header.profile.reviews')}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="zoho-my-account-link"
+                  onClick={() => {
+                    setOpenMenu('none');
+                    navigate('/support');
+                  }}
+                >
+                  {t('header.profile.support')}
+                </button>
                 <button
                   type="button"
                   className="zoho-my-account-link"
@@ -365,6 +399,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
               </div>
 
               <div
+                className="zoho-dropdown-books"
                 style={{
                   padding: '9px 16px',
                   background: '#f8fafc',

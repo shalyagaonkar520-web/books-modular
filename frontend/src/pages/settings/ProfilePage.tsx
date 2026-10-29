@@ -30,6 +30,7 @@ import {
 
 import { authApi } from '@/api/endpoints';
 import { useAppContent } from '@/app/AppContentContext';
+import { useTheme } from '@/app/theme';
 import type { Session } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
 import { useAsync } from '@/hooks/useAsync';
@@ -71,9 +72,16 @@ export function ProfilePage() {
   const { user, organization, updateUser } = useAuth();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('personal');
-  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
-    return (localStorage.getItem('rooman_theme_mode') as ThemeMode) || 'light';
+  // Light / Dark is the whole app's theme (app/theme); Gold is light with gold accents on this page.
+  const [siteTheme, setSiteTheme] = useTheme();
+  const [gold, setGold] = useState(() => {
+    try {
+      return localStorage.getItem('rooman_theme_mode') === 'luxury';
+    } catch {
+      return false;
+    }
   });
+  const themeMode: ThemeMode = gold ? 'luxury' : siteTheme;
 
   // Profile data
   const [name, setName] = useState(user?.name ?? '');
@@ -142,8 +150,13 @@ export function ProfilePage() {
 
   // Handle Theme Change
   const applyTheme = (mode: ThemeMode) => {
-    setThemeMode(mode);
-    localStorage.setItem('rooman_theme_mode', mode);
+    setGold(mode === 'luxury');
+    setSiteTheme(mode === 'dark' ? 'dark' : 'light');
+    try {
+      localStorage.setItem('rooman_theme_mode', mode);
+    } catch {
+      // Blocked storage: the choice still applies for now.
+    }
   };
 
   // Avatar handling

@@ -25,7 +25,7 @@ from backend.schemas.auth import (
 )
 from backend.schemas.common import Message, Page
 from backend.schemas.documents_flow import LockDateOut, LockDateUpdate
-from backend.services import audit, data_export, export_service, org_roles, org_users, permissions
+from backend.services import audit, data_export, export_service, org_roles, org_users, permissions, subscription
 from backend.services.tenancy import Pagination
 
 router = APIRouter(prefix="/api", tags=["Organization"])
@@ -106,6 +106,13 @@ def update_role(role_id: str, payload: org_roles.RoleIn, user: User = Depends(re
 def delete_role(role_id: str, user: User = Depends(require_admin), db: Session = Depends(get_db)):
     org_roles.delete_role(db, user.organization_id, user, role_id)
     return Message(message="Role deleted")
+
+
+@router.get("/plan-modules")
+def plan_modules(user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Modules of the organization's accepted plan (null = every module: trial or no plan)."""
+    plan = subscription.paid_modules(db.get(Organization, user.organization_id))
+    return {"planModules": sorted(plan) if plan is not None else None}
 
 
 @router.get("/users", response_model=List[UserOut])

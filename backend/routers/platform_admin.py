@@ -12,8 +12,6 @@ from __future__ import annotations
 import csv
 import io
 import logging
-import secrets
-import string
 from datetime import UTC, date, datetime, timedelta
 from typing import List, Optional
 
@@ -33,8 +31,6 @@ from backend.models import (
     CustomerPayment,
     Invoice,
     Organization,
-    OrgPanelAdmin,
-    OrgPanelRefreshToken,
     OrgRole,
     PlatformAdmin,
     PlatformRefreshToken,
@@ -45,14 +41,7 @@ from backend.models import (
 from backend.routers import razorpay as rzp
 from backend.schemas.app_content import PanelContentAccessIn, PanelContentAccessOut
 from backend.schemas.common import APIModel, Message, Page
-from backend.schemas.org_admin import (
-    ApproveOrganizationRequest,
-    CreateOrgPanelAdminRequest,
-    OrgPanelAdminOut,
-    PanelResetRequestOut,
-    PanelTempCredentialsOut,
-    UpdateOrgPanelAdminRequest,
-)
+from backend.schemas.org_admin import ApproveOrganizationRequest
 from backend.schemas.platform import (
     ChangePlatformPasswordRequest,
     CreateOrganizationRequest,
@@ -198,47 +187,6 @@ def _issue_platform_tokens(db: Session, admin: PlatformAdmin, response: Response
     return access
 
 
-def _panel_admins(db: Session, org_id: str) -> List[OrgPanelAdminOut]:
-    rows = (
-        db.execute(select(OrgPanelAdmin).where(OrgPanelAdmin.organization_id == org_id).order_by(OrgPanelAdmin.created_at)).scalars().all()
-    )
-    return [OrgPanelAdminOut.model_validate(a) for a in rows]
-
-
-def _add_panel_admin(db: Session, org: Organization, payload: CreateOrgPanelAdminRequest, admin: PlatformAdmin) -> OrgPanelAdmin:
-    """Create an org admin-panel login (flushed, not committed), audited in the org's log."""
-    email = payload.email.lower().strip()
-    if db.execute(select(OrgPanelAdmin.id).where(OrgPanelAdmin.email == email)).first():
-        raise HTTPException(status.HTTP_409_CONFLICT, "An organization admin-panel login with this email already exists")
-    panel_admin = OrgPanelAdmin(
-        organization_id=org.id,
-        name=payload.name,
-        email=email,
-        password_hash=hash_password(payload.password),
-        is_active=True,
-        created_by=admin.email,
-    )
-    db.add(panel_admin)
-    db.flush()
-    audit.record(
-        db,
-        admin,
-        "create",
-        "org_panel_admin",
-        panel_admin.id,
-        f"Admin-panel login {email} created by platform admin {admin.email}",
-        organization_id=org.id,
-    )
-    return panel_admin
-
-
-def _revoke_panel_sessions(db: Session, panel_admin_id: str) -> None:
-    now = datetime.now(UTC)
-    stmt = select(OrgPanelRefreshToken).where(OrgPanelRefreshToken.admin_id == panel_admin_id, OrgPanelRefreshToken.revoked_at.is_(None))
-    for tok in db.execute(stmt).scalars().all():
-        tok.revoked_at = now
-
-
 def _float(value) -> float:
     return float(value or 0)
 
@@ -380,17 +328,11 @@ def _org_summaries(db: Session, orgs: List[Organization]) -> List[OrgSummary]:
     )
     last_login = _last_login_map(db, ids)
     admin_emails = _admin_email_map(db, ids)
-    with_panel = (
-        set(db.execute(select(OrgPanelAdmin.organization_id).where(OrgPanelAdmin.organization_id.in_(ids)).distinct()).scalars())
-        if ids
-        else set()
-    )
     return [
         OrgSummary(
             id=o.id,
             name=o.name,
             code=o.code,
-            has_panel_admin=o.id in with_panel,
             is_suspended=o.is_suspended,
             is_archived=o.is_archived,
             deleted_at=o.deleted_at,
@@ -471,7 +413,6 @@ def _org_detail(db: Session, org: Organization) -> OrgDetail:
         collected_amount=_float(collected),
         outstanding_receivables=_float(outstanding),
         admins=[_user_out(a, org.name) for a in admins],
-        panel_admins=_panel_admins(db, org.id),
     )
 
 
@@ -1044,7 +985,8 @@ def approve_organization(
     """Let a pending (or previously rejected) sign-up's users sign in.
 
     Starts the organization's free trial (if it has not started yet). The
-    admin-panel login is created separately ("Create admin login").
+    person who signed up is the organization's admin and runs it from the
+    Admin console in the app.
     """
     org = db.get(Organization, org_id)
     if org is None:
@@ -1371,37 +1313,8 @@ def delete_organization(org_id: str, db: Session = Depends(get_db), admin: Platf
 
 
 # --------------------------------------------------------------------------- #
-# Organization admin-panel logins
+# App content: what the organization's admins may edit
 # --------------------------------------------------------------------------- #
-@router.get("/organizations/{org_id}/panel-admins", response_model=List[OrgPanelAdminOut])
-def list_panel_admins(org_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
-    if db.get(Organization, org_id) is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
-    return _panel_admins(db, org_id)
-
-
-@router.post("/organizations/{org_id}/panel-admins", response_model=OrgPanelAdminOut, status_code=status.HTTP_201_CREATED)
-def create_panel_admin(
-    org_id: str, payload: CreateOrgPanelAdminRequest, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
-):
-    org = db.get(Organization, org_id)
-    if org is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
-    panel_admin = _add_panel_admin(db, org, payload, admin)
-    db.commit()
-    db.refresh(panel_admin)
-    return OrgPanelAdminOut.model_validate(panel_admin)
-
-
-def _temp_password() -> str:
-    """16 characters with upper and lower case, digits and a symbol (meets the password policy)."""
-    alphabet = string.ascii_letters + string.digits + "!@#$%^&*-_=+?"
-    while True:
-        pw = "".join(secrets.choice(alphabet) for _ in range(16))
-        if any(c.islower() for c in pw) and any(c.isupper() for c in pw) and any(c.isdigit() for c in pw):
-            return pw
-
-
 @router.get("/organizations/{org_id}/panel-content-access", response_model=PanelContentAccessOut)
 def get_panel_content_access(org_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
     """What the organization's admin panel may edit in its app content."""
@@ -1433,172 +1346,6 @@ def set_panel_content_access(
     audit.record(db, admin, "update", "organization", org.id, f"Admin panel may edit: {summary}", organization_id=org.id)
     db.commit()
     return PanelContentAccessOut(**out)
-
-
-@router.post("/organizations/{org_id}/panel-admins/default", response_model=PanelTempCredentialsOut, status_code=status.HTTP_201_CREATED)
-def create_default_panel_admin(org_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
-    """Create the organization's admin-panel login: ID admin@<code>, a random temporary password.
-
-    The password is returned once, for the platform admin to hand over. On first
-    sign-in the organization's admin must choose their own ID and password.
-    """
-    org = db.get(Organization, org_id)
-    if org is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
-    if db.execute(select(OrgPanelAdmin.id).where(OrgPanelAdmin.organization_id == org.id)).first():
-        raise HTTPException(status.HTTP_409_CONFLICT, "This organization already has an admin login. Reset its password instead.")
-    login_id = f"admin@{org.code}"
-    if db.execute(select(OrgPanelAdmin.id).where(OrgPanelAdmin.email == login_id)).first():
-        raise HTTPException(status.HTTP_409_CONFLICT, f"The login ID {login_id} is already taken")
-    password = _temp_password()
-    panel_admin = OrgPanelAdmin(
-        organization_id=org.id,
-        name="Admin",
-        email=login_id,
-        password_hash=hash_password(password),
-        is_active=True,
-        created_by=admin.email,
-        must_change_credentials=True,
-    )
-    db.add(panel_admin)
-    db.flush()
-    audit.record(
-        db, admin, "create", "org_panel_admin", panel_admin.id, f"Admin login {login_id} created for '{org.name}'", organization_id=org.id
-    )
-    db.commit()
-    db.refresh(panel_admin)
-    return PanelTempCredentialsOut(admin=OrgPanelAdminOut.model_validate(panel_admin), login_id=login_id, password=password)
-
-
-@router.post("/panel-admins/{panel_admin_id}/reset-password", response_model=PanelTempCredentialsOut)
-def reset_panel_admin_password(panel_admin_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
-    """Give an admin-panel login a new random temporary password (e.g. approving a forgot-password request).
-
-    Ends its sessions; on the next sign-in the admin chooses their own password again.
-    """
-    target = db.get(OrgPanelAdmin, panel_admin_id)
-    if target is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Admin-panel login not found")
-    password = _temp_password()
-    had_request = target.reset_requested_at is not None
-    target.password_hash = hash_password(password)
-    target.must_change_credentials = True
-    target.reset_requested_at = None
-    _revoke_panel_sessions(db, target.id)
-    summary = f"Temporary password issued for admin login {target.email}" + (" (reset request approved)" if had_request else "")
-    audit.record(db, admin, "update", "org_panel_admin", target.id, summary, organization_id=target.organization_id)
-    db.commit()
-    db.refresh(target)
-    return PanelTempCredentialsOut(admin=OrgPanelAdminOut.model_validate(target), login_id=target.email, password=password)
-
-
-@router.post("/panel-admins/{panel_admin_id}/dismiss-reset", response_model=OrgPanelAdminOut)
-def dismiss_panel_reset_request(panel_admin_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
-    """Decline a forgot-password request (the current password keeps working)."""
-    target = db.get(OrgPanelAdmin, panel_admin_id)
-    if target is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Admin-panel login not found")
-    if target.reset_requested_at is not None:
-        target.reset_requested_at = None
-        audit.record(
-            db,
-            admin,
-            "update",
-            "org_panel_admin",
-            target.id,
-            f"Password reset request declined for {target.email}",
-            organization_id=target.organization_id,
-        )
-        db.commit()
-        db.refresh(target)
-    return OrgPanelAdminOut.model_validate(target)
-
-
-@router.get("/panel-reset-requests", response_model=List[PanelResetRequestOut])
-def list_panel_reset_requests(db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
-    """Admin-panel logins waiting for a new password, oldest request first."""
-    rows = db.execute(
-        select(OrgPanelAdmin, Organization)
-        .join(Organization, Organization.id == OrgPanelAdmin.organization_id)
-        .where(OrgPanelAdmin.reset_requested_at.is_not(None))
-        .order_by(OrgPanelAdmin.reset_requested_at)
-    ).all()
-    return [
-        PanelResetRequestOut(
-            admin=OrgPanelAdminOut.model_validate(a), organization_id=o.id, organization_name=o.name, organization_code=o.code
-        )
-        for a, o in rows
-    ]
-
-
-@router.patch("/panel-admins/{panel_admin_id}", response_model=OrgPanelAdminOut)
-def update_panel_admin(
-    panel_admin_id: str,
-    payload: UpdateOrgPanelAdminRequest,
-    db: Session = Depends(get_db),
-    admin: PlatformAdmin = Depends(get_current_superuser),
-):
-    target = db.get(OrgPanelAdmin, panel_admin_id)
-    if target is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Admin-panel login not found")
-    data = payload.model_dump(exclude_unset=True)
-    changes: List[str] = []
-    if "email" in data:
-        email = data["email"].lower().strip()
-        if email != target.email:
-            if db.execute(select(OrgPanelAdmin.id).where(OrgPanelAdmin.email == email, OrgPanelAdmin.id != target.id)).first():
-                raise HTTPException(status.HTTP_409_CONFLICT, "An organization admin-panel login with this email already exists")
-            changes.append(f"email {target.email} -> {email}")
-            target.email = email
-    if "name" in data and data["name"] != target.name:
-        target.name = data["name"]
-        changes.append("name")
-    revoke = False
-    if "is_active" in data and data["is_active"] != target.is_active:
-        target.is_active = data["is_active"]
-        changes.append("activated" if target.is_active else "deactivated")
-        revoke = not target.is_active
-    if "password" in data:
-        target.password_hash = hash_password(data["password"])
-        changes.append("password reset")
-        revoke = True
-    if revoke:
-        # A new password or a deactivation ends every session this login holds.
-        _revoke_panel_sessions(db, target.id)
-    detail = f" ({', '.join(changes)})" if changes else ""
-    audit.record(
-        db,
-        admin,
-        "update",
-        "org_panel_admin",
-        target.id,
-        f"Admin-panel login {target.email} updated by platform admin {admin.email}{detail}",
-        organization_id=target.organization_id,
-    )
-    db.commit()
-    db.refresh(target)
-    return OrgPanelAdminOut.model_validate(target)
-
-
-@router.delete("/panel-admins/{panel_admin_id}")
-def delete_panel_admin(panel_admin_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
-    target = db.get(OrgPanelAdmin, panel_admin_id)
-    if target is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Admin-panel login not found")
-    email, org_id = target.email, target.organization_id
-    db.execute(sa_delete(OrgPanelRefreshToken).where(OrgPanelRefreshToken.admin_id == target.id))
-    db.delete(target)
-    audit.record(
-        db,
-        admin,
-        "delete",
-        "org_panel_admin",
-        panel_admin_id,
-        f"Admin-panel login {email} deleted by platform admin {admin.email}",
-        organization_id=org_id,
-    )
-    db.commit()
-    return {"message": f"Admin-panel login {email} deleted"}
 
 
 # --------------------------------------------------------------------------- #
@@ -1762,7 +1509,11 @@ def org_create_role(
 
 @router.put("/organizations/{org_id}/roles/{role_id}", response_model=org_roles.RoleOut)
 def org_update_role(
-    org_id: str, role_id: str, payload: org_roles.RoleIn, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
+    org_id: str,
+    role_id: str,
+    payload: org_roles.RoleIn,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(get_current_superuser),
 ):
     return org_roles.update_role(db, org_id, admin, role_id, payload)
 

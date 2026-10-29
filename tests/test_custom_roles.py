@@ -142,36 +142,6 @@ def test_super_admin_edits_keep_or_clear_the_custom_role(client, books):
     assert listed["customRoleId"] is None
 
 
-def test_org_admin_panel_manages_roles_and_invites_with_them(client, books):
-    from unittest.mock import MagicMock, patch
-
-    from tests.conftest import create_panel_admin
-
-    org_id = client.get("/api/auth/me", headers=books["h"]).json()["user"]["organizationId"]
-    panel = create_panel_admin(client, platform_admin_headers(client), org_id)
-    ph = panel["h"]
-    assert {"key": "pos", "label": "Point of Sale", "group": "Sales"} in client.get("/api/org-admin/roles/catalog", headers=ph).json()
-    role = client.post("/api/org-admin/roles", headers=ph, json={"name": "Store manager", "permissions": {"pos": "edit", "items": "edit"}})
-    assert role.status_code == 201, role.text
-    with patch("backend.services.email_service.smtplib.SMTP") as smtp:
-        smtp.return_value = MagicMock()
-        invited = client.post(
-            "/api/org-admin/users",
-            headers=ph,
-            json={
-                "name": "Meena Manager",
-                "email": f"meena-{uuid.uuid4().hex[:6]}@roles.example.com",
-                "role": "custom",
-                "customRoleId": role.json()["id"],
-            },
-        )
-    assert invited.status_code == 201, invited.text
-    assert invited.json()["role"] == "custom" and invited.json()["customRoleName"] == "Store manager"
-    assert [r["userCount"] for r in client.get("/api/org-admin/roles", headers=ph).json()] == [1]
-    # The tenant's own users never reach the panel's role routes.
-    assert client.get("/api/org-admin/roles", headers=books["h"]).status_code in (401, 403)
-
-
 def test_super_admin_makes_roles_and_gives_them_to_users(client, books):
     h = books["h"]
     sa = platform_admin_headers(client)
@@ -189,7 +159,14 @@ def test_super_admin_makes_roles_and_gives_them_to_users(client, books):
     created = client.post(
         "/api/platform/users",
         headers=sa,
-        json={"organizationId": org_id, "name": "Store Helper", "email": email, "password": "Helper1Pass!", "role": "custom", "customRoleId": role["id"]},
+        json={
+            "organizationId": org_id,
+            "name": "Store Helper",
+            "email": email,
+            "password": "Helper1Pass!",
+            "role": "custom",
+            "customRoleId": role["id"],
+        },
     )
     assert created.status_code == 201, created.text
     body = created.json()
@@ -201,11 +178,19 @@ def test_super_admin_makes_roles_and_gives_them_to_users(client, books):
     missing = client.post(
         "/api/platform/users",
         headers=sa,
-        json={"organizationId": org_id, "name": "No Role", "email": f"x-{uuid.uuid4().hex[:6]}@roles.example.com", "password": "Helper1Pass!", "role": "custom"},
+        json={
+            "organizationId": org_id,
+            "name": "No Role",
+            "email": f"x-{uuid.uuid4().hex[:6]}@roles.example.com",
+            "password": "Helper1Pass!",
+            "role": "custom",
+        },
     )
     assert missing.status_code == 400
     other = register_org(client, "Otherroles")
-    foreign = client.post(f"/api/platform/organizations/{other['org']['id']}/roles", headers=sa, json={"name": "Elsewhere", "permissions": {"pos": "edit"}}).json()
+    foreign = client.post(
+        f"/api/platform/organizations/{other['org']['id']}/roles", headers=sa, json={"name": "Elsewhere", "permissions": {"pos": "edit"}}
+    ).json()
     wrong = client.patch(f"/api/platform/users/{body['id']}", headers=sa, json={"customRoleId": foreign["id"]})
     assert wrong.status_code == 404
 

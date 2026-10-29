@@ -27,7 +27,7 @@ function keysOf(access: PanelContentAccess): Set<string> {
 export function PanelContentAccessTab({ orgId, orgName }: { orgId: string; orgName: string }) {
   const toast = useToast();
   const submit = useSubmit();
-  const access = useAsync((signal) => platformApi.organizations.panelAdmins.contentAccess(orgId, signal), [orgId]);
+  const access = useAsync((signal) => platformApi.organizations.contentAccess.get(orgId, signal), [orgId]);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -48,7 +48,7 @@ export function PanelContentAccessTab({ orgId, orgName }: { orgId: string; orgNa
     });
 
   const save = async (keys: string[] | null) => {
-    const saved = await submit.run(() => platformApi.organizations.panelAdmins.setContentAccess(orgId, keys));
+    const saved = await submit.run(() => platformApi.organizations.contentAccess.set(orgId, keys));
     if (saved) {
       access.setData(saved);
       toast.success(keys === null ? `${orgName} follows its subscription plan again.` : `Admin panel permissions saved for ${orgName}.`);
