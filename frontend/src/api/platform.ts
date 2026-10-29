@@ -94,6 +94,10 @@ export interface OrgSubscriptionFields {
   pendingRequest?: OrgPlanRequest | null;
   /** Operator-facing note, e.g. who approved the plan or why a request was rejected. */
   subscriptionNote?: string | null;
+  /** Plans by users: the plan, its user cap and the end of the paid period. */
+  planKey?: string | null;
+  maxUsers?: number | null;
+  planEndsAt?: string | null;
   /** Legacy (pre-subscription) module fields; may be absent. */
   requestedModules?: string[] | null;
   monthlyPrice?: number | null;
@@ -110,6 +114,10 @@ export interface SubscriptionRequestItem {
   planPrice: number;
   subscriptionStatus: OrgSubscriptionStatus;
   trialEndsAt: string | null;
+  /** A plan by users: which plan, how many users and the payment reference to check. */
+  planKey?: string | null;
+  maxUsers?: number | null;
+  paymentReference?: string | null;
 }
 
 export interface ApproveSubscriptionBody {

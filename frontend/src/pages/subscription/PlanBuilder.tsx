@@ -35,7 +35,17 @@ export function planPriceText(plan: Pick<SubscriptionPlan, 'billingCycle' | 'mon
   return `${monthly} · billed ${formatPrice(plan.planPrice, catalog.currency)}${cycleSuffix('yearly')}`;
 }
 
-function PlanDetails({ plan, catalog }: { plan: SubscriptionPlan; catalog: ModulePricing }) {
+function PlanDetails({ plan, catalog, maxUsers }: { plan: SubscriptionPlan; catalog: ModulePricing; maxUsers?: number | null }) {
+  if (maxUsers) {
+    // A plan by users: the user limit and the price paid, not per-module prices.
+    const every = plan.modules.length >= catalog.modules.length;
+    return (
+      <span className="small">
+        <strong>{cycleLabel(plan.billingCycle)}</strong> · up to {maxUsers.toLocaleString('en-IN')} users ·{' '}
+        {every ? 'every feature' : `${plan.modules.length} features`} · <span className="num">{planPriceText(plan, catalog)}</span>
+      </span>
+    );
+  }
   return (
     <div className="stack" style={{ gap: 6 }}>
       <span className="small">
@@ -96,19 +106,32 @@ export function SubscriptionStatusCard({ subscription, catalog }: { subscription
             Your data is safe; choose a plan to continue using the app.
           </p>
         ) : null}
-        {plan && status === 'active' ? <PlanDetails plan={plan} catalog={catalog} /> : null}
+        {plan && status === 'active' ? <PlanDetails plan={plan} catalog={catalog} maxUsers={subscription.planKey ? subscription.maxUsers : null} /> : null}
+        {subscription.usersUsed !== undefined ? (
+          <p className="small" style={{ margin: 0 }}>
+            <strong>Users:</strong> {subscription.usersUsed}
+            {subscription.userLimit ? ` of ${subscription.userLimit} allowed` : ' (no limit)'}
+            {status === 'active' && subscription.planEndsAt
+              ? ` · Paid until ${formatDate(subscription.planEndsAt)}${subscription.planDaysLeft !== null && subscription.planDaysLeft !== undefined ? ` (${subscription.planDaysLeft} day${subscription.planDaysLeft === 1 ? '' : 's'} left)` : ''}`
+              : ''}
+          </p>
+        ) : null}
 
         {pendingRequest ? (
           <div className="subscription-note is-pending" role="status">
             <Hourglass size={16} aria-hidden="true" />
             <div className="stack" style={{ gap: 6, minWidth: 0 }}>
               <span>
-                <strong>Plan request sent — waiting for approval</strong>
+                <strong>
+                  {pendingRequest.paymentReference
+                    ? `Payment sent (ref ${pendingRequest.paymentReference}) — waiting for confirmation`
+                    : 'Plan request sent — waiting for approval'}
+                </strong>
                 {pendingRequest.requestedAt ? (
                   <span className="text-muted small"> · {formatDateTime(pendingRequest.requestedAt)}</span>
                 ) : null}
               </span>
-              <PlanDetails plan={pendingRequest} catalog={catalog} />
+              <PlanDetails plan={pendingRequest} catalog={catalog} maxUsers={pendingRequest.planKey ? pendingRequest.maxUsers : null} />
             </div>
           </div>
         ) : lastRejection ? (

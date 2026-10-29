@@ -173,3 +173,17 @@ def check_room_for(db: Session, org: Organization, adding: int = 1) -> None:
 
 def module_labels() -> List[Dict[str, str]]:
     return [{"key": m["key"], "label": m["label"]} for m in module_pricing.catalog()["modules"]]
+
+
+def pay_qr(db: Session, amount: float, org_name: str) -> Dict[str, Any]:
+    """The platform's UPI QR for paying ``amount`` (an SVG), or none when no UPI ID is set."""
+    from decimal import Decimal
+
+    from backend.services import upi
+
+    pay = config(db)["payment"]
+    upi_id = (pay.get("upiId") or "").strip()
+    if not upi_id:
+        return {"svg": None, "uri": None}
+    uri = upi.pay_uri(upi_id, pay.get("payeeName") or "Rooman Books", Decimal(str(round(amount, 2))), f"Books plan {org_name}"[:80])
+    return {"svg": upi.qr_svg(uri, 220), "uri": uri}

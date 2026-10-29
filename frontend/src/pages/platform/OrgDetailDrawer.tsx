@@ -63,6 +63,7 @@ import {
   useOrgApproval,
   useOrgLifecycle,
 } from './orgActions';
+import { SetPlanButton } from './PlanAdmin';
 import { SubscriptionStatusBadge, planPriceLabel, usePlanDecisions } from './subscriptionActions';
 import {
   CreatePlatformUserModal,
@@ -231,6 +232,10 @@ export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerPr
                 catalog={catalog}
                 manageable={!isOrgPending(data) && !isOrgRejected(data) && !archived}
                 decisions={decisions}
+                onPlanSaved={() => {
+                  reload();
+                  onChanged?.();
+                }}
               />
               <OverviewTab data={data} viewAsBlocker={approvalBlocker(data)} />
               <DangerZone
@@ -336,9 +341,10 @@ interface SubscriptionSectionProps {
   /** False while the organization awaits approval, was rejected, or is archived. */
   manageable: boolean;
   decisions: ReturnType<typeof usePlanDecisions>;
+  onPlanSaved: () => void;
 }
 
-function SubscriptionSection({ data, catalog, manageable, decisions }: SubscriptionSectionProps) {
+function SubscriptionSection({ data, catalog, manageable, decisions, onPlanSaved }: SubscriptionSectionProps) {
   const status = data.subscriptionStatus ?? null;
   const plan = data.plan ?? null;
   const request = data.pendingRequest ?? null;
@@ -376,6 +382,13 @@ function SubscriptionSection({ data, catalog, manageable, decisions }: Subscript
             <span className="text-muted small" data-testid="org-subscription-summary">
               {summary}
             </span>
+            {data.maxUsers || data.planEndsAt ? (
+              <span className="text-muted small">
+                {data.maxUsers ? `${data.userCount} of ${data.maxUsers} users` : ''}
+                {data.maxUsers && data.planEndsAt ? ' · ' : ''}
+                {data.planEndsAt ? `paid until ${formatDate(data.planEndsAt)}` : ''}
+              </span>
+            ) : null}
           </div>
           {manageable ? (
             <div className="row" style={{ gap: 8 }}>
@@ -384,6 +397,16 @@ function SubscriptionSection({ data, catalog, manageable, decisions }: Subscript
                   Extend trial
                 </Button>
               ) : null}
+              <SetPlanButton
+                id={data.id}
+                name={data.name}
+                planKey={data.planKey}
+                maxUsers={data.maxUsers}
+                planEndsAt={data.planEndsAt}
+                monthlyPrice={plan?.monthlyPrice ?? null}
+                billingCycle={plan?.billingCycle ?? null}
+                onSaved={onPlanSaved}
+              />
               <Button
                 variant="secondary"
                 size="sm"

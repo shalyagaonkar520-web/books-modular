@@ -4814,3 +4814,220 @@ input[type='password']::-ms-clear {
 .role-group-head .row-actions {
   gap: 14px;
 }
+
+/* ------------------------------------------------------------ plan chooser */
+.plan-cycle {
+  display: inline-flex;
+  align-self: flex-start;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.plan-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.plan-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 16px;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.plan-card:hover {
+  border-color: var(--border-strong);
+}
+
+.plan-card.is-selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.plan-card-name {
+  font-weight: 750;
+  font-size: 15px;
+}
+
+.plan-card-users,
+.plan-card-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.plan-card-price {
+  font-size: 24px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.plan-card-price small {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+.plan-features {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.plan-pay {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-alt);
+}
+
+.plan-pay-amount {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plan-pay-amount strong {
+  font-size: 28px;
+  letter-spacing: -0.02em;
+}
+
+.plan-pay-how {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.plan-pay-qr svg {
+  width: 160px;
+  height: 160px;
+  background: #fff;
+  padding: 6px;
+  border-radius: 8px;
+}
+
+.plan-pay-send {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.pre-wrap {
+  white-space: pre-wrap;
+}
+
+@media (max-width: 640px) {
+  .plan-pay-send {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ----------------------------------------------------- requests and chat */
+.requests-board {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.requests-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.requests-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.requests-item.is-active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.requests-item-subject {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 650;
+}
+
+.requests-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warning);
+}
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 420px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+
+.chat-message {
+  align-self: flex-start;
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+}
+
+.chat-message.is-mine {
+  align-self: flex-end;
+  background: var(--primary-soft);
+}
+
+.chat-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.chat-reply {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+@media (max-width: 900px) {
+  .requests-board {
+    grid-template-columns: 1fr;
+  }
+}

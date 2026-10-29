@@ -11,6 +11,7 @@ import { AuditLogsPage } from './AuditLogsPage';
 import { OrganizationsPage } from './OrganizationsPage';
 import { PlatformDashboardPage } from './PlatformDashboardPage';
 import { PlatformLoginPage } from './PlatformLoginPage';
+import { PlatformRequestsPage } from './PlanAdmin';
 import { PlatformSettingsPage } from './PlatformSettingsPage';
 import { SubscriptionsPage } from './SubscriptionsPage';
 import { UsersPage } from './UsersPage';
@@ -43,6 +44,7 @@ export function PlatformApp() {
           <Route path="organizations" element={<OrganizationsPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="subscriptions" element={<SubscriptionsPage />} />
+          <Route path="requests" element={<PlatformRequestsPage />} />
           <Route path="audit-logs" element={<AuditLogsPage />} />
           <Route path="admins" element={<AdminsPage />} />
           <Route path="workspace" element={<WorkspacePage />} />

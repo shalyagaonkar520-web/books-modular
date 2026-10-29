@@ -12,6 +12,8 @@ import { OrgAdminActivityPage } from './OrgAdminActivityPage';
 import { OrgAdminDashboardPage } from './OrgAdminDashboardPage';
 import { OrgAdminLoginPage } from './OrgAdminLoginPage';
 import { OrgAdminOrganizationPage } from './OrgAdminOrganizationPage';
+import { OrgAdminPlanPage } from './OrgAdminPlanPage';
+import { OrgAdminRequestsPage } from './OrgAdminRequestsPage';
 import { OrgAdminSetupPage } from './OrgAdminSetupPage';
 import { OrgAdminUsersPage } from './OrgAdminUsersPage';
 
@@ -83,6 +85,8 @@ function OrgAdminRoutes() {
             <Route path="organization" element={<OrgAdminOrganizationPage />} />
             <Route path="app-content" element={<AppContentPage mode="organization" />} />
             <Route path="activity" element={<OrgAdminActivityPage />} />
+            <Route path="plan" element={<OrgAdminPlanPage />} />
+            <Route path="requests" element={<OrgAdminRequestsPage />} />
           </Route>
         </Route>
       </Route>

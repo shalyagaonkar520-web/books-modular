@@ -43,6 +43,23 @@ export function PlanRequestsCard() {
         </div>
       ),
     },
+    {
+      key: 'payment',
+      header: 'Plan & payment',
+      render: (row) =>
+        row.planKey ? (
+          <div className="cell-stack">
+            <span className="strong">
+              {row.planKey === 'custom' ? 'Custom' : row.planKey.replace('u', 'Up to ')} · {row.maxUsers ?? '?'} users
+            </span>
+            <small>
+              Payment ref <span className="mono">{row.paymentReference ?? '—'}</span>
+            </small>
+          </div>
+        ) : (
+          <small className="text-muted">Modules only</small>
+        ),
+    },
     { key: 'cycle', header: 'Cycle', render: (row) => cycleLabel(row.billingCycle) },
     {
       key: 'price',

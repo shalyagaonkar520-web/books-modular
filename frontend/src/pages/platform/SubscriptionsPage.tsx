@@ -31,6 +31,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
 
+import { PlansSettingsCard } from './PlanAdmin';
 import { PlanRequestsCard } from './PlanRequestsCard';
 
 const CTA_TARGET_OPTIONS: Array<{ value: PlanCtaTarget; label: string }> = [
@@ -192,6 +193,7 @@ export function SubscriptionsPage() {
 
       <div style={{ marginBottom: 24 }}>
         <PlanRequestsCard />
+        <PlansSettingsCard />
       </div>
 
       {remote.loading && !draft ? (

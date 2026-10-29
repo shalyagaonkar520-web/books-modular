@@ -6,7 +6,10 @@ import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
 import { useModulePricing } from '@/hooks/useModulePricing';
 
-import { PlanBuilder, SubscriptionStatusCard } from './PlanBuilder';
+import { tenantPlanApi } from '@/api/plans';
+
+import { SubscriptionStatusCard } from './PlanBuilder';
+import { PlanChooser } from './PlanChooser';
 import { AskAdminNote } from './SubscriptionPage';
 
 /**
@@ -38,11 +41,11 @@ export function SubscriptionLockScreen() {
     title = 'Waiting for the platform administrator to approve your plan';
     lead = 'Your plan request has been sent. The app unlocks as soon as it is approved; this page checks automatically.';
   } else if (canManage) {
-    title = hadPlan ? 'Your subscription has ended — choose a plan to continue' : 'Your free trial has ended — choose a plan to continue';
-    lead = 'Your data is safe. Pick the modules you need and a billing cycle, and send the plan to the platform administrator.';
+    title = hadPlan ? 'Your plan has expired — renew to continue' : 'Your free trial has ended — choose a plan to continue';
+    lead = 'Your data is safe. Choose a plan by users, pay by UPI or bank transfer and send the payment reference.';
   } else {
-    title = hadPlan ? 'Your organization’s subscription has ended' : 'Your organization’s free trial has ended';
-    lead = 'Your data is safe. The app unlocks once your organization admin chooses a plan and it is approved.';
+    title = hadPlan ? 'Your organization’s plan has expired' : 'Your organization’s free trial has ended';
+    lead = 'Your data is safe. Ask your organization to renew it; the app unlocks as soon as the renewal is confirmed.';
   }
 
   const showBuilder = canManage && (!pending || changing);
@@ -65,7 +68,7 @@ export function SubscriptionLockScreen() {
             </Button>
           ) : null}
         </div>
-        {!canManage ? <AskAdminNote>Ask your organization admin to choose a plan to continue.</AskAdminNote> : null}
+        {!canManage ? <AskAdminNote>Request your organization to renew the plan.</AskAdminNote> : null}
       </section>
 
       {subscription && (pending || subscription.lastRejection) ? (
@@ -78,7 +81,14 @@ export function SubscriptionLockScreen() {
             <h2 className="card-title" id="lock-plan-title">
               {pending ? 'Change your plan request' : 'Choose your plan'}
             </h2>
-            <PlanBuilder catalog={catalog} onDone={() => setChanging(false)} />
+            <PlanChooser
+              planApi={tenantPlanApi}
+              currentUsers={subscription?.usersUsed}
+              onDone={() => {
+                setChanging(false);
+                void reload();
+              }}
+            />
           </div>
         </section>
       ) : null}

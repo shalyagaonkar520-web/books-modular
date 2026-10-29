@@ -228,7 +228,7 @@ describe('Organization admin panel', () => {
     expect(screen.getByText('Organization Admin')).toBeInTheDocument();
     expect(screen.getByText('Meera Iyer')).toBeInTheDocument();
     const nav = screen.getByRole('complementary', { name: 'Organization admin navigation' });
-    expect(Array.from(nav.querySelectorAll('a')).map((link) => link.textContent)).toEqual(['Dashboard', 'Users', 'Organization', 'App content', 'Activity log']);
+    expect(Array.from(nav.querySelectorAll('a')).map((link) => link.textContent)).toEqual(['Dashboard', 'Users', 'Organization', 'Plan', 'Requests', 'App content', 'Activity log']);
     expect(screen.queryByRole('button', { name: 'Back to app' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Change password' })).toBeInTheDocument();
   });

@@ -606,6 +606,11 @@ def panel_plans(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db:
     return plans.catalog(db)
 
 
+@router.get("/subscription/pay-qr")
+def panel_pay_qr(amount: float, admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
+    return plans.pay_qr(db, amount, db.get(Organization, admin.organization_id).name)
+
+
 @router.post("/subscription/plan-request")
 def panel_plan_request(payload: PlanRequestIn, admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
     """Choose a plan by users after paying; a super admin checks the payment and accepts it."""

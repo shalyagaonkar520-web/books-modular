@@ -55,7 +55,7 @@ export function TrialBanner() {
     text = (
       <>
         <strong>{trialText}</strong>
-        {canManage ? ' — every module is included. Choose a plan to keep going after the trial.' : ' — ask your organization admin to choose a plan.'}
+        {canManage ? ' — every module is included. Choose a plan to keep going after the trial.' : ' — ask your organization to renew it before it ends.'}
       </>
     );
   }

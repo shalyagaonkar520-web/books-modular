@@ -6,10 +6,13 @@ import { ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useModulePricing } from '@/hooks/useModulePricing';
 
-import { PlanBuilder, SubscriptionStatusCard } from './PlanBuilder';
+import { tenantPlanApi } from '@/api/plans';
+
+import { SubscriptionStatusCard } from './PlanBuilder';
+import { PlanChooser } from './PlanChooser';
 
 /** Ask-your-admin note for users who cannot choose the plan. */
-export function AskAdminNote({ children = 'Ask your organization admin to choose a plan.' }: { children?: string }) {
+export function AskAdminNote({ children = 'Ask your organization to renew its plan.' }: { children?: string }) {
   return (
     <p className="subscription-ask-admin">
       <Users size={16} aria-hidden="true" />
@@ -45,10 +48,10 @@ export function SubscriptionPage() {
         <SubscriptionStatusCard subscription={subscription} catalog={catalog} />
         {canManage ? (
           <Card
-            title={subscription.pendingRequest ? 'Change your plan request' : subscription.plan ? 'Change your plan' : 'Choose a plan'}
-            subtitle={`Choose modules and a billing cycle. A yearly plan costs ${catalog.yearlyMultiplier} × the monthly price.`}
+            title={subscription.plan ? 'Renew or change your plan' : 'Choose a plan'}
+            subtitle="Plans by number of users. Pay by UPI or bank transfer, then send the payment reference; the plan starts once it is confirmed."
           >
-            <PlanBuilder catalog={catalog} />
+            <PlanChooser planApi={tenantPlanApi} currentUsers={subscription.usersUsed} onDone={() => void reload()} />
           </Card>
         ) : (
           <Card>

@@ -73,6 +73,12 @@ def plan_quote(
     return plans.quote(db, plan_key, billing_cycle, users, [m for m in (modules or "").split(",") if m])
 
 
+@router.get("/pay-qr")
+def pay_qr(amount: float, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """UPI QR for paying a plan's amount to the platform."""
+    return plans.pay_qr(db, amount, _org(db, user).name)
+
+
 @router.post("/plan-request", response_model=SubscriptionOut)
 def request_users_plan(payload: PlanRequestIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Ask for a plan by users after paying; a super admin checks the payment and accepts it."""

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Building2, History, KeyRound, LayoutDashboard, LayoutTemplate, LogOut, Menu, ShieldCheck, Users } from 'lucide-react';
+import { Building2, CreditCard, History, KeyRound, LayoutDashboard, LayoutTemplate, LifeBuoy, LogOut, Menu, ShieldCheck, Users } from 'lucide-react';
 
 import { PageErrorBoundary } from '@/components/ErrorBoundary';
 import { ThemeToggle } from '@/app/theme';
@@ -12,6 +12,8 @@ const NAV_LINKS = [
   { to: '/org-admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/org-admin/users', label: 'Users', icon: Users, end: false },
   { to: '/org-admin/organization', label: 'Organization', icon: Building2, end: false },
+  { to: '/org-admin/plan', label: 'Plan', icon: CreditCard, end: false },
+  { to: '/org-admin/requests', label: 'Requests', icon: LifeBuoy, end: false },
   { to: '/org-admin/app-content', label: 'App content', icon: LayoutTemplate, end: false },
   { to: '/org-admin/activity', label: 'Activity log', icon: History, end: false },
 ];

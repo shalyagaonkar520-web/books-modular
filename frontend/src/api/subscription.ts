@@ -21,6 +21,10 @@ export interface SubscriptionPlan {
 
 export interface SubscriptionPlanRequest extends SubscriptionPlan {
   requestedAt: string;
+  /** A plan by users: which one, how many users, and the payment reference to check. */
+  planKey?: string | null;
+  maxUsers?: number | null;
+  paymentReference?: string | null;
 }
 
 export interface Subscription {
@@ -34,6 +38,14 @@ export interface Subscription {
   lastRejection: { reason: string; decidedAt: string | null } | null;
   /** Whether the signed-in user may request a plan; undefined when the server did not say. */
   canManage?: boolean;
+  /** Plans by users: the plan, its user cap and end of the paid period. */
+  planKey?: string | null;
+  maxUsers?: number | null;
+  planEndsAt?: string | null;
+  planDaysLeft?: number | null;
+  /** Logins in use and the most allowed now (null = no cap). */
+  usersUsed?: number;
+  userLimit?: number | null;
 }
 
 export interface SubscriptionRequestBody {
@@ -88,12 +100,24 @@ export function normalizeSubscription(raw: unknown): Subscription | null {
     locked: typeof raw.locked === 'boolean' ? raw.locked : status === 'expired',
     plan: normalizePlan(raw.plan),
     pendingRequest: pending
-      ? { ...pending, requestedAt: asString((raw.pendingRequest as Record<string, unknown>).requestedAt) ?? '' }
+      ? {
+          ...pending,
+          requestedAt: asString((raw.pendingRequest as Record<string, unknown>).requestedAt) ?? '',
+          planKey: asString((raw.pendingRequest as Record<string, unknown>).planKey),
+          maxUsers: asNumber((raw.pendingRequest as Record<string, unknown>).maxUsers),
+          paymentReference: asString((raw.pendingRequest as Record<string, unknown>).paymentReference),
+        }
       : null,
     lastRejection: rejection
       ? { reason: typeof rejection.reason === 'string' ? rejection.reason : '', decidedAt: asString(rejection.decidedAt) }
       : null,
     canManage: typeof raw.canManage === 'boolean' ? raw.canManage : undefined,
+    planKey: asString(raw.planKey),
+    maxUsers: asNumber(raw.maxUsers),
+    planEndsAt: asString(raw.planEndsAt),
+    planDaysLeft: asNumber(raw.planDaysLeft),
+    usersUsed: asNumber(raw.usersUsed) ?? undefined,
+    userLimit: asNumber(raw.userLimit),
   };
 }
 

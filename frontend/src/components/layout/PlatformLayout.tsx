@@ -6,6 +6,7 @@ import {
   CreditCard,
   Globe,
   KeyRound,
+  LifeBuoy,
   LayoutDashboard,
   LayoutTemplate,
   LogOut,
@@ -19,6 +20,7 @@ import {
 
 import { PageErrorBoundary } from '@/components/ErrorBoundary';
 import { platformApi } from '@/api/platform';
+import { platformClient } from '@/api/platformClient';
 import { usePlatformAuth } from '@/auth/PlatformAuthContext';
 import { ThemeToggle } from '@/app/theme';
 import { initials } from '@/utils/format';
@@ -33,6 +35,7 @@ const NAV_LINKS = [
   { to: '/platform/workspace', label: 'Workspace', icon: Briefcase, end: false },
   { to: '/platform/users', label: 'Users', icon: Users, end: false },
   { to: '/platform/subscriptions', label: 'Subscriptions & Pricing', icon: CreditCard, end: false },
+  { to: '/platform/requests', label: 'Requests', icon: LifeBuoy, end: false },
   { to: '/platform/audit-logs', label: 'Audit log', icon: ScrollText, end: false },
   { to: '/platform/admins', label: 'Admins', icon: UserCog, end: false },
   { to: '/platform/website', label: 'Website', icon: Globe, end: false },
@@ -53,6 +56,22 @@ export function PlatformLayout() {
   // Organizations awaiting approval, for the nav badge. A one-row page is enough
   // to read the total; refreshed on navigation and after an approval decision.
   const [pendingCount, setPendingCount] = useState(0);
+  // Requests from organizations waiting for a platform reply (checked every minute).
+  const [waitingRequests, setWaitingRequests] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const check = () =>
+      platformClient
+        .get<{ count: number }>('/platform/requests/waiting')
+        .then((res) => alive && setWaitingRequests(res.count))
+        .catch(() => undefined);
+    check();
+    const timer = window.setInterval(check, 60000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, []);
   const [pendingNonce, setPendingNonce] = useState(0);
   useEffect(() => {
     const bump = () => setPendingNonce((n) => n + 1);
@@ -165,6 +184,12 @@ export function PlatformLayout() {
               >
                 <entry.icon size={17} aria-hidden="true" />
                 <span>{entry.label}</span>
+                {entry.to === '/platform/requests' && waitingRequests > 0 ? (
+                  <span className="nav-count-badge" title={`${waitingRequests} waiting for your reply`}>
+                    {waitingRequests > 99 ? '99+' : waitingRequests}
+                    <span className="sr-only"> waiting for your reply</span>
+                  </span>
+                ) : null}
                 {entry.to === '/platform/organizations' && pendingCount > 0 ? (
                   <span className="nav-count-badge" title={`${pendingCount} awaiting approval`}>
                     {pendingCount > 99 ? '99+' : pendingCount}
