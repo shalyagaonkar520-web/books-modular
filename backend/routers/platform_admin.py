@@ -1594,7 +1594,7 @@ def impersonate_user(user_id: str, db: Session = Depends(get_db), admin: Platfor
     user = db.get(User, user_id)
     if user is None or user.role == "integration":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
-    if user.role not in ("admin", "staff", "viewer"):
+    if user.role not in ("admin", "staff", "viewer", "reviewer"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This user's role cannot be impersonated")
     org = db.get(Organization, user.organization_id)
     if org is None:

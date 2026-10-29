@@ -108,10 +108,14 @@ export interface ChangeEntry {
   entityLabel?: string | null;
   changes: Record<string, [unknown, unknown]>;
   createdAt: string;
-  reviewStatus?: 'reviewed' | 'flagged' | null;
+  /** reviewed = approved, hold = on hold, flagged = a message sent to the maker. */
+  reviewStatus?: 'reviewed' | 'hold' | 'flagged' | null;
   reviewedByName?: string | null;
   reviewedAt?: string | null;
   reviewNote?: string | null;
+  /** The maker's answer to the reviewer's message. */
+  reviewReply?: string | null;
+  reviewReplyAt?: string | null;
 }
 
 export interface ChangeQuery {
@@ -159,13 +163,15 @@ export interface SecuritySummary {
 
 export interface ReviewSummary {
   waiting: number;
+  hold: number;
   flagged: number;
   reviewed: number;
   /** Whose work, e.g. ["Staff (role)", "Asha Rao"]; ["Everyone"] for an admin. */
   scope: string[];
 }
 
-export type ReviewStatus = 'waiting' | 'reviewed' | 'flagged' | 'all';
+export type ReviewStatus = 'waiting' | 'hold' | 'flagged' | 'reviewed' | 'all';
+export type ReviewAction = 'reviewed' | 'hold' | 'flagged' | 'waiting';
 
 export const adminConsoleApi = {
   appContent: {
@@ -195,9 +201,11 @@ export const adminConsoleApi = {
 export const reviewsApi = {
   summary: (signal?: AbortSignal) => api.get<ReviewSummary>('/reviews/summary', undefined, signal),
   list: (query: ChangeQuery & { status: ReviewStatus }, signal?: AbortSignal) => api.get<Page<ChangeEntry>>('/reviews', { ...query }, signal),
-  mark: (id: string, status: 'reviewed' | 'flagged' | 'waiting', note?: string) => api.post<ChangeEntry>(`/reviews/${id}`, { status, note }),
-  markMany: (ids: string[], status: 'reviewed' | 'flagged' | 'waiting', note?: string) =>
+  mark: (id: string, status: ReviewAction, note?: string) => api.post<ChangeEntry>(`/reviews/${id}`, { status, note }),
+  markMany: (ids: string[], status: ReviewAction, note?: string) =>
     api.post<ChangeEntry[]>('/reviews/bulk', { ids, status, note }),
-  /** My own changes a reviewer flagged. */
+  /** My own changes a reviewer sent a message about or put on hold. */
   mine: (signal?: AbortSignal) => api.get<Page<ChangeEntry>>('/reviews/mine', { page_size: 50 }, signal),
+  /** Answer the reviewer: the change goes back to their list. */
+  reply: (id: string, message: string) => api.post<ChangeEntry>(`/reviews/mine/${id}/reply`, { message }),
 };

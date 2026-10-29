@@ -7,7 +7,7 @@ import { ConfirmDialog } from '@/components/ui/Modal';
 
 import { useImpersonate } from './useImpersonate';
 
-const IMPERSONATABLE_ROLES = new Set(['admin', 'staff', 'viewer']);
+const IMPERSONATABLE_ROLES = new Set(['admin', 'staff', 'viewer', 'reviewer']);
 
 interface ImpersonateTarget {
   id: string;

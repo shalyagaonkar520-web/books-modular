@@ -122,7 +122,8 @@ export function useScopedOrgApi() {
       deleteRole: (id: string) => client.delete<Message>(`${prefix}/roles/${id}`),
       deleteUser: (id: string) => client.delete<Message>(`${prefix}/users/${id}`),
       resetUserPassword: (id: string, newPassword: string) =>
-        client.post<Message>(`${prefix}/users/${id}/reset-password`, undefined, { new_password: newPassword }),
+        // In the body, so the password stays out of URLs and access logs.
+        client.post<Message>(`${prefix}/users/${id}/reset-password`, { newPassword }),
       auditLogs: (query?: Query) => client.get<Page<AuditLog>>(`${prefix}/audit-logs`, query),
     }),
     [client, prefix],

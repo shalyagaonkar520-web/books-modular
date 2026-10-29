@@ -268,6 +268,8 @@ class ChangeLogOut(APIModel):
     reviewed_by_name: Optional[str] = None
     reviewed_at: Optional[datetime] = None
     review_note: Optional[str] = None
+    review_reply: Optional[str] = None
+    review_reply_at: Optional[datetime] = None
 
 
 def change_out(row: ChangeLog) -> ChangeLogOut:
@@ -290,6 +292,8 @@ def change_out(row: ChangeLog) -> ChangeLogOut:
         reviewed_by_name=row.reviewed_by_name,
         reviewed_at=row.reviewed_at,
         review_note=row.review_note,
+        review_reply=row.review_reply,
+        review_reply_at=row.review_reply_at,
     )
 
 

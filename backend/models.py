@@ -474,12 +474,15 @@ class ChangeLog(Base):
     # JSON {field: [old, new]}
     changes: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
-    # reviewed | flagged (NULL = waiting)
+    # reviewed (approved) | hold | flagged (a message to the maker) - NULL = waiting
     review_status: Mapped[Optional[str]] = mapped_column(String(10), index=True)
     reviewed_by_id: Mapped[Optional[str]] = mapped_column(String(32))
     reviewed_by_name: Mapped[Optional[str]] = mapped_column(String(120))
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     review_note: Mapped[Optional[str]] = mapped_column(Text)
+    # The maker's answer to the reviewer's message (sends the change back to the reviewer).
+    review_reply: Mapped[Optional[str]] = mapped_column(Text)
+    review_reply_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class LoginEvent(Base):

@@ -1,8 +1,10 @@
-"""Reviews: a reviewer's list of changes to check, and the flags on one's own work.
+"""Reviews: a reviewer checks each change by the people they review.
 
-Reviewers see the changes of the users and roles they are connected to;
-admins see and can review every change. Anyone signed in sees the changes of
-their own that a reviewer flagged.
+For every change ("Sam added invoice INV-12 - is it correct?") the reviewer
+can Approve it, put it On hold, or Send a message to the person who made it.
+That person sees the message (and holds) on their Support page and replies;
+a reply sends the change back to the reviewer's "To check" list. Reviewers
+see the users and roles they are connected to; admins see everyone's.
 """
 
 from __future__ import annotations
@@ -25,12 +27,13 @@ from backend.services.tenancy import Pagination
 
 router = APIRouter(prefix="/api/reviews", tags=["Reviews"])
 
-STATUSES = ("waiting", "reviewed", "flagged", "all")
+# reviewed = approved, flagged = message sent to the maker
+STATUSES = ("waiting", "hold", "flagged", "reviewed", "all")
 
 
 class ReviewIn(APIModel):
-    # reviewed | flagged | waiting (undo)
-    status: str = Field(pattern="^(reviewed|flagged|waiting)$")
+    # reviewed (approve) | hold | flagged (send a message) | waiting (undo)
+    status: str = Field(pattern="^(reviewed|hold|flagged|waiting)$")
     note: Optional[str] = Field(default=None, max_length=1000)
 
 
@@ -38,8 +41,13 @@ class BulkReviewIn(ReviewIn):
     ids: List[str] = Field(min_length=1, max_length=200)
 
 
+class ReplyIn(APIModel):
+    message: str = Field(min_length=1, max_length=2000)
+
+
 class ReviewSummary(APIModel):
     waiting: int
+    hold: int
     flagged: int
     reviewed: int
     # Whose work: readable names of the scope ("Everyone" for an admin).
@@ -64,7 +72,7 @@ def _scoped(db: Session, user: User):
 def _with_status(stmt, wanted: str):
     if wanted == "waiting":
         return stmt.where(ChangeLog.review_status.is_(None))
-    if wanted in ("reviewed", "flagged"):
+    if wanted in ("reviewed", "hold", "flagged"):
         return stmt.where(ChangeLog.review_status == wanted)
     return stmt
 
@@ -79,6 +87,7 @@ def summary(user: User = Depends(require_subscription), db: Session = Depends(ge
 
     return ReviewSummary(
         waiting=count(base.c.review_status.is_(None)),
+        hold=count(base.c.review_status == "hold"),
         flagged=count(base.c.review_status == "flagged"),
         reviewed=count(base.c.review_status == "reviewed"),
         scope=["Everyone"] if user.role == "admin" else reviews.describe(db, user.review_targets),
@@ -104,7 +113,7 @@ def list_reviews(
 
 def _mark(db: Session, user: User, rows: List[ChangeLog], payload: ReviewIn) -> None:
     if payload.status == "flagged" and not (payload.note or "").strip():
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Say what is wrong: a flag needs a note for the person who made the change.")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Write the message for the person who made the change.")
     now = datetime.now(UTC)
     for row in rows:
         if payload.status == "waiting":
@@ -114,7 +123,12 @@ def _mark(db: Session, user: User, rows: List[ChangeLog], payload: ReviewIn) -> 
             row.reviewed_by_id = user.id
             row.reviewed_by_name = user.name
             row.reviewed_at = now
-            row.review_note = (payload.note or "").strip() or None
+            note = (payload.note or "").strip()
+            if note or payload.status == "flagged":
+                row.review_note = note or None
+            if payload.status == "flagged":
+                # A new question: the earlier answer no longer applies.
+                row.review_reply = row.review_reply_at = None
 
 
 @router.post("/bulk", response_model=List[ChangeLogOut])
@@ -142,10 +156,27 @@ def review_one(change_id: str, payload: ReviewIn, user: User = Depends(require_s
     return change_out(row)
 
 
+def _mine(user: User):
+    return select(ChangeLog).where(
+        ChangeLog.organization_id == user.organization_id, ChangeLog.user_id == user.id, ChangeLog.review_status.in_(("flagged", "hold"))
+    )
+
+
 @router.get("/mine", response_model=Page[ChangeLogOut])
 def my_flags(pagination: Pagination = Depends(), user: User = Depends(require_subscription), db: Session = Depends(get_db)):
-    """My own changes a reviewer flagged, newest first."""
-    stmt = select(ChangeLog).where(
-        ChangeLog.organization_id == user.organization_id, ChangeLog.user_id == user.id, ChangeLog.review_status == "flagged"
-    )
-    return change_page(db, stmt, pagination)
+    """My own changes a reviewer sent me a message about, or put on hold, newest first."""
+    return change_page(db, _mine(user), pagination)
+
+
+@router.post("/mine/{change_id}/reply", response_model=ChangeLogOut)
+def reply_to_reviewer(change_id: str, payload: ReplyIn, user: User = Depends(require_subscription), db: Session = Depends(get_db)):
+    """Answer the reviewer; the change goes back to their "To check" list."""
+    row = db.execute(_mine(user).where(ChangeLog.id == change_id)).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Change not found")
+    row.review_reply = payload.message.strip()
+    row.review_reply_at = datetime.now(UTC)
+    row.review_status = None
+    audit.record(db, user, "review", row.entity_type, row.entity_id, f"Answered the reviewer about {row.entity_label or row.entity_type}")
+    db.commit()
+    return change_out(row)

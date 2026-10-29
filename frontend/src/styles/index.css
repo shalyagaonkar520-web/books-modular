@@ -4940,11 +4940,131 @@ input[type='password']::-ms-clear {
 }
 
 /* ----------------------------------------------------- requests and chat */
+.support-start {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.support-start-tile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.support-start-tile:hover {
+  border-color: var(--primary);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.support-start-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.support-start-text small {
+  color: var(--text-muted);
+}
+
+.support-start-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--surface-alt);
+  color: var(--text-muted);
+}
+
+.support-start-icon.is-small {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.support-start-icon.is-problem {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.support-start-icon.is-change {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.support-start-icon.is-users {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.support-start-icon.is-plan {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
 .requests-board {
   display: grid;
-  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
+}
+
+.requests-panel,
+.thread,
+.requests-empty {
+  padding: 16px;
+}
+
+.requests-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.requests-panel-head .card-title,
+.thread-title .card-title {
+  margin: 0;
+}
+
+.requests-filter {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  margin-bottom: 12px;
+  border-radius: 999px;
+  background: var(--surface-alt);
+}
+
+.requests-chip {
+  padding: 4px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.requests-chip.is-active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
 }
 
 .requests-list {
@@ -4954,13 +5074,14 @@ input[type='password']::-ms-clear {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  max-height: 560px;
+  overflow-y: auto;
 }
 
 .requests-item {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
+  align-items: center;
+  gap: 10px;
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -4971,9 +5092,21 @@ input[type='password']::-ms-clear {
   cursor: pointer;
 }
 
+.requests-item:hover {
+  border-color: var(--border-strong);
+}
+
 .requests-item.is-active {
   border-color: var(--primary);
   background: var(--primary-soft);
+}
+
+.requests-item-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .requests-item-subject {
@@ -4981,42 +5114,118 @@ input[type='password']::-ms-clear {
   align-items: center;
   gap: 6px;
   font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .requests-dot {
+  flex-shrink: 0;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--warning);
 }
 
+.requests-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 260px;
+  color: var(--text-muted);
+}
+
+.thread-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.thread-title {
+  flex: 1;
+  min-width: 180px;
+}
+
+.thread-title p {
+  margin: 2px 0 0;
+}
+
 .chat {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  max-height: 420px;
+  gap: 12px;
+  max-height: 460px;
+  min-height: 160px;
   overflow-y: auto;
+  padding: 4px 2px 12px;
   margin-bottom: 12px;
 }
 
-.chat-message {
-  align-self: flex-start;
+.chat-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
   max-width: 85%;
-  padding: 8px 12px;
-  border-radius: 12px;
+}
+
+.chat-row.is-mine {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.chat-avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--surface-alt);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.chat-avatar.is-support {
+  background: var(--primary);
+  color: #fff;
+}
+
+.chat-message {
+  padding: 9px 13px;
+  border-radius: 14px 14px 14px 4px;
   background: var(--surface-alt);
   border: 1px solid var(--border);
 }
 
 .chat-message.is-mine {
-  align-self: flex-end;
+  border-radius: 14px 14px 4px 14px;
   background: var(--primary-soft);
+  border-color: transparent;
+}
+
+.chat-message.is-support:not(.is-mine) {
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
 }
 
 .chat-meta {
-  font-size: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  font-size: 11.5px;
   color: var(--text-muted);
-  margin-bottom: 2px;
+  margin-bottom: 3px;
+}
+
+.chat-meta strong {
+  color: var(--text);
 }
 
 .chat-reply {
@@ -5029,6 +5238,9 @@ input[type='password']::-ms-clear {
 @media (max-width: 900px) {
   .requests-board {
     grid-template-columns: 1fr;
+  }
+  .chat-row {
+    max-width: 100%;
   }
 }
 
@@ -5349,4 +5561,26 @@ input[type='password']::-ms-clear {
 
 [data-theme='dark'] .zoho-my-account-link {
   color: var(--primary-hover);
+}
+
+
+.change-item.is-hold {
+  border-color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.change-ask {
+  margin-top: 4px;
+  color: var(--primary);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.change-note.is-reply {
+  border-left-color: var(--primary);
+  font-style: normal;
+}
+
+.review-reply {
+  flex: 1 1 100%;
 }

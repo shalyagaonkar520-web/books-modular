@@ -6,6 +6,7 @@ import type { ChangeEntry } from '@/api/adminConsole';
 import { installMockApi } from '@/test/mockApi';
 import { renderWithProviders, testUser } from '@/test/renderWithProviders';
 import { InviteUserModal } from '@/pages/settings/InviteUserModal';
+import { ResetPasswordModal } from '@/pages/settings/ResetPasswordModal';
 import { ReviewsPage } from '@/pages/reviews/ReviewsPage';
 import { SupportPage } from '@/pages/support/SupportPage';
 
@@ -121,33 +122,54 @@ describe('Admin console', () => {
     }));
   });
 
-  it('reviews: mark reviewed, or flag with a note', async () => {
+  it('reviews: approve, hold, or send the maker a message', async () => {
     const { calls } = installMockApi({
-      'GET /api/reviews/summary': { waiting: 1, flagged: 0, reviewed: 0, scope: ['Staff (role)'] },
+      'GET /api/reviews/summary': { waiting: 1, hold: 0, flagged: 0, reviewed: 0, scope: ['Staff (role)'] },
       'GET /api/reviews': page([change]),
       'POST /api/reviews/c1': { ...change, reviewStatus: 'flagged' },
     });
     renderWithProviders(<ReviewsPage />);
-    expect(await screen.findByText(/Changes by Staff \(role\)/)).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('button', { name: 'Flag' }));
+    expect(await screen.findByText(/You review the work of Staff \(role\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Is this correct\?/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hold' })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Send message' }));
     const dialog = await screen.findByRole('dialog');
-    const flag = within(dialog).getByRole('button', { name: 'Flag' });
+    const flag = within(dialog).getByRole('button', { name: 'Send message' });
     expect(flag).toBeDisabled();
-    fireEvent.change(within(dialog).getByLabelText('What is wrong?'), { target: { value: 'Price should be 12' } });
+    fireEvent.change(within(dialog).getByLabelText('Message'), { target: { value: 'Price should be 12' } });
     fireEvent.click(flag);
     await waitFor(() =>
       expect(calls.find((c) => c.method === 'POST' && c.path === '/api/reviews/c1')?.body).toEqual({ status: 'flagged', note: 'Price should be 12' }),
     );
   });
 
-  it('support shows my flagged work and my requests', async () => {
-    installMockApi({
+  it('support shows reviewer messages about my work, and I can reply', async () => {
+    const { calls } = installMockApi({
+      'POST /api/reviews/mine/c1/reply': { ...change },
       'GET /api/reviews/mine': page([{ ...change, reviewStatus: 'flagged', reviewNote: 'Price should be 12', reviewedByName: 'Rita' }]),
       'GET /api/support/requests': [],
     });
     renderWithProviders(<SupportPage />);
-    expect(await screen.findByText('Flags on my work')).toBeInTheDocument();
-    expect(screen.getByText('“Price should be 12”')).toBeInTheDocument();
+    expect(await screen.findByText('Reviewer messages about my work')).toBeInTheDocument();
+    expect(screen.getByText('Price should be 12')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reply to Rita' }));
+    fireEvent.change(screen.getByLabelText('Your answer to Rita'), { target: { value: 'Fixed' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(calls.find((c) => c.path === '/api/reviews/mine/c1/reply')?.body).toEqual({ message: 'Fixed' }));
     expect(await screen.findByRole('button', { name: /New request/ })).toBeInTheDocument();
+  });
+
+  it("resets a user's password with the password in the request body", async () => {
+    const { calls } = installMockApi({ 'POST /api/users/u2/reset-password': { message: 'ok' } });
+    renderWithProviders(<ResetPasswordModal user={{ ...testUser, id: 'u2', name: 'Cash Counter' }} onClose={() => undefined} />);
+    const dialog = await screen.findByRole('dialog');
+    const [password, confirm] = within(dialog).getAllByLabelText(/password/i).filter((el) => el.tagName === 'INPUT');
+    fireEvent.change(password, { target: { value: 'Test1Pass!x' } });
+    fireEvent.change(confirm, { target: { value: 'Test1Pass!x' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Reset password' }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.method === 'POST' && c.path === '/api/users/u2/reset-password')?.body).toEqual({ newPassword: 'Test1Pass!x' }),
+    );
   });
 });

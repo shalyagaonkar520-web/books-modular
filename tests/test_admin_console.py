@@ -328,6 +328,18 @@ def test_reviewer_reviews_the_work_of_their_users_and_roles(client, tenant):
     # The maker sees the flag and the note; staff cannot review.
     mine = client.get("/api/reviews/mine", headers=tenant["staff_h"]).json()["items"]
     assert [c["reviewNote"] for c in mine] == ["Price should be 12"]
+    # The maker answers: the change goes back to the reviewer's list with the answer.
+    replied = client.post(f"/api/reviews/mine/{target['id']}/reply", headers=tenant["staff_h"], json={"message": "Fixed it to 12."})
+    assert replied.status_code == 200 and replied.json()["reviewStatus"] is None and replied.json()["reviewReply"] == "Fixed it to 12."
+    assert client.get("/api/reviews/mine", headers=tenant["staff_h"]).json()["items"] == []
+    assert client.post(f"/api/reviews/mine/{target['id']}/reply", headers=rh, json={"message": "x"}).status_code == 404
+    again = next(c for c in client.get("/api/reviews", headers=rh).json()["items"] if c["id"] == target["id"])
+    assert again["reviewNote"] == "Price should be 12" and again["reviewReply"] == "Fixed it to 12."
+    # On hold: the maker sees it too; then approve.
+    held = client.post(f"/api/reviews/{target['id']}", headers=rh, json={"status": "hold", "note": "Checking with accounts"})
+    assert held.json()["reviewStatus"] == "hold" and client.get("/api/reviews/summary", headers=rh).json()["hold"] == 1
+    assert [c["reviewStatus"] for c in client.get("/api/reviews/mine", headers=tenant["staff_h"]).json()["items"]] == ["hold"]
+    assert client.post(f"/api/reviews/{target['id']}", headers=rh, json={"status": "reviewed"}).json()["reviewStatus"] == "reviewed"
     assert client.get("/api/reviews", headers=tenant["staff_h"]).status_code == 403
     rest = [c["id"] for c in waiting if c["id"] != target["id"]]
     if rest:

@@ -10,7 +10,13 @@ import type { ChangeEntry } from '@/api/adminConsole';
 import { Badge } from '@/components/ui/Badge';
 import { formatDateTime } from '@/utils/format';
 
-const ACTION_TEXT: Record<ChangeEntry['action'], string> = { create: 'created', update: 'changed', delete: 'deleted' };
+const ACTION_TEXT: Record<ChangeEntry['action'], string> = { create: 'added', update: 'changed', delete: 'deleted' };
+const REVIEW_TEXT: Record<NonNullable<ChangeEntry['reviewStatus']>, string> = { reviewed: 'Approved', hold: 'On hold', flagged: 'Message sent' };
+const REVIEW_TONE: Record<NonNullable<ChangeEntry['reviewStatus']>, 'success' | 'warning' | 'danger'> = {
+  reviewed: 'success',
+  hold: 'warning',
+  flagged: 'danger',
+};
 const ACTION_TONE: Record<ChangeEntry['action'], 'success' | 'info' | 'danger'> = { create: 'success', update: 'info', delete: 'danger' };
 
 /** "invoice_lines" -> "Invoice line". */
@@ -59,13 +65,15 @@ interface ChangeListProps {
   actions?: (row: ChangeEntry) => ReactNode;
   selected?: Set<string>;
   onToggle?: (id: string) => void;
+  /** Reviewers: ask "Is this correct?" under each change still waiting. */
+  ask?: boolean;
 }
 
-export function ChangeList({ rows, actions, selected, onToggle }: ChangeListProps) {
+export function ChangeList({ rows, actions, selected, onToggle, ask }: ChangeListProps) {
   return (
     <ul className="change-list">
       {rows.map((row) => (
-        <li key={row.id} className={`change-item ${row.reviewStatus === 'flagged' ? 'is-flagged' : ''}`}>
+        <li key={row.id} className={`change-item ${row.reviewStatus === 'flagged' ? 'is-flagged' : row.reviewStatus === 'hold' ? 'is-hold' : ''}`}>
           <div className="change-head">
             {onToggle ? (
               <input
@@ -82,16 +90,26 @@ export function ChangeList({ rows, actions, selected, onToggle }: ChangeListProp
               <Badge tone={ACTION_TONE[row.action]}>{ACTION_TEXT[row.action]}</Badge> {recordKind(row.entityType)}
               {row.entityLabel ? <strong> “{row.entityLabel}”</strong> : null}
               <div className="small text-muted">{formatDateTime(row.createdAt)}</div>
+              {ask && !row.reviewStatus ? <div className="change-ask">Is this correct? Check it, then approve, hold or send them a message.</div> : null}
             </div>
             {row.reviewStatus ? (
-              <Badge tone={row.reviewStatus === 'flagged' ? 'danger' : 'success'}>
-                {row.reviewStatus === 'flagged' ? 'Flagged' : 'Reviewed'}
+              <Badge tone={REVIEW_TONE[row.reviewStatus]}>
+                {REVIEW_TEXT[row.reviewStatus]}
                 {row.reviewedByName ? ` by ${row.reviewedByName}` : ''}
               </Badge>
             ) : null}
           </div>
           <ChangeFields changes={row.changes} />
-          {row.reviewNote ? <p className="change-note">“{row.reviewNote}”</p> : null}
+          {row.reviewNote ? (
+            <p className="change-note">
+              <strong>{row.reviewedByName ?? 'Reviewer'}:</strong> {row.reviewNote}
+            </p>
+          ) : null}
+          {row.reviewReply ? (
+            <p className="change-note is-reply">
+              <strong>{row.userName ?? 'They'} replied:</strong> {row.reviewReply}
+            </p>
+          ) : null}
           {actions ? <div className="row-actions change-actions">{actions(row)}</div> : null}
         </li>
       ))}
