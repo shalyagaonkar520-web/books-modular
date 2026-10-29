@@ -237,6 +237,13 @@ def test_existing_org_is_unaffected(client):
         "pendingRequest": None,
         "lastRejection": None,
         "canManage": True,
+        # An organization from before plans: no plan by users, no end date, no user cap.
+        "planKey": None,
+        "maxUsers": None,
+        "planEndsAt": None,
+        "planDaysLeft": None,
+        "usersUsed": 1,
+        "userLimit": None,
     }
     assert _enabled_modules(client, h) == _shared_enabled(client)
 

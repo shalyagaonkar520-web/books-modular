@@ -43,7 +43,7 @@ from backend.models import (
 )
 from backend.routers import razorpay as rzp
 from backend.schemas.app_content import PanelContentAccessIn, PanelContentAccessOut
-from backend.schemas.common import Page
+from backend.schemas.common import APIModel, Page
 from backend.schemas.org_admin import (
     ApproveOrganizationRequest,
     CreateOrgPanelAdminRequest,
@@ -83,6 +83,7 @@ from backend.schemas.subscription import (
     ApproveSubscriptionRequest,
     ExtendTrialRequest,
     RejectSubscriptionRequest,
+    SetPlanRequest,
     SubscriptionRequestRow,
 )
 from backend.security import (
@@ -93,7 +94,7 @@ from backend.security import (
     hash_token,
     verify_password,
 )
-from backend.services import audit, module_pricing, panel_content, platform_settings
+from backend.services import audit, module_pricing, panel_content, plans, platform_settings, support
 from backend.services import subscription as subs
 from backend.services.app_content import delete_org_app_content
 from backend.services.chart_of_accounts import bootstrap_accounts
@@ -255,6 +256,9 @@ def _subscription_fields(org: Organization) -> dict:
         "plan": subs.active_plan(org),
         "pending_request": subs.pending_request(org),
         "subscription_note": org.subscription_note,
+        "plan_key": org.plan_key,
+        "max_users": org.max_users,
+        "plan_ends_at": org.plan_ends_at,
     }
 
 
@@ -1129,6 +1133,9 @@ def list_subscription_requests(db: Session = Depends(get_db), admin: PlatformAdm
                 plan_price=pending["planPrice"],
                 subscription_status=subs.effective_status(org),
                 trial_ends_at=org.trial_ends_at,
+                plan_key=pending.get("planKey"),
+                max_users=pending.get("maxUsers"),
+                payment_reference=pending.get("paymentReference"),
             )
         )
     return rows
@@ -1224,6 +1231,50 @@ def extend_trial(
     db.commit()
     db.refresh(org)
     return _org_detail(db, org)
+
+
+@router.put("/organizations/{org_id}/plan", response_model=OrgDetail)
+def set_organization_plan(
+    org_id: str,
+    payload: SetPlanRequest,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(get_current_superuser),
+):
+    """Make an organization's plan exactly this: plan, user limit, price, cycle, end date and features."""
+    org = _get_org(db, org_id)
+    if payload.plan_ends_at is not None and payload.plan_ends_at.tzinfo is None:
+        payload.plan_ends_at = payload.plan_ends_at.replace(tzinfo=UTC)
+    subs.set_plan(
+        db, org, payload.plan_key, payload.max_users, payload.billing_cycle, payload.monthly_price, payload.plan_ends_at, payload.modules
+    )
+    limit = f"{payload.max_users} users" if payload.max_users else "no user limit"
+    ends = payload.plan_ends_at.date().isoformat() if payload.plan_ends_at else "no end date"
+    audit.record(
+        db,
+        admin,
+        "update",
+        "subscription",
+        org.id,
+        f"Plan for '{org.name}' set by platform admin {admin.email}: {payload.plan_key or 'custom'}, {limit}, {payload.billing_cycle}, until {ends}",
+        organization_id=org.id,
+    )
+    db.commit()
+    db.refresh(org)
+    return _org_detail(db, org)
+
+
+@router.get("/plans")
+def get_plans(db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    """Plan prices, custom-plan rules and the payment details organizations see."""
+    return plans.catalog(db)
+
+
+@router.put("/plans")
+def update_plans(payload: dict, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    saved = plans.save_config(db, payload)
+    audit.record(db, admin, "update", "platform_settings", None, f"Plans and payment details updated by platform admin {admin.email}")
+    db.commit()
+    return {**saved, "features": plans.catalog(db)["features"]}
 
 
 @router.post("/organizations/{org_id}/subscription/cancel", response_model=OrgDetail)
@@ -1927,3 +1978,44 @@ def list_audit_logs(
         for a in rows
     ]
     return Page(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+# --------------------------------------------------------------------------- #
+# Requests from organizations, with their chat
+# --------------------------------------------------------------------------- #
+class TicketStatusIn(APIModel):
+    status: str
+
+
+@router.get("/requests", response_model=List[support.TicketOut])
+def list_requests(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(get_current_superuser),
+):
+    return support.list_all(db, status_filter)
+
+
+@router.get("/requests/waiting")
+def requests_waiting(db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    """Open requests waiting for a platform answer (for the badge)."""
+    return {"count": support.waiting_for_platform(db)}
+
+
+@router.get("/requests/{ticket_id}", response_model=support.TicketOut)
+def get_request(ticket_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    return support.get(db, ticket_id)
+
+
+@router.post("/requests/{ticket_id}/messages", response_model=support.TicketOut)
+def reply_request(
+    ticket_id: str, payload: support.MessageIn, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
+):
+    return support.reply(db, ticket_id, support.PLATFORM, admin.name, payload.message)
+
+
+@router.post("/requests/{ticket_id}/status", response_model=support.TicketOut)
+def request_status(
+    ticket_id: str, payload: TicketStatusIn, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
+):
+    return support.set_status(db, ticket_id, payload.status)

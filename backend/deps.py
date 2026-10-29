@@ -211,7 +211,8 @@ PANEL_SETUP_REQUIRED_DETAIL = "SETUP_REQUIRED: Choose your own login ID and pass
 
 
 TRIAL_ENDED_ADMIN_ONLY_DETAIL = (
-    "TRIAL_ENDED: Your organization's free trial has ended. Only your organization admin can sign in until a subscription plan is chosen."
+    "TRIAL_ENDED: Your organization's plan or free trial has expired. Ask your organization to renew it; until then only "
+    "your organization admin can sign in."
 )
 
 

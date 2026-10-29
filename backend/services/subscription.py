@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import math
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any, Dict, Iterable, Optional
 
 from sqlalchemy.orm import Session
@@ -32,7 +33,7 @@ STATUS_TRIAL = "trial"
 STATUS_ACTIVE = "active"
 STATUS_EXPIRED = "expired"  # derived, never stored
 
-LOCKED_MESSAGE = "Your free trial has ended. Your organization's admin can choose a subscription to keep using the app."
+LOCKED_MESSAGE = "Your organization's plan has expired. Ask your organization to renew it to keep using the app."
 
 
 def _now() -> datetime:
@@ -56,6 +57,10 @@ def effective_status(org: Organization, now: Optional[datetime] = None) -> str:
     NULL) counts as ``trial``; such an organization cannot sign in anyway.
     """
     if org.subscription_status == STATUS_ACTIVE:
+        # A paid month / year ends; an open-ended plan (from before periods) does not.
+        plan_ends = _aware(org.plan_ends_at)
+        if plan_ends is not None and plan_ends <= (now or _now()):
+            return STATUS_EXPIRED
         return STATUS_ACTIVE
     ends = _aware(org.trial_ends_at)
     if ends is None or ends > (now or _now()):
@@ -138,6 +143,9 @@ def pending_request(org: Organization) -> Optional[Dict[str, Any]]:
         "monthlyPrice": data.get("monthlyPrice"),
         "planPrice": data.get("planPrice"),
         "requestedAt": data.get("requestedAt"),
+        "planKey": data.get("planKey"),
+        "maxUsers": data.get("maxUsers"),
+        "paymentReference": data.get("paymentReference"),
     }
 
 
@@ -165,6 +173,72 @@ def request_plan(org: Organization, modules: Iterable[str], billing_cycle: str, 
     return priced
 
 
+def request_users_plan(
+    db: Session,
+    org: Organization,
+    plan_key: str,
+    billing_cycle: str,
+    payment_reference: str,
+    users: Optional[int] = None,
+    modules: Optional[Iterable[str]] = None,
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """Store a plan-by-users request with its payment reference, for a super admin to check and accept (not committed)."""
+    from backend.services import plans
+
+    now = now or _now()
+    priced = plans.quote(db, plan_key, billing_cycle, users, modules)
+    org.pending_request = json.dumps({**priced, "paymentReference": payment_reference, "requestedAt": now.isoformat()})
+    org.subscription_requested_at = now
+    org.subscription_note = None
+    return priced
+
+
+def _add_months(start: datetime, months: int) -> datetime:
+    month0 = start.month - 1 + months
+    year, month = start.year + month0 // 12, month0 % 12 + 1
+    leap = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+    days = [31, 29 if leap else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+    return start.replace(year=year, month=month, day=min(start.day, days))
+
+
+def period_end(org: Organization, cycle: str, now: datetime) -> datetime:
+    """A new month / year from today, or on top of the current paid period when renewing early."""
+    current = _aware(org.plan_ends_at) if org.subscription_status == STATUS_ACTIVE else None
+    start = current if current and current > now else now
+    return _add_months(start, 12 if cycle == "yearly" else 1)
+
+
+def set_plan(
+    db: Session,
+    org: Organization,
+    plan_key: Optional[str],
+    max_users: Optional[int],
+    billing_cycle: str,
+    monthly_price: Optional[float],
+    plan_ends_at: Optional[datetime],
+    modules: Optional[Iterable[str]] = None,
+    now: Optional[datetime] = None,
+) -> None:
+    """Make the organization's plan exactly this (super admin; not committed)."""
+    from backend.services import plans
+
+    now = now or _now()
+    chosen = list(modules) if modules is not None else module_pricing.module_keys()
+    module_pricing.apply_to_org(db, org, chosen, billing_cycle)
+    if monthly_price is not None:
+        months = float(plans.config(db)["yearlyMonths"]) if billing_cycle == "yearly" else 1
+        org.monthly_price = Decimal(str(round(monthly_price, 2)))
+        org.plan_price = Decimal(str(round(monthly_price * months, 2)))
+    org.plan_key = plan_key
+    org.max_users = max_users
+    org.plan_ends_at = plan_ends_at
+    org.subscription_status = STATUS_ACTIVE
+    org.subscription_decided_at = now
+    org.subscription_note = None
+    cancel_request(org)
+
+
 def cancel_request(org: Organization) -> None:
     org.pending_request = None
     org.subscription_requested_at = None
@@ -186,6 +260,22 @@ def approve(
     if not chosen:
         raise ValueError("There is no pending subscription request; choose the modules to activate.")
     cycle = billing_cycle or (pending["billingCycle"] if pending else None) or org.billing_cycle or "monthly"
+    if pending and pending.get("planKey"):
+        # A plan by users: its user limit, the price quoted and paid, and a new month / year.
+        now = now or _now()
+        priced = module_pricing.apply_to_org(db, org, chosen, cycle)
+        if cycle == pending["billingCycle"] and pending.get("monthlyPrice") is not None:
+            org.monthly_price = Decimal(str(pending["monthlyPrice"]))
+            org.plan_price = Decimal(str(pending["planPrice"]))
+            priced = {**priced, "monthlyPrice": pending["monthlyPrice"], "planPrice": pending["planPrice"]}
+        org.plan_ends_at = period_end(org, cycle, now)
+        org.plan_key = pending["planKey"]
+        org.max_users = pending.get("maxUsers")
+        org.subscription_status = STATUS_ACTIVE
+        org.subscription_decided_at = now
+        org.subscription_note = None
+        cancel_request(org)
+        return priced
     priced = module_pricing.apply_to_org(db, org, chosen, cycle)
     org.subscription_status = STATUS_ACTIVE
     org.subscription_decided_at = now or _now()
@@ -212,6 +302,9 @@ def cancel_plan(db: Session, org: Organization, now: Optional[datetime] = None) 
     org.billing_cycle = None
     org.monthly_price = None
     org.plan_price = None
+    org.plan_key = None
+    org.max_users = None
+    org.plan_ends_at = None
     org.subscription_decided_at = now
     set_org_modules(db, org.id, module_pricing.module_keys())
 
@@ -232,4 +325,27 @@ def summary(org: Organization, user: Optional[User] = None, now: Optional[dateti
         "pendingRequest": pending_request(org),
         "lastRejection": last_rejection(org),
         "canManage": user is not None and user.role == "admin",
+        "planKey": org.plan_key,
+        "maxUsers": org.max_users,
+        "planEndsAt": org.plan_ends_at,
+        "planDaysLeft": plan_days_left(org, now),
+        **_usage(org),
     }
+
+
+def _usage(org: Organization) -> Dict[str, Any]:
+    from sqlalchemy.orm import object_session
+
+    from backend.services import plans
+
+    db = object_session(org)
+    if db is None:
+        return {}
+    return {"usersUsed": plans.users_used(db, org.id), "userLimit": plans.user_limit(db, org)}
+
+
+def plan_days_left(org: Organization, now: Optional[datetime] = None) -> Optional[int]:
+    ends = _aware(org.plan_ends_at)
+    if ends is None or org.subscription_status != STATUS_ACTIVE:
+        return None
+    return max(0, math.ceil((ends - (now or _now())).total_seconds() / 86400))

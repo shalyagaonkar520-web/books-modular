@@ -34,7 +34,7 @@ from backend.schemas.auth import (
 )
 from backend.schemas.common import Message, Page
 from backend.security import hash_password, hash_token
-from backend.services import audit, module_pricing, org_roles, subscription
+from backend.services import audit, module_pricing, org_roles, plans, subscription
 from backend.services.email_service import send_invite_email, smtp_configured
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
@@ -140,6 +140,8 @@ def invite_user(db: Session, org_id: str, actor: Actor, payload: InviteUserReque
             raise HTTPException(status.HTTP_409_CONFLICT, "This employee already has portal access.")
 
     module_access = _invite_module_access(org, payload)
+    if payload.role != "employee":
+        plans.check_room_for(db, org)
     custom_role_id = org_roles.resolve(db, org_id, payload.role, payload.custom_role_id)
 
     raw_token = secrets.token_urlsafe(32)
@@ -188,6 +190,10 @@ def update_user(db: Session, org_id: str, actor: Actor, user_id: str, payload: U
     deactivating = data.get("is_active") is False and target.is_active and target.role == "admin"
     if demoting or deactivating:
         _require_another_admin(db, org_id)
+    reactivating = data.get("is_active") is True and not target.is_active
+    leaving_portal = target.is_active and target.role == "employee" and data.get("role") not in (None, "employee")
+    if (reactivating and data.get("role", target.role) != "employee") or leaving_portal:
+        plans.check_room_for(db, _get_org(db, org_id))
     if "role" in data or "custom_role_id" in data:
         role = data.get("role", target.role)
         wanted = data.get("custom_role_id") if "custom_role_id" in data else (target.custom_role_id if role == "custom" else None)

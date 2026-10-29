@@ -22,6 +22,10 @@ class SubscriptionPlanOut(APIModel):
 
 class SubscriptionPendingOut(SubscriptionPlanOut):
     requested_at: Optional[datetime] = None
+    # A plan by users (services/plans): which plan, how many users, and the payment to check.
+    plan_key: Optional[str] = None
+    max_users: Optional[int] = None
+    payment_reference: Optional[str] = None
 
 
 class SubscriptionRejectionOut(APIModel):
@@ -40,11 +44,46 @@ class SubscriptionOut(APIModel):
     last_rejection: Optional[SubscriptionRejectionOut] = None
     # The caller may request or cancel a plan (tenant admins only).
     can_manage: bool = False
+    plan_key: Optional[str] = None
+    max_users: Optional[int] = None
+    plan_ends_at: Optional[datetime] = None
+    plan_days_left: Optional[int] = None
+    # Logins in use and the most allowed now (the plan's, or the trial's); None = no cap.
+    users_used: int = 0
+    user_limit: Optional[int] = None
 
 
 class SubscriptionRequestIn(APIModel):
     modules: List[str] = Field(max_length=50)
     billing_cycle: BillingCycle = "monthly"
+
+    @field_validator("modules")
+    @classmethod
+    def _modules(cls, value):
+        return module_pricing.validate_selection(value)
+
+
+class PlanRequestIn(APIModel):
+    """Choose a plan by users and say how it was paid (UPI / bank reference)."""
+
+    plan_key: Literal["u100", "u500", "u1000", "custom"]
+    billing_cycle: BillingCycle = "monthly"
+    payment_reference: str = Field(min_length=4, max_length=60)
+    # Custom plan only: how many users and which features.
+    users: Optional[int] = Field(default=None, ge=1, le=100000)
+    modules: Optional[List[str]] = Field(default=None, max_length=50)
+
+
+class SetPlanRequest(APIModel):
+    """Super admin: make an organization's plan exactly this."""
+
+    plan_key: Optional[Literal["u100", "u500", "u1000", "custom"]] = None
+    max_users: Optional[int] = Field(default=None, ge=1, le=100000)
+    billing_cycle: BillingCycle = "monthly"
+    monthly_price: Optional[float] = Field(default=None, ge=0, le=10000000)
+    plan_ends_at: Optional[datetime] = None
+    # Omitted = every feature.
+    modules: Optional[List[str]] = Field(default=None, max_length=50)
 
     @field_validator("modules")
     @classmethod
@@ -81,3 +120,6 @@ class SubscriptionRequestRow(APIModel):
     plan_price: Optional[float] = None
     subscription_status: str
     trial_ends_at: Optional[datetime] = None
+    plan_key: Optional[str] = None
+    max_users: Optional[int] = None
+    payment_reference: Optional[str] = None

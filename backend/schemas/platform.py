@@ -130,6 +130,9 @@ class OrgSummary(APIModel):
     # rejection reason.
     subscription_status: str = "active"
     trial_ends_at: Optional[datetime] = None
+    plan_key: Optional[str] = None
+    max_users: Optional[int] = None
+    plan_ends_at: Optional[datetime] = None
     plan: Optional[SubscriptionPlanOut] = None
     pending_request: Optional[SubscriptionPendingOut] = None
     subscription_note: Optional[str] = None
@@ -178,6 +181,9 @@ class OrgDetail(APIModel):
     # rejection reason.
     subscription_status: str = "active"
     trial_ends_at: Optional[datetime] = None
+    plan_key: Optional[str] = None
+    max_users: Optional[int] = None
+    plan_ends_at: Optional[datetime] = None
     plan: Optional[SubscriptionPlanOut] = None
     pending_request: Optional[SubscriptionPendingOut] = None
     subscription_note: Optional[str] = None

@@ -165,6 +165,13 @@ class Organization(TimestampMixin, Base):
     billing_cycle: Mapped[Optional[str]] = mapped_column(String(10))
     monthly_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
     plan_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
+    # Plans by users (services/plans): "u100" | "u500" | "u1000" | "custom";
+    # max_users caps active logins (NULL = no cap); plan_ends_at ends a paid
+    # month / year, after which the organization locks until renewed (NULL =
+    # an open-ended plan from before plans had periods).
+    plan_key: Mapped[Optional[str]] = mapped_column(String(20))
+    max_users: Mapped[Optional[int]] = mapped_column(Integer)
+    plan_ends_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     @property
     def is_archived(self) -> bool:
@@ -219,6 +226,41 @@ class User(TimestampMixin, OrgScopedMixin, Base):
     def pending_invite(self) -> bool:
         """No password yet: the emailed invite has not been accepted."""
         return self.password_hash is None
+
+
+class SupportTicket(TimestampMixin, OrgScopedMixin, Base):
+    """A request from an organization to the platform (more users, a problem...), with its chat."""
+
+    __tablename__ = "support_tickets"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    subject: Mapped[str] = mapped_column(String(200), nullable=False)
+    # plan | users | problem | other
+    category: Mapped[str] = mapped_column(String(20), default="other", nullable=False)
+    # open | closed
+    status: Mapped[str] = mapped_column(String(10), default="open", nullable=False, index=True)
+    created_by_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    last_message_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+    # Who spoke last ("org" | "platform"): the other side has something to read.
+    last_message_by: Mapped[str] = mapped_column(String(10), default="org", nullable=False)
+
+    messages: Mapped[List[SupportMessage]] = relationship(
+        back_populates="ticket", cascade="all, delete-orphan", order_by="SupportMessage.created_at"
+    )
+
+
+class SupportMessage(Base):
+    __tablename__ = "support_messages"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    ticket_id: Mapped[str] = mapped_column(String(32), ForeignKey("support_tickets.id", ondelete="CASCADE"), index=True, nullable=False)
+    # "org" (the organization's admin panel) | "platform" (a super admin)
+    author_kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    author_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+
+    ticket: Mapped[SupportTicket] = relationship(back_populates="messages")
 
 
 class OrgRole(TimestampMixin, OrgScopedMixin, Base):

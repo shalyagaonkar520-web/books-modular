@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 from backend.db import get_db
 from backend.deps import ROLE_ADMIN, get_current_user
 from backend.models import Organization, User
-from backend.schemas.subscription import SubscriptionOut, SubscriptionRequestIn
-from backend.services import audit, module_pricing
+from backend.schemas.subscription import PlanRequestIn, SubscriptionOut, SubscriptionRequestIn
+from backend.services import audit, module_pricing, plans
 from backend.services import subscription as subs
 
 router = APIRouter(prefix="/api/subscription", tags=["Subscription"])
@@ -49,6 +49,47 @@ def request_subscription(payload: SubscriptionRequestIn, user: User = Depends(ge
         return subs.summary(org, user)
     priced = subs.request_plan(org, payload.modules, payload.billing_cycle)
     audit.record(db, user, "request", "subscription", org.id, f"Subscription requested: {module_pricing.describe(priced)}")
+    db.commit()
+    db.refresh(org)
+    return subs.summary(org, user)
+
+
+@router.get("/plans")
+def plan_catalog(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """The plans by users, the custom-plan rules, the features and how to pay."""
+    return plans.catalog(db)
+
+
+@router.get("/quote")
+def plan_quote(
+    plan_key: str,
+    billing_cycle: str = "monthly",
+    users: int | None = None,
+    modules: str | None = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The price of a plan before paying (modules: comma separated, custom plan only)."""
+    return plans.quote(db, plan_key, billing_cycle, users, [m for m in (modules or "").split(",") if m])
+
+
+@router.post("/plan-request", response_model=SubscriptionOut)
+def request_users_plan(payload: PlanRequestIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Ask for a plan by users after paying; a super admin checks the payment and accepts it."""
+    _require_admin(user)
+    org = _org(db, user)
+    priced = subs.request_users_plan(
+        db, org, payload.plan_key, payload.billing_cycle, payload.payment_reference.strip(), payload.users, payload.modules
+    )
+    audit.record(
+        db,
+        user,
+        "request",
+        "subscription",
+        org.id,
+        f"Plan requested: {priced['planKey']} for {priced['maxUsers']} users, {priced['billingCycle']} "
+        f"{priced['planPrice']:.2f}, payment ref {payload.payment_reference.strip()}",
+    )
     db.commit()
     db.refresh(org)
     return subs.summary(org, user)

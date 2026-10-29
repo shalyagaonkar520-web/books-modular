@@ -52,6 +52,7 @@ from backend.schemas.org_admin import (
     OrgPanelTokenResponse,
     SetupCredentialsRequest,
 )
+from backend.schemas.subscription import PlanRequestIn
 from backend.security import (
     create_org_panel_access_token,
     generate_refresh_token,
@@ -59,7 +60,18 @@ from backend.security import (
     hash_token,
     verify_password,
 )
-from backend.services import audit, data_export, module_pricing, org_roles, org_users, panel_content, permissions, subscription
+from backend.services import (
+    audit,
+    data_export,
+    module_pricing,
+    org_roles,
+    org_users,
+    panel_content,
+    permissions,
+    plans,
+    subscription,
+    support,
+)
 from backend.services import user_overview as user_overview_service
 from backend.services.app_content import get_app_content, get_org_app_content, get_org_overrides
 from backend.services.ratelimit import RateLimiter, client_ip
@@ -573,3 +585,73 @@ def reset_app_content(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin
     audit.record(db, admin, "update", "app_content", org.id, "Editable app content reset to the shared content")
     db.commit()
     return _content_out(db, org)
+
+
+# --------------------------------------------------------------------------- #
+# Plan (by users) and requests to the platform, with their chat
+# --------------------------------------------------------------------------- #
+class TicketStatusIn(APIModel):
+    status: str
+
+
+@router.get("/subscription")
+def panel_subscription(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
+    """The organization's plan, its user limit and use, and any pending request."""
+    org = db.get(Organization, admin.organization_id)
+    return {**subscription.summary(org, None), "canManage": True}
+
+
+@router.get("/subscription/plans")
+def panel_plans(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
+    return plans.catalog(db)
+
+
+@router.post("/subscription/plan-request")
+def panel_plan_request(payload: PlanRequestIn, admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
+    """Choose a plan by users after paying; a super admin checks the payment and accepts it."""
+    org = db.get(Organization, admin.organization_id)
+    ref = payload.payment_reference.strip()
+    priced = subscription.request_users_plan(db, org, payload.plan_key, payload.billing_cycle, ref, payload.users, payload.modules)
+    audit.record(
+        db,
+        admin,
+        "request",
+        "subscription",
+        org.id,
+        f"Plan requested: {priced['planKey']} for {priced['maxUsers']} users, {priced['billingCycle']} {priced['planPrice']:.2f}, payment ref {ref}",
+    )
+    db.commit()
+    db.refresh(org)
+    return {**subscription.summary(org, None), "canManage": True}
+
+
+@router.get("/requests", response_model=List[support.TicketOut])
+def list_requests(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
+    return support.list_for_org(db, admin.organization_id)
+
+
+@router.post("/requests", response_model=support.TicketOut, status_code=status.HTTP_201_CREATED)
+def open_request(payload: support.TicketIn, admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
+    ticket = support.open_ticket(db, admin.organization_id, admin.name, payload)
+    audit.record(db, admin, "create", "support_request", ticket.id, f"Request sent to the platform: {ticket.subject}")
+    db.commit()
+    return ticket
+
+
+@router.get("/requests/{ticket_id}", response_model=support.TicketOut)
+def get_request(ticket_id: str, admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
+    return support.get(db, ticket_id, admin.organization_id)
+
+
+@router.post("/requests/{ticket_id}/messages", response_model=support.TicketOut)
+def reply_request(
+    ticket_id: str, payload: support.MessageIn, admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)
+):
+    return support.reply(db, ticket_id, support.ORG, admin.name, payload.message, admin.organization_id)
+
+
+@router.post("/requests/{ticket_id}/status", response_model=support.TicketOut)
+def request_status(
+    ticket_id: str, payload: TicketStatusIn, admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)
+):
+    return support.set_status(db, ticket_id, payload.status, admin.organization_id)
