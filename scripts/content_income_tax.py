@@ -165,6 +165,7 @@ TEXTS = {
     "incomeTax.result.lessTds": "Less: TDS and TCS",
     "incomeTax.result.lessAdvance": "Less: advance tax",
     "incomeTax.result.lessSelf": "Less: self-assessment tax",
+    "incomeTax.result.incomeBeforeStd": "Income before standard deduction",
 }
 
 if __name__ == "__main__":

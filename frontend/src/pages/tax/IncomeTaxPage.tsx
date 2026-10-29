@@ -484,8 +484,14 @@ export function IncomeTaxPage() {
           <div className="table-wrap">
             <table className="data-table">
               <tbody>
+                {/* Gross total income counts salary after the standard deduction, so the full income comes first. */}
+                {tax.standardDeduction ? (
+                  <>
+                    <AmountRow label={t('incomeTax.result.incomeBeforeStd')} amount={tax.grossTotalIncome + tax.standardDeduction} />
+                    <AmountRow label={t('incomeTax.result.standardDeduction')} amount={-tax.standardDeduction} />
+                  </>
+                ) : null}
                 <AmountRow label={t('incomeTax.result.grossTotalIncome')} amount={tax.grossTotalIncome} />
-                {tax.standardDeduction ? <AmountRow label={t('incomeTax.result.standardDeduction')} amount={-tax.standardDeduction} /> : null}
                 {tax.allowedDeductions ? <AmountRow label={t('incomeTax.result.deductions')} amount={-tax.allowedDeductions} /> : null}
                 <AmountRow label={t('incomeTax.result.taxableIncome')} amount={tax.taxableIncome} strong />
                 <AmountRow label={t('incomeTax.result.slabTax')} amount={tax.slabTax} />
@@ -524,9 +530,10 @@ function AmountRow({ label, amount, strong = false }: { label: string; amount: n
 
 function ComparisonTable({ oldTax, newTax, cheaper }: { oldTax: TaxResult; newTax: TaxResult; cheaper: Regime }) {
   const { t } = useAppContent();
-  const rows: Array<{ label: string; key: keyof TaxResult; strong?: boolean }> = [
-    { label: t('incomeTax.result.grossTotalIncome'), key: 'grossTotalIncome' },
+  const rows: Array<{ label: string; key: keyof TaxResult | 'incomeBeforeStd'; strong?: boolean }> = [
+    { label: t('incomeTax.result.incomeBeforeStd'), key: 'incomeBeforeStd' },
     { label: t('incomeTax.result.standardDeduction'), key: 'standardDeduction' },
+    { label: t('incomeTax.result.grossTotalIncome'), key: 'grossTotalIncome' },
     { label: t('incomeTax.result.deductions'), key: 'allowedDeductions' },
     { label: t('incomeTax.result.taxableIncome'), key: 'taxableIncome', strong: true },
     { label: t('incomeTax.result.slabTax'), key: 'slabTax' },
@@ -536,8 +543,9 @@ function ComparisonTable({ oldTax, newTax, cheaper }: { oldTax: TaxResult; newTa
     { label: t('incomeTax.result.cess'), key: 'cess' },
     { label: t('incomeTax.result.totalTaxRow'), key: 'totalTax', strong: true },
   ];
-  const cell = (r: TaxResult, key: keyof TaxResult, strong?: boolean) => {
-    const text = formatCurrency(r[key] as number);
+  const cell = (r: TaxResult, key: keyof TaxResult | 'incomeBeforeStd', strong?: boolean) => {
+    const value = key === 'incomeBeforeStd' ? r.grossTotalIncome + r.standardDeduction : (r[key] as number);
+    const text = formatCurrency(value);
     return <td className="align-right">{strong ? <strong>{text}</strong> : text}</td>;
   };
   return (

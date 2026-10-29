@@ -4584,6 +4584,8 @@
     "incomeTax.result.interest234C": "Interest for late instalments (234C)",
     "incomeTax.result.lessTds": "Less: TDS and TCS",
     "incomeTax.result.lessAdvance": "Less: advance tax",
-    "incomeTax.result.lessSelf": "Less: self-assessment tax"
+    "incomeTax.result.lessSelf": "Less: self-assessment tax",
+
+    "incomeTax.result.incomeBeforeStd": "Income before standard deduction"
   }
 }
