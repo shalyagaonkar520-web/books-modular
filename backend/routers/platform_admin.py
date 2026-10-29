@@ -1632,6 +1632,11 @@ def update_user(
                 status.HTTP_400_BAD_REQUEST, "Employee portal users can't be moved. Invite them from the new organization instead."
             )
     new_role = data.get("role") or user.role
+    if moving and new_role == "custom":
+        # A custom role belongs to its organization; the new one does not have it.
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "This user has a custom role of their organization. Pick Admin, Staff or Viewer to move them."
+        )
     new_active = data["is_active"] if data.get("is_active") is not None else user.is_active
     still_admin_here = new_role == "admin" and new_active and not moving
     if not still_admin_here and _would_orphan_org(db, user):
@@ -1648,6 +1653,7 @@ def update_user(
             user.email = clean_email
     if data.get("role"):
         user.role = data["role"]
+        user.custom_role_id = None
     if data.get("is_active") is not None:
         user.is_active = data["is_active"]
     summary = f"User {user.email} updated by platform admin {admin.email}"

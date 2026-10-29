@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from datetime import date, datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import EmailStr, Field, field_validator
 
@@ -133,6 +133,10 @@ class UserOut(APIModel):
     pending_invite: bool = False
     # Modules this user may edit; None = every module of the plan.
     module_access: Optional[List[str]] = None
+    # role == "custom": the organization role and what it allows per feature.
+    custom_role_id: Optional[str] = None
+    custom_role_name: Optional[str] = None
+    permissions: Optional[Dict[str, str]] = None
 
     @field_validator("module_access", mode="before")
     @classmethod
@@ -258,7 +262,9 @@ class TokenResponse(APIModel):
 class InviteUserRequest(APIModel):
     name: str = Field(min_length=2, max_length=120)
     email: EmailStr
-    role: str = Field(default="staff", pattern="^(admin|staff|viewer|employee)$")
+    role: str = Field(default="staff", pattern="^(admin|staff|viewer|employee|custom)$")
+    # Required when role is "custom": the organization role the user works under.
+    custom_role_id: Optional[str] = None
     # Required when role is "employee": which Payroll employee record this
     # login belongs to. That employee will then see only their own payslips
     # and profile - never anyone else's, and nothing else in the app.
@@ -288,7 +294,9 @@ class AcceptInviteRequest(APIModel):
 
 class UpdateUserRequest(APIModel):
     name: Optional[str] = Field(default=None, min_length=2, max_length=120)
-    role: Optional[str] = Field(default=None, pattern="^(admin|staff|viewer|employee)$")
+    role: Optional[str] = Field(default=None, pattern="^(admin|staff|viewer|employee|custom)$")
+    # With role "custom": which organization role.
+    custom_role_id: Optional[str] = None
     is_active: Optional[bool] = None
 
     _required = field_validator("name", "role", "is_active")(_not_null)

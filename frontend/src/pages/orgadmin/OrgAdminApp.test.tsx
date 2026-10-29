@@ -276,6 +276,8 @@ describe('Organization admin panel', () => {
     const { calls, fetchMock } = installMockApi({
       ...signedIn,
       'GET /api/org-admin/users': users,
+      'GET /api/org-admin/roles': [{ id: 'r1', name: 'Cashier', description: null, permissions: { pos: 'edit' }, userCount: 0 }],
+      'GET /api/org-admin/roles/catalog': [{ key: 'pos', label: 'Point of Sale', group: 'Sales' }],
       'PATCH /api/org-admin/users/u2': { ...users[1], isActive: false },
       'POST /api/org-admin/users': (_url: URL, init: RequestInit) =>
         json({ ...testUser, id: 'u9', ...JSON.parse(String(init.body)) }, 201),
@@ -283,12 +285,15 @@ describe('Organization admin panel', () => {
     renderPanel('/org-admin/users');
 
     expect(await screen.findByText('Priya Nair')).toBeInTheDocument();
+    // The organization's own roles are managed beside the users.
+    expect(await screen.findByRole('button', { name: 'Cashier' })).toBeInTheDocument();
     expect(calls.some((call) => call.path === '/api/users')).toBe(false);
     expect(authHeader(fetchMock, '/api/org-admin/users')).toBe('Bearer panel-token');
     // Each user opens the panel's own overview, not the tenant per-user dashboard.
     expect(screen.getAllByRole('button', { name: 'View' })).toHaveLength(2);
     // A panel admin is not one of these users, so each of them can be deleted.
-    expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(2);
+    const usersTable = screen.getAllByRole('table')[0];
+    expect(within(usersTable).getAllByRole('button', { name: 'Delete' })).toHaveLength(2);
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Deactivate' })[1]);
     await waitFor(() =>
@@ -299,8 +304,8 @@ describe('Organization admin panel', () => {
     const dialog = await screen.findByRole('dialog');
     const role = within(dialog).getByLabelText(/^Role/) as HTMLSelectElement;
     // Employee invites need the payroll employee list, which the panel does not have.
-    // ...but it can invite staff with a custom set of editable modules.
-    expect(Array.from(role.options).map((option) => option.value)).toEqual(['admin', 'staff', 'viewer', 'custom']);
+    // ...but it can invite with one of the organization's custom roles.
+    await waitFor(() => expect(Array.from(role.options).map((option) => option.value)).toEqual(['admin', 'staff', 'viewer', 'custom:r1']));
     expect(calls.some((call) => call.path.startsWith('/api/payroll'))).toBe(false);
     fireEvent.change(within(dialog).getByLabelText(/^Full name/), { target: { value: 'Arun Rao' } });
     fireEvent.change(within(dialog).getByLabelText(/^Email/), { target: { value: 'arun@example.com' } });

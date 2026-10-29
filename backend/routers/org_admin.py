@@ -59,7 +59,7 @@ from backend.security import (
     hash_token,
     verify_password,
 )
-from backend.services import audit, module_pricing, org_users, panel_content, subscription
+from backend.services import audit, module_pricing, org_roles, org_users, panel_content, permissions, subscription
 from backend.services import user_overview as user_overview_service
 from backend.services.app_content import get_app_content, get_org_app_content, get_org_overrides
 from backend.services.ratelimit import RateLimiter, client_ip
@@ -431,6 +431,35 @@ def set_module_access(
     db.commit()
     db.refresh(target)
     return UserOut.model_validate(target)
+
+
+@router.get("/roles/catalog")
+def role_catalog(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin)):
+    """Every feature a custom role can give No access / View / Edit on, grouped."""
+    return permissions.catalog()
+
+
+@router.get("/roles", response_model=List[org_roles.RoleOut])
+def list_roles(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
+    return org_roles.list_roles(db, admin.organization_id)
+
+
+@router.post("/roles", response_model=org_roles.RoleOut, status_code=status.HTTP_201_CREATED)
+def create_role(payload: org_roles.RoleIn, admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
+    return org_roles.create_role(db, admin.organization_id, admin, payload)
+
+
+@router.put("/roles/{role_id}", response_model=org_roles.RoleOut)
+def update_role(
+    role_id: str, payload: org_roles.RoleIn, admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)
+):
+    return org_roles.update_role(db, admin.organization_id, admin, role_id, payload)
+
+
+@router.delete("/roles/{role_id}", response_model=Message)
+def delete_role(role_id: str, admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
+    org_roles.delete_role(db, admin.organization_id, admin, role_id)
+    return Message(message="Role deleted")
 
 
 @router.get("/plan-modules")

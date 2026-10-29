@@ -25,7 +25,7 @@ from backend.schemas.auth import (
 )
 from backend.schemas.common import Message, Page
 from backend.schemas.documents_flow import LockDateOut, LockDateUpdate
-from backend.services import audit, export_service, org_users
+from backend.services import audit, export_service, org_roles, org_users, permissions
 from backend.services.tenancy import Pagination
 
 router = APIRouter(prefix="/api", tags=["Organization"])
@@ -62,6 +62,33 @@ def set_lock_date(payload: LockDateUpdate, user: User = Depends(require_admin), 
     audit.record(db, user, "update", "organization", org.id, f"{summary} (was {previous.isoformat() if previous else 'unlocked'})")
     db.commit()
     return LockDateOut(lock_date=org.lock_date)
+
+
+@router.get("/roles/catalog")
+def role_catalog(user: User = Depends(require_admin)):
+    """Every feature a custom role can give No access / View / Edit on, grouped."""
+    return permissions.catalog()
+
+
+@router.get("/roles", response_model=List[org_roles.RoleOut])
+def list_roles(user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    return org_roles.list_roles(db, user.organization_id)
+
+
+@router.post("/roles", response_model=org_roles.RoleOut, status_code=status.HTTP_201_CREATED)
+def create_role(payload: org_roles.RoleIn, user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    return org_roles.create_role(db, user.organization_id, user, payload)
+
+
+@router.put("/roles/{role_id}", response_model=org_roles.RoleOut)
+def update_role(role_id: str, payload: org_roles.RoleIn, user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    return org_roles.update_role(db, user.organization_id, user, role_id, payload)
+
+
+@router.delete("/roles/{role_id}", response_model=Message)
+def delete_role(role_id: str, user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    org_roles.delete_role(db, user.organization_id, user, role_id)
+    return Message(message="Role deleted")
 
 
 @router.get("/users", response_model=List[UserOut])

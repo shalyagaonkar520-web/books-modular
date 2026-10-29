@@ -195,13 +195,43 @@ class User(TimestampMixin, OrgScopedMixin, Base):
     # every module of the organization's plan. Set from the org admin panel;
     # ignored for admins. See deps.require_module.
     module_access: Mapped[Optional[str]] = mapped_column(Text)
+    # role == "custom": the organization's role (No access / View / Edit per
+    # feature) this user works under. See services/permissions.
+    custom_role_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("org_roles.id", name="fk_users_custom_role_id"))
 
     organization: Mapped[Organization] = relationship(back_populates="users")
+    custom_role: Mapped[Optional[OrgRole]] = relationship(lazy="joined")
+
+    @property
+    def custom_role_name(self) -> Optional[str]:
+        return self.custom_role.name if self.role == "custom" and self.custom_role else None
+
+    @property
+    def permissions(self) -> Optional[dict]:
+        """{feature: none|view|edit} for a custom-role user; None for the built-in roles."""
+        if self.role != "custom":
+            return None
+        from backend.services import permissions
+
+        return permissions.normalize(self.custom_role.permissions if self.custom_role else None)
 
     @property
     def pending_invite(self) -> bool:
         """No password yet: the emailed invite has not been accepted."""
         return self.password_hash is None
+
+
+class OrgRole(TimestampMixin, OrgScopedMixin, Base):
+    """A role an organization admin defines: No access / View / Edit for each feature."""
+
+    __tablename__ = "org_roles"
+    __table_args__ = (UniqueConstraint("organization_id", "name", name="uq_org_role_org_name"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(60), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(250))
+    # JSON {feature key: "none" | "view" | "edit"} (services/permissions.FEATURES).
+    permissions: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
 
 
 class RefreshToken(Base):

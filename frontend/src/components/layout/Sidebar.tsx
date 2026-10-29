@@ -36,6 +36,7 @@ import {
 import type { AppModuleKey } from '@/api/appContent';
 import { useAppContent } from '@/app/AppContentContext';
 import { useAuth } from '@/auth/AuthContext';
+import { featureForPath } from '@/utils/permissions';
 
 interface NavEntry {
   to: string;
@@ -118,22 +119,24 @@ const LOWER_LINKS: NavEntry[] = [
 
 /** Every page the sidebar shows this user (modules and role applied): the Ctrl+K palette searches them. */
 export function useVisiblePages(): Array<{ to: string; label: string }> {
-  const { isStaff } = useAuth();
+  const { isStaff, access } = useAuth();
   const { t, isModuleEnabled } = useAppContent();
-  const visible = (entry: NavEntry) => !(entry.staffBlocked && isStaff) && (!entry.module || isModuleEnabled(entry.module));
+  const visible = (entry: NavEntry) =>
+    !(entry.staffBlocked && isStaff) && (!entry.module || isModuleEnabled(entry.module)) && access(featureForPath(entry.to)) !== 'none';
   return [...SINGLE_LINKS, ...GROUPS.flatMap((group) => group.entries), ...LOWER_LINKS]
     .filter(visible)
     .map((entry) => ({ to: entry.to, label: t(entry.label) }));
 }
 
 export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () => void }) {
-  const { isAdmin, isStaff } = useAuth();
+  const { isAdmin, isStaff, access } = useAuth();
   const { t, isModuleEnabled } = useAppContent();
   const { pathname } = useLocation();
   // Groups start closed; the one holding the current page opens itself. A click overrides either way.
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const holdsCurrentPage = (group: NavGroup) => group.entries.some((e) => pathname === e.to || pathname.startsWith(`${e.to}/`));
-  const enabled = (entry: NavEntry) => !entry.module || isModuleEnabled(entry.module);
+  // A custom role hides the features it gives No access to.
+  const enabled = (entry: NavEntry) => (!entry.module || isModuleEnabled(entry.module)) && access(featureForPath(entry.to)) !== 'none';
   const singleLinks = SINGLE_LINKS.filter((entry) => !(entry.staffBlocked && isStaff) && enabled(entry));
   const groups = GROUPS.map((group) => ({ ...group, entries: group.entries.filter(enabled) })).filter((group) => group.entries.length > 0);
   const lowerLinks = LOWER_LINKS.filter((entry) => !(entry.staffBlocked && isStaff) && enabled(entry));

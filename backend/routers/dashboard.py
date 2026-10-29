@@ -43,11 +43,20 @@ from backend.schemas.dashboard import (
     RecentActivity,
     TopCustomer,
 )
-from backend.services import bank
+from backend.services import bank, permissions
 from backend.services.money import money
 from backend.services.periods import resolve_period
 
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
+
+
+def _sees_banking(user: User) -> bool:
+    """Bank balances and cash flow are Banking data: Admin, Viewer, or a custom role that may view Banking."""
+    if user.role == "custom":
+        return permissions.allows(user.permissions or {}, "banking", permissions.VIEW)
+    return user.role in FINANCIAL_ROLES
+
+
 PERIODS = ("this_fiscal_year", "last_fiscal_year", "this_quarter", "this_month", "last_month")
 
 
@@ -191,7 +200,7 @@ def summary(
     fiscal_start = user.organization.fiscal_year_start_month
     start, end, _ = resolve_period(period, today, fiscal_start)
     # Bank balances and cash flow are Banking data, which Staff may not read.
-    can_see_banking = user.role in FINANCIAL_ROLES
+    can_see_banking = _sees_banking(user)
 
     bank_balances = None
     total_cash = None
@@ -400,7 +409,7 @@ def notifications(user: User = Depends(get_current_user), db: Session = Depends(
         db.execute(select(BankTransaction.id).where(BankTransaction.organization_id == org_id, BankTransaction.is_reconciled.is_(False)))
         .scalars()
         .all()
-        if user.role in FINANCIAL_ROLES
+        if _sees_banking(user)
         else []
     )
     if len(unreconciled) >= 10:

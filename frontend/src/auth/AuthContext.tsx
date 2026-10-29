@@ -1,8 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 
 import { onUnauthorized, setAccessToken } from '@/api/client';
 import { authApi, orgApi } from '@/api/endpoints';
 import { isRegisterPending, type Organization, type Role, type User } from '@/api/types';
+
+import { accessFor, featureForPath, type AccessLevel } from '@/utils/permissions';
 
 import { clearWorkspace } from './workspace';
 
@@ -39,6 +42,9 @@ interface AuthContextValue {
   isAdmin: boolean;
   isStaff: boolean;
   isEmployee: boolean;
+  /** A custom-role user: what their role allows for a feature (built-in roles: always "edit"). */
+  access: (feature: string | null) => AccessLevel;
+  isCustom: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -157,8 +163,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [applyAuth],
   );
 
+  // A custom role's access follows the page: Edit on its feature lets it write
+  // there, View makes the page read-only.
+  const { pathname } = useLocation();
   const value = useMemo<AuthContextValue>(() => {
     const role = user?.role;
+    const custom = role === 'custom';
+    const access = (feature: string | null): AccessLevel => (custom ? accessFor(user?.permissions, feature) : 'edit');
+    const here = access(featureForPath(pathname));
     return {
       user,
       organization,
@@ -170,13 +182,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       adoptSession,
       endWorkspace,
       updateUser: setUser,
-      can: (...roles: Role[]) => !!role && roles.includes(role),
-      canWrite: role === 'admin' || role === 'staff',
+      can: (...roles: Role[]) =>
+        custom
+          ? (here === 'edit' && (roles.includes('admin') || roles.includes('staff'))) || (here !== 'none' && roles.includes('viewer'))
+          : !!role && roles.includes(role),
+      canWrite: role === 'admin' || role === 'staff' || (custom && here === 'edit'),
       isAdmin: role === 'admin',
       isStaff: role === 'staff',
       isEmployee: role === 'employee',
+      access,
+      isCustom: custom,
     };
-  }, [user, organization, initializing, login, register, logout, refreshOrganization, adoptSession, endWorkspace]);
+  }, [user, organization, initializing, login, register, logout, refreshOrganization, adoptSession, endWorkspace, pathname]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

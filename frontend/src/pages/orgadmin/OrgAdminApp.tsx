@@ -35,7 +35,7 @@ function OrgPanelApiScope() {
     () => ({
       client: orgPanelClient,
       prefix: '/org-admin',
-      capabilities: { userDashboard: false, employeeInvites: false, customInvites: true },
+      capabilities: { userDashboard: false, employeeInvites: false, customInvites: true, customRoles: true },
       actor: { userId: null, isAdmin: true },
       onOrganizationSaved: refreshMe,
     }),

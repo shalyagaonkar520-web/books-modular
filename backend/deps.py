@@ -14,7 +14,7 @@ from backend.config import get_settings
 from backend.db import get_db
 from backend.models import Organization, OrgPanelAdmin, PlatformAdmin, User
 from backend.security import decode_access_token, decode_org_panel_token, decode_platform_token
-from backend.services import integrations, module_pricing, subscription
+from backend.services import integrations, module_pricing, permissions, subscription
 from backend.services.ratelimit import RateLimiter
 
 _bearer = HTTPBearer(auto_error=False)
@@ -29,6 +29,9 @@ ROLE_VIEWER = "viewer"
 # checks get_current_user is safe by default rather than accidentally open to
 # this role.
 ROLE_EMPLOYEE = "employee"
+# A role the organization admin defines (services/permissions): No access /
+# View / Edit per feature. Checked per request in require_roles below.
+ROLE_CUSTOM = "custom"
 ALL_ROLES = (ROLE_ADMIN, ROLE_STAFF, ROLE_VIEWER)
 WRITE_ROLES = (ROLE_ADMIN, ROLE_STAFF)
 # Accounting, Banking and Razorpay Payments hold sensitive financial data that
@@ -246,8 +249,14 @@ def require_subscription(user: User = Depends(get_current_user)) -> User:
 def require_roles(*roles: str):
     allowed: Iterable[str] = roles or ALL_ROLES
 
-    def _guard(user: User = Depends(get_current_user)) -> User:
-        if user.role not in allowed:
+    def _guard(request: Request, user: User = Depends(get_current_user)) -> User:
+        if user.role == ROLE_CUSTOM:
+            # A custom role is judged by what it allows for this request's
+            # feature (View to read, Edit to change), not by the role list.
+            error = permissions.request_error(user.permissions or {}, request.method, request.url.path)
+            if error:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=error)
+        elif user.role not in allowed:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
         ensure_subscription_access(user)
         return user

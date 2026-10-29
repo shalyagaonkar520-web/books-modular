@@ -98,7 +98,16 @@ def auth(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-def invite_and_accept(client: TestClient, h: dict, name: str, email: str, role: str, password: str, employee_id: str | None = None) -> dict:
+def invite_and_accept(
+    client: TestClient,
+    h: dict,
+    name: str,
+    email: str,
+    role: str,
+    password: str,
+    employee_id: str | None = None,
+    custom_role_id: str | None = None,
+) -> dict:
     """Invites a user by email (SMTP mocked) and immediately accepts on their behalf.
 
     Invited users have no password until they follow the link in that email,
@@ -109,6 +118,8 @@ def invite_and_accept(client: TestClient, h: dict, name: str, email: str, role: 
     payload = {"name": name, "email": email, "role": role}
     if employee_id is not None:
         payload["employeeId"] = employee_id
+    if custom_role_id is not None:
+        payload["customRoleId"] = custom_role_id
     with patch("backend.services.email_service.smtplib.SMTP") as mock_smtp:
         mock_server = MagicMock()
         mock_smtp.return_value = mock_server

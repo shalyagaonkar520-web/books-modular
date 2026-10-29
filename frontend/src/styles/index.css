@@ -4709,3 +4709,108 @@ input[type='password']::-ms-clear {
   margin: 10px 2px 0;
   font-size: 12px;
 }
+
+/* ------------------------------------------------------------- custom roles */
+.role-builtins {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.role-builtin {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-alt);
+}
+
+.role-quick {
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.role-group {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.role-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--surface-alt);
+  border-bottom: 1px solid var(--border);
+}
+
+.role-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.role-row:last-child {
+  border-bottom: 0;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.segmented-option {
+  padding: 5px 12px;
+  border: 0;
+  border-right: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.segmented-option:last-child {
+  border-right: 0;
+}
+
+.segmented-option:hover {
+  background: var(--surface-hover);
+}
+
+.segmented-option.is-active.is-none {
+  background: var(--surface-alt);
+  color: var(--text);
+}
+
+.segmented-option.is-active.is-view {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.segmented-option.is-active.is-edit {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+@media (max-width: 640px) {
+  .role-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+.role-group-head .row-actions {
+  gap: 14px;
+}

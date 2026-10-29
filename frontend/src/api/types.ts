@@ -6,7 +6,7 @@ import type { Subscription } from './subscription';
  * who can see only their own payslips and profile, and nothing else in the
  * app - not the main dashboard, not other employees, not company financials.
  */
-export type Role = 'admin' | 'staff' | 'viewer' | 'employee';
+export type Role = 'admin' | 'staff' | 'viewer' | 'employee' | 'custom';
 
 export interface User {
   id: string;
@@ -21,6 +21,10 @@ export interface User {
   pendingInvite?: boolean;
   /** Modules this user may edit (set in the org admin panel); null/absent = every module of the plan. */
   moduleAccess?: string[] | null;
+  /** role "custom": the organization role and its No access / View / Edit per feature. */
+  customRoleId?: string | null;
+  customRoleName?: string | null;
+  permissions?: Record<string, 'none' | 'view' | 'edit'> | null;
 }
 
 /** What the accept-invite page shows before asking the invitee to set a password. */

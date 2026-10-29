@@ -25,7 +25,7 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
   const toast = useToast();
   const orgApi = useScopedOrgApi();
   // The org admin panel has no payroll, so it cannot link a portal-only employee.
-  const { employeeInvites, customInvites } = useApiScope().capabilities;
+  const { employeeInvites, customInvites, customRoles } = useApiScope().capabilities;
   const { submitting, error, fieldErrors, run, setError } = useSubmit();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -49,6 +49,10 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
       return next;
     });
   const chosenKeys = EDITABLE_MODULES.map((module) => module.key).filter((key) => chosen.has(key) && inPlan(key));
+
+  // The organization's own roles, chosen as "custom:<id>".
+  const orgRoles = useAsync(() => (customRoles ? orgApi.roles() : Promise.resolve([])), [customRoles]);
+  const pickedRole = role.startsWith('custom:') ? (orgRoles.data ?? []).find((r) => `custom:${r.id}` === role) : undefined;
 
   const unlinkedEmployees = useAsync<EmployeeOption[]>(
     () => (employeeInvites ? payrollApi.unlinkedEmployees() : Promise.resolve([])),
@@ -79,9 +83,10 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
       orgApi.inviteUser({
         name: name.trim(),
         email: email.trim().toLowerCase(),
-        role: isCustom ? 'staff' : role,
+        role: isCustom ? 'staff' : pickedRole ? 'custom' : role,
         employeeId: role === 'employee' ? employeeId : undefined,
         moduleAccess: isCustom ? chosenKeys : undefined,
+        customRoleId: pickedRole?.id,
       }),
     );
     if (created) {
@@ -126,7 +131,8 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
               label: t('settings.invite.role.staff'),
             },
             { value: 'viewer', label: t('settings.invite.role.viewer') },
-            ...(customInvites ? [{ value: 'custom', label: 'Custom — choose which modules they can edit' }] : []),
+            ...(customInvites && !customRoles ? [{ value: 'custom', label: 'Custom — choose which modules they can edit' }] : []),
+            ...(orgRoles.data ?? []).map((r) => ({ value: `custom:${r.id}`, label: t('settings.invite.role.custom', { name: r.name }) })),
             ...(employeeInvites ? [{ value: 'employee', label: t('settings.invite.role.employee') }] : []),
           ]}
           onChange={(event) => {
@@ -134,6 +140,17 @@ export function InviteUserModal({ onClose, onInvited }: InviteUserModalProps) {
             setEmployeeId('');
           }}
         />
+
+        {pickedRole ? (
+          <p className="small text-muted" style={{ margin: 0 }}>
+            {pickedRole.description || t('settings.invite.customRoleHint', { name: pickedRole.name })}
+          </p>
+        ) : null}
+        {customRoles && (orgRoles.data ?? []).length === 0 ? (
+          <p className="small text-muted" style={{ margin: 0 }}>
+            {t('settings.invite.noCustomRoles')}
+          </p>
+        ) : null}
 
         {isCustom ? (
           <fieldset className="stack" style={{ border: 0, padding: 0, margin: 0 }}>

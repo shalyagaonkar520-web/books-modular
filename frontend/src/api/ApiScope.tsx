@@ -13,6 +13,29 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react';
 
 import { api } from './client';
 import type { AuditLog, Message, Organization, Page, User } from './types';
+import type { AccessLevel } from '@/utils/permissions';
+
+/** A custom role of the organization: No access / View / Edit per feature. */
+export interface OrgRole {
+  id: string;
+  name: string;
+  description?: string | null;
+  permissions: Record<string, AccessLevel>;
+  userCount: number;
+}
+
+export interface OrgRoleInput {
+  name: string;
+  description?: string | null;
+  permissions: Record<string, AccessLevel>;
+}
+
+/** One feature a role can give access to (GET /roles/catalog). */
+export interface RoleFeature {
+  key: string;
+  label: string;
+  group: string;
+}
 
 type Query = Record<string, string | number | boolean | undefined | null>;
 
@@ -32,6 +55,8 @@ export interface ApiScopeCapabilities {
   employeeInvites: boolean;
   /** Inviting staff with a custom set of editable modules (GET {prefix}/plan-modules). */
   customInvites?: boolean;
+  /** The organization's own roles (No access / View / Edit per feature), GET/POST {prefix}/roles. */
+  customRoles?: boolean;
 }
 
 export interface ApiScopeValue {
@@ -79,10 +104,15 @@ export function useScopedOrgApi() {
       update: (body: Partial<Organization>) => client.put<Organization>(`${prefix}/organization`, body),
       users: () => client.get<User[]>(`${prefix}/users`),
       planModules: () => client.get<{ planModules: string[] | null }>(`${prefix}/plan-modules`),
-      inviteUser: (body: { name: string; email: string; role: string; employeeId?: string; moduleAccess?: string[] }) =>
+      inviteUser: (body: { name: string; email: string; role: string; employeeId?: string; moduleAccess?: string[]; customRoleId?: string }) =>
         client.post<User>(`${prefix}/users`, body),
-      updateUser: (id: string, body: { name?: string; role?: string; isActive?: boolean }) =>
+      updateUser: (id: string, body: { name?: string; role?: string; isActive?: boolean; customRoleId?: string | null }) =>
         client.patch<User>(`${prefix}/users/${id}`, body),
+      roles: () => client.get<OrgRole[]>(`${prefix}/roles`),
+      roleCatalog: () => client.get<RoleFeature[]>(`${prefix}/roles/catalog`),
+      createRole: (body: OrgRoleInput) => client.post<OrgRole>(`${prefix}/roles`, body),
+      updateRole: (id: string, body: OrgRoleInput) => client.put<OrgRole>(`${prefix}/roles/${id}`, body),
+      deleteRole: (id: string) => client.delete<Message>(`${prefix}/roles/${id}`),
       deleteUser: (id: string) => client.delete<Message>(`${prefix}/users/${id}`),
       resetUserPassword: (id: string, newPassword: string) =>
         client.post<Message>(`${prefix}/users/${id}/reset-password`, undefined, { new_password: newPassword }),

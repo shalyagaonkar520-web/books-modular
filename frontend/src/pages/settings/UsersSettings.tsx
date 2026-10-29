@@ -17,6 +17,7 @@ import { useToast } from '@/components/ui/Toast';
 import { formatDate, formatDateTime } from '@/utils/format';
 
 import { InviteUserModal } from './InviteUserModal';
+import { RolesSettings } from './RolesSettings';
 import { ResetPasswordModal } from './ResetPasswordModal';
 import { UserDashboardModal } from './UserDashboardModal';
 
@@ -60,6 +61,9 @@ export function UsersSettings({ onViewUser }: UsersSettingsProps = {}) {
 
   const { data, loading, error, reload } = useAsync(() => orgApi.users(), []);
   const users = data ?? [];
+  // The organization's own roles (Settings only): offered next to Admin / Staff / Viewer as "custom:<id>".
+  const customRoles = useAsync(() => (capabilities.customRoles ? orgApi.roles() : Promise.resolve([])), [capabilities.customRoles]);
+  const roleValue = (row: User) => (row.role === 'custom' ? `custom:${row.customRoleId ?? ''}` : row.role);
 
   const confirmDeleteUser = async () => {
     if (!deletingUser) return;
@@ -73,7 +77,7 @@ export function UsersSettings({ onViewUser }: UsersSettingsProps = {}) {
     }
   };
 
-  const updateUser = async (target: User, body: { role?: string; isActive?: boolean }, successMessage: string) => {
+  const updateUser = async (target: User, body: { role?: string; isActive?: boolean; customRoleId?: string | null }, successMessage: string) => {
     setBusyId(target.id);
     const result = await action.run(() => orgApi.updateUser(target.id, body));
     setBusyId(null);
@@ -114,21 +118,18 @@ export function UsersSettings({ onViewUser }: UsersSettingsProps = {}) {
           <span className="sr-only">{t('settings.users.roleFor', { name: row.name })}</span>
           <select
             className="select select-sm"
-            value={row.role}
+            value={roleValue(row)}
             disabled={busyId === row.id}
-            onChange={(event) =>
+            onChange={(event) => {
+              const value = event.target.value;
+              const customRole = value.startsWith('custom:') ? (customRoles.data ?? []).find((r) => `custom:${r.id}` === value) : undefined;
+              const picked = ROLE_OPTIONS.find((option) => option.value === value);
               updateUser(
                 row,
-                { role: event.target.value },
-                t('settings.users.roleChanged', {
-                  name: row.name,
-                  role: (() => {
-                    const picked = ROLE_OPTIONS.find((option) => option.value === event.target.value);
-                    return picked ? t(picked.labelKey) : event.target.value;
-                  })(),
-                }),
-              )
-            }
+                customRole ? { role: 'custom', customRoleId: customRole.id } : { role: value },
+                t('settings.users.roleChanged', { name: row.name, role: customRole ? customRole.name : picked ? t(picked.labelKey) : value }),
+              );
+            }}
           >
             {row.role === 'employee' ? (
               <option value="employee" disabled>
@@ -138,6 +139,16 @@ export function UsersSettings({ onViewUser }: UsersSettingsProps = {}) {
             {ASSIGNABLE_ROLE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {t(option.labelKey)}
+              </option>
+            ))}
+            {row.role === 'custom' && !(customRoles.data ?? []).some((r) => r.id === row.customRoleId) ? (
+              <option value={roleValue(row)} disabled>
+                {row.customRoleName ?? t('settings.users.role.custom')}
+              </option>
+            ) : null}
+            {(customRoles.data ?? []).map((r) => (
+              <option key={r.id} value={`custom:${r.id}`}>
+                {r.name}
               </option>
             ))}
           </select>
@@ -229,6 +240,15 @@ export function UsersSettings({ onViewUser }: UsersSettingsProps = {}) {
           <DataTable columns={columns} rows={users} rowKey={(row) => row.id} caption={t('settings.users.caption')} />
         ) : null}
       </Card>
+
+      {capabilities.customRoles ? (
+        <RolesSettings
+          onChanged={() => {
+            customRoles.reload();
+            reload();
+          }}
+        />
+      ) : null}
 
       {viewingUser && canView ? <UserDashboardModal user={viewingUser} onClose={() => setViewingUser(null)} /> : null}
       {inviting ? <InviteUserModal onClose={() => setInviting(false)} onInvited={reload} /> : null}

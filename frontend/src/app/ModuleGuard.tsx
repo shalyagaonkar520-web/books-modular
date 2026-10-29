@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 
 import { moduleForPath } from '@/api/appContent';
+import { useAuth } from '@/auth/AuthContext';
+import { featureForPath } from '@/utils/permissions';
 import { useToast } from '@/components/ui/Toast';
 
 import { useAppContent } from './AppContentContext';
@@ -14,8 +16,12 @@ export function ModuleGuard() {
   const { pathname } = useLocation();
   const { isModuleEnabled, t } = useAppContent();
   const toast = useToast();
+  const { access } = useAuth();
   const module = moduleForPath(pathname);
-  const blocked = module !== null && !isModuleEnabled(module);
+  const moduleOff = module !== null && !isModuleEnabled(module);
+  // A custom role with No access to this page's feature.
+  const roleBlocked = access(featureForPath(pathname)) === 'none';
+  const blocked = moduleOff || roleBlocked;
   const notifiedFor = useRef<string | null>(null);
 
   useEffect(() => {
@@ -25,8 +31,8 @@ export function ModuleGuard() {
     }
     if (notifiedFor.current === pathname) return;
     notifiedFor.current = pathname;
-    toast.notify(t('common.moduleOff'), 'warning');
-  }, [blocked, pathname, t, toast]);
+    toast.notify(t(moduleOff ? 'common.moduleOff' : 'common.noRoleAccess'), 'warning');
+  }, [blocked, moduleOff, pathname, t, toast]);
 
   if (blocked) return <Navigate to="/dashboard" replace />;
   return <Outlet />;

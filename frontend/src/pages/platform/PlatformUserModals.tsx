@@ -126,7 +126,8 @@ export function EditPlatformUserModal({ user, organizations, onClose, onSaved }:
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
   const [organizationId, setOrganizationId] = useState(user.organizationId);
-  const [role, setRole] = useState<PlatformRole>((ROLE_OPTIONS.find((r) => r.value === user.role)?.value) ?? 'staff');
+  // Start from the user's own role (a custom or employee role included), so saving other changes never changes it.
+  const [role, setRole] = useState<PlatformRole>(user.role as PlatformRole);
   const [isActive, setIsActive] = useState(user.isActive);
 
   const orgsAsync = useAsync(
@@ -141,7 +142,7 @@ export function EditPlatformUserModal({ user, organizations, onClose, onSaved }:
         name: name.trim(),
         email: email.trim().toLowerCase(),
         organizationId: organizationId !== user.organizationId ? organizationId : undefined,
-        role,
+        role: role !== user.role ? role : undefined,
         isActive,
       }),
     );
@@ -189,7 +190,7 @@ export function EditPlatformUserModal({ user, organizations, onClose, onSaved }:
         <SelectField
           label="Role"
           value={role}
-          options={roleIsCustom ? [{ value: user.role, label: user.role }, ...ROLE_OPTIONS] : ROLE_OPTIONS}
+          options={roleIsCustom ? [{ value: user.role, label: user.role === 'custom' ? 'Custom role (set by the organization)' : user.role }, ...ROLE_OPTIONS] : ROLE_OPTIONS}
           error={fieldErrors.role}
           onChange={(event) => setRole(event.target.value as PlatformRole)}
         />
