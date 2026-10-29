@@ -70,7 +70,83 @@ export interface GstRegistration {
   ewayBillNo?: string | null;
 }
 
+export interface GstinInfo {
+  gstin: string;
+  stateCode: string | null;
+  state: string | null;
+  pan: string;
+  entityType: string | null;
+  taxpayerType: string | null;
+  formatOk: boolean;
+  checksumOk: boolean;
+}
+
+export type TwoBStatus = 'matched' | 'mismatch' | 'twob_only' | 'books_only';
+
+export interface TwoBRow {
+  status: TwoBStatus;
+  supplierGstin: string;
+  supplierName: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  itcAvailable: boolean;
+  twoBValue: number;
+  twoBTaxable: number;
+  twoBIgst: number;
+  twoBCgst: number;
+  twoBSgst: number;
+  billId: string | null;
+  bookValue: number;
+  bookTaxable: number;
+  bookIgst: number;
+  bookCgst: number;
+  bookSgst: number;
+}
+
+export interface TwoBReconciliation {
+  gstin?: string | null;
+  returnPeriod?: string | null;
+  counts: { matched: number; mismatch: number; twobOnly: number; booksOnly: number };
+  itcAvailable: number;
+  warnings: string[];
+  rows: TwoBRow[];
+}
+
+export interface FilingPeriod {
+  start: string;
+  end: string;
+  gstr1Due: string;
+  gstr3bDue: string;
+  invoices: number;
+  creditNotes: number;
+  bills: number;
+  expenses: number;
+  nil: boolean;
+  inProgress: boolean;
+}
+
+export interface FilingCalendar {
+  financialYear: string;
+  quarterly: boolean;
+  state: string | null;
+  periods: FilingPeriod[];
+}
+
+export interface LateFee {
+  daysLate: number;
+  lateFee: number;
+  lateFeeCgst: number;
+  lateFeeSgst: number;
+  lateFeeCap: number;
+  interest: number;
+  total: number;
+}
+
 export const gstApi = {
+  checkGstin: (gstin: string) => api.get<GstinInfo>(`/gst/gstin/${encodeURIComponent(gstin)}`),
+  reconcile2b: (file: unknown, query: Query) => api.post<TwoBReconciliation>('/gst/gstr2b/reconcile', file, query),
+  filingCalendar: (query: Query) => api.get<FilingCalendar>('/gst/filing-calendar', query),
+  lateFee: (query: Query) => api.get<LateFee>('/gst/late-fee', query),
   gstr1: (query: Query) => api.get<Gstr1Summary>('/gst/gstr1', query),
   gstr3b: (query: Query) => api.get<Gstr3b>('/gst/gstr3b', query),
   tdsRegister: (query: Query) => api.get<TdsRegister>('/gst/tds-register', query),

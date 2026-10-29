@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Dict, List
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
@@ -17,6 +17,7 @@ from backend.models import (
     BankAccount,
     BankTransaction,
     Bill,
+    Contact,
     CustomerPayment,
     Expense,
     Invoice,
@@ -414,3 +415,108 @@ def notifications(user: User = Depends(get_current_user), db: Session = Depends(
             )
         )
     return Notifications(items=items, count=len(items))
+
+
+@router.get("/search")
+def search(
+    q: str = Query(..., min_length=1, max_length=80),
+    limit: int = Query(5, ge=1, le=20),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Find invoices, bills, contacts and items by number, name, GSTIN, SKU or barcode (the Ctrl+K search)."""
+    org_id = user.organization_id
+    like = f"%{q.strip().lower()}%"
+    out: List[dict] = []
+
+    invoices = db.execute(
+        select(Invoice)
+        .join(Contact, Contact.id == Invoice.customer_id)
+        .where(
+            Invoice.organization_id == org_id,
+            or_(
+                func.lower(Invoice.invoice_number).like(like),
+                func.lower(Invoice.reference).like(like),
+                func.lower(Contact.display_name).like(like),
+            ),
+        )
+        .options(selectinload(Invoice.customer))
+        .order_by(Invoice.date.desc())
+        .limit(limit)
+    ).scalars()
+    out += [
+        {
+            "kind": "invoice",
+            "id": i.id,
+            "title": i.invoice_number,
+            "subtitle": f"{i.customer.display_name} · {i.status}",
+            "to": f"/invoices/{i.id}",
+        }
+        for i in invoices
+    ]
+    bills = db.execute(
+        select(Bill)
+        .join(Contact, Contact.id == Bill.vendor_id)
+        .where(
+            Bill.organization_id == org_id,
+            or_(
+                func.lower(Bill.bill_number).like(like),
+                func.lower(Bill.vendor_bill_number).like(like),
+                func.lower(Contact.display_name).like(like),
+            ),
+        )
+        .options(selectinload(Bill.vendor))
+        .order_by(Bill.date.desc())
+        .limit(limit)
+    ).scalars()
+    out += [
+        {
+            "kind": "bill",
+            "id": b.id,
+            "title": b.vendor_bill_number or b.bill_number,
+            "subtitle": f"{b.vendor.display_name} · {b.status}",
+            "to": f"/bills/{b.id}/edit",
+        }
+        for b in bills
+    ]
+    contacts = db.execute(
+        select(Contact)
+        .where(
+            Contact.organization_id == org_id,
+            or_(
+                func.lower(Contact.display_name).like(like),
+                func.lower(Contact.company_name).like(like),
+                func.lower(Contact.email).like(like),
+                func.lower(Contact.gstin).like(like),
+                Contact.phone.like(like),
+            ),
+        )
+        .order_by(Contact.display_name)
+        .limit(limit)
+    ).scalars()
+    out += [
+        {
+            "kind": c.type,
+            "id": c.id,
+            "title": c.display_name,
+            "subtitle": c.gstin or c.email or "",
+            "to": f"/{'customers' if c.type == 'customer' else 'vendors'}/{c.id}/edit",
+        }
+        for c in contacts
+    ]
+    items = db.execute(
+        select(Item)
+        .where(
+            Item.organization_id == org_id,
+            or_(
+                func.lower(Item.name).like(like),
+                func.lower(Item.sku).like(like),
+                func.lower(Item.barcode).like(like),
+                func.lower(Item.hsn_sac).like(like),
+            ),
+        )
+        .order_by(Item.name)
+        .limit(limit)
+    ).scalars()
+    out += [{"kind": "item", "id": i.id, "title": i.name, "subtitle": i.sku, "to": f"/items/{i.id}/edit"} for i in items]
+    return {"results": out}

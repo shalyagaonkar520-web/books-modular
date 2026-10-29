@@ -111,6 +111,8 @@ export const itemsApi = {
   get: (id: string) => api.get<Item>(`/items/${id}`),
   create: (body: Partial<Item>) => api.post<Item>('/items', body),
   update: (id: string, body: Partial<Item>) => api.put<Item>(`/items/${id}`, body),
+  bulkUpdate: (body: { ids: string[]; taxRate?: number; hsnSac?: string; unit?: string; priceChangePercent?: number; sellingPrice?: number; isActive?: boolean }) =>
+    api.post<Message>('/items/bulk-update', body),
   remove: (id: string) => api.delete<Message>(`/items/${id}`),
   adjustments: (query?: Query) => api.get<Page<InventoryAdjustment>>('/inventory-adjustments', query),
   adjust: (body: { itemId: string; date: string; quantityDelta: number; reason: string; notes?: string }) =>
@@ -168,7 +170,9 @@ export const invoicesApi = {
       dispatched: Array<{ invoice_number: string; customer: string; email: string; balance_due: number; days_overdue: number }>;
       skipped: Array<{ invoice_number: string; customer: string; reason: string }>;
     }>('/invoices/auto-remind-overdue'),
-  downloadPdf: (id: string, invoiceNumber: string) => downloadFile(`/invoices/${id}/pdf`, `Invoice-${invoiceNumber}.pdf`),
+  /** copies: original,duplicate,triplicate; watermark: text across each page (left out = DRAFT / CANCELLED by status). */
+  downloadPdf: (id: string, invoiceNumber: string, options?: { copies?: string; watermark?: string }) =>
+    downloadFile(`/invoices/${id}/pdf${buildExportQs(options)}`, `Invoice-${invoiceNumber}.pdf`),
   downloadExcel: (id: string, invoiceNumber: string) => downloadFile(`/invoices/${id}/excel`, `Invoice-${invoiceNumber}.xlsx`),
   exportPdf: (query?: Query) => downloadFile(`/invoices/export/pdf${buildExportQs(query)}`, 'invoices_report.pdf'),
   exportExcel: (query?: Query) => downloadFile(`/invoices/export/excel${buildExportQs(query)}`, 'invoices_registry.xlsx'),
@@ -311,15 +315,52 @@ export const reportsApi = {
   receivablesAging: (query?: Query) => api.get<AgingReport>('/reports/receivables-aging', query),
   payablesAging: (query?: Query) => api.get<AgingReport>('/reports/payables-aging', query),
   salesByCustomer: (query?: Query) => api.get<ContactTotalsReport>('/reports/sales-by-customer', query),
+  customerPaymentBehaviour: (query?: Query) =>
+    api.get<{ startDate: string; endDate: string; rows: CustomerPaymentRow[] }>('/reports/customer-payment-behaviour', query),
+  salesByItem: (query?: Query) => api.get<{ startDate: string; endDate: string; total: number; rows: ItemSalesRow[] }>('/reports/sales-by-item', query),
   purchasesByVendor: (query?: Query) => api.get<ContactTotalsReport>('/reports/purchases-by-vendor', query),
   expensesByCategory: (query?: Query) => api.get<ExpenseByCategoryReport>('/reports/expenses-by-category', query),
   inventorySummary: () => api.get<InventorySummaryReport>('/reports/inventory-summary'),
   taxSummary: (query?: Query) => api.get<TaxSummary>('/reports/tax-summary', query),
 };
 
+/** How quickly a customer pays (reports/customer-payment-behaviour). */
+export interface CustomerPaymentRow {
+  customerId: string;
+  customerName: string;
+  invoices: number;
+  paid: number;
+  onTime: number;
+  avgDaysToPay: number | null;
+  onTimePercent: number | null;
+  outstanding: number;
+  overdue: number;
+}
+
+/** One item's sales in a period (reports/sales-by-item). */
+export interface ItemSalesRow {
+  itemId: string | null;
+  name: string;
+  sku: string | null;
+  quantity: number;
+  sales: number;
+  invoices: number;
+  sharePercent: number;
+}
+
+/** One hit of the Ctrl+K search: where it leads and how to show it. */
+export interface SearchResult {
+  kind: 'invoice' | 'bill' | 'customer' | 'vendor' | 'item';
+  id: string;
+  title: string;
+  subtitle: string;
+  to: string;
+}
+
 export const dashboardApi = {
   summary: (period: DashboardPeriod) => api.get<DashboardSummary>('/dashboard/summary', { period }),
   notifications: () => api.get<Notifications>('/dashboard/notifications'),
+  search: (q: string, signal?: AbortSignal) => api.get<{ results: SearchResult[] }>('/dashboard/search', { q }, signal),
 };
 
 export const emailApi = {

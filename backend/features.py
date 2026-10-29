@@ -92,6 +92,14 @@ FEATURES: Tuple[Feature, ...] = (
         "Confirmed customer orders, invoiced when delivered.",
     ),
     Feature(
+        "deliveryChallans",
+        "Delivery challans",
+        ("delivery_challans:router",),
+        ("invoices",),
+        ("/api/delivery-challans",),
+        "Goods sent before the sale (on approval, job work), invoiced later.",
+    ),
+    Feature(
         "creditNotes",
         "Credit notes",
         ("credit_notes:router",),

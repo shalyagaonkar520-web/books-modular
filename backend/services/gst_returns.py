@@ -16,12 +16,12 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date
-from decimal import Decimal
+from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.models import (
@@ -809,3 +809,212 @@ def eway_json(
         ],
     }
     return {"version": "1.0.0621", "billLists": [bill]}
+
+
+# --- GSTR-2B reconciliation ---------------------------------------------------
+# GSTR-2B is the portal's statement of the ITC suppliers reported for you. Each
+# B2B entry is matched to a bill by supplier GSTIN + invoice number (letters and
+# digits only, case-blind), then the invoice value and taxable value are compared
+# within a rupee.
+TWO_B_TOLERANCE = Decimal("1")
+# A bill booked up to about a year before the period can still be the match for a
+# late 2B entry; only the period's own bills can be "missing from 2B".
+_TWO_B_LOOKBACK = timedelta(days=400)
+
+
+def _inv_key(gstin: Optional[str], number: Optional[str]) -> str:
+    return f"{(gstin or '').strip().upper()}::{re.sub(r'[^A-Z0-9]', '', (number or '').upper())}"
+
+
+def _dec(value) -> Decimal:
+    try:
+        return money(Decimal(str(value or 0)))
+    except (InvalidOperation, ValueError):
+        return ZERO
+
+
+def _two_b_suppliers(payload) -> Tuple[Optional[str], Optional[str], List[dict]]:
+    """(our GSTIN, return period, B2B suppliers) from the 2B JSON as downloaded,
+    or from just its `data` block."""
+    if not isinstance(payload, dict):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That is not a GSTR-2B JSON file.")
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+    docdata = data.get("docdata") if isinstance(data.get("docdata"), dict) else data
+    suppliers = docdata.get("b2b")
+    if not isinstance(suppliers, list):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That is not a GSTR-2B JSON file: it has no B2B section (docdata.b2b).")
+    return data.get("gstin"), data.get("rtnprd"), suppliers
+
+
+def _book_side(doc: TaxDoc) -> dict:
+    taxable, cgst, sgst, igst = doc.totals()
+    return {
+        "billId": doc.id,
+        "bookValue": _r(taxable + cgst + sgst + igst),
+        "bookTaxable": _r(taxable),
+        "bookIgst": _r(igst),
+        "bookCgst": _r(cgst),
+        "bookSgst": _r(sgst),
+    }
+
+
+_NO_BOOK = {"billId": None, "bookValue": 0.0, "bookTaxable": 0.0, "bookIgst": 0.0, "bookCgst": 0.0, "bookSgst": 0.0}
+_NO_TWO_B = {"twoBValue": 0.0, "twoBTaxable": 0.0, "twoBIgst": 0.0, "twoBCgst": 0.0, "twoBSgst": 0.0}
+
+
+def gstr2b_reconcile(db: Session, org_id: str, payload, start: date, end: date) -> dict:
+    two_b_gstin, period, suppliers = _two_b_suppliers(payload)
+    books: Dict[str, TaxDoc] = {}
+    for doc in bills_in(db, org_id, start - _TWO_B_LOOKBACK, end):
+        books.setdefault(_inv_key(doc.gstin, doc.number), doc)
+
+    rows: List[dict] = []
+    matched = set()
+    for sup in suppliers:
+        if not isinstance(sup, dict):
+            continue
+        ctin = str(sup.get("ctin") or "").strip().upper()
+        for inv in sup.get("inv") or []:
+            if not isinstance(inv, dict):
+                continue
+            items = [it for it in inv.get("items") or [] if isinstance(it, dict)]
+            value = _dec(inv.get("val"))
+            taxable = sum((_dec(it.get("txval")) for it in items), ZERO)
+            key = _inv_key(ctin, inv.get("inum"))
+            book = books.get(key)
+            row = {
+                "supplierGstin": ctin,
+                "supplierName": str(sup.get("trdnm") or (book.contact_name if book else "")),
+                "invoiceNumber": str(inv.get("inum") or ""),
+                "invoiceDate": str(inv.get("dt") or ""),
+                "itcAvailable": str(inv.get("itcavl") or "Y").upper() != "N",
+                "twoBValue": _r(value),
+                "twoBTaxable": _r(taxable),
+                "twoBIgst": _r(sum((_dec(it.get("igst")) for it in items), ZERO)),
+                "twoBCgst": _r(sum((_dec(it.get("cgst")) for it in items), ZERO)),
+                "twoBSgst": _r(sum((_dec(it.get("sgst")) for it in items), ZERO)),
+            }
+            if book is None:
+                rows.append({**row, **_NO_BOOK, "status": "twob_only"})
+                continue
+            matched.add(key)
+            book_taxable, cgst, sgst, igst = book.totals()
+            close = abs(value - (book_taxable + cgst + sgst + igst)) <= TWO_B_TOLERANCE and abs(taxable - book_taxable) <= TWO_B_TOLERANCE
+            rows.append({**row, **_book_side(book), "status": "matched" if close else "mismatch"})
+
+    for key, doc in books.items():
+        if key in matched or not doc.gstin or not start <= doc.date <= end:
+            continue
+        rows.append(
+            {
+                "supplierGstin": doc.gstin,
+                "supplierName": doc.contact_name,
+                "invoiceNumber": doc.number,
+                "invoiceDate": _gst_date(doc.date),
+                "itcAvailable": False,
+                **_NO_TWO_B,
+                **_book_side(doc),
+                "status": "books_only",
+            }
+        )
+
+    ours = (_org(db, org_id).gstin or "").strip().upper()
+    warnings = []
+    if two_b_gstin and ours and str(two_b_gstin).strip().upper() != ours:
+        warnings.append(f"This GSTR-2B is for GSTIN {two_b_gstin}, not this organisation's {ours}.")
+    itc = sum((_dec(r["twoBIgst"]) + _dec(r["twoBCgst"]) + _dec(r["twoBSgst"]) for r in rows if r["itcAvailable"]), ZERO)
+    return {
+        "gstin": two_b_gstin,
+        "returnPeriod": period,
+        "counts": {
+            key: sum(1 for r in rows if r["status"] == s)
+            for key, s in (("matched", "matched"), ("mismatch", "mismatch"), ("twobOnly", "twob_only"), ("booksOnly", "books_only"))
+        },
+        "itcAvailable": _r(itc),
+        "warnings": warnings,
+        "rows": rows,
+    }
+
+
+# --- Filing calendar and late fees ---------------------------------------------
+# GSTR-1 is due on the 11th and GSTR-3B on the 20th of the next month. Under QRMP
+# (quarterly) GSTR-1 is due on the 13th after the quarter and GSTR-3B on the 22nd
+# or the 24th, by state.
+_QRMP_22ND = {"22", "23", "24", "26", "27", "29", "30", "31", "32", "33", "34", "35", "36", "37"}
+LATE_FEE_PER_DAY = Decimal("50")  # CGST 25 + SGST 25
+LATE_FEE_PER_DAY_NIL = Decimal("20")  # CGST 10 + SGST 10
+INTEREST_RATE = Decimal("18")  # % a year on tax paid late (Section 50)
+
+
+def late_fee_cap(nil: bool, turnover: Optional[Decimal]) -> Decimal:
+    """Most late fee per return, CGST + SGST together (Notifications 19 and 20/2021-CT)."""
+    if nil:
+        return Decimal("500")
+    if turnover is None:
+        return Decimal("10000")
+    if turnover <= Decimal("15000000"):
+        return Decimal("2000")
+    if turnover <= Decimal("50000000"):
+        return Decimal("5000")
+    return Decimal("10000")
+
+
+def late_fee(due: date, filed: date, nil: bool = False, turnover: Optional[Decimal] = None, tax_payable: Decimal = ZERO) -> dict:
+    days = max(0, (filed - due).days)
+    cap = late_fee_cap(nil, turnover)
+    fee = min((LATE_FEE_PER_DAY_NIL if nil else LATE_FEE_PER_DAY) * days, cap)
+    interest = money(Decimal(tax_payable or 0) * INTEREST_RATE / 100 * days / 365)
+    return {
+        "daysLate": days,
+        "lateFee": _r(fee),
+        "lateFeeCgst": _r(fee / 2),
+        "lateFeeSgst": _r(fee / 2),
+        "lateFeeCap": _r(cap),
+        "interest": _r(interest),
+        "total": _r(fee + interest),
+    }
+
+
+def _month_after(year: int, month: int, day: int) -> date:
+    return date(year + (month == 12), month % 12 + 1, day)
+
+
+def filing_calendar(db: Session, org_id: str, fy_start_year: int, quarterly: bool = False, today: Optional[date] = None) -> dict:
+    """The return periods of a financial year (April to March) with their due dates,
+    and whether anything happened in them (nothing at all = a NIL return)."""
+    today = today or date.today()
+    state = gst.org_state(_org(db, org_id))
+    months = [(fy_start_year + (m < 4), m) for m in (*range(4, 13), 1, 2, 3)]
+    groups = [months[i : i + 3] for i in range(0, 12, 3)] if quarterly else [[m] for m in months]
+
+    def count(model, *where) -> int:
+        return db.scalar(select(func.count()).select_from(model).where(model.organization_id == org_id, *where)) or 0
+
+    periods = []
+    for group in groups:
+        (y0, m0), (y1, m1) = group[0], group[-1]
+        start = date(y0, m0, 1)
+        end = _month_after(y1, m1, 1) - timedelta(days=1)
+        invoices = count(Invoice, Invoice.status.notin_(("draft", "void")), Invoice.date >= start, Invoice.date <= end)
+        credit_notes = count(CreditNote, CreditNote.status.in_(("open", "closed")), CreditNote.date >= start, CreditNote.date <= end)
+        bills = count(Bill, Bill.status.notin_(("draft", "void")), Bill.date >= start, Bill.date <= end)
+        expenses = count(Expense, Expense.date >= start, Expense.date <= end)
+        if quarterly:
+            gstr1_due, gstr3b_due = _month_after(y1, m1, 13), _month_after(y1, m1, 22 if state in _QRMP_22ND else 24)
+        else:
+            gstr1_due, gstr3b_due = _month_after(y1, m1, 11), _month_after(y1, m1, 20)
+        periods.append(
+            {
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                "gstr1Due": gstr1_due.isoformat(),
+                "gstr3bDue": gstr3b_due.isoformat(),
+                "invoices": invoices,
+                "creditNotes": credit_notes,
+                "bills": bills,
+                "expenses": expenses,
+                "nil": not (invoices or credit_notes or bills or expenses),
+                "inProgress": end >= today,
+            }
+        )
+    return {"financialYear": f"{fy_start_year}-{str(fy_start_year + 1)[2:]}", "quarterly": quarterly, "state": state, "periods": periods}

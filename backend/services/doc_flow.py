@@ -25,6 +25,8 @@ from backend.models import (
     CreditApplication,
     CreditNote,
     CreditNoteLine,
+    DeliveryChallan,
+    DeliveryChallanLine,
     Estimate,
     EstimateLine,
     Invoice,
@@ -70,10 +72,13 @@ PURCHASE_ORDER = DocKind(
     "purchase_order", "Purchase order", PurchaseOrder, PurchaseOrderLine, "purchase_order_number", "vendor", "bill", "delivery_date"
 )
 VENDOR_CREDIT = DocKind("vendor_credit", "Vendor credit", VendorCredit, VendorCreditLine, "vendor_credit_number", "vendor", "bill")
+DELIVERY_CHALLAN = DocKind(
+    "delivery_challan", "Delivery challan", DeliveryChallan, DeliveryChallanLine, "challan_number", "customer", "invoice"
+)
 
 
 def number_of(doc) -> str:
-    for kind in (ESTIMATE, SALES_ORDER, CREDIT_NOTE, PURCHASE_ORDER, VENDOR_CREDIT):
+    for kind in (ESTIMATE, SALES_ORDER, CREDIT_NOTE, PURCHASE_ORDER, VENDOR_CREDIT, DELIVERY_CHALLAN):
         if isinstance(doc, kind.model):
             return getattr(doc, kind.number_attr)
     raise TypeError(type(doc))
@@ -313,13 +318,16 @@ def to_list_item(db: Session, doc, kind: DocKind, invoice_numbers: Optional[Dict
 
 
 def release_invoice(db: Session, invoice: Invoice) -> None:
-    """An invoice was voided or deleted: its quote / sales order can be invoiced again."""
+    """An invoice was voided or deleted: its quote / sales order / delivery challan can be invoiced again."""
     for est in db.execute(select(Estimate).where(Estimate.invoice_id == invoice.id)).scalars():
         est.invoice_id = None
         est.status = "accepted"
     for so in db.execute(select(SalesOrder).where(SalesOrder.invoice_id == invoice.id)).scalars():
         so.invoice_id = None
         so.status = "confirmed"
+    for dc in db.execute(select(DeliveryChallan).where(DeliveryChallan.invoice_id == invoice.id)).scalars():
+        dc.invoice_id = None
+        dc.status = "issued"
 
 
 def release_bill(db: Session, bill: Bill) -> None:

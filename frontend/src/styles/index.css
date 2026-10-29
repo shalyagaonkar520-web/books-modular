@@ -4647,3 +4647,65 @@ input[type='password']::-ms-clear {
     padding: 0;
   }
 }
+
+/* --------------------------------------------------------- command palette */
+.palette-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.palette-input input {
+  flex: 1;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.palette-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.palette-item.is-active {
+  background: var(--primary-soft);
+}
+
+.palette-title {
+  font-weight: 600;
+}
+
+.palette-subtitle {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.palette-empty,
+.palette-hint {
+  margin: 10px 2px 0;
+  font-size: 12px;
+}

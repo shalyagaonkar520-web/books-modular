@@ -1,0 +1,151 @@
+"""Add the GST billing extras texts (GSTR-2B reconciliation, filing calendar and
+late fees, GSTIN check, bill of supply, invoice copies, terms templates, delivery
+challans, Ctrl+K search, bulk item edit, two sales reports) to both copies of the
+default app content. Run from the repo root: python scripts/content_gst_extras.py
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from content_phase1 import kind_texts, main  # noqa: E402
+
+TEXTS = {
+    # GST filing: GSTR-2B reconciliation
+    "gst.tab.gstr2b": "GSTR-2B match",
+    "gst.tab.calendar": "Filing calendar",
+    "gst.twoB.title": "Match GSTR-2B with your bills",
+    "gst.twoB.help": "Download the month's GSTR-2B as JSON from gst.gov.in (Returns → GSTR-2B) and import it. Each supplier invoice is matched to your bills by GSTIN and invoice number, so you claim input tax credit only on what suppliers reported. Choose the same period above.",
+    "gst.twoB.import": "Import GSTR-2B JSON",
+    "gst.twoB.matching": "Matching…",
+    "gst.twoB.exportCsv": "Download CSV",
+    "gst.twoB.notJson": "That file is not JSON. Download the GSTR-2B as JSON from the GST portal.",
+    "gst.twoB.status.matched": "Matched",
+    "gst.twoB.status.mismatch": "Amount differs",
+    "gst.twoB.status.twobOnly": "Not in your books",
+    "gst.twoB.status.booksOnly": "Missing from 2B",
+    "gst.twoB.itcAvailable": "ITC available in 2B",
+    "gst.twoB.all": "All",
+    "gst.twoB.empty": "Nothing here.",
+    "gst.twoB.itcNo": "Not available",
+    "gst.twoB.col.status": "Status",
+    "gst.twoB.col.supplier": "Supplier",
+    "gst.twoB.col.invoice": "Invoice",
+    "gst.twoB.col.twoBValue": "2B value",
+    "gst.twoB.col.bookValue": "Books value",
+    "gst.twoB.col.difference": "Difference",
+    "gst.twoB.col.itc": "ITC",
+    # GST filing: calendar and late fees
+    "gst.calendar.title": "Return due dates",
+    "gst.calendar.year": "Financial year",
+    "gst.calendar.quarterly": "Quarterly filer (QRMP)",
+    "gst.calendar.quarterlyHint": "Turnover up to ₹5 crore and opted in to file quarterly.",
+    "gst.calendar.period": "Period",
+    "gst.calendar.gstr1Due": "GSTR-1 due",
+    "gst.calendar.gstr3bDue": "GSTR-3B due",
+    "gst.calendar.activity": "Activity",
+    "gst.calendar.return": "Return",
+    "gst.calendar.counts": "{invoices} invoices · {bills} bills / expenses · {credits} credit notes",
+    "gst.calendar.inProgress": "Period not over",
+    "gst.calendar.nil": "NIL return",
+    "gst.calendar.regular": "Regular return",
+    "gst.calendar.note": "Due dates are the standard ones; the government sometimes extends them. A NIL return means nothing was sold or bought in the period. File GSTR-1 before GSTR-3B.",
+    "gst.lateFee.title": "Late fee calculator",
+    "gst.lateFee.help": "Late fee is ₹50 a day (₹20 for a NIL return), half CGST and half SGST, up to a limit set by last year's turnover. Tax paid late also carries 18% a year interest.",
+    "gst.lateFee.due": "Due date",
+    "gst.lateFee.filed": "Filed on",
+    "gst.lateFee.turnover": "Last year's turnover (₹)",
+    "gst.lateFee.turnoverHint": "Sets the most late fee: ₹2,000 up to ₹1.5 crore, ₹5,000 up to ₹5 crore, ₹10,000 above.",
+    "gst.lateFee.tax": "Tax paid in cash with the return (₹)",
+    "gst.lateFee.taxHint": "For the interest. Leave empty if none.",
+    "gst.lateFee.nil": "NIL return",
+    "gst.lateFee.calculate": "Calculate",
+    "gst.lateFee.daysLate": "Days late",
+    "gst.lateFee.fee": "Late fee (most {cap})",
+    "gst.lateFee.interest": "Interest at 18%",
+    "gst.lateFee.total": "Total to pay",
+    # Contacts
+    "customers.form.gstinChecksum": "This GSTIN fails its check digit. Look for a mistyped or swapped character.",
+    # Invoices
+    "invoices.form.documentType": "Document",
+    "invoices.form.documentTypeHint": "A bill of supply is for exempt goods or a composition dealer: it charges no GST.",
+    "invoices.form.documentType.taxInvoice": "Tax invoice",
+    "invoices.form.documentType.billOfSupply": "Bill of supply",
+    "invoices.terms.template": "Start from a template",
+    "invoices.terms.templatePlaceholder": "Choose a template…",
+    "invoices.terms.preset.trader": "Trader / shop (general)",
+    "invoices.terms.preset.freelancer": "Freelancer / consultant",
+    "invoices.terms.preset.manufacturer": "Manufacturer / wholesale",
+    "invoices.terms.preset.retail": "Retail store",
+    "invoices.terms.preset.restaurant": "Restaurant / café",
+    "invoices.terms.preset.it": "IT services / software",
+    "invoices.terms.preset.contractor": "Contractor / works",
+    "invoices.terms.preset.export": "Export",
+    "invoices.copies.button": "Print copies",
+    "invoices.copies.title": "Invoice copies",
+    "invoices.copies.subtitle": "For goods, GST rules ask for three copies: one for the buyer, one for the transporter, one for you.",
+    "invoices.copies.original": "Original for recipient",
+    "invoices.copies.duplicate": "Duplicate for transporter",
+    "invoices.copies.triplicate": "Triplicate for supplier",
+    "invoices.copies.watermark": "Watermark (optional)",
+    "invoices.copies.watermarkHint": "Text printed faintly across each page, e.g. COPY. Drafts say DRAFT and void invoices CANCELLED anyway.",
+    # Delivery challans
+    "sidebar.deliveryChallans": "Delivery challans",
+    **kind_texts(
+        "deliveryChallans",
+        "Delivery challans",
+        "Delivery challan",
+        "Goods sent before they are sold: on approval, for job work, or ahead of the invoice. They post nothing until invoiced.",
+        "New delivery challan",
+        "Send goods with a delivery challan; when the sale is final, turn it into an invoice in one click.",
+        "Save and issue",
+    ),
+    "deliveryChallans.reasonPlaceholder": "e.g. Supply on approval, job work",
+    # Ctrl+K search
+    "palette.title": "Search",
+    "palette.placeholder": "Search pages, invoices, bills, customers, vendors, items…",
+    "palette.empty": "Nothing found.",
+    "palette.hint": "Ctrl+K (⌘K on a Mac) opens this from anywhere. ↑ ↓ to move, Enter to open.",
+    "palette.page": "Page",
+    "palette.kind.invoice": "Invoice",
+    "palette.kind.bill": "Bill",
+    "palette.kind.customer": "Customer",
+    "palette.kind.vendor": "Vendor",
+    "palette.kind.item": "Item",
+    # Items: bulk edit
+    "items.bulkEdit.button": "Edit {count} selected",
+    "items.bulkEdit.title": "Edit {count} items",
+    "items.bulkEdit.subtitle": "Only the fields you fill in change; the rest stay as they are.",
+    "items.bulkEdit.taxRate": "GST rate",
+    "items.bulkEdit.hsnSac": "HSN / SAC",
+    "items.bulkEdit.unit": "Unit",
+    "items.bulkEdit.pricePercent": "Change selling price by (%)",
+    "items.bulkEdit.pricePercentHint": "10 raises prices by 10%; -5 lowers them by 5%.",
+    "items.bulkEdit.unchanged": "Unchanged",
+    "items.bulkEdit.apply": "Apply",
+    # Reports
+    "reports.salesByItem.label": "Sales by item",
+    "reports.salesByItem.subtitle": "Best sellers: quantity and sales value of each item in the period.",
+    "reports.salesByItem.title": "Sales by item",
+    "reports.salesByItem.cardSubtitle": "{start} to {end} · total {amount} before GST",
+    "reports.salesByItem.empty": "No sales in this period.",
+    "reports.salesByItem.col.item": "Item",
+    "reports.salesByItem.col.quantity": "Quantity",
+    "reports.salesByItem.col.sales": "Sales (before GST)",
+    "reports.salesByItem.col.share": "Share",
+    "reports.paymentBehaviour.label": "Customer payment speed",
+    "reports.paymentBehaviour.subtitle": "How quickly each customer pays, slowest first.",
+    "reports.paymentBehaviour.title": "Customer payment speed",
+    "reports.paymentBehaviour.cardSubtitle": "Invoices dated {start} to {end}",
+    "reports.paymentBehaviour.empty": "No invoices in this period.",
+    "reports.paymentBehaviour.col.paid": "Paid in full",
+    "reports.paymentBehaviour.col.avgDays": "Average days to pay",
+    "reports.paymentBehaviour.col.onTime": "Paid on time",
+    "reports.paymentBehaviour.col.overdue": "Overdue",
+}
+
+if __name__ == "__main__":
+    main(TEXTS)

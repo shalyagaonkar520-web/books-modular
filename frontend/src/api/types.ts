@@ -276,6 +276,8 @@ export interface Invoice {
   approvalNote?: string | null;
   /** Total at the time of approval; raising the total above it needs re-approval. */
   approvedTotal?: number | null;
+  /** null = Tax Invoice; bill_of_supply charges no GST. */
+  documentType?: 'bill_of_supply' | null;
   lines: DocumentLine[];
   createdAt: string;
   updatedAt: string;

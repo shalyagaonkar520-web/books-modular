@@ -1,4 +1,4 @@
-/** What differs between quotes, sales orders, credit notes, purchase orders and vendor credits. */
+/** What differs between quotes, sales orders, delivery challans, credit notes, purchase orders and vendor credits. */
 import type { DocKindKey } from '@/api/docFlow';
 
 export type SecondDate = 'expiryDate' | 'shipmentDate' | 'deliveryDate';
@@ -21,6 +21,8 @@ export interface DocConfig {
   isCredit: boolean;
   /** Statuses in which the edit form is offered. */
   editable: string[];
+  /** Asks why: the reason for a credit, or why goods move on a delivery challan. */
+  hasReason: boolean;
   /** Has terms & conditions (credits print a reason instead). */
   hasTerms: boolean;
   hasSalesperson: boolean;
@@ -39,6 +41,7 @@ export const DOC_CONFIGS: Record<DocKindKey, DocConfig> = {
     tabs: ['', 'draft', 'sent', 'accepted', 'declined', 'expired', 'invoiced'],
     issueStatus: 'sent',
     isCredit: false,
+    hasReason: false,
     editable: ['draft', 'sent', 'expired'],
     hasTerms: true,
     hasSalesperson: true,
@@ -54,10 +57,26 @@ export const DOC_CONFIGS: Record<DocKindKey, DocConfig> = {
     tabs: ['', 'draft', 'confirmed', 'invoiced', 'void'],
     issueStatus: 'confirmed',
     isCredit: false,
+    hasReason: false,
     editable: ['draft', 'confirmed'],
     hasTerms: true,
     hasSalesperson: true,
     filePrefix: 'SalesOrder',
+  },
+  delivery_challan: {
+    kind: 'delivery_challan',
+    route: '/delivery-challans',
+    texts: 'deliveryChallans',
+    group: 'sales',
+    party: 'customer',
+    tabs: ['', 'draft', 'issued', 'invoiced', 'void'],
+    issueStatus: 'issued',
+    isCredit: false,
+    hasReason: true,
+    editable: ['draft', 'issued'],
+    hasTerms: true,
+    hasSalesperson: false,
+    filePrefix: 'DeliveryChallan',
   },
   credit_note: {
     kind: 'credit_note',
@@ -68,6 +87,7 @@ export const DOC_CONFIGS: Record<DocKindKey, DocConfig> = {
     tabs: ['', 'draft', 'open', 'closed', 'void'],
     issueStatus: 'open',
     isCredit: true,
+    hasReason: true,
     editable: ['draft', 'open'],
     hasTerms: false,
     hasSalesperson: false,
@@ -83,6 +103,7 @@ export const DOC_CONFIGS: Record<DocKindKey, DocConfig> = {
     tabs: ['', 'draft', 'issued', 'billed', 'cancelled'],
     issueStatus: 'issued',
     isCredit: false,
+    hasReason: false,
     editable: ['draft', 'issued'],
     hasTerms: true,
     hasSalesperson: false,
@@ -97,6 +118,7 @@ export const DOC_CONFIGS: Record<DocKindKey, DocConfig> = {
     tabs: ['', 'draft', 'open', 'closed', 'void'],
     issueStatus: 'open',
     isCredit: true,
+    hasReason: true,
     editable: ['draft', 'open'],
     hasTerms: false,
     hasSalesperson: false,

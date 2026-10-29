@@ -20,6 +20,7 @@ from backend.models import (
     CustomerPayment,
     Expense,
     Invoice,
+    InvoiceLine,
     Item,
     User,
     VendorCredit,
@@ -48,6 +49,8 @@ from backend.services.money import money
 from backend.services.periods import fiscal_year_bounds
 
 router = APIRouter(prefix="/api/reports", tags=["Reports"])
+
+ZERO = Decimal("0")
 
 
 def _default_range(user: User, start: Optional[date], end: Optional[date]):
@@ -513,3 +516,124 @@ def cash_flow(
         opening_cash=cash_total(to_start),
         closing_cash=cash_total(to_end),
     )
+
+
+@router.get("/customer-payment-behaviour")
+def customer_payment_behaviour(
+    start_date: Optional[date] = Query(None, alias="startDate"),
+    end_date: Optional[date] = Query(None, alias="endDate"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """How quickly each customer pays: invoices issued in the period, the average
+    days from invoice to final payment, the share paid by the due date, and what
+    is still owed (overdue part too). Slowest payers first."""
+    start, end = _default_range(user, start_date, end_date)
+    today = date.today()
+    invoices = (
+        db.execute(
+            select(Invoice)
+            .where(
+                Invoice.organization_id == user.organization_id,
+                Invoice.status.notin_(("draft", "void")),
+                Invoice.date >= start,
+                Invoice.date <= end,
+            )
+            .options(selectinload(Invoice.customer), selectinload(Invoice.payments))
+        )
+        .scalars()
+        .all()
+    )
+    rows: Dict[str, dict] = {}
+    for inv in invoices:
+        row = rows.setdefault(
+            inv.customer_id,
+            {
+                "customerId": inv.customer_id,
+                "customerName": inv.customer.display_name,
+                "invoices": 0,
+                "paid": 0,
+                "_days": 0,
+                "onTime": 0,
+                "outstanding": ZERO,
+                "overdue": ZERO,
+            },
+        )
+        row["invoices"] += 1
+        balance = money(inv.balance_due)
+        if balance <= 0 and inv.payments:
+            paid_on = max(p.date for p in inv.payments)
+            row["paid"] += 1
+            row["_days"] += max(0, (paid_on - inv.date).days)
+            row["onTime"] += paid_on <= inv.due_date
+        elif balance > 0:
+            row["outstanding"] += balance
+            if inv.due_date < today:
+                row["overdue"] += balance
+    out = []
+    for row in rows.values():
+        days = row.pop("_days")
+        out.append(
+            {
+                **row,
+                "avgDaysToPay": round(days / row["paid"], 1) if row["paid"] else None,
+                "onTimePercent": round(100 * row["onTime"] / row["paid"]) if row["paid"] else None,
+                "outstanding": float(row["outstanding"]),
+                "overdue": float(row["overdue"]),
+            }
+        )
+    out.sort(key=lambda r: (r["avgDaysToPay"] is None, -(r["avgDaysToPay"] or 0), -r["overdue"]))
+    return {"startDate": start.isoformat(), "endDate": end.isoformat(), "rows": out}
+
+
+@router.get("/sales-by-item")
+def sales_by_item(
+    start_date: Optional[date] = Query(None, alias="startDate"),
+    end_date: Optional[date] = Query(None, alias="endDate"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Best sellers: quantity, sales value (before GST) and invoices per item. Lines
+    without an item are grouped by their description."""
+    start, end = _default_range(user, start_date, end_date)
+    lines = db.execute(
+        select(InvoiceLine, Invoice.id)
+        .join(Invoice, Invoice.id == InvoiceLine.invoice_id)
+        .where(
+            Invoice.organization_id == user.organization_id,
+            Invoice.status.notin_(("draft", "void")),
+            Invoice.date >= start,
+            Invoice.date <= end,
+        )
+        .options(selectinload(InvoiceLine.item))
+    ).all()
+    rows: Dict[str, dict] = {}
+    for line, invoice_id in lines:
+        key = line.item_id or f"text:{line.description.strip().lower()}"
+        row = rows.setdefault(
+            key,
+            {
+                "itemId": line.item_id,
+                "name": line.item.name if line.item else line.description,
+                "sku": line.item.sku if line.item else None,
+                "quantity": Decimal("0"),
+                "sales": ZERO,
+                "_invoices": set(),
+            },
+        )
+        row["quantity"] += line.quantity
+        row["sales"] += line.amount
+        row["_invoices"].add(invoice_id)
+    total = sum((r["sales"] for r in rows.values()), ZERO)
+    out = [
+        {
+            **{k: v for k, v in r.items() if not k.startswith("_")},
+            "quantity": float(r["quantity"]),
+            "sales": float(money(r["sales"])),
+            "invoices": len(r["_invoices"]),
+            "sharePercent": round(float(r["sales"] / total * 100), 1) if total else 0.0,
+        }
+        for r in rows.values()
+    ]
+    out.sort(key=lambda r: -r["sales"])
+    return {"startDate": start.isoformat(), "endDate": end.isoformat(), "total": float(money(total)), "rows": out}

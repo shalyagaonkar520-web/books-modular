@@ -52,6 +52,13 @@ class SalesOrderCreate(_DocumentBody):
         return self
 
 
+class DeliveryChallanCreate(_DocumentBody):
+    customer_id: str
+    # Why the goods move (Rule 55): supply on approval, job work, ...
+    reason: Optional[str] = Field(default=None, max_length=120)
+    status: Literal["draft", "issued"] = "draft"
+
+
 class CreditNoteCreate(_DocumentBody):
     customer_id: str
     invoice_id: Optional[str] = None

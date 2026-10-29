@@ -137,8 +137,8 @@ export function DocumentFormPage({ kind }: { kind: DocKindKey }) {
     };
     if (cfg.secondDate) payload[cfg.secondDate] = secondDate || null;
     if (cfg.hasSalesperson) payload.salesperson = salesperson.trim() || null;
+    if (cfg.hasReason) payload.reason = reason.trim() || null;
     if (cfg.isCredit) {
-      payload.reason = reason.trim() || null;
       payload[cfg.party === 'customer' ? 'invoiceId' : 'billId'] = linkedId || null;
     }
     const saved = await run<FlowDocument>(() => (docId ? api.update(docId, payload) : api.create(payload)));
@@ -229,8 +229,8 @@ export function DocumentFormPage({ kind }: { kind: DocKindKey }) {
             {cfg.hasSalesperson ? (
               <TextField label={t('docflow.form.salesperson')} value={salesperson} onChange={(e) => setSalesperson(e.target.value)} />
             ) : null}
-            {cfg.isCredit ? (
-              <TextField label={t('docflow.form.reason')} value={reason} maxLength={120} placeholder={t('docflow.form.reasonPlaceholder')} onChange={(e) => setReason(e.target.value)} />
+            {cfg.hasReason ? (
+              <TextField label={t('docflow.form.reason')} value={reason} maxLength={120} placeholder={t(kind === 'delivery_challan' ? 'deliveryChallans.reasonPlaceholder' : 'docflow.form.reasonPlaceholder')} onChange={(e) => setReason(e.target.value)} />
             ) : null}
             <TextField label={t('docflow.form.subject')} value={subject} maxLength={250} onChange={(e) => setSubject(e.target.value)} />
           </div>

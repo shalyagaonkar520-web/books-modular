@@ -16,6 +16,7 @@ import { ContactTotalsReportView } from './ContactTotalsReportView';
 import { ExpensesByCategoryReport } from './ExpensesByCategoryReport';
 import { InventorySummaryReportView } from './InventorySummaryReportView';
 import { ProfitAndLossReport } from './ProfitAndLossReport';
+import { CustomerPaymentBehaviourReport, SalesByItemReport } from './SalesInsightReports';
 import { TaxSummaryReport } from './TaxSummaryReport';
 
 type RangeKind = 'period' | 'as_of' | 'none';
@@ -27,6 +28,8 @@ type ReportId =
   | 'receivables_ageing'
   | 'payables_ageing'
   | 'sales_by_customer'
+  | 'sales_by_item'
+  | 'payment_behaviour'
   | 'purchases_by_vendor'
   | 'expenses_by_category'
   | 'inventory_summary'
@@ -48,6 +51,8 @@ const REPORTS: ReportMeta[] = [
   { id: 'receivables_ageing', textKey: 'reports.receivablesAgeing', range: 'as_of' },
   { id: 'payables_ageing', textKey: 'reports.payablesAgeing', range: 'as_of' },
   { id: 'sales_by_customer', textKey: 'reports.salesByCustomer', range: 'period' },
+  { id: 'sales_by_item', textKey: 'reports.salesByItem', range: 'period' },
+  { id: 'payment_behaviour', textKey: 'reports.paymentBehaviour', range: 'period' },
   { id: 'purchases_by_vendor', textKey: 'reports.purchasesByVendor', range: 'period' },
   { id: 'expenses_by_category', textKey: 'reports.expensesByCategory', range: 'period' },
   { id: 'inventory_summary', textKey: 'reports.inventorySummary', range: 'none' },
@@ -94,6 +99,10 @@ export function ReportsPage() {
         return <AgeingReportView kind="payables" asOf={asOf} />;
       case 'sales_by_customer':
         return <ContactTotalsReportView kind="sales" startDate={startDate} endDate={endDate} />;
+      case 'sales_by_item':
+        return <SalesByItemReport startDate={startDate} endDate={endDate} />;
+      case 'payment_behaviour':
+        return <CustomerPaymentBehaviourReport startDate={startDate} endDate={endDate} />;
       case 'purchases_by_vendor':
         return <ContactTotalsReportView kind="purchases" startDate={startDate} endDate={endDate} />;
       case 'expenses_by_category':

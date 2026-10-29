@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Ban, FileDown, FileSpreadsheet, IndianRupee, Mail, Pencil, Printer, Send } from 'lucide-react';
+import { ArrowLeft, Ban, Copy, FileDown, FileSpreadsheet, IndianRupee, Mail, Pencil, Printer, Send } from 'lucide-react';
 
 import { customerPaymentsApi, invoicesApi } from '@/api/endpoints';
 import type { CustomerPayment, Invoice } from '@/api/types';
@@ -26,6 +26,7 @@ import { ApprovalBanner, CustomFieldsCard, ShareLinkCard } from '@/pages/automat
 import { ReminderDraftButton, WhatsAppButton } from '@/pages/insights/InvoiceOutreach';
 import { InvoiceCreditsCard } from '@/pages/docflow/InvoiceCreditsCard';
 
+import { InvoiceCopiesModal } from './InvoiceCopiesModal';
 import { InvoiceGstCard } from './InvoiceGstCard';
 import { RecordPaymentModal, type PaymentInvoiceContext } from './RecordPaymentModal';
 
@@ -45,6 +46,7 @@ export function InvoiceViewPage() {
   const [pending, setPending] = useState<Pending | null>(null);
   const [payingOpen, setPayingOpen] = useState(false);
   const [mailModalOpen, setMailModalOpen] = useState(false);
+  const [copiesOpen, setCopiesOpen] = useState(false);
 
   const invoice = useAsync(() => invoicesApi.get(invoiceId), [invoiceId]);
   const payments = useAsync(() => customerPaymentsApi.list({ invoice_id: invoiceId, page_size: 200 }), [invoiceId]);
@@ -127,6 +129,9 @@ export function InvoiceViewPage() {
               onClick={() => void download(() => invoicesApi.downloadPdf(data.id, data.invoiceNumber))}
             >
               {t('invoices.view.downloadPdf')}
+            </Button>
+            <Button variant="secondary" icon={<Copy size={15} />} onClick={() => setCopiesOpen(true)}>
+              {t('invoices.copies.button')}
             </Button>
             <Button
               variant="secondary"
@@ -364,6 +369,7 @@ export function InvoiceViewPage() {
       </div>
 
       <RecordPaymentModal open={payingOpen} invoice={paymentContext} onClose={() => setPayingOpen(false)} onSaved={refresh} />
+      <InvoiceCopiesModal open={copiesOpen} onClose={() => setCopiesOpen(false)} invoiceId={data.id} invoiceNumber={data.invoiceNumber} />
 
       {mailModalOpen ? (
         <SendInvoiceDetailGmailModal

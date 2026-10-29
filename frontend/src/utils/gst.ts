@@ -49,6 +49,30 @@ export function stateFromGstin(gstin?: string | null): string | null {
   return match && GST_STATES.some((s) => s.code === match[1]) ? match[1] : null;
 }
 
+// A GSTIN carries its own check character: 27 ABCDE1234F 2 Z 5 is the state,
+// the PAN, the registration number, Z, and a Luhn mod 36 check over the first 14.
+// Checking it catches a mistyped or swapped character before a return is rejected.
+const GSTIN_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const GSTIN_FORMAT = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z][A-Z][0-9A-Z]$/;
+
+/** True when a GSTIN has the right shape and its last character checks out (mirrors backend gst.gstin_checksum_ok). */
+export function gstinChecksumOk(value?: string | null): boolean {
+  const gstin = (value ?? '').trim().toUpperCase();
+  if (!GSTIN_FORMAT.test(gstin)) return false;
+  let sum = 0;
+  for (let i = 0; i < 14; i += 1) {
+    const product = GSTIN_CHARS.indexOf(gstin[i]) * (i % 2 ? 2 : 1);
+    sum += Math.floor(product / 36) + (product % 36);
+  }
+  return GSTIN_CHARS[(36 - (sum % 36)) % 36] === gstin[14];
+}
+
+/** The PAN inside a GSTIN (characters 3 to 12), or null when it is not a full GSTIN. */
+export function panFromGstin(value?: string | null): string | null {
+  const gstin = (value ?? '').trim().toUpperCase();
+  return GSTIN_FORMAT.test(gstin) ? gstin.slice(2, 12) : null;
+}
+
 /** Income-tax TDS sections commonly deducted on vendor bills, with their usual rates. */
 export const TDS_SECTIONS: Array<{ section: string; label: string; rate: number }> = [
   { section: '194C', label: '194C - Contractors (company / firm)', rate: 2 },

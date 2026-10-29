@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   ArrowLeftRight,
   BarChart3,
+  Calculator,
   Building,
   Building2,
   ChevronDown,
@@ -24,6 +25,7 @@ import {
   Sparkles,
   ShoppingBag,
   ShoppingCart,
+  Truck,
   Undo2,
   Users,
   Wallet,
@@ -63,6 +65,7 @@ const GROUPS: NavGroup[] = [
       { to: '/customers', label: 'sidebar.customers', icon: Users, module: 'customers' },
       { to: '/quotes', label: 'sidebar.quotes', icon: FileText, module: 'invoices' },
       { to: '/sales-orders', label: 'sidebar.salesOrders', icon: ClipboardList, module: 'invoices' },
+      { to: '/delivery-challans', label: 'sidebar.deliveryChallans', icon: Truck, module: 'invoices' },
       { to: '/invoices', label: 'sidebar.invoices', icon: FileText, module: 'invoices' },
       { to: '/recurring-invoices', label: 'sidebar.recurringInvoices', icon: Repeat, module: 'invoices' },
       { to: '/credit-notes', label: 'sidebar.creditNotes', icon: FileMinus, module: 'invoices' },
@@ -108,9 +111,20 @@ const LOWER_LINKS: NavEntry[] = [
   { to: '/recurring-journals', label: 'sidebar.recurringJournals', icon: Repeat, staffBlocked: true, module: 'accounting' },
   { to: '/reports', label: 'sidebar.reports', icon: BarChart3, module: 'reports' },
   { to: '/gst-filing', label: 'sidebar.gstFiling', icon: FileCheck2, staffBlocked: true, module: 'reports' },
+  { to: '/income-tax', label: 'sidebar.incomeTax', icon: Calculator, module: 'reports' },
   { to: '/documents', label: 'sidebar.documents', icon: FolderOpen, module: 'documents' },
   { to: '/payroll', label: 'sidebar.payroll', icon: Users, staffBlocked: true, module: 'payroll' },
 ];
+
+/** Every page the sidebar shows this user (modules and role applied): the Ctrl+K palette searches them. */
+export function useVisiblePages(): Array<{ to: string; label: string }> {
+  const { isStaff } = useAuth();
+  const { t, isModuleEnabled } = useAppContent();
+  const visible = (entry: NavEntry) => !(entry.staffBlocked && isStaff) && (!entry.module || isModuleEnabled(entry.module));
+  return [...SINGLE_LINKS, ...GROUPS.flatMap((group) => group.entries), ...LOWER_LINKS]
+    .filter(visible)
+    .map((entry) => ({ to: entry.to, label: t(entry.label) }));
+}
 
 export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () => void }) {
   const { isAdmin, isStaff } = useAuth();

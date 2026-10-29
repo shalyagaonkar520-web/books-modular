@@ -4,16 +4,17 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_write
 from backend.models import Account, Bill, BillLine, Contact, InventoryAdjustment, Invoice, InvoiceLine, Item, User
-from backend.schemas.common import Message, Page
+from backend.schemas.common import MAX_MONEY, APIModel, Message, Page
 from backend.schemas.items import (
     InventoryAdjustmentCreate,
     InventoryAdjustmentOut,
@@ -247,6 +248,58 @@ def update_item(item_id: str, payload: ItemUpdate, user: User = Depends(require_
     db.commit()
     db.refresh(item)
     return to_out(item)
+
+
+class ItemBulkUpdate(APIModel):
+    """The same change applied to many items; fields left out stay as they are."""
+
+    ids: List[str] = Field(min_length=1, max_length=500)
+    tax_rate: Optional[Decimal] = Field(default=None, ge=0, le=100)
+    hsn_sac: Optional[str] = Field(default=None, max_length=20)
+    unit: Optional[str] = Field(default=None, min_length=1, max_length=20)
+    # Raise (or with a minus, lower) selling prices by this percentage.
+    price_change_percent: Optional[Decimal] = Field(default=None, ge=-90, le=1000)
+    selling_price: Optional[Decimal] = Field(default=None, ge=0, le=MAX_MONEY)
+    is_active: Optional[bool] = None
+
+
+@router.post("/bulk-update", response_model=Message)
+def bulk_update_items(payload: ItemBulkUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)):
+    if payload.price_change_percent is not None and payload.selling_price is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Change prices by a percentage or set one price, not both")
+    ids = set(payload.ids)
+    items = db.execute(select(Item).where(Item.organization_id == user.organization_id, Item.id.in_(ids))).scalars().all()
+    if len(items) != len(ids):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Some of the items were not found")
+    changes = []
+    for item in items:
+        if payload.tax_rate is not None:
+            item.tax_rate = payload.tax_rate
+        if payload.hsn_sac is not None:
+            item.hsn_sac = payload.hsn_sac.strip() or None
+        if payload.unit is not None:
+            item.unit = payload.unit.strip()
+        if payload.selling_price is not None:
+            item.selling_price = money(payload.selling_price)
+        if payload.price_change_percent is not None:
+            item.selling_price = money(item.selling_price * (100 + payload.price_change_percent) / 100)
+        if payload.is_active is not None:
+            item.is_active = payload.is_active
+    for label, value in (
+        ("tax rate", payload.tax_rate),
+        ("HSN/SAC", payload.hsn_sac),
+        ("unit", payload.unit),
+        ("selling price", payload.selling_price),
+        ("price change %", payload.price_change_percent),
+        ("active", payload.is_active),
+    ):
+        if value is not None:
+            changes.append(f"{label} {value}")
+    if not changes:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose at least one change")
+    audit.record(db, user, "update", "item", None, f"Bulk edit of {len(items)} items: {', '.join(changes)}")
+    db.commit()
+    return Message(message=f"{len(items)} items updated")
 
 
 @router.delete("/{item_id}", response_model=Message)

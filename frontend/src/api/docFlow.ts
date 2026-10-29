@@ -8,7 +8,7 @@ import type { DocumentLine, Message, Page } from './types';
 
 type Query = Record<string, string | number | boolean | undefined | null>;
 
-export type DocKindKey = 'estimate' | 'sales_order' | 'credit_note' | 'purchase_order' | 'vendor_credit';
+export type DocKindKey = 'estimate' | 'sales_order' | 'delivery_challan' | 'credit_note' | 'purchase_order' | 'vendor_credit';
 
 export interface CreditApplication {
   id: string;
@@ -123,6 +123,7 @@ export interface RefundInput {
 const BASE: Record<DocKindKey, string> = {
   estimate: '/estimates',
   sales_order: '/sales-orders',
+  delivery_challan: '/delivery-challans',
   credit_note: '/credit-notes',
   purchase_order: '/purchase-orders',
   vendor_credit: '/vendor-credits',

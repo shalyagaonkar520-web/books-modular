@@ -26,6 +26,8 @@ import { formatCurrency, formatDate, formatDateTime, formatPercent, formatQuanti
 import { type Tone } from '@/utils/status';
 import { PhoneItemsLink } from '@/pages/pos/PhoneItemsLink';
 
+import { ItemBulkEditModal } from './ItemBulkEditModal';
+
 const PAGE_SIZE = 25;
 
 const TYPE_FILTERS = [
@@ -78,6 +80,7 @@ export function ItemsPage() {
   const [adjustItem, setAdjustItem] = useState<Item | null>(null);
   const [deleteItem, setDeleteItem] = useState<Item | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const deleteSubmit = useSubmit();
@@ -372,6 +375,9 @@ export function ItemsPage() {
               </div>
               {selectedIds.size > 0 ? (
                 <IfCanWrite>
+                  <Button size="sm" onClick={() => setBulkEditOpen(true)} icon={<Pencil size={13} />}>
+                    {t('items.bulkEdit.button', { count: selectedIds.size })}
+                  </Button>
                   <Button
                     size="sm"
                     variant="danger"
@@ -453,6 +459,16 @@ export function ItemsPage() {
         busy={bulkDeleting}
         onCancel={() => setBulkDeleteConfirmOpen(false)}
         onConfirm={() => void confirmBulkDelete()}
+      />
+      <ItemBulkEditModal
+        ids={[...selectedIds]}
+        open={bulkEditOpen}
+        onClose={() => setBulkEditOpen(false)}
+        onSaved={() => {
+          setSelectedIds(new Set());
+          list.reload();
+          summary.reload();
+        }}
       />
     </>
   );

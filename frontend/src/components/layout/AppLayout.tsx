@@ -6,6 +6,7 @@ import { useAppContent } from '@/app/AppContentContext';
 import { SubscriptionProvider, useSubscription } from '@/app/SubscriptionContext';
 import { SubscriptionLockScreen } from '@/pages/subscription/SubscriptionLockScreen';
 
+import { CommandPalette } from './CommandPalette';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { TrialBanner } from './TrialBanner';
@@ -45,6 +46,7 @@ function AppShell() {
       <TrialBanner />
       <div className="app-body">
         {locked ? null : <Sidebar open={sidebarOpen} onNavigate={() => setSidebarOpen(false)} />}
+        {locked ? null : <CommandPalette />}
         <main className="app-main" id="main-content">
           <PageErrorBoundary>{locked ? <SubscriptionLockScreen /> : <Outlet />}</PageErrorBoundary>
         </main>

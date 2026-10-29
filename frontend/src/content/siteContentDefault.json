@@ -23,7 +23,8 @@
     "title": "Every Financial Tool You Need",
     "description": "Everything a growing Indian business needs to run its finances, in one place.",
     "items": [
-      { "title": "Smart GST Invoicing", "text": "Quotes, sales orders, invoices and credit notes with CGST/SGST/IGST, TCS, e-invoice and e-way bill JSON, GSTR-1 and GSTR-3B." },
+      { "title": "Smart GST Invoicing", "text": "Quotes, sales orders, delivery challans, invoices, bills of supply and credit notes with CGST/SGST/IGST, TCS, e-invoice and e-way bill JSON. PDFs in original, duplicate and triplicate." },
+      { "title": "GST Returns & Tax", "text": "GSTR-1 and GSTR-3B ready to upload, GSTR-2B matched against your bills, a filing calendar with late-fee calculator, GSTIN typo checks and an income tax calculator for old vs new regime." },
       { "title": "Get Paid Faster", "text": "UPI pay-by-QR on every invoice, a customer portal, AI-written payment reminders and invoices on WhatsApp." },
       { "title": "Bank Reconciliation", "text": "Import any bank's CSV statement: lines auto-match to your books, become payments, or are booked to an account in one click." },
       { "title": "AI Assistant", "text": "Scan a bill photo into a draft, ask questions about your books, and get account suggestions for bank lines." },
@@ -34,7 +35,8 @@
       { "title": "Multi-Currency & Assets", "text": "Invoices and bills in any currency with exchange gain/loss, plus a fixed asset register with depreciation." },
       { "title": "Automation", "text": "Workflow rules, approvals, custom fields, recurring invoices and bills, and scheduled report emails." },
       { "title": "Payroll & Time", "text": "Salary runs and payslips, timesheets, and invoices generated from billable hours." },
-      { "title": "Works with Tally", "text": "Export your books to Tally for your CA, or import Tally ledgers to get started in minutes." }
+      { "title": "Works with Tally", "text": "Export your books to Tally for your CA, or import Tally ledgers to get started in minutes." },
+      { "title": "Find Anything Fast", "text": "Press Ctrl+K to jump to any invoice, bill, customer or item. Edit many items at once, and see best sellers and how quickly each customer pays." }
     ]
   },
   "pricing": {

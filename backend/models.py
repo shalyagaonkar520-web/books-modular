@@ -598,6 +598,9 @@ class Invoice(TimestampMixin, OrgScopedMixin, SourceRefMixin, Base):
     approval_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     approved_by: Mapped[Optional[str]] = mapped_column(String(32))
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # What the PDF is titled: null = Tax Invoice; "bill_of_supply" for exempt goods
+    # or a composition dealer (no GST may be charged on it).
+    document_type: Mapped[Optional[str]] = mapped_column(String(20))
     approved_total: Mapped[Optional[Decimal]] = mapped_column(Money)
     approval_note: Mapped[Optional[str]] = mapped_column(String(500))
     # Customer portal link token (routers/portal); null = not shared.
@@ -1618,6 +1621,36 @@ class SalesOrderLine(DocumentLineMixin, Base):
 
     sales_order_id: Mapped[str] = mapped_column(String(32), ForeignKey("sales_orders.id", ondelete="CASCADE"), index=True)
     document: Mapped[SalesOrder] = relationship(back_populates="lines")
+
+
+class DeliveryChallan(TimestampMixin, OrgScopedMixin, DocumentTotalsMixin, Base):
+    """Goods sent without a sale yet (Rule 55, CGST Rules): on approval, for job
+    work, between branches, or ahead of the invoice. Posts nothing; invoiced later."""
+
+    __tablename__ = "delivery_challans"
+    __table_args__ = (UniqueConstraint("organization_id", "challan_number", name="uq_delivery_challan_org_number"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    challan_number: Mapped[str] = mapped_column(String(30), nullable=False)
+    customer_id: Mapped[str] = mapped_column(String(32), ForeignKey("contacts.id"), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    # Why the goods move: supply on approval, job work, ... (printed on the challan).
+    reason: Mapped[Optional[str]] = mapped_column(String(120))
+    # draft | issued | invoiced | void
+    status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False, index=True)
+    invoice_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("invoices.id", ondelete="SET NULL"))
+
+    customer: Mapped[Contact] = relationship()
+    lines: Mapped[List[DeliveryChallanLine]] = relationship(
+        back_populates="document", cascade="all, delete-orphan", order_by="DeliveryChallanLine.position"
+    )
+
+
+class DeliveryChallanLine(DocumentLineMixin, Base):
+    __tablename__ = "delivery_challan_lines"
+
+    delivery_challan_id: Mapped[str] = mapped_column(String(32), ForeignKey("delivery_challans.id", ondelete="CASCADE"), index=True)
+    document: Mapped[DeliveryChallan] = relationship(back_populates="lines")
 
 
 class CreditNote(TimestampMixin, OrgScopedMixin, DocumentTotalsMixin, Base):
