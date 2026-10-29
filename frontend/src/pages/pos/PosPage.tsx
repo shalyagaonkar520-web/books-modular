@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Flashlight, Minus, Plus, ScanBarcode, Trash2, WifiOff, X } from 'lucide-react';
+import { Flashlight, Minus, Plus, ScanBarcode, Smartphone, Trash2, WifiOff, X } from 'lucide-react';
 
 import { ApiError } from '@/api/client';
 import { newClientId, posApi, type PosMode, type PosSale, type PosSaleCreate } from '@/api/pos';
@@ -23,9 +23,11 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/Toast';
 import { formatCurrency, formatQuantity, parseNumber, round2, todayIso } from '@/utils/format';
 
+import { PhoneScannerDialog, usePhoneLink } from './PhoneScanner';
 import { printReceipt, Receipt } from './Receipt';
 import { useBarcodeScanner } from './useBarcodeScanner';
 import { useOnline } from './useOnline';
+import { useScannerKeys } from './useScannerKeys';
 
 export interface BillLine {
   itemId: string;
@@ -106,7 +108,7 @@ export function PosPage() {
   const locked = bill.pending !== null;
 
   const addCode = useCallback(
-    async (raw: string) => {
+    async (raw: string, quantity = 1) => {
       const value = raw.trim();
       if (!value) return;
       if (locked) {
@@ -119,7 +121,7 @@ export function PosPage() {
         setBill((current) => {
           const existing = current.lines.find((line) => line.itemId === item.id);
           const lines = existing
-            ? current.lines.map((line) => (line.itemId === item.id ? { ...line, quantity: line.quantity + 1 } : line))
+            ? current.lines.map((line) => (line.itemId === item.id ? { ...line, quantity: line.quantity + quantity } : line))
             : [
                 ...current.lines,
                 {
@@ -129,7 +131,7 @@ export function PosPage() {
                   unit: item.unit,
                   rate: item.sellingPrice,
                   taxRate: item.taxRate,
-                  quantity: 1,
+                  quantity,
                   trackInventory: item.trackInventory,
                   stockOnHand: item.stockOnHand,
                 },
@@ -147,6 +149,20 @@ export function PosPage() {
   );
 
   const scanner = useBarcodeScanner((scanned) => void addCode(scanned));
+  const phone = usePhoneLink(
+    (scanned, quantity) => void addCode(scanned, quantity),
+    'sale',
+    () => toast.notify(t('pos.phone.ended'), 'info'),
+  );
+  const [phoneDialog, setPhoneDialog] = useState(false);
+  const phoneConnected = Boolean(phone.session && phone.session.connected && !phone.session.closed);
+  // The QR dialog has done its job once the phone is in.
+  useEffect(() => {
+    if (phoneDialog && phoneConnected) {
+      setPhoneDialog(false);
+      toast.success(t('pos.phone.connected'));
+    }
+  }, [phoneDialog, phoneConnected, t, toast]);
 
   const submitCode = (event: FormEvent) => {
     event.preventDefault();
@@ -165,6 +181,9 @@ export function PosPage() {
   const discount = parseNumber(bill.discount, 0);
   const totals = useMemo(() => billTotals(bill.lines, discount), [bill.lines, discount]);
 
+  // A Bluetooth / USB scanner adds to the bill wherever the cursor is (not while a dialog is open).
+  useScannerKeys((scanned) => void addCode(scanned), !payOpen && receipt === null && !phoneDialog);
+
   const finished = (sale: PosSale) => {
     setBill(EMPTY_BILL);
     setPayOpen(false);
@@ -180,6 +199,9 @@ export function PosPage() {
           <div className="pos-header-actions">
             <Link className="btn btn-secondary btn-sm" to="/pos/sales">
               <span>{t('pos.salesAndDayEnd')}</span>
+            </Link>
+            <Link className="btn btn-ghost btn-sm" to="/pos/help">
+              <span>{t('pos.help.open')}</span>
             </Link>
             {isAdmin ? (
               <Link className="btn btn-ghost btn-sm" to="/pos/settings">
@@ -255,6 +277,19 @@ export function PosPage() {
               {t('pos.add')}
             </Button>
           </form>
+          {phoneConnected ? (
+            <div className="pos-phone-banner" role="status">
+              <Smartphone size={18} aria-hidden="true" />
+              <span>{t('pos.phone.linked')}</span>
+              <Button size="sm" variant="ghost" onClick={() => void phone.close()}>
+                {t('pos.phone.disconnect')}
+              </Button>
+            </div>
+          ) : (
+            <Button className="pos-phone-btn" icon={<Smartphone size={16} />} onClick={() => setPhoneDialog(true)} disabled={locked}>
+              {t('pos.phone.use')}
+            </Button>
+          )}
         </section>
 
         <section className="pos-bill card" aria-label={t('pos.bill')}>
@@ -340,6 +375,17 @@ export function PosPage() {
           </div>
         </section>
       </div>
+
+      {phoneDialog ? (
+        <PhoneScannerDialog
+          link={phone.link}
+          onOpen={phone.open}
+          onCancel={() => {
+            setPhoneDialog(false);
+            if (!phoneConnected) void phone.close();
+          }}
+        />
+      ) : null}
 
       {payOpen ? (
         <PaySheet

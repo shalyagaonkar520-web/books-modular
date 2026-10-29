@@ -20,6 +20,7 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { addDaysIso, formatCurrency, formatQuantity, parseNumber, round2, round3, todayIso } from '@/utils/format';
 import { stateFromGstin, stateOptions, TCS_RATES } from '@/utils/gst';
 import { taxRatesWith } from '@/utils/status';
+import { TERMS_PRESETS } from '@/utils/termsPresets';
 import { BranchSelect } from '@/pages/operations/BranchSelect';
 
 interface LineDraft {
@@ -83,6 +84,7 @@ export function InvoiceFormPage() {
   const [projectId, setProjectId] = useState('');
   const [placeOfSupply, setPlaceOfSupply] = useState('');
   const [tcsRate, setTcsRate] = useState('0');
+  const [documentType, setDocumentType] = useState<'' | 'bill_of_supply'>('');
   const [exchangeRate, setExchangeRate] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
   const [branchId, setBranchId] = useState('');
@@ -117,6 +119,7 @@ export function InvoiceFormPage() {
     setProjectId(loaded.projectId ?? '');
     setPlaceOfSupply(loaded.placeOfSupply ?? '');
     setTcsRate(String(loaded.tcsRate ?? 0));
+    setDocumentType(loaded.documentType === 'bill_of_supply' ? 'bill_of_supply' : '');
     setExchangeRate(loaded.exchangeRate && loaded.exchangeRate !== 1 ? String(loaded.exchangeRate) : '');
     setWarehouseId(loaded.warehouseId ?? '');
     setBranchId(loaded.branchId ?? '');
@@ -214,6 +217,7 @@ export function InvoiceFormPage() {
       status,
       placeOfSupply: placeOfSupply || null,
       tcsRate: parseNumber(tcsRate),
+      documentType: documentType || null,
       exchangeRate: foreign && parseNumber(exchangeRate) > 0 ? parseNumber(exchangeRate) : null,
       warehouseId: warehouseId || null,
       branchId: branchId || null,
@@ -384,6 +388,21 @@ export function InvoiceFormPage() {
               error={fieldErrors.placeOfSupply}
               onChange={(event) => setPlaceOfSupply(event.target.value)}
             />
+            <SelectField
+              label={t('invoices.form.documentType')}
+              value={documentType}
+              hint={t('invoices.form.documentTypeHint')}
+              options={[
+                { value: '', label: t('invoices.form.documentType.taxInvoice') },
+                { value: 'bill_of_supply', label: t('invoices.form.documentType.billOfSupply') },
+              ]}
+              onChange={(event) => {
+                const next = event.target.value === 'bill_of_supply' ? 'bill_of_supply' : '';
+                setDocumentType(next);
+                // A bill of supply charges no GST.
+                if (next) setLines((current) => current.map((line) => ({ ...line, taxRate: '0' })));
+              }}
+            />
           </div>
         </Card>
 
@@ -530,6 +549,16 @@ export function InvoiceFormPage() {
               hint={t('invoices.form.notesHint')}
               error={fieldErrors.notes}
               onChange={(event) => setNotes(event.target.value)}
+            />
+            <SelectField
+              label={t('invoices.terms.template')}
+              value=""
+              placeholder={t('invoices.terms.templatePlaceholder')}
+              options={TERMS_PRESETS.map((preset) => ({ value: preset.id, label: t(`invoices.terms.preset.${preset.id}`) }))}
+              onChange={(event) => {
+                const preset = TERMS_PRESETS.find((p) => p.id === event.target.value);
+                if (preset) setTerms(preset.body);
+              }}
             />
             <TextAreaField label={t('invoices.form.terms')} value={terms} error={fieldErrors.terms} onChange={(event) => setTerms(event.target.value)} />
           </Card>

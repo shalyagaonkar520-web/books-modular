@@ -19,6 +19,7 @@ PREFIXES = {
     "employee": "EMP",
     "estimate": "QT",
     "sales_order": "SO",
+    "delivery_challan": "DC",
     "credit_note": "CN",
     "purchase_order": "PO",
     "vendor_credit": "VC",

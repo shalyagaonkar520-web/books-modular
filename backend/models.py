@@ -13,7 +13,9 @@ from decimal import Decimal
 from typing import List, Optional
 
 from sqlalchemy import (
+    JSON,
     Boolean,
+    Column,
     Date,
     DateTime,
     ForeignKey,
@@ -21,6 +23,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    Table,
     Text,
     UniqueConstraint,
     event,
@@ -50,6 +53,17 @@ class TimestampMixin:
 
 class OrgScopedMixin:
     organization_id: Mapped[str] = mapped_column(String(32), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+
+
+class SourceRefMixin:
+    """Which other Rooman app sent a record, and its id there (NULL = made in Books).
+
+    Kept from the Books that ran inside Rooman One (revision f2a6c8e1d4b7), so
+    its database upgrades here and its rows keep their origin.
+    """
+
+    source_app: Mapped[Optional[str]] = mapped_column(String(20))
+    source_ref: Mapped[Optional[str]] = mapped_column(String(64))
 
 
 # --------------------------------------------------------------------------- #
@@ -397,7 +411,7 @@ class JournalLine(Base):
 # --------------------------------------------------------------------------- #
 # Items & contacts
 # --------------------------------------------------------------------------- #
-class Item(TimestampMixin, OrgScopedMixin, Base):
+class Item(TimestampMixin, OrgScopedMixin, SourceRefMixin, Base):
     __tablename__ = "items"
     __table_args__ = (
         UniqueConstraint("organization_id", "sku", name="uq_item_org_sku"),
@@ -448,7 +462,7 @@ class Item(TimestampMixin, OrgScopedMixin, Base):
     preferred_vendor: Mapped[Optional[Contact]] = relationship(foreign_keys=[preferred_vendor_id])
 
 
-class Contact(TimestampMixin, OrgScopedMixin, Base):
+class Contact(TimestampMixin, OrgScopedMixin, SourceRefMixin, Base):
     __tablename__ = "contacts"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
@@ -489,6 +503,9 @@ class Contact(TimestampMixin, OrgScopedMixin, Base):
     # Overrides the org-wide receivables (1100) / payables (2000) account when
     # this contact's invoices or bills are posted. Null keeps the default.
     ledger_account_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("accounts.id"))
+    # Rooman One's party id for the contact (revision e5b9d2f7a1c3); unused here.
+    party_id: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    party_sync_pending: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_false(), nullable=False)
     billing_address: Mapped[Optional[str]] = mapped_column(Text)
     shipping_address: Mapped[Optional[str]] = mapped_column(Text)
     payment_terms_days: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
@@ -520,7 +537,7 @@ class InventoryAdjustment(TimestampMixin, OrgScopedMixin, Base):
 # --------------------------------------------------------------------------- #
 # Sales
 # --------------------------------------------------------------------------- #
-class Invoice(TimestampMixin, OrgScopedMixin, Base):
+class Invoice(TimestampMixin, OrgScopedMixin, SourceRefMixin, Base):
     __tablename__ = "invoices"
     __table_args__ = (
         UniqueConstraint("organization_id", "invoice_number", name="uq_invoice_org_number"),
@@ -581,6 +598,9 @@ class Invoice(TimestampMixin, OrgScopedMixin, Base):
     approval_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     approved_by: Mapped[Optional[str]] = mapped_column(String(32))
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # What the PDF is titled: null = Tax Invoice; "bill_of_supply" for exempt goods
+    # or a composition dealer (no GST may be charged on it).
+    document_type: Mapped[Optional[str]] = mapped_column(String(20))
     approved_total: Mapped[Optional[Decimal]] = mapped_column(Money)
     approval_note: Mapped[Optional[str]] = mapped_column(String(500))
     # Customer portal link token (routers/portal); null = not shared.
@@ -628,7 +648,7 @@ class InvoiceLine(Base):
     item: Mapped[Optional[Item]] = relationship()
 
 
-class CustomerPayment(TimestampMixin, OrgScopedMixin, Base):
+class CustomerPayment(TimestampMixin, OrgScopedMixin, SourceRefMixin, Base):
     __tablename__ = "customer_payments"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
@@ -682,6 +702,45 @@ class PosSale(TimestampMixin, OrgScopedMixin, Base):
 
     invoice: Mapped[Invoice] = relationship()
     payment: Mapped[Optional[CustomerPayment]] = relationship()
+
+
+class PosScannerSession(TimestampMixin, OrgScopedMixin, Base):
+    """A phone lent to a counter as its barcode scanner.
+
+    The counter opens a session and shows its link as a QR code. The link
+    carries a secret key (only its SHA-256 is kept), so the phone needs no
+    sign-in: whoever holds the key may look items up, add new ones and send
+    codes to that counter's bill until the session ends (12 hours, or the
+    counter disconnects). The counter picks the codes up from pos_scans.
+    """
+
+    __tablename__ = "pos_scanner_sessions"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    token_hash: Mapped[Optional[str]] = mapped_column(String(64), unique=True, index=True)
+    # sale: scans go onto the counter's bill. items: the phone adds stock or creates items (Items screen).
+    purpose: Mapped[str] = mapped_column(String(10), default="sale", server_default="sale", nullable=False)
+    created_by: Mapped[Optional[str]] = mapped_column(String(32))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # When a phone first opened it (phone_user_id: kept from sign-in phones; unused now).
+    connected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    phone_user_id: Mapped[Optional[str]] = mapped_column(String(32))
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_seq: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+
+
+class PosScan(Base):
+    """One code a phone scanned for a counter, numbered in order within its session."""
+
+    __tablename__ = "pos_scans"
+    __table_args__ = (UniqueConstraint("session_id", "seq", name="uq_pos_scan_session_seq"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    session_id: Mapped[str] = mapped_column(String(32), ForeignKey("pos_scanner_sessions.id", ondelete="CASCADE"), nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Qty, default=Decimal("1"), server_default="1", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
 # --------------------------------------------------------------------------- #
@@ -1564,6 +1623,36 @@ class SalesOrderLine(DocumentLineMixin, Base):
     document: Mapped[SalesOrder] = relationship(back_populates="lines")
 
 
+class DeliveryChallan(TimestampMixin, OrgScopedMixin, DocumentTotalsMixin, Base):
+    """Goods sent without a sale yet (Rule 55, CGST Rules): on approval, for job
+    work, between branches, or ahead of the invoice. Posts nothing; invoiced later."""
+
+    __tablename__ = "delivery_challans"
+    __table_args__ = (UniqueConstraint("organization_id", "challan_number", name="uq_delivery_challan_org_number"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    challan_number: Mapped[str] = mapped_column(String(30), nullable=False)
+    customer_id: Mapped[str] = mapped_column(String(32), ForeignKey("contacts.id"), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    # Why the goods move: supply on approval, job work, ... (printed on the challan).
+    reason: Mapped[Optional[str]] = mapped_column(String(120))
+    # draft | issued | invoiced | void
+    status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False, index=True)
+    invoice_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("invoices.id", ondelete="SET NULL"))
+
+    customer: Mapped[Contact] = relationship()
+    lines: Mapped[List[DeliveryChallanLine]] = relationship(
+        back_populates="document", cascade="all, delete-orphan", order_by="DeliveryChallanLine.position"
+    )
+
+
+class DeliveryChallanLine(DocumentLineMixin, Base):
+    __tablename__ = "delivery_challan_lines"
+
+    delivery_challan_id: Mapped[str] = mapped_column(String(32), ForeignKey("delivery_challans.id", ondelete="CASCADE"), index=True)
+    document: Mapped[DeliveryChallan] = relationship(back_populates="lines")
+
+
 class CreditNote(TimestampMixin, OrgScopedMixin, DocumentTotalsMixin, Base):
     """Sales return or allowance: reverses income and GST and credits the customer."""
 
@@ -2120,3 +2209,38 @@ class BankStatementLine(Base):
     created_kind: Mapped[Optional[str]] = mapped_column(String(20))
     import_batch: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+# --------------------------------------------------------------------------- #
+# Kept from the Books that ran inside Rooman One (revisions e5b9d2f7a1c3 and
+# f2a6c8e1d4b7) so its database upgrades here: one record per source per
+# organization, and its event tables (unused by this Books).
+# --------------------------------------------------------------------------- #
+for _model in (Contact, Item, Invoice, CustomerPayment):
+    Index(f"uq_{_model.__tablename__}_source", _model.organization_id, _model.source_app, _model.source_ref, unique=True)
+
+outbox = Table(
+    "outbox",
+    Base.metadata,
+    Column("id", String(40), primary_key=True),
+    Column("org_id", String(36), nullable=False, index=True),
+    Column("type", String(80), nullable=False),
+    Column("version", Integer, nullable=False, default=1),
+    Column("payload", JSON, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("published_at", DateTime(timezone=True), nullable=True, index=True),
+    Column("attempts", Integer, nullable=False, default=0),
+    Column("next_attempt_at", DateTime(timezone=True), nullable=True),
+    Column("last_error", Text, nullable=True),
+    Column("failed_at", DateTime(timezone=True), nullable=True, index=True),
+    Column("delivered_to", JSON, nullable=True),
+)
+
+processed_events = Table(
+    "processed_events",
+    Base.metadata,
+    Column("consumer", String(80), primary_key=True),
+    Column("event_id", String(40), primary_key=True),
+    Column("org_id", String(36), nullable=False, index=True),
+    Column("processed_at", DateTime(timezone=True), nullable=False),
+)

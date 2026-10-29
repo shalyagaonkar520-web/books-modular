@@ -21,7 +21,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useSubmit } from '@/hooks/useSubmit';
-import { stateFromGstin, stateOptions } from '@/utils/gst';
+import { gstinChecksumOk, panFromGstin, stateFromGstin, stateOptions } from '@/utils/gst';
 import { GST_TREATMENTS } from '@/utils/status';
 import { CustomFieldsCard } from '@/pages/automation/DocumentExtrasCards';
 
@@ -361,10 +361,18 @@ function ContactForm({ type, contact, onDone }: ContactFormProps) {
           <TextField
             label={t('customers.form.gstin')}
             value={form.gstin}
-            error={fieldErrors.gstin}
+            error={
+              fieldErrors.gstin ?? (form.gstin.trim().length === 15 && !gstinChecksumOk(form.gstin) ? t('customers.form.gstinChecksum') : undefined)
+            }
             maxLength={15}
             hint={t('customers.form.gstinHint')}
-            onChange={(event) => set('gstin', event.target.value.toUpperCase())}
+            onChange={(event) => {
+              const gstin = event.target.value.toUpperCase();
+              set('gstin', gstin);
+              // The PAN is part of the GSTIN: fill it in when it is still empty.
+              const pan = gstinChecksumOk(gstin) ? panFromGstin(gstin) : null;
+              if (pan && !form.pan.trim()) set('pan', pan);
+            }}
           />
           <TextField
             label={t('customers.form.pan')}

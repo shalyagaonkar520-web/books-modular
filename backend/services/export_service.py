@@ -14,14 +14,18 @@ from typing import List, Optional
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+from reportlab.graphics.barcode import createBarcodeDrawing
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.platypus import HRFlowable, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import HRFlowable, PageBreak, SimpleDocTemplate, Spacer, Table, TableStyle
 from reportlab.platypus import Paragraph as _RLParagraph
+from sqlalchemy import select
+from sqlalchemy.orm import object_session
 
 from backend.models import (
     AuditLog,
+    BankAccount,
     Bill,
     Contact,
     CustomerPayment,
@@ -34,6 +38,8 @@ from backend.models import (
     User,
     VendorPayment,
 )
+from backend.services import gst
+from backend.services.words import amount_in_words
 
 # The PDFs below put user text (names, addresses, notes, line descriptions)
 # inside ReportLab's mini-markup. Text such as "a<b" or "R&D;" breaks the
@@ -161,19 +167,73 @@ def _fmt_date(d: Optional[date | datetime]) -> str:
     return d.strftime("%d %b %Y")
 
 
-def generate_invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
-    """Generate a high-quality, professional GST Tax Invoice PDF document."""
+# Rules 46 and 48: the copies of a tax invoice for goods, and what each says on top.
+INVOICE_COPIES = {
+    "original": "ORIGINAL FOR RECIPIENT",
+    "duplicate": "DUPLICATE FOR TRANSPORTER",
+    "triplicate": "TRIPLICATE FOR SUPPLIER",
+}
+
+
+def _bank_details(invoice: Invoice, org: Optional[Organization]) -> List[str]:
+    """The organization's own bank account (the primary one first) for the customer to pay into."""
+    session = object_session(invoice)
+    if session is None or org is None:
+        return []
+    acct = (
+        session.execute(
+            select(BankAccount)
+            .where(BankAccount.organization_id == org.id, BankAccount.type == "bank", BankAccount.is_active.is_(True))
+            .order_by(BankAccount.is_primary.desc(), BankAccount.created_at)
+        )
+        .scalars()
+        .first()
+    )
+    if acct is None or not acct.account_number:
+        return []
+    lines = [f"Bank: {acct.bank_name or acct.name}", f"A/C No: {acct.account_number}"]
+    if acct.ifsc:
+        lines.append(f"IFSC: {acct.ifsc}")
+    return lines
+
+
+def generate_invoice_pdf(
+    invoice: Invoice,
+    org: Optional[Organization] = None,
+    copies: Optional[List[str]] = None,
+    watermark: Optional[str] = None,
+) -> bytes:
+    """A GST tax invoice (or bill of supply). ``copies``: any of original /
+    duplicate / triplicate, one set of pages each. ``watermark``: text across
+    every page; None = DRAFT or CANCELLED by status, "" = none."""
     base = (org.currency if org else None) or "INR"
     code = invoice.currency or base
+    bank = _bank_details(invoice, org)
+    if watermark is None:
+        watermark = {"draft": "DRAFT", "void": "CANCELLED"}.get(invoice.status, "")
+    labels = [INVOICE_COPIES[c] for c in copies or [] if c in INVOICE_COPIES]
     token = _PDF_CURRENCY.set(code)
     try:
-        return _invoice_pdf(_in_document_currency(invoice) if code != base else invoice, org)
+        return _invoice_pdf(_in_document_currency(invoice) if code != base else invoice, org, bank, labels, watermark)
     finally:
         _PDF_CURRENCY.reset(token)
 
 
-def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
-    accent = (org.brand_color if org and org.brand_color else None) or "#2563eb"
+def _watermark_painter(text: str):
+    def paint(canvas, doc):
+        canvas.saveState()
+        canvas.setFont("Helvetica-Bold", 72 if len(text) <= 10 else 44)
+        canvas.setFillColor(colors.Color(0.75, 0.1, 0.1, alpha=0.13))
+        width, height = doc.pagesize
+        canvas.translate(width / 2, height / 2)
+        canvas.rotate(40)
+        canvas.drawCentredString(0, 0, text)
+        canvas.restoreState()
+
+    return paint
+
+
+def _invoice_pdf(invoice, org: Optional[Organization], bank: List[str], copy_labels: List[str], watermark: str) -> bytes:
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -183,6 +243,22 @@ def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
         topMargin=36,
         bottomMargin=36,
     )
+    story = []
+    for n, label in enumerate(copy_labels or [None]):
+        if n:
+            story.append(PageBreak())
+        story += _invoice_story(invoice, org, bank, label)
+    if watermark:
+        paint = _watermark_painter(watermark.strip()[:30].upper())
+        doc.build(story, onFirstPage=paint, onLaterPages=paint)
+    else:
+        doc.build(story)
+    return buffer.getvalue()
+
+
+def _invoice_story(invoice, org: Optional[Organization], bank: List[str], copy_label: Optional[str]) -> list:
+    accent = (org.brand_color if org and org.brand_color else None) or "#2563eb"
+    bill_of_supply = getattr(invoice, "document_type", None) == "bill_of_supply"
 
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
@@ -238,8 +314,12 @@ def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
         parent=cell_style,
         alignment=2,  # Right aligned
     )
+    copy_style = ParagraphStyle("CopyLabel", parent=bold_label, fontSize=7.5, alignment=2, textColor=colors.HexColor("#64748b"))
 
     story = []
+    if copy_label:
+        story.append(Paragraph(copy_label, copy_style))
+        story.append(Spacer(1, 4))
 
     # Org Info & Header
     org_name = (org.name if org else None) or "Rooman Technologies Pvt Ltd"
@@ -248,21 +328,27 @@ def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
     org_gstin = (org.gstin if org else None) or ""
     org_email = (org.email if org else None) or ""
 
+    meta = [
+        Paragraph(
+            f"<b>Invoice #:</b> {invoice.invoice_number}<br/>"
+            f"<b>Date:</b> {_fmt_date(invoice.date)}<br/>"
+            f"<b>Due Date:</b> {_fmt_date(invoice.due_date)}<br/>"
+            f"<b>Status:</b> {invoice.status.upper()}",
+            value_style,
+        )
+    ]
+    # A barcode of the invoice number, for scanners at dispatch or in accounts.
+    try:
+        meta.append(createBarcodeDrawing("Code128", value=invoice.invoice_number, barHeight=16, barWidth=0.6, humanReadable=False))
+    except Exception:  # noqa: BLE001 - a number Code 128 cannot encode prints without a barcode
+        pass
+
     header_table_data = [
         [
             Paragraph(f"<b>{org_name}</b>", title_style),
-            Paragraph("<b>TAX INVOICE</b>", subtitle_style),
+            Paragraph("<b>BILL OF SUPPLY</b>" if bill_of_supply else "<b>TAX INVOICE</b>", subtitle_style),
         ],
-        [
-            Paragraph(_org_lines(org_addr, org_city_state, org_gstin, org_email), value_style),
-            Paragraph(
-                f"<b>Invoice #:</b> {invoice.invoice_number}<br/>"
-                f"<b>Date:</b> {_fmt_date(invoice.date)}<br/>"
-                f"<b>Due Date:</b> {_fmt_date(invoice.due_date)}<br/>"
-                f"<b>Status:</b> {invoice.status.upper()}",
-                value_style,
-            ),
-        ],
+        [Paragraph(_org_lines(org_addr, org_city_state, org_gstin, org_email), value_style), meta],
     ]
     t_header = Table(header_table_data, colWidths=[330, 210])
     t_header.setStyle(
@@ -284,6 +370,14 @@ def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
     cust_addr = (cust.billing_address if cust else "") or "Address on file"
     cust_email = (cust.email if cust else "") or "-"
     cust_gstin = (cust.gstin if cust else "") or "-"
+    supplier_state = gst.org_state(org) if org else None
+    place = gst.contact_state(cust, invoice.place_of_supply) if cust else invoice.place_of_supply
+    inter_state = gst.is_inter_state(supplier_state, place) or bool(cust and cust.gst_treatment in ("overseas", "sez"))
+
+    terms_lines = [f"Reference: {invoice.reference or 'N/A'}"]
+    if place:
+        terms_lines.append(f"Place of supply: {gst.state_label(place) or place}")
+    terms_lines += bank
 
     bill_to_data = [
         [
@@ -292,13 +386,7 @@ def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
         ],
         [
             Paragraph(f"<b>{cust_name}</b><br/>{cust_addr}<br/>Email: {cust_email}<br/>GSTIN: {cust_gstin}", value_style),
-            Paragraph(
-                f"Reference: {invoice.reference or 'N/A'}<br/>"
-                f"Payment Mode: Bank / UPI<br/>"
-                f"Bank: HDFC Bank - A/C 50200012345678<br/>"
-                f"IFSC: HDFC0001234",
-                value_style,
-            ),
+            Paragraph("<br/>".join(terms_lines), value_style),
         ],
     ]
     t_bill = Table(bill_to_data, colWidths=[330, 210])
@@ -322,6 +410,7 @@ def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
     lines_header = [
         Paragraph("#", header_th),
         Paragraph("Item / Description", header_th),
+        Paragraph("HSN/SAC", header_th),
         Paragraph("Qty", header_th),
         Paragraph("Rate", header_th),
         Paragraph("Tax %", header_th),
@@ -330,25 +419,28 @@ def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
     table_rows = [lines_header]
 
     for idx, line in enumerate(invoice.lines, start=1):
-        desc = line.description or (line.item.name if line.item else "Product / Service")
+        item = line.item
+        desc = line.description or (item.name if item else "Product / Service")
+        qty = f"{float(line.quantity):g}" + (f" {item.unit}" if item and item.unit else "")
         table_rows.append(
             [
                 Paragraph(str(idx), cell_style),
                 Paragraph(desc, cell_style),
-                Paragraph(f"{float(line.quantity):g}", cell_right),
+                Paragraph((item.hsn_sac or "") if item else "", cell_style),
+                Paragraph(qty, cell_right),
                 Paragraph(_fmt_curr(line.rate), cell_right),
                 Paragraph(f"{float(line.tax_rate or 0):g}%", cell_right),
                 Paragraph(_fmt_curr(line.amount), cell_right),
             ]
         )
 
-    t_lines = Table(table_rows, colWidths=[24, 256, 50, 70, 50, 90])
+    t_lines = Table(table_rows, colWidths=[22, 214, 56, 50, 66, 42, 90], repeatRows=1)
     t_lines.setStyle(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(accent if org and org.brand_color else "#1e293b")),
                 ("ALIGN", (0, 0), (0, -1), "CENTER"),
-                ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+                ("ALIGN", (3, 0), (-1, -1), "RIGHT"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
@@ -366,16 +458,25 @@ def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
     subtotal = float(invoice.subtotal or 0.0)
     tax_total = float(invoice.tax_total or 0.0)
     discount = float(invoice.discount_amount or 0.0)
+    tcs = float(getattr(invoice, "tcs_amount", 0) or 0.0)
     total = float(invoice.total or 0.0)
     paid = float(invoice.amount_paid or 0.0)
     balance = float(invoice.balance_due or 0.0)
 
-    summary_rows = [
-        [Paragraph("Subtotal:", cell_right), Paragraph(_fmt_curr(subtotal), cell_right)],
-        [Paragraph("Taxes (GST):", cell_right), Paragraph(_fmt_curr(tax_total), cell_right)],
-    ]
+    summary_rows = [[Paragraph("Subtotal:", cell_right), Paragraph(_fmt_curr(subtotal), cell_right)]]
     if discount > 0:
         summary_rows.append([Paragraph("Discount:", cell_right), Paragraph(f"- {_fmt_curr(discount)}", cell_right)])
+    # The GST split the return reports: CGST + SGST (UTGST in a union territory) or IGST.
+    if not bill_of_supply:
+        cgst, sgst, igst = gst.split(Decimal(str(tax_total)), inter_state)
+        if inter_state:
+            summary_rows.append([Paragraph("IGST:", cell_right), Paragraph(_fmt_curr(igst), cell_right)])
+        else:
+            summary_rows.append([Paragraph("CGST:", cell_right), Paragraph(_fmt_curr(cgst), cell_right)])
+            summary_rows.append([Paragraph(f"{gst.sgst_label(supplier_state)}:", cell_right), Paragraph(_fmt_curr(sgst), cell_right)])
+    if tcs > 0:
+        summary_rows.append([Paragraph("TCS:", cell_right), Paragraph(_fmt_curr(tcs), cell_right)])
+    before_total = len(summary_rows) - 1
     summary_rows.extend(
         [
             [Paragraph("<b>Grand Total:</b>", cell_right), Paragraph(f"<b>{_fmt_curr(total)}</b>", cell_right)],
@@ -395,7 +496,7 @@ def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("TOPPADDING", (0, 0), (-1, -1), 3),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                ("LINEBELOW", (0, 2), (-1, 2), 0.5, colors.HexColor("#cbd5e1")),
+                ("LINEBELOW", (0, before_total), (-1, before_total), 0.5, colors.HexColor("#cbd5e1")),
                 ("LINEBELOW", (0, -2), (-1, -2), 0.5, colors.HexColor("#cbd5e1")),
             ]
         )
@@ -406,6 +507,11 @@ def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
     )
     t_wrap.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
     story.append(t_wrap)
+    story.append(Spacer(1, 8))
+    story.append(Paragraph(f"<b>Amount in words:</b> {amount_in_words(total, _PDF_CURRENCY.get())}", value_style))
+    if invoice.terms:
+        story.append(Spacer(1, 8))
+        story.append(Paragraph("<b>Terms & conditions:</b><br/>" + invoice.terms.replace("\n", "<br/>"), value_style))
 
     # Pay by UPI: a QR any UPI app opens with the amount filled in (INR invoices with a balance).
     if org and org.upi_id and balance > 0 and _PDF_CURRENCY.get() == "INR" and invoice.status in ("sent", "partially_paid", "overdue"):
@@ -446,8 +552,7 @@ def _invoice_pdf(invoice: Invoice, org: Optional[Organization] = None) -> bytes:
     contact = f" For inquiries, email {_text(org.email)}" if org and org.email else ""
     story.append(Paragraph(f"<i>This is a computer-generated GST Tax Invoice issued by {issuer}.{contact}</i>", footnote))
 
-    doc.build(story)
-    return buffer.getvalue()
+    return story
 
 
 def generate_invoices_list_pdf(invoices: List[Invoice], org: Optional[Organization] = None) -> bytes:

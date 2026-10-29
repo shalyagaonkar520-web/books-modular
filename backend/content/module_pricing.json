@@ -11,7 +11,7 @@
     {
       "key": "items",
       "label": "Items",
-      "description": "Products, warehouses, batches, serial numbers and price lists",
+      "description": "Products, bulk editing, warehouses, batches, serial numbers and price lists",
       "price": 199,
       "requires": [],
       "core": true
@@ -27,7 +27,7 @@
     {
       "key": "invoices",
       "label": "Invoices",
-      "description": "GST invoices, quotes, sales orders, credit notes, recurring invoices, UPI QR and WhatsApp",
+      "description": "GST invoices, bills of supply, quotes, sales orders, delivery challans, credit notes, recurring invoices, UPI QR and WhatsApp",
       "price": 299,
       "requires": [
         "customers"
@@ -150,7 +150,7 @@
     {
       "key": "reports",
       "label": "Reports",
-      "description": "Profit and loss, balance sheet, cash flow, GST returns and statements",
+      "description": "Profit and loss, balance sheet, cash flow, GST returns with GSTR-2B matching and a filing calendar, income tax and statements",
       "price": 199,
       "requires": [],
       "core": true

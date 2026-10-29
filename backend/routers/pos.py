@@ -8,6 +8,7 @@ A return is a credit note against that invoice, refunded at once.
 from __future__ import annotations
 
 import datetime as dt
+import secrets
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
@@ -15,22 +16,38 @@ from typing import Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import Field, field_validator
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from backend.db import get_db
 from backend.deps import get_current_user, require_admin, require_write
-from backend.models import BankAccount, Contact, ContactRefund, CreditNote, Invoice, Item, Organization, PosSale, User
+from backend.models import (
+    BankAccount,
+    Contact,
+    ContactRefund,
+    CreditNote,
+    InventoryAdjustment,
+    Invoice,
+    Item,
+    Organization,
+    PosSale,
+    PosScan,
+    PosScannerSession,
+    User,
+)
 from backend.routers import credit_notes as credit_notes_router
 from backend.routers.invoices import create_invoice_record
 from backend.routers.payments import _apply_invoice_payment, _record_customer_payment
+from backend.schemas import validators
 from backend.schemas.common import MAX_MONEY, MAX_QUANTITY, APIModel
 from backend.schemas.documents_flow import CreditNoteCreate, RefundCreate
 from backend.schemas.sales import CustomerPaymentCreate, InvoiceCreate, LineInput
-from backend.services import audit, bank, credits, doc_flow, numbering
+from backend.security import hash_token
+from backend.services import audit, bank, credits, doc_flow, inventory, numbering, upi
 from backend.services.doc_flow import CREDIT_NOTE
 from backend.services.money import money, qty
+from backend.services.ratelimit import RateLimiter
 from backend.services.tenancy import get_or_404
 
 router = APIRouter(prefix="/api/pos", tags=["Point of Sale"])
@@ -839,3 +856,381 @@ def update_settings(payload: PosSettings, user: User = Depends(require_admin), d
     audit.record(db, user, "update", "organization", org.id, "Updated Point of Sale settings")
     db.commit()
     return _settings_out(db, org)
+
+
+# --------------------------------------------------------------------------- #
+# A phone as the counter's scanner
+# --------------------------------------------------------------------------- #
+# A session lasts a working day; the counter can close it sooner.
+SCANNER_SESSION_HOURS = 12
+# How many codes one poll hands back (a phone cannot scan faster than this in a second).
+MAX_SCANS_PER_POLL = 200
+# The phone's page has no sign-in: each key may only ask so often.
+_phone_calls = RateLimiter(limit=240, window_seconds=60)
+_phone_new_items = RateLimiter(limit=30, window_seconds=60)
+SCAN_LINK_PATH = "/scan/"
+
+
+ScannerPurpose = Literal["sale", "items"]
+
+
+class ScannerSessionOut(APIModel):
+    id: str
+    purpose: str
+    expires_at: dt.datetime
+    connected: bool
+    counter_user_name: Optional[str] = None
+    closed: bool
+
+
+class OpenedScannerSession(ScannerSessionOut):
+    # The secret key for the QR link. Shown once, when the session opens; only
+    # its SHA-256 is stored.
+    token: str
+
+
+class ScannerQrOut(APIModel):
+    svg: str
+
+
+class ScanOut(APIModel):
+    seq: int
+    code: str
+    quantity: Decimal
+
+
+class ScanPollOut(APIModel):
+    session: ScannerSessionOut
+    scans: List[ScanOut]
+
+
+def _now() -> dt.datetime:
+    return dt.datetime.now(dt.UTC)
+
+
+def _aware(value: dt.datetime) -> dt.datetime:
+    # SQLite hands back naive datetimes; they were stored in UTC.
+    return value if value.tzinfo else value.replace(tzinfo=dt.UTC)
+
+
+def _is_open(found: PosScannerSession) -> bool:
+    return found.closed_at is None and _aware(found.expires_at) > _now()
+
+
+def _scanner_session(db: Session, user: User, session_id: str) -> PosScannerSession:
+    found = db.execute(
+        select(PosScannerSession).where(PosScannerSession.id == session_id, PosScannerSession.organization_id == user.organization_id)
+    ).scalar_one_or_none()
+    if found is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This scanner session is not valid")
+    return found
+
+
+def _scanner_out(db: Session, found: PosScannerSession) -> ScannerSessionOut:
+    return ScannerSessionOut(
+        id=found.id,
+        purpose=found.purpose,
+        expires_at=_aware(found.expires_at),
+        connected=found.connected_at is not None,
+        counter_user_name=_cashier_names(db, [found.created_by]).get(found.created_by),
+        closed=not _is_open(found),
+    )
+
+
+@router.post("/scanner-sessions", response_model=OpenedScannerSession, status_code=status.HTTP_201_CREATED)
+def open_scanner_session(
+    purpose: ScannerPurpose = Query("sale", description="sale: onto the counter's bill; items: add stock or new items"),
+    user: User = Depends(require_write),
+    db: Session = Depends(get_db),
+):
+    """Open a session for a phone to scan into this counter (or the Items screen); its key goes in the QR link."""
+    # Sessions that ended are of no further use: clear them (their scans go with them).
+    db.execute(
+        delete(PosScannerSession).where(
+            PosScannerSession.organization_id == user.organization_id,
+            (PosScannerSession.expires_at < _now() - dt.timedelta(days=1)) | (PosScannerSession.closed_at.is_not(None)),
+        )
+    )
+    token = secrets.token_urlsafe(32)
+    found = PosScannerSession(
+        organization_id=user.organization_id,
+        created_by=user.id,
+        token_hash=hash_token(token),
+        purpose=purpose,
+        expires_at=_now() + dt.timedelta(hours=SCANNER_SESSION_HOURS),
+    )
+    db.add(found)
+    audit.record(db, user, "create", "pos_scanner_session", found.id, f"Opened a phone scanner link ({purpose})")
+    db.commit()
+    return OpenedScannerSession(**_scanner_out(db, found).model_dump(), token=token)
+
+
+@router.get("/scanner-sessions/{session_id}/qr", response_model=ScannerQrOut)
+def scanner_qr(
+    session_id: str, url: str = Query(min_length=10, max_length=500), user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """The QR code of the session's link (the counter's own address + /scan/<key>)."""
+    found = _scanner_session(db, user, session_id)
+    if not _is_open(found):
+        raise HTTPException(status.HTTP_410_GONE, "This scanner link has ended. Open a new one.")
+    head, _, key = url.rpartition(SCAN_LINK_PATH)
+    if not head.startswith(("https://", "http://")) or "/" in key or not key or hash_token(key) != found.token_hash:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The QR code can only hold this session's scanner link")
+    return ScannerQrOut(svg=upi.qr_svg(url, 240))
+
+
+@router.get("/scanner-sessions/{session_id}/scans", response_model=ScanPollOut)
+def poll_scans(session_id: str, after: int = Query(0, ge=0), user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """What the phone scanned since ``after`` (the counter asks about once a second)."""
+    found = _scanner_session(db, user, session_id)
+    rows = db.execute(
+        select(PosScan.seq, PosScan.code, PosScan.quantity)
+        .where(PosScan.session_id == found.id, PosScan.seq > after)
+        .order_by(PosScan.seq)
+        .limit(MAX_SCANS_PER_POLL)
+    ).all()
+    return ScanPollOut(session=_scanner_out(db, found), scans=[ScanOut(seq=r.seq, code=r.code, quantity=qty(r.quantity)) for r in rows])
+
+
+@router.delete("/scanner-sessions/{session_id}", response_model=ScannerSessionOut)
+def close_scanner_session(session_id: str, user: User = Depends(require_write), db: Session = Depends(get_db)):
+    """Stop taking scans from the phone; its link stops working at once."""
+    found = _scanner_session(db, user, session_id)
+    found.closed_at = found.closed_at or _now()
+    db.commit()
+    return _scanner_out(db, found)
+
+
+# --------------------------------------------------------------------------- #
+# The phone's end: no sign-in, the link's key is the permission
+# --------------------------------------------------------------------------- #
+public_router = APIRouter(prefix="/api/pos-scan", tags=["Point of Sale"])
+
+
+class PhoneSessionOut(APIModel):
+    organization_name: str
+    purpose: str
+    counter_user_name: Optional[str] = None
+    expires_at: dt.datetime
+
+
+class PhoneScanIn(APIModel):
+    code: str = Field(min_length=1, max_length=64)
+    quantity: Decimal = Field(default=Decimal("1"), gt=0, le=Decimal("10000"))
+
+    @field_validator("code")
+    @classmethod
+    def _code(cls, value: str) -> str:
+        cleaned = validators.barcode(value)
+        if not cleaned:
+            raise ValueError("Scan a barcode")
+        return cleaned
+
+
+class PhoneNewItemIn(APIModel):
+    barcode: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=200)
+    selling_price: Decimal = Field(ge=0, le=MAX_MONEY)
+    tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    unit: str = Field(default="pcs", min_length=1, max_length=20)
+    # Adding items (purpose "items"): what it costs and how many are on the shelf now.
+    cost_price: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_MONEY)
+    opening_stock: Decimal = Field(default=Decimal("0"), ge=0, le=MAX_QUANTITY)
+
+    @field_validator("barcode")
+    @classmethod
+    def _barcode(cls, value: str) -> str:
+        cleaned = validators.barcode(value)
+        if not cleaned:
+            raise ValueError("Scan a barcode")
+        return cleaned
+
+    @field_validator("name", "unit")
+    @classmethod
+    def _trimmed(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Fill this in")
+        return value
+
+
+def _phone_session(db: Session, token: str, limiter: RateLimiter = _phone_calls) -> PosScannerSession:
+    """The open session a phone's key belongs to (404 unknown, 410 ended)."""
+    if not token or len(token) > 100:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This scanner link is not valid. Scan the QR code on the counter again.")
+    found = db.execute(select(PosScannerSession).where(PosScannerSession.token_hash == hash_token(token))).scalar_one_or_none()
+    if found is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This scanner link is not valid. Scan the QR code on the counter again.")
+    if not _is_open(found):
+        raise HTTPException(status.HTTP_410_GONE, "This scanner link has ended. Ask the counter for a new QR code.")
+    org = db.get(Organization, found.organization_id)
+    if org is None or org.is_suspended:
+        raise HTTPException(status.HTTP_410_GONE, "This scanner link has ended. Ask the counter for a new QR code.")
+    limiter.check(found.id, "Scanning too fast. Wait a moment and try again.")
+    return found
+
+
+def _counter_user(db: Session, found: PosScannerSession) -> Optional[User]:
+    return db.get(User, found.created_by) if found.created_by else None
+
+
+@public_router.get("/{token}", response_model=PhoneSessionOut)
+def phone_open(token: str, db: Session = Depends(get_db)):
+    """The phone opened the QR link: which counter it scans for (and the counter shows it connected)."""
+    found = _phone_session(db, token)
+    found.connected_at = found.connected_at or _now()
+    db.commit()
+    org = db.get(Organization, found.organization_id)
+    return PhoneSessionOut(
+        organization_name=org.legal_name or org.name,
+        purpose=found.purpose,
+        counter_user_name=_cashier_names(db, [found.created_by]).get(found.created_by),
+        expires_at=_aware(found.expires_at),
+    )
+
+
+@public_router.get("/{token}/lookup", response_model=PosItem)
+def phone_lookup(token: str, code: str = Query(min_length=1, max_length=64), db: Session = Depends(get_db)):
+    """The item for a scanned code, to show on the phone before it is sent."""
+    found = _phone_session(db, token)
+    item = find_by_code(db, found.organization_id, code)
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No item with this barcode")
+    return PosItem.model_validate(item)
+
+
+@public_router.post("/{token}/scans", response_model=ScanOut, status_code=status.HTTP_201_CREATED)
+def phone_send(token: str, payload: PhoneScanIn, db: Session = Depends(get_db)):
+    """Put a scanned item (and how many) on the counter's bill."""
+    found = _phone_session(db, token)
+    if found.purpose != "sale":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This scanner link adds items, it does not bill them")
+    seq = _record_scan(db, found, payload.code, payload.quantity)
+    db.commit()
+    return ScanOut(seq=seq, code=payload.code, quantity=qty(payload.quantity))
+
+
+def _record_scan(db: Session, found: PosScannerSession, code: str, quantity: Decimal) -> int:
+    """Number and keep a scan for the counter (or the Items screen) to pick up."""
+    # One UPDATE numbers the scan, so two quick scans never share a number.
+    db.execute(
+        update(PosScannerSession)
+        .where(PosScannerSession.id == found.id)
+        .values(last_seq=PosScannerSession.last_seq + 1)
+        .execution_options(synchronize_session=False)
+    )
+    seq = db.execute(select(PosScannerSession.last_seq).where(PosScannerSession.id == found.id)).scalar_one()
+    db.add(PosScan(session_id=found.id, seq=seq, code=code, quantity=qty(quantity)))
+    found.connected_at = found.connected_at or _now()
+    return seq
+
+
+class PhoneStockIn(APIModel):
+    code: str = Field(min_length=1, max_length=64)
+    quantity: Decimal = Field(gt=0, le=Decimal("100000"))
+
+
+@public_router.post("/{token}/stock", response_model=PosItem, status_code=status.HTTP_201_CREATED)
+def phone_add_stock(token: str, payload: PhoneStockIn, db: Session = Depends(get_db)):
+    """Adding items: goods counted onto the shelf go into stock (an inventory adjustment)."""
+    found = _phone_session(db, token)
+    if found.purpose != "items":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This scanner link bills items; add stock from the Items screen's link")
+    item = find_by_code(db, found.organization_id, payload.code.strip())
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No item with this barcode")
+    if item.type == "service":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"'{item.name}' is a service; it has no stock")
+    if not item.track_inventory:
+        # Counting it in starts tracking its stock from zero.
+        item.track_inventory = True
+        item.stock_on_hand = Decimal("0")
+    adj = InventoryAdjustment(
+        organization_id=found.organization_id,
+        adjustment_number=numbering.next_number(db, found.organization_id, "inventory_adjustment"),
+        item_id=item.id,
+        date=date.today(),
+        quantity_delta=qty(payload.quantity),
+        reason="Stock received (phone scanner)",
+        created_by=found.created_by,
+    )
+    db.add(adj)
+    db.flush()
+    inventory.adjust_stock(
+        db, item, adj.quantity_delta, adj.date, "inventory_adjustment", adj.id, f"{adj.reason} ({adj.adjustment_number})", found.created_by
+    )
+    _record_scan(db, found, item.barcode or payload.code.strip(), payload.quantity)
+    audit.record(
+        db,
+        _counter_user(db, found),
+        "create",
+        "inventory_adjustment",
+        adj.id,
+        f"{adj.adjustment_number}: {item.name} +{adj.quantity_delta} (phone scanner)",
+        organization_id=found.organization_id,
+    )
+    db.commit()
+    db.refresh(item)
+    return PosItem.model_validate(item)
+
+
+def _free_sku(db: Session, org_id: str, barcode: str) -> str:
+    """The barcode as the new item's SKU, or the barcode with -2, -3 ... when that SKU is taken."""
+    base = barcode.upper()[:44]
+    taken = {
+        s.upper()
+        for s in db.execute(select(Item.sku).where(Item.organization_id == org_id, func.upper(Item.sku).like(f"{base}%"))).scalars()
+    }
+    if base not in taken:
+        return base
+    n = 2
+    while f"{base}-{n}" in taken:
+        n += 1
+    return f"{base}-{n}"
+
+
+@public_router.post("/{token}/items", response_model=PosItem, status_code=status.HTTP_201_CREATED)
+def phone_new_item(token: str, payload: PhoneNewItemIn, db: Session = Depends(get_db)):
+    """A barcode Books does not know yet: add it as an item (name, price, GST) so it can be sold."""
+    found = _phone_session(db, token, _phone_new_items)
+    org_id = found.organization_id
+    existing = find_by_code(db, org_id, payload.barcode)
+    if existing is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Barcode {payload.barcode} is already used by '{existing.name}'")
+    taken = db.execute(select(Item).where(Item.organization_id == org_id, Item.barcode == payload.barcode)).scalar_one_or_none()
+    if taken is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Barcode {payload.barcode} is already used by '{taken.name}' (inactive)")
+    item = Item(
+        organization_id=org_id,
+        name=payload.name,
+        sku=_free_sku(db, org_id, payload.barcode),
+        barcode=payload.barcode,
+        type="goods",
+        unit=payload.unit,
+        selling_price=money(payload.selling_price),
+        tax_rate=payload.tax_rate,
+        cost_price=money(payload.cost_price),
+        # Adding items counts what is on the shelf; a counter adding an unknown
+        # product only needs it priced.
+        track_inventory=found.purpose == "items",
+        opening_stock=qty(payload.opening_stock) if found.purpose == "items" else Decimal("0"),
+        opening_stock_rate=money(payload.cost_price),
+        stock_on_hand=qty(payload.opening_stock) if found.purpose == "items" else Decimal("0"),
+    )
+    db.add(item)
+    db.flush()
+    if found.purpose == "items":
+        inventory.post_opening_stock(db, item, found.created_by)
+        _record_scan(db, found, payload.barcode, payload.opening_stock)
+    audit.record(
+        db,
+        _counter_user(db, found),
+        "create",
+        "item",
+        item.id,
+        f"Added item {item.name} ({item.barcode}) from the phone scanner",
+        organization_id=org_id,
+    )
+    db.commit()
+    db.refresh(item)
+    return PosItem.model_validate(item)

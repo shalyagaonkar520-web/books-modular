@@ -95,6 +95,12 @@ export function DocumentViewPage({ kind }: { kind: DocKindKey }) {
         buttons.push({ key: 'to-inv', label: t('docflow.action.toInvoice'), variant: 'primary', onClick: () => convert('invoice', false) });
         status_('void', t('docflow.action.void'), 'danger');
       }
+    } else if (kind === 'delivery_challan') {
+      if (status === 'draft') status_('issued', t('docflow.action.issue'));
+      if (['draft', 'issued'].includes(status)) {
+        buttons.push({ key: 'to-inv', label: t('docflow.action.toInvoice'), variant: 'primary', onClick: () => convert('invoice', false) });
+        status_('void', t('docflow.action.void'), 'danger');
+      }
     } else if (kind === 'purchase_order') {
       if (status === 'draft') status_('issued', t('docflow.action.issue'));
       if (['draft', 'issued'].includes(status)) {
@@ -334,7 +340,7 @@ export function DocumentViewPage({ kind }: { kind: DocKindKey }) {
         ) : null}
 
         {kind === 'estimate' ? <ShareLinkCard kind="estimate" id={d.id} status={d.status} /> : null}
-        <CustomFieldsCard entity={kind} entityId={d.id} />
+        {kind === 'delivery_challan' ? null : <CustomFieldsCard entity={kind} entityId={d.id} />}
 
         {d.notes || d.terms ? (
           <Card title={t('docflow.form.notesSection')}>

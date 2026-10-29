@@ -134,6 +134,7 @@ def to_out(inv: Invoice) -> InvoiceOut:
         approval_status=inv.approval_status,
         approval_note=inv.approval_note,
         approved_total=inv.approved_total,
+        document_type=inv.document_type,
         **fc_fields(inv),
         created_at=inv.created_at,
         updated_at=inv.updated_at,
@@ -176,6 +177,9 @@ def _apply_payload(db: Session, inv: Invoice, payload: InvoiceCreate, org_id: st
     for line in computed:
         if line.item and not line.item.is_active and line.item.id not in existing_item_ids:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Item '{line.item.name}' is inactive")
+    if payload.document_type == "bill_of_supply" and tax_total:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A bill of supply cannot charge GST; set the tax rate of every line to 0")
+    inv.document_type = "bill_of_supply" if payload.document_type == "bill_of_supply" else None
     inv.customer_id = customer.id
     inv.project_id = payload.project_id
     inv.date = payload.date
@@ -562,6 +566,10 @@ def get_invoice(invoice_id: str, user: User = Depends(get_current_user), db: Ses
 @router.get("/{invoice_id}/pdf")
 def download_invoice_pdf(
     invoice_id: str,
+    copies: Optional[str] = Query(
+        None, max_length=40, pattern=r"^[a-z,]*$", description="Comma separated: original, duplicate, triplicate (one set of pages each)"
+    ),
+    watermark: Optional[str] = Query(None, max_length=30, description="Text across every page; empty = none; default DRAFT / CANCELLED"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -570,7 +578,10 @@ def download_invoice_pdf(
     if inv is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
     org = db.get(Organization, user.organization_id)
-    pdf_bytes = export_service.generate_invoice_pdf(inv, org)
+    wanted = [c for c in (copies or "").split(",") if c]
+    if any(c not in export_service.INVOICE_COPIES for c in wanted):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Copies can be original, duplicate and triplicate")
+    pdf_bytes = export_service.generate_invoice_pdf(inv, org, copies=wanted, watermark=watermark)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

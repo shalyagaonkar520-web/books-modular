@@ -1,4 +1,4 @@
-/** GST filing: GSTR-1 and GSTR-3B for a return period, and the TDS / TCS register. */
+/** GST filing: GSTR-1 and GSTR-3B for a return period, GSTR-2B reconciliation, the filing calendar and the TDS / TCS register. */
 import { useMemo, useState } from 'react';
 import { Download, FileJson, FileSpreadsheet } from 'lucide-react';
 
@@ -14,7 +14,9 @@ import { useAsync } from '@/hooks/useAsync';
 import { useDownload } from '@/hooks/useDownload';
 import { formatCurrency, formatDate } from '@/utils/format';
 
-type Tab = 'gstr1' | 'gstr3b' | 'tds';
+import { FilingCalendarView, Gstr2bView } from './GstExtrasViews';
+
+type Tab = 'gstr1' | 'gstr3b' | 'gstr2b' | 'calendar' | 'tds';
 
 /** First and last day of the previous month: the usual return period. */
 function lastMonth(): { start: string; end: string } {
@@ -40,16 +42,30 @@ export function GstFilingPage() {
         tabs={[
           { id: 'gstr1', label: t('gst.tab.gstr1') },
           { id: 'gstr3b', label: t('gst.tab.gstr3b') },
+          { id: 'gstr2b', label: t('gst.tab.gstr2b') },
+          { id: 'calendar', label: t('gst.tab.calendar') },
           { id: 'tds', label: t('gst.tab.tds') },
         ]}
         active={tab}
         onChange={(id) => setTab(id as Tab)}
       />
-      <div className="form-grid-3">
-        <TextField label={t('reports.range.from')} type="date" value={startDate} max={endDate} onChange={(e) => setStartDate(e.target.value)} />
-        <TextField label={t('reports.range.to')} type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} />
-      </div>
-      {tab === 'gstr1' ? <Gstr1View range={range} /> : tab === 'gstr3b' ? <Gstr3bView range={range} /> : <TdsView range={range} />}
+      {tab === 'calendar' ? null : (
+        <div className="form-grid-3">
+          <TextField label={t('reports.range.from')} type="date" value={startDate} max={endDate} onChange={(e) => setStartDate(e.target.value)} />
+          <TextField label={t('reports.range.to')} type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} />
+        </div>
+      )}
+      {tab === 'gstr1' ? (
+        <Gstr1View range={range} />
+      ) : tab === 'gstr3b' ? (
+        <Gstr3bView range={range} />
+      ) : tab === 'gstr2b' ? (
+        <Gstr2bView range={range} />
+      ) : tab === 'calendar' ? (
+        <FilingCalendarView />
+      ) : (
+        <TdsView range={range} />
+      )}
     </div>
   );
 }

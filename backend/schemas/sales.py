@@ -77,6 +77,8 @@ class InvoiceCreate(APIModel):
     warehouse_id: Optional[str] = None
     # Branch the sale belongs to (P&L by branch).
     branch_id: Optional[str] = None
+    # null = Tax Invoice; bill_of_supply for exempt goods or a composition dealer.
+    document_type: Optional[Literal["tax_invoice", "bill_of_supply"]] = None
 
     @model_validator(mode="after")
     def _due_after_date(self):
@@ -133,6 +135,7 @@ class InvoiceOut(APIModel):
     approval_note: Optional[str] = None
     # The total an approver signed off; a higher total needs approving again.
     approved_total: Optional[Decimal] = None
+    document_type: Optional[str] = None
     currency: Optional[str] = None
     exchange_rate: Decimal = Decimal("1")
     fc_subtotal: Optional[Decimal] = None

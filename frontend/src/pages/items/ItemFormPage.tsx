@@ -1,6 +1,7 @@
 /** Create or edit an item on its own page. */
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ScanBarcode } from 'lucide-react';
 
 import { accountingApi, contactsApi, itemsApi } from '@/api/endpoints';
 import type { Item, ItemType } from '@/api/types';
@@ -16,6 +17,7 @@ import { useSubmit } from '@/hooks/useSubmit';
 import { parseNumber } from '@/utils/format';
 import { taxRatesWith, UNITS } from '@/utils/status';
 import { CustomFieldsCard } from '@/pages/automation/DocumentExtrasCards';
+import { BarcodeScanDialog } from '@/pages/pos/BarcodeScanDialog';
 import { CompositeItemCard } from './CompositeItemCard';
 
 const UNIT_OPTIONS = UNITS.map((unit) => ({ value: unit, label: unit }));
@@ -153,6 +155,7 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
   ];
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((current) => ({ ...current, [key]: value }));
+  const [scanning, setScanning] = useState(false);
   const tracks = form.type === 'goods' && form.trackInventory;
 
   async function save() {
@@ -206,16 +209,30 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
         <div className="form-grid">
           <TextField label={t('items.form.name')} required value={form.name} error={fieldErrors.name} onChange={(event) => set('name', event.target.value)} />
           <TextField label={t('items.form.sku')} required value={form.sku} error={fieldErrors.sku} hint={t('items.form.skuHint')} onChange={(event) => set('sku', event.target.value)} />
-          <TextField
-            label={t('pos.item.barcode')}
-            value={form.barcode}
-            maxLength={64}
-            inputMode="text"
-            autoComplete="off"
-            error={fieldErrors.barcode}
-            hint={t('pos.item.barcodeHint')}
-            onChange={(event) => set('barcode', event.target.value)}
-          />
+          <div className="barcode-field">
+            <TextField
+              label={t('pos.item.barcode')}
+              value={form.barcode}
+              maxLength={64}
+              inputMode="text"
+              autoComplete="off"
+              error={fieldErrors.barcode}
+              hint={t('pos.item.barcodeHint')}
+              onChange={(event) => set('barcode', event.target.value)}
+            />
+            <Button size="sm" icon={<ScanBarcode size={16} />} onClick={() => setScanning(true)}>
+              {t('pos.item.scanBarcode')}
+            </Button>
+          </div>
+          {scanning ? (
+            <BarcodeScanDialog
+              onClose={() => setScanning(false)}
+              onScan={(code) => {
+                set('barcode', code);
+                setScanning(false);
+              }}
+            />
+          ) : null}
           <SelectField label={t('items.form.type')} value={form.type} options={typeOptions} error={fieldErrors.type} onChange={(event) => set('type', event.target.value as ItemType)} />
           <SelectField label={t('items.form.unit')} value={form.unit} options={UNIT_OPTIONS} error={fieldErrors.unit} onChange={(event) => set('unit', event.target.value)} />
           <TextField label={t('items.form.hsnSac')} value={form.hsnSac} error={fieldErrors.hsnSac} onChange={(event) => set('hsnSac', event.target.value)} />

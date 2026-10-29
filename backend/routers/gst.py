@@ -5,9 +5,10 @@ from __future__ import annotations
 import io
 import json
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from openpyxl import Workbook
 from openpyxl.styles import Font
@@ -17,7 +18,7 @@ from backend.db import get_db
 from backend.deps import get_current_user, module_write_error, require_financial_read, require_write
 from backend.models import Invoice, User
 from backend.schemas.common import APIModel
-from backend.services import audit, export_service, gst_returns
+from backend.services import audit, export_service, gst, gst_returns
 from backend.services.periods import month_bounds
 from backend.services.tenancy import get_or_404
 
@@ -187,6 +188,52 @@ def tds_register(
             f"TDS_TCS_{start.isoformat()}_{end.isoformat()}.xlsx",
         )
     return data
+
+
+@router.get("/gstin/{gstin}")
+def check_gstin(gstin: str, user: User = Depends(get_current_user)):
+    """What a GSTIN says about itself (state, PAN, kind of entity) and whether its check character is right."""
+    decoded = gst.decode_gstin(gstin)
+    if decoded is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A GSTIN has 15 characters")
+    return decoded
+
+
+@router.post("/gstr2b/reconcile")
+def gstr2b_reconcile(
+    payload: dict = Body(..., description="The GSTR-2B JSON file as downloaded from the GST portal"),
+    start_date: Optional[date] = Query(None, alias="startDate"),
+    end_date: Optional[date] = Query(None, alias="endDate"),
+    user: User = Depends(require_financial_read),
+    db: Session = Depends(get_db),
+):
+    """Match the suppliers' invoices in GSTR-2B against the bills in the books."""
+    start, end = _period(start_date, end_date)
+    return gst_returns.gstr2b_reconcile(db, user.organization_id, payload, start, end)
+
+
+@router.get("/filing-calendar")
+def filing_calendar(
+    fy: Optional[int] = Query(None, ge=2017, le=2100, description="Year the financial year starts in (April)"),
+    quarterly: bool = Query(False),
+    user: User = Depends(require_financial_read),
+    db: Session = Depends(get_db),
+):
+    today = date.today()
+    start_year = fy or (today.year if today.month >= 4 else today.year - 1)
+    return gst_returns.filing_calendar(db, user.organization_id, start_year, quarterly, today)
+
+
+@router.get("/late-fee")
+def late_fee(
+    due: date,
+    filed: date,
+    nil: bool = False,
+    turnover: Optional[Decimal] = Query(None, ge=0, description="Aggregate turnover of the previous financial year"),
+    tax_payable: Decimal = Query(Decimal("0"), ge=0, alias="taxPayable", description="Tax paid in cash with this return"),
+    user: User = Depends(get_current_user),
+):
+    return gst_returns.late_fee(due, filed, nil, turnover, tax_payable)
 
 
 @router.get("/invoices/{invoice_id}/einvoice")

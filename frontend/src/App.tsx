@@ -30,6 +30,8 @@ import { ItemFormPage } from '@/pages/items/ItemFormPage';
 import { PosPage } from '@/pages/pos/PosPage';
 import { PosSalesPage } from '@/pages/pos/PosSalesPage';
 import { PosSettingsPage } from '@/pages/pos/PosSettingsPage';
+import { PhoneScanPage } from '@/pages/pos/PhoneScanPage';
+import { PosHelpPage } from '@/pages/pos/PosHelpPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { LandingPage } from '@/pages/Landing/LandingPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -49,6 +51,7 @@ import { DocumentViewPage } from '@/pages/docflow/DocumentViewPage';
 import { RecurringProfilesPage } from '@/pages/docflow/RecurringProfilesPage';
 import { RefundsPage } from '@/pages/docflow/RefundsPage';
 import { GstFilingPage } from '@/pages/gst/GstFilingPage';
+import { IncomeTaxPage } from '@/pages/tax/IncomeTaxPage';
 import { BudgetsPage } from '@/pages/accounting/BudgetsPage';
 import { FixedAssetsPage } from '@/pages/accounting/FixedAssetsPage';
 import { InventoryPage } from '@/pages/inventory/InventoryPage';
@@ -94,6 +97,8 @@ export function App() {
         <Route path="/" element={<LandingPage />} />
         {/* Customer portal: a shared invoice or quote, opened without logging in */}
         <Route path="/p/:token" element={<DocumentPortalPage />} />
+        {/* Phone scanner of a Point of Sale counter: opened from its QR code, no login (the link's key) */}
+        <Route path="/scan/:token" element={<PhoneScanPage />} />
 
         {/* Auth pages — only for guests (redirect to /dashboard if already logged in) */}
         <Route element={<RequireGuest />}>
@@ -122,6 +127,7 @@ export function App() {
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/pos" element={<RequireWrite><PosPage /></RequireWrite>} />
             <Route path="/pos/sales" element={<PosSalesPage />} />
+            <Route path="/pos/help" element={<PosHelpPage />} />
             <Route
               path="/pos/settings"
               element={
@@ -151,6 +157,10 @@ export function App() {
             <Route path="/sales-orders/new" element={<DocumentFormPage key="sales_order-new" kind="sales_order" />} />
             <Route path="/sales-orders/:docId" element={<DocumentViewPage key="sales_order-view" kind="sales_order" />} />
             <Route path="/sales-orders/:docId/edit" element={<DocumentFormPage key="sales_order-edit" kind="sales_order" />} />
+            <Route path="/delivery-challans" element={<DocumentListPage key="delivery_challan" kind="delivery_challan" />} />
+            <Route path="/delivery-challans/new" element={<DocumentFormPage key="delivery_challan-new" kind="delivery_challan" />} />
+            <Route path="/delivery-challans/:docId" element={<DocumentViewPage key="delivery_challan-view" kind="delivery_challan" />} />
+            <Route path="/delivery-challans/:docId/edit" element={<DocumentFormPage key="delivery_challan-edit" kind="delivery_challan" />} />
             <Route path="/credit-notes" element={<DocumentListPage key="credit_note" kind="credit_note" />} />
             <Route path="/credit-notes/new" element={<DocumentFormPage key="credit_note-new" kind="credit_note" />} />
             <Route path="/credit-notes/:docId" element={<DocumentViewPage key="credit_note-view" kind="credit_note" />} />
@@ -216,6 +226,7 @@ export function App() {
                 </RequireRole>
               }
             />
+            <Route path="/income-tax" element={<IncomeTaxPage />} />
             <Route path="/ai-assistant" element={<AiAssistantPage />} />
             <Route
               path="/insights"

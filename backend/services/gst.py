@@ -129,3 +129,63 @@ def split(tax: Decimal, inter_state: bool) -> Tuple[Decimal, Decimal, Decimal]:
 
 def state_label(code: Optional[str]) -> str:
     return f"{code}-{STATE_CODES[code]}" if code in STATE_CODES else ""
+
+
+# Union territories without a legislature charge UTGST instead of SGST on an
+# intra-UT supply. The amount and the return field (samt) are the same; only
+# the name printed on the invoice changes.
+UT_WITHOUT_LEGISLATURE = {"04", "26", "31", "35", "38", "97"}
+
+
+def sgst_label(supplier_state: Optional[str]) -> str:
+    return "UTGST" if supplier_state in UT_WITHOUT_LEGISLATURE else "SGST"
+
+
+# A GSTIN carries its own facts: 27 ABCDE1234F 2 Z 5 is the state, the PAN,
+# which registration of that PAN in the state, Z for a regular taxpayer, and a
+# Luhn mod 36 check character over the first 14. Checking it catches a mistyped
+# or transposed character before a return is rejected for it.
+_GSTIN_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+_GSTIN_FORMAT = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z][A-Z][0-9A-Z]$")
+_PAN_ENTITY = {
+    "P": "Individual",
+    "C": "Company",
+    "F": "Firm / LLP",
+    "H": "HUF",
+    "A": "Association of persons",
+    "T": "Trust",
+    "B": "Body of individuals",
+    "L": "Local authority",
+    "J": "Artificial juridical person",
+    "G": "Government",
+}
+_TAXPAYER = {"Z": "Regular", "D": "TDS deductor", "C": "TCS collector"}
+
+
+def gstin_checksum_ok(gstin: Optional[str]) -> bool:
+    value = (gstin or "").strip().upper()
+    if not _GSTIN_FORMAT.match(value):
+        return False
+    total = 0
+    for i, ch in enumerate(value[:14]):
+        product = _GSTIN_CHARS.index(ch) * (2 if i % 2 else 1)
+        total += product // 36 + product % 36
+    return _GSTIN_CHARS[(36 - total % 36) % 36] == value[14]
+
+
+def decode_gstin(gstin: Optional[str]) -> Optional[dict]:
+    """Everything the number itself says, or None when it is not 15 characters."""
+    value = (gstin or "").strip().upper()
+    if len(value) != 15:
+        return None
+    code, pan = value[:2], value[2:12]
+    return {
+        "gstin": value,
+        "stateCode": code if code in STATE_CODES else None,
+        "state": STATE_CODES.get(code),
+        "pan": pan,
+        "entityType": _PAN_ENTITY.get(pan[3]),
+        "taxpayerType": _TAXPAYER.get(value[13]),
+        "formatOk": bool(_GSTIN_FORMAT.match(value)),
+        "checksumOk": gstin_checksum_ok(value),
+    }
