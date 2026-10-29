@@ -16,6 +16,7 @@ import { TextAreaField, TextField } from '@/components/ui/Field';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { HoldBadge, useHolds } from '@/components/review/ReviewHold';
 import { FilterSelect, SearchInput, Tabs, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
@@ -50,6 +51,7 @@ function canTakePayment(invoice: InvoiceListItem): boolean {
 }
 
 export function InvoicesPage() {
+  const holds = useHolds('invoices');
   const { t } = useAppContent();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -182,6 +184,7 @@ export function InvoicesPage() {
           <Link to={`/invoices/${row.id}`} className="strong">
             {row.invoiceNumber}
           </Link>
+          <HoldBadge hold={holds[row.id]} />
           {row.reference ? <small>{t('invoices.col.ref', { reference: row.reference })}</small> : null}
         </span>
       ),

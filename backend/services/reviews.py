@@ -14,10 +14,10 @@ import json
 from typing import Iterable, List, Optional, Set
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.models import OrgRole, User
+from backend.models import ChangeLog, OrgRole, User
 
 BUILT_IN = ("admin", "staff", "viewer")
 
@@ -76,3 +76,89 @@ def describe(db: Session, scope: Optional[List[str]]) -> List[str]:
             row = db.get(User, value)
             names.append(row.name if row else "A deleted user")
     return names
+
+
+def _kind(entity_type: str) -> str:
+    words = entity_type.replace("_", " ")
+    if words.endswith("ies"):
+        words = words[:-3] + "y"
+    elif words.endswith("s") and not words.endswith("ss"):
+        words = words[:-1]
+    return words.capitalize()
+
+
+def notifications(db: Session, user: User) -> List[dict]:
+    """Bell items: my changes a reviewer put on hold or sent a message about; for reviewers, how many wait."""
+    out: List[dict] = []
+    mine = (
+        db.execute(
+            select(ChangeLog)
+            .where(
+                ChangeLog.organization_id == user.organization_id,
+                ChangeLog.user_id == user.id,
+                ChangeLog.review_status.in_(("hold", "flagged")),
+            )
+            .order_by(ChangeLog.reviewed_at.desc())
+            .limit(10)
+        )
+        .scalars()
+        .all()
+    )
+    for row in mine:
+        what = f"{_kind(row.entity_type)}{f' {row.entity_label}' if row.entity_label else ''}"
+        who = row.reviewed_by_name or "A reviewer"
+        held = row.review_status == "hold"
+        out.append(
+            {
+                "id": f"review-{row.id}-{row.review_status}-{row.reviewed_at.isoformat() if row.reviewed_at else ''}",
+                "kind": "review_hold" if held else "review_message",
+                "title": f"{who} put your change to {what} on hold" if held else f"{who} sent you a message about {what}",
+                "body": row.review_note or ("Wait for the reviewer before relying on it." if held else "Open Support to answer."),
+                "entity_type": "review",
+                "entity_id": row.id,
+                "severity": "warning" if held else "danger",
+            }
+        )
+    if user.role == "reviewer":
+        ids = users_in_scope(db, user.organization_id, user.review_targets, exclude=user.id)
+        waiting = (
+            db.scalar(
+                select(func.count())
+                .select_from(ChangeLog)
+                .where(
+                    ChangeLog.organization_id == user.organization_id,
+                    ChangeLog.user_id.in_(ids or {"-"}),
+                    ChangeLog.review_status.is_(None),
+                )
+            )
+            or 0
+        )
+        if waiting:
+            out.append(
+                {
+                    "id": f"review-waiting-{waiting}",
+                    "kind": "review_waiting",
+                    "title": f"{waiting} change(s) to check",
+                    "body": "Approve them, put them on hold or send a message.",
+                    "entity_type": "reviews",
+                    "entity_id": None,
+                    "severity": "info",
+                }
+            )
+    return out
+
+
+def holds(db: Session, org_id: str, entity_type: str) -> dict:
+    """{record id: {status, note, by}} for records whose latest reviewed change is on hold or questioned."""
+    rows = db.execute(
+        select(ChangeLog)
+        .where(
+            ChangeLog.organization_id == org_id,
+            ChangeLog.entity_type == entity_type,
+            ChangeLog.review_status.in_(("hold", "flagged")),
+        )
+        .order_by(ChangeLog.reviewed_at)
+    ).scalars()
+    return {
+        row.entity_id: {"status": row.review_status, "note": row.review_note, "by": row.reviewed_by_name} for row in rows if row.entity_id
+    }

@@ -423,6 +423,9 @@ def notifications(user: User = Depends(get_current_user), db: Session = Depends(
                 severity="info",
             )
         )
+    from backend.services import reviews
+
+    items.extend(NotificationItem(**n) for n in reviews.notifications(db, user))
     return Notifications(items=items, count=len(items))
 
 

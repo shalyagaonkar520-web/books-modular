@@ -15,6 +15,7 @@ import { TextAreaField, TextField } from '@/components/ui/Field';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { HoldBanner, useHolds } from '@/components/review/ReviewHold';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { useDownload } from '@/hooks/useDownload';
@@ -35,6 +36,7 @@ type Pending = { kind: 'send' | 'void' };
 const modeLabel = (mode: string, t: Translate): string => paymentModeLabel(mode, t);
 
 export function InvoiceViewPage() {
+  const holds = useHolds('invoices');
   const { t } = useAppContent();
   const { invoiceId = '' } = useParams<{ invoiceId: string }>();
   const navigate = useNavigate();
@@ -194,6 +196,7 @@ export function InvoiceViewPage() {
           </>
         }
       />
+      <HoldBanner hold={holds[data.id]} />
       <ApprovalBanner kind="invoice" id={data.id} status={data.status} total={data.total} approvalStatus={data.approvalStatus} approvalNote={data.approvalNote} approvedTotal={data.approvedTotal} onChanged={refresh} />
 
       <div className="stack printable">

@@ -182,7 +182,7 @@ const platformRequestsApi: RequestsApi = {
 export function PlatformRequestsPage() {
   return (
     <div className="stack">
-      <PageHeader title="Requests" subtitle="Organizations asking for more users, plan changes or help. Answer them here; they see your reply in their admin panel." />
+      <PageHeader title="Requests" subtitle="Support requests from every organization's users: issues, questions about changes, more users, plans. Answer here; they see your reply in Support and by email." />
       <RequestsBoard api={platformRequestsApi} side="platform" />
     </div>
   );

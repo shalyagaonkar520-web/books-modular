@@ -72,8 +72,9 @@ function rgba(hex: string, alpha: number): string {
 
 /**
  * Point the stylesheet's brand variables at the configured colour (or back to
- * the stylesheet's own). In dark mode a very dark brand colour is lightened so
- * buttons and links stay readable on the dark surfaces.
+ * the stylesheet's own). In dark mode a very dark brand colour (black, navy)
+ * would disappear on the dark surfaces, so the dark theme's own blue is used
+ * instead: white text on a clear colour, never a muddy grey.
  */
 function applyBrandColor(color: string, mode: ThemeMode) {
   const style = document.documentElement.style;
@@ -83,7 +84,11 @@ function applyBrandColor(color: string, mode: ThemeMode) {
     return;
   }
   if (mode === 'dark') {
-    const base = luminance(color) < 0.12 ? shadeColor(color, 0.4) : color;
+    if (luminance(color) < 0.12) {
+      BRAND_VARS.forEach((name) => style.removeProperty(name));
+      return;
+    }
+    const base = color;
     style.setProperty('--primary', base);
     style.setProperty('--primary-hover', shadeColor(base, 0.15));
     style.setProperty('--primary-soft', rgba(base, 0.18));

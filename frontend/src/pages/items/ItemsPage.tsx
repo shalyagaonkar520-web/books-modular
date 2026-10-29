@@ -20,6 +20,7 @@ import { TextAreaField, TextField } from '@/components/ui/Field';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { HoldBadge, useHolds } from '@/components/review/ReviewHold';
 import { FilterSelect, SearchInput, Toolbar } from '@/components/ui/Toolbar';
 import { useToast } from '@/components/ui/Toast';
 import { formatCurrency, formatDate, formatDateTime, formatPercent, formatQuantity, parseNumber, todayIso } from '@/utils/format';
@@ -62,6 +63,8 @@ function StockCell({ item }: { item: Item }) {
 }
 
 export function ItemsPage() {
+  // Items a reviewer put on hold show it next to their name.
+  const holds = useHolds('items');
   const { t } = useAppContent();
   const toast = useToast();
   const { canWrite } = useAuth();
@@ -194,7 +197,9 @@ export function ItemsPage() {
       sortable: true,
       render: (item) => (
         <div className="cell-stack">
-          <span className="strong">{item.name}</span>
+          <span className="strong">
+            {item.name} <HoldBadge hold={holds[item.id]} />
+          </span>
           <small className="mono">{item.sku}</small>
           {item.description ? <small className="text-muted">{item.description}</small> : null}
         </div>

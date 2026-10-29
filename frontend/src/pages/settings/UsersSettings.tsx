@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Eye, KeyRound, Plus, Trash2 } from 'lucide-react';
+import { Eye, KeyRound, Plus, Power, Trash2 } from 'lucide-react';
 
 import { useAppContent } from '@/app/AppContentContext';
+import { ActionMenu } from '@/components/ui/ActionMenu';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -124,9 +125,8 @@ export function UsersSettings({ onViewUser }: UsersSettingsProps = {}) {
     {
       key: 'role',
       header: t('settings.users.col.role'),
-      width: '180px',
       render: (row) => (
-        <label className="filter-select">
+        <label className="filter-select users-role">
           <span className="sr-only">{t('settings.users.roleFor', { name: row.name })}</span>
           <select
             className="select select-sm"
@@ -190,53 +190,52 @@ export function UsersSettings({ onViewUser }: UsersSettingsProps = {}) {
     {
       key: 'lastLogin',
       header: t('settings.users.col.lastLogin'),
-      render: (row) =>
-        row.lastLoginAt ? (
-          formatDateTime(row.lastLoginAt)
-        ) : (
-          <span className="text-muted">{row.pendingInvite ? t('settings.users.awaitingInvite') : t('settings.users.never')}</span>
-        ),
+      render: (row) => (
+        <div className="cell-stack users-dates">
+          {row.lastLoginAt ? (
+            <span>{formatDateTime(row.lastLoginAt)}</span>
+          ) : (
+            <span className="text-muted">{row.pendingInvite ? t('settings.users.awaitingInvite') : t('settings.users.never')}</span>
+          )}
+          <small>
+            {t('settings.users.col.added')} {formatDate(row.createdAt)}
+          </small>
+        </div>
+      ),
     },
-    { key: 'created', header: t('settings.users.col.added'), render: (row) => formatDate(row.createdAt) },
     {
       key: 'actions',
       header: '',
       align: 'right',
-      width: '360px',
       render: (row) => (
-        <div className="row-actions">
+        <div className="row-actions users-actions">
           {openUser ? (
             <Button variant="secondary" size="sm" icon={<Eye size={14} />} onClick={() => openUser(row)}>
               {t('settings.users.view')}
             </Button>
           ) : null}
-          <Button variant="ghost" size="sm" icon={<KeyRound size={14} />} onClick={() => setResetting(row)}>
-            {t('settings.users.resetPassword')}
-          </Button>
-          <Button
-            variant={row.isActive ? 'secondary' : 'primary'}
-            size="sm"
-            loading={busyId === row.id}
-            onClick={() =>
-              updateUser(
-                row,
-                { isActive: !row.isActive },
-                row.isActive ? t('settings.users.deactivated', { name: row.name }) : t('settings.users.activated', { name: row.name }),
-              )
-            }
-          >
-            {row.isActive ? t('settings.users.deactivate') : t('settings.users.activate')}
-          </Button>
-          {isAdmin && row.id !== currentUserId && (
-            <Button
-              variant="danger"
-              size="sm"
-              icon={<Trash2 size={14} />}
-              onClick={() => setDeletingUser(row)}
-            >
-              {t('settings.users.delete')}
-            </Button>
-          )}
+          <ActionMenu
+            iconOnly
+            label={`More for ${row.name}`}
+            disabled={busyId === row.id}
+            items={[
+              { key: 'reset', label: t('settings.users.resetPassword'), icon: <KeyRound size={14} />, onSelect: () => setResetting(row) },
+              {
+                key: 'active',
+                label: row.isActive ? t('settings.users.deactivate') : t('settings.users.activate'),
+                icon: <Power size={14} />,
+                onSelect: () =>
+                  void updateUser(
+                    row,
+                    { isActive: !row.isActive },
+                    row.isActive ? t('settings.users.deactivated', { name: row.name }) : t('settings.users.activated', { name: row.name }),
+                  ),
+              },
+              ...(isAdmin && row.id !== currentUserId
+                ? [{ key: 'delete', label: t('settings.users.delete'), icon: <Trash2 size={14} />, danger: true, onSelect: () => setDeletingUser(row) }]
+                : []),
+            ]}
+          />
         </div>
       ),
     },

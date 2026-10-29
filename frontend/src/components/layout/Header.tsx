@@ -32,6 +32,11 @@ function notificationRoute(item: NotificationItem): string {
       return id ? `/items?item=${id}` : '/items';
     case 'banking':
       return '/banking';
+    case 'review':
+      // A reviewer put my change on hold or sent me a message: answer it in Support.
+      return '/support';
+    case 'reviews':
+      return '/reviews';
     default:
       return '/';
   }

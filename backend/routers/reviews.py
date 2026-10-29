@@ -77,6 +77,12 @@ def _with_status(stmt, wanted: str):
     return stmt
 
 
+@router.get("/holds")
+def record_holds(entity_type: str = Query(..., max_length=60), user: User = Depends(require_subscription), db: Session = Depends(get_db)):
+    """Which records of this kind a reviewer put on hold or sent a message about: {id: {status, note, by}}."""
+    return reviews.holds(db, user.organization_id, entity_type)
+
+
 @router.get("/summary", response_model=ReviewSummary)
 def summary(user: User = Depends(require_subscription), db: Session = Depends(get_db)):
     _reviewer(user)

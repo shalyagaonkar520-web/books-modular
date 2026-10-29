@@ -10,6 +10,7 @@ import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { CheckboxField, SelectField, TextAreaField, TextField } from '@/components/ui/Field';
 import { useAppContent } from '@/app/AppContentContext';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { HoldBanner, useHolds } from '@/components/review/ReviewHold';
 import { useAuth } from '@/auth/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
@@ -143,6 +144,7 @@ interface ItemFormProps {
 }
 
 function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
+  const holds = useHolds('items');
   const { t } = useAppContent();
   const toast = useToast();
   const { organization, canWrite } = useAuth();
@@ -202,6 +204,7 @@ function ItemForm({ item, options, optionsError, onDone }: ItemFormProps) {
       />
 
       <div className="form-page">
+      {item ? <HoldBanner hold={holds[item.id]} /> : null}
       <FormError message={error ?? optionsError} />
 
       <section className="form-page-section">
