@@ -19,7 +19,7 @@ export interface PlatformPage<T> {
   pageSize: number;
 }
 
-export type PlatformRole = 'admin' | 'staff' | 'viewer';
+export type PlatformRole = 'admin' | 'staff' | 'viewer' | 'custom';
 
 export interface PlatformAdmin {
   id: string;
@@ -160,6 +160,9 @@ export interface PlatformUser {
   isActive: boolean;
   organizationId: string;
   organizationName: string;
+  /** With role "custom": the organization's role and its name. */
+  customRoleId?: string | null;
+  customRoleName?: string | null;
   lastLoginAt?: string | null;
   createdAt: string;
 }
@@ -344,12 +347,14 @@ export interface CreateUserBody {
   email: string;
   password: string;
   role: PlatformRole;
+  customRoleId?: string;
 }
 
 export interface UpdateUserBody {
   name?: string;
   email?: string;
   role?: PlatformRole;
+  customRoleId?: string;
   isActive?: boolean;
   organizationId?: string;
 }

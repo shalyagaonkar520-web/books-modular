@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { platformApi, type OrgSummary, type PlatformRole, type PlatformUser } from '@/api/platform';
+import { platformApi, type OrgSummary, type PlatformUser } from '@/api/platform';
 import { Button } from '@/components/ui/Button';
 import { FormError } from '@/components/ui/Feedback';
 import { CheckboxField, SelectField, TextField } from '@/components/ui/Field';
@@ -11,11 +11,7 @@ import { useSubmit } from '@/hooks/useSubmit';
 
 import { PASSWORD_HINT } from '@/pages/settings/passwordRules';
 
-const ROLE_OPTIONS: Array<{ value: PlatformRole; label: string }> = [
-  { value: 'admin', label: 'Administrator' },
-  { value: 'staff', label: 'Staff' },
-  { value: 'viewer', label: 'Viewer' },
-];
+import { CreateOrgRole, NEW_ROLE, roleOptions, splitRole, useOrgRoles } from './orgRoles';
 
 // ---------------------------------------------------------------------------
 // Create user
@@ -35,7 +31,9 @@ export function CreatePlatformUserModal({ organizations, defaultOrganizationId, 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<PlatformRole>('staff');
+  const [role, setRole] = useState('staff');
+  const [creatingRole, setCreatingRole] = useState(false);
+  const orgRoles = useOrgRoles(organizationId);
 
   const create = async () => {
     const created = await run(() =>
@@ -44,7 +42,7 @@ export function CreatePlatformUserModal({ organizations, defaultOrganizationId, 
         name: name.trim(),
         email: email.trim().toLowerCase(),
         password,
-        role,
+        ...splitRole(role),
       }),
     );
     if (created) {
@@ -57,55 +55,73 @@ export function CreatePlatformUserModal({ organizations, defaultOrganizationId, 
   const disabled = !organizationId || !name.trim() || !email.trim() || !password;
 
   return (
-    <Modal
-      open
-      title="Create user"
-      subtitle="Add a user directly to any organization."
-      size="md"
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={create} loading={submitting} disabled={disabled}>
-            Create user
-          </Button>
-        </>
-      }
-    >
-      <div className="stack">
-        <FormError message={error} />
-        <SelectField
-          label="Organization"
-          value={organizationId}
-          required
-          placeholder="Select an organization"
-          error={fieldErrors.organizationId}
-          options={organizations.map((org) => ({ value: org.id, label: org.name }))}
-          onChange={(event) => setOrganizationId(event.target.value)}
+    <>
+      {creatingRole ? (
+        <CreateOrgRole
+          orgId={organizationId}
+          onDone={(made) => {
+            setCreatingRole(false);
+            if (made) {
+              orgRoles.reload();
+              setRole(`custom:${made.id}`);
+            }
+          }}
         />
-        <TextField label="Full name" value={name} required error={fieldErrors.name} onChange={(event) => setName(event.target.value)} />
-        <TextField label="Email" type="email" value={email} required error={fieldErrors.email} onChange={(event) => setEmail(event.target.value)} />
-        <SelectField
-          label="Role"
-          value={role}
-          options={ROLE_OPTIONS}
-          error={fieldErrors.role}
-          onChange={(event) => setRole(event.target.value as PlatformRole)}
-        />
-        <TextField
-          label="Password"
-          type="password"
-          value={password}
-          required
-          hint={PASSWORD_HINT}
-          autoComplete="new-password"
-          error={fieldErrors.password}
-          onChange={(event) => setPassword(event.target.value)}
-        />
-      </div>
-    </Modal>
+      ) : null}
+      <Modal
+        open={!creatingRole}
+        title="Create user"
+        subtitle="Add a user directly to any organization."
+        size="md"
+        onClose={onClose}
+        footer={
+          <>
+            <Button variant="secondary" onClick={onClose} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={create} loading={submitting} disabled={disabled}>
+              Create user
+            </Button>
+          </>
+        }
+      >
+        <div className="stack">
+          <FormError message={error} />
+          <SelectField
+            label="Organization"
+            value={organizationId}
+            required
+            placeholder="Select an organization"
+            error={fieldErrors.organizationId}
+            options={organizations.map((org) => ({ value: org.id, label: org.name }))}
+            onChange={(event) => {
+              setOrganizationId(event.target.value);
+              if (role.startsWith('custom:')) setRole('staff');
+            }}
+          />
+          <TextField label="Full name" value={name} required error={fieldErrors.name} onChange={(event) => setName(event.target.value)} />
+          <TextField label="Email" type="email" value={email} required error={fieldErrors.email} onChange={(event) => setEmail(event.target.value)} />
+          <SelectField
+            label="Role"
+            value={role}
+            options={roleOptions(orgRoles.data ?? [], !!organizationId)}
+            hint={organizationId ? 'Custom roles choose exactly which features this user can see or edit.' : 'Choose an organization to see its custom roles.'}
+            error={fieldErrors.role ?? fieldErrors.customRoleId}
+            onChange={(event) => (event.target.value === NEW_ROLE ? setCreatingRole(true) : setRole(event.target.value))}
+          />
+          <TextField
+            label="Password"
+            type="password"
+            value={password}
+            required
+            hint={PASSWORD_HINT}
+            autoComplete="new-password"
+            error={fieldErrors.password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </div>
+      </Modal>
+    </>
   );
 }
 
@@ -127,7 +143,10 @@ export function EditPlatformUserModal({ user, organizations, onClose, onSaved }:
   const [email, setEmail] = useState(user.email);
   const [organizationId, setOrganizationId] = useState(user.organizationId);
   // Start from the user's own role (a custom or employee role included), so saving other changes never changes it.
-  const [role, setRole] = useState<PlatformRole>(user.role as PlatformRole);
+  const startRole = user.role === 'custom' && user.customRoleId ? `custom:${user.customRoleId}` : user.role;
+  const [role, setRole] = useState(startRole);
+  const [creatingRole, setCreatingRole] = useState(false);
+  const orgRoles = useOrgRoles(organizationId);
   const [isActive, setIsActive] = useState(user.isActive);
 
   const orgsAsync = useAsync(
@@ -142,7 +161,7 @@ export function EditPlatformUserModal({ user, organizations, onClose, onSaved }:
         name: name.trim(),
         email: email.trim().toLowerCase(),
         organizationId: organizationId !== user.organizationId ? organizationId : undefined,
-        role: role !== user.role ? role : undefined,
+        ...(role !== startRole ? splitRole(role) : {}),
         isActive,
       }),
     );
@@ -153,54 +172,75 @@ export function EditPlatformUserModal({ user, organizations, onClose, onSaved }:
     }
   };
 
-  const roleIsCustom = !ROLE_OPTIONS.some((r) => r.value === user.role);
+  const options = roleOptions(organizationId === user.organizationId ? (orgRoles.data ?? []) : [], organizationId === user.organizationId);
+  // An employee portal login, or a custom role still loading, keeps its own entry.
+  if (!options.some((o) => o.value === role)) {
+    options.unshift({ value: role, label: role === startRole && user.customRoleName ? `${user.customRoleName} (custom role)` : role });
+  }
 
   return (
-    <Modal
-      open
-      title={`Edit · ${user.name}`}
-      subtitle={`${user.email} · ${user.organizationName}`}
-      size="sm"
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={save} loading={submitting} disabled={!name.trim() || !email.trim()}>
-            Save changes
-          </Button>
-        </>
-      }
-    >
-      <div className="stack">
-        <FormError message={error} />
-        {availableOrgs.length > 0 ? (
+    <>
+      {creatingRole ? (
+        <CreateOrgRole
+          orgId={organizationId}
+          onDone={(made) => {
+            setCreatingRole(false);
+            if (made) {
+              orgRoles.reload();
+              setRole(`custom:${made.id}`);
+            }
+          }}
+        />
+      ) : null}
+      <Modal
+        open={!creatingRole}
+        title={`Edit · ${user.name}`}
+        subtitle={`${user.email} · ${user.organizationName}`}
+        size="sm"
+        onClose={onClose}
+        footer={
+          <>
+            <Button variant="secondary" onClick={onClose} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={save} loading={submitting} disabled={!name.trim() || !email.trim()}>
+              Save changes
+            </Button>
+          </>
+        }
+      >
+        <div className="stack">
+          <FormError message={error} />
+          {availableOrgs.length > 0 ? (
+            <SelectField
+              label="Organization"
+              value={organizationId}
+              hint="Reassign or transfer this user to an organization"
+              options={availableOrgs.map((org) => ({ value: org.id, label: org.name }))}
+              error={fieldErrors.organizationId}
+              onChange={(event) => {
+                setOrganizationId(event.target.value);
+                if (role.startsWith('custom:')) setRole('staff');
+              }}
+            />
+          ) : null}
+          <TextField label="Full name" value={name} required error={fieldErrors.name} onChange={(event) => setName(event.target.value)} />
+          <TextField label="Email address" type="email" value={email} required error={fieldErrors.email} onChange={(event) => setEmail(event.target.value)} />
           <SelectField
-            label="Organization"
-            value={organizationId}
-            hint="Reassign or transfer this user to an organization"
-            options={availableOrgs.map((org) => ({ value: org.id, label: org.name }))}
-            error={fieldErrors.organizationId}
-            onChange={(event) => setOrganizationId(event.target.value)}
+            label="Role"
+            value={role}
+            options={options}
+            error={fieldErrors.role ?? fieldErrors.customRoleId}
+            onChange={(event) => (event.target.value === NEW_ROLE ? setCreatingRole(true) : setRole(event.target.value))}
           />
-        ) : null}
-        <TextField label="Full name" value={name} required error={fieldErrors.name} onChange={(event) => setName(event.target.value)} />
-        <TextField label="Email address" type="email" value={email} required error={fieldErrors.email} onChange={(event) => setEmail(event.target.value)} />
-        <SelectField
-          label="Role"
-          value={role}
-          options={roleIsCustom ? [{ value: user.role, label: user.role === 'custom' ? 'Custom role (set by the organization)' : user.role }, ...ROLE_OPTIONS] : ROLE_OPTIONS}
-          error={fieldErrors.role}
-          onChange={(event) => setRole(event.target.value as PlatformRole)}
-        />
-        <CheckboxField
-          label="Active (can sign in)"
-          checked={isActive}
-          onChange={(event) => setIsActive(event.target.checked)}
-        />
-      </div>
-    </Modal>
+          <CheckboxField
+            label="Active (can sign in)"
+            checked={isActive}
+            onChange={(event) => setIsActive(event.target.checked)}
+          />
+        </div>
+      </Modal>
+    </>
   );
 }
 

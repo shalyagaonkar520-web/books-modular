@@ -35,6 +35,7 @@ from backend.models import (
     Organization,
     OrgPanelAdmin,
     OrgPanelRefreshToken,
+    OrgRole,
     PlatformAdmin,
     PlatformRefreshToken,
     RefreshToken,
@@ -43,7 +44,7 @@ from backend.models import (
 )
 from backend.routers import razorpay as rzp
 from backend.schemas.app_content import PanelContentAccessIn, PanelContentAccessOut
-from backend.schemas.common import APIModel, Page
+from backend.schemas.common import APIModel, Message, Page
 from backend.schemas.org_admin import (
     ApproveOrganizationRequest,
     CreateOrgPanelAdminRequest,
@@ -94,7 +95,7 @@ from backend.security import (
     hash_token,
     verify_password,
 )
-from backend.services import audit, module_pricing, panel_content, plans, platform_settings, support
+from backend.services import audit, module_pricing, org_roles, panel_content, permissions, plans, platform_settings, support
 from backend.services import subscription as subs
 from backend.services.app_content import delete_org_app_content
 from backend.services.chart_of_accounts import bootstrap_accounts
@@ -269,7 +270,8 @@ def _org_name_map(db: Session, org_ids: List[str]) -> dict:
     return {r[0]: r[1] for r in rows}
 
 
-def _user_out(u: User, org_name: Optional[str]) -> PlatformUserOut:
+def _user_out(u: User, org_name: Optional[str], db: Optional[Session] = None) -> PlatformUserOut:
+    role = db.get(OrgRole, u.custom_role_id) if db is not None and u.custom_role_id else None
     return PlatformUserOut(
         id=u.id,
         name=u.name,
@@ -278,6 +280,8 @@ def _user_out(u: User, org_name: Optional[str]) -> PlatformUserOut:
         is_active=u.is_active,
         organization_id=u.organization_id,
         organization_name=org_name,
+        custom_role_id=u.custom_role_id,
+        custom_role_name=role.name if role else None,
         last_login_at=u.last_login_at,
         created_at=u.created_at,
     )
@@ -881,7 +885,7 @@ def organization_users(
     stmt = select(User).where(User.organization_id == org_id, User.role != "integration")
     total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
     users = db.execute(stmt.order_by(User.created_at.desc()).offset(pagination.offset).limit(pagination.page_size)).scalars().all()
-    items = [_user_out(u, org.name) for u in users]
+    items = [_user_out(u, org.name, db) for u in users]
     return Page(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
@@ -1617,7 +1621,7 @@ def list_users(
     total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
     users = db.execute(stmt.order_by(User.created_at.desc()).offset(pagination.offset).limit(pagination.page_size)).scalars().all()
     names = _org_name_map(db, [u.organization_id for u in users])
-    items = [_user_out(u, names.get(u.organization_id)) for u in users]
+    items = [_user_out(u, names.get(u.organization_id), db) for u in users]
     return Page(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
@@ -1629,18 +1633,20 @@ def create_user(payload: CreatePlatformUserRequest, db: Session = Depends(get_db
     email = payload.email.lower().strip()
     if db.execute(select(User.id).where(User.email == email)).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "A user with this email already exists")
+    custom_role_id = org_roles.resolve(db, org.id, payload.role, payload.custom_role_id)
     user = User(
         organization_id=org.id,
         name=payload.name,
         email=email,
         password_hash=hash_password(payload.password),
         role=payload.role,
+        custom_role_id=custom_role_id,
     )
     db.add(user)
     db.flush()
     audit.record(db, admin, "create", "user", user.id, f"User {email} created by platform admin {admin.email}", organization_id=org.id)
     db.commit()
-    return _user_out(user, org.name)
+    return _user_out(user, org.name, db)
 
 
 def _would_orphan_org(db: Session, user: User) -> bool:
@@ -1702,9 +1708,11 @@ def update_user(
             if existing:
                 raise HTTPException(status.HTTP_409_CONFLICT, "A user with this email address already exists")
             user.email = clean_email
-    if data.get("role"):
-        user.role = data["role"]
-        user.custom_role_id = None
+    if data.get("role") or data.get("custom_role_id"):
+        role = data.get("role") or user.role
+        wanted = data.get("custom_role_id") or (user.custom_role_id if role == "custom" else None)
+        user.custom_role_id = org_roles.resolve(db, target_org_id, role, wanted)
+        user.role = role
     if data.get("is_active") is not None:
         user.is_active = data["is_active"]
     summary = f"User {user.email} updated by platform admin {admin.email}"
@@ -1720,7 +1728,49 @@ def update_user(
     org = db.get(Organization, user.organization_id)
     audit.record(db, admin, "update", "user", user.id, summary, organization_id=user.organization_id)
     db.commit()
-    return _user_out(user, org.name if org else None)
+    return _user_out(user, org.name if org else None, db)
+
+
+# --------------------------------------------------------------------------- #
+# An organization's custom roles (the super admin can do what its admins can)
+# --------------------------------------------------------------------------- #
+def _org_or_404(db: Session, org_id: str) -> Organization:
+    org = db.get(Organization, org_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    return org
+
+
+@router.get("/organizations/{org_id}/roles/catalog")
+def org_role_catalog(org_id: str, admin: PlatformAdmin = Depends(get_current_superuser)):
+    return permissions.catalog()
+
+
+@router.get("/organizations/{org_id}/roles", response_model=List[org_roles.RoleOut])
+def org_list_roles(org_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    _org_or_404(db, org_id)
+    return org_roles.list_roles(db, org_id)
+
+
+@router.post("/organizations/{org_id}/roles", response_model=org_roles.RoleOut, status_code=status.HTTP_201_CREATED)
+def org_create_role(
+    org_id: str, payload: org_roles.RoleIn, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
+):
+    _org_or_404(db, org_id)
+    return org_roles.create_role(db, org_id, admin, payload)
+
+
+@router.put("/organizations/{org_id}/roles/{role_id}", response_model=org_roles.RoleOut)
+def org_update_role(
+    org_id: str, role_id: str, payload: org_roles.RoleIn, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)
+):
+    return org_roles.update_role(db, org_id, admin, role_id, payload)
+
+
+@router.delete("/organizations/{org_id}/roles/{role_id}", response_model=Message)
+def org_delete_role(org_id: str, role_id: str, db: Session = Depends(get_db), admin: PlatformAdmin = Depends(get_current_superuser)):
+    org_roles.delete_role(db, org_id, admin, role_id)
+    return Message(message="Role deleted")
 
 
 @router.post("/users/{user_id}/reset-password")

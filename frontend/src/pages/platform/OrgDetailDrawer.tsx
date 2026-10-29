@@ -50,6 +50,7 @@ import { statusLabel, statusTone } from '@/utils/status';
 import { ImpersonateButton } from './ImpersonateButton';
 import { CreateAdminLoginButton, PanelLoginUrl, useResetPanelPassword } from './PanelAdminForms';
 import { ConnectedAppsTab } from './ConnectedAppsTab';
+import { OrgRolesTab } from './orgRoles';
 import { PanelContentAccessTab } from './PanelContentAccessTab';
 import {
   OpenInAppMenu,
@@ -100,12 +101,13 @@ interface OrgDetailDrawerProps {
   onChanged: () => void;
 }
 
-type TabId = 'overview' | 'settings' | 'users' | 'panel' | 'permissions' | 'apps' | 'invoices' | 'activity';
+type TabId = 'overview' | 'settings' | 'users' | 'roles' | 'panel' | 'permissions' | 'apps' | 'invoices' | 'activity';
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'settings', label: 'Settings' },
   { id: 'users', label: 'Users' },
+  { id: 'roles', label: 'Roles' },
   { id: 'panel', label: 'Admin panel logins' },
   { id: 'permissions', label: 'Panel permissions' },
   { id: 'apps', label: 'Connected apps' },
@@ -269,6 +271,7 @@ export function OrgDetailDrawer({ orgId, onClose, onChanged }: OrgDetailDrawerPr
               }}
             />
           ) : null}
+          {tab === 'roles' ? <OrgRolesTab orgId={orgId} /> : null}
           {tab === 'panel' ? <PanelAdminsTab orgId={orgId} orgName={data.name} orgCode={data.code} /> : null}
           {tab === 'permissions' ? <PanelContentAccessTab orgId={orgId} orgName={data.name} /> : null}
           {tab === 'apps' ? <ConnectedAppsTab orgId={orgId} orgName={data.name} /> : null}

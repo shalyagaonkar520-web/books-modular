@@ -87,7 +87,7 @@ export function UsersPage() {
       ),
     },
     { key: 'organization', header: 'Organization', render: (row) => row.organizationName },
-    { key: 'role', header: 'Role', render: (row) => <Badge tone="info">{row.role}</Badge> },
+    { key: 'role', header: 'Role', render: (row) => <Badge tone="info">{row.role === 'custom' && row.customRoleName ? row.customRoleName : row.role}</Badge> },
     {
       key: 'status',
       header: 'Status',

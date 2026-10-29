@@ -292,6 +292,8 @@ class PlatformUserOut(APIModel):
     is_active: bool
     organization_id: str
     organization_name: Optional[str] = None
+    custom_role_id: Optional[str] = None
+    custom_role_name: Optional[str] = None
     last_login_at: Optional[datetime] = None
     created_at: datetime
 
@@ -302,11 +304,13 @@ class CreatePlatformUserRequest(APIModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=255)
     role: str = Field(default="staff")
+    # With role "custom": which of the organization's roles.
+    custom_role_id: Optional[str] = Field(default=None, max_length=32)
 
     @field_validator("role")
     @classmethod
     def _role(cls, v: str) -> str:
-        allowed = {"admin", "staff", "viewer"}
+        allowed = {"admin", "staff", "viewer", "custom"}
         if v not in allowed:
             raise ValueError(f"role must be one of {sorted(allowed)}")
         return v
@@ -323,11 +327,12 @@ class UpdatePlatformUserRequest(APIModel):
     role: Optional[str] = None
     is_active: Optional[bool] = None
     organization_id: Optional[str] = Field(default=None, min_length=1, max_length=32)
+    custom_role_id: Optional[str] = Field(default=None, max_length=32)
 
     @field_validator("role")
     @classmethod
     def _role(cls, v):
-        if v is not None and v not in {"admin", "staff", "viewer", "employee"}:
+        if v is not None and v not in {"admin", "staff", "viewer", "employee", "custom"}:
             raise ValueError("invalid role")
         return v
 

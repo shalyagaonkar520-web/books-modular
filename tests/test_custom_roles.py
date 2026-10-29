@@ -170,3 +170,57 @@ def test_org_admin_panel_manages_roles_and_invites_with_them(client, books):
     assert [r["userCount"] for r in client.get("/api/org-admin/roles", headers=ph).json()] == [1]
     # The tenant's own users never reach the panel's role routes.
     assert client.get("/api/org-admin/roles", headers=books["h"]).status_code in (401, 403)
+
+
+def test_super_admin_makes_roles_and_gives_them_to_users(client, books):
+    h = books["h"]
+    sa = platform_admin_headers(client)
+    org_id = client.get("/api/auth/me", headers=h).json()["user"]["organizationId"]
+    base = f"/api/platform/organizations/{org_id}/roles"
+    assert len(client.get(f"{base}/catalog", headers=sa).json()) == len(permissions.FEATURES)
+    made = client.post(base, headers=sa, json={"name": "Store helper", "permissions": {"invoices": "edit", "customers": "view"}})
+    assert made.status_code == 201, made.text
+    role = made.json()
+    assert [r["id"] for r in client.get(base, headers=sa).json()] == [role["id"]]
+    # Visible to the organization's own admins too.
+    assert role["id"] in [r["id"] for r in client.get("/api/roles", headers=h).json()]
+
+    email = f"helper-{uuid.uuid4().hex[:8]}@roles.example.com"
+    created = client.post(
+        "/api/platform/users",
+        headers=sa,
+        json={"organizationId": org_id, "name": "Store Helper", "email": email, "password": "Helper1Pass!", "role": "custom", "customRoleId": role["id"]},
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["role"] == "custom" and body["customRoleId"] == role["id"] and body["customRoleName"] == "Store helper"
+    listed = client.get("/api/platform/users", headers=sa, params={"organization_id": org_id}).json()["items"]
+    assert next(u for u in listed if u["id"] == body["id"])["customRoleName"] == "Store helper"
+
+    # A custom role needs one of this organization's roles.
+    missing = client.post(
+        "/api/platform/users",
+        headers=sa,
+        json={"organizationId": org_id, "name": "No Role", "email": f"x-{uuid.uuid4().hex[:6]}@roles.example.com", "password": "Helper1Pass!", "role": "custom"},
+    )
+    assert missing.status_code == 400
+    other = register_org(client, "Otherroles")
+    foreign = client.post(f"/api/platform/organizations/{other['org']['id']}/roles", headers=sa, json={"name": "Elsewhere", "permissions": {"pos": "edit"}}).json()
+    wrong = client.patch(f"/api/platform/users/{body['id']}", headers=sa, json={"customRoleId": foreign["id"]})
+    assert wrong.status_code == 404
+
+    # Edit: switch a staff user onto the role, then edit and delete the role.
+    staff = client.patch(f"/api/platform/users/{body['id']}", headers=sa, json={"role": "staff"}).json()
+    assert staff["customRoleId"] is None
+    back = client.patch(f"/api/platform/users/{body['id']}", headers=sa, json={"role": "custom", "customRoleId": role["id"]}).json()
+    assert back["customRoleId"] == role["id"]
+    login = client.post("/api/auth/login", json={"email": email, "password": "Helper1Pass!"}).json()
+    uh = auth(login["accessToken"])
+    assert client.get("/api/invoices", headers=uh).status_code == 200
+    assert client.get("/api/bills", headers=uh).status_code == 403
+    upd = client.put(f"{base}/{role['id']}", headers=sa, json={"name": "Store helper", "permissions": {"bills": "view"}})
+    assert upd.status_code == 200
+    assert client.get("/api/bills", headers=uh).status_code == 200
+    assert client.delete(f"{base}/{role['id']}", headers=sa).status_code == 400  # still has a user
+    client.patch(f"/api/platform/users/{body['id']}", headers=sa, json={"role": "viewer"})
+    assert client.delete(f"{base}/{role['id']}", headers=sa).status_code == 200
