@@ -106,6 +106,8 @@ export function PosPage() {
 
   useEffect(() => saveBill(bill), [bill]);
   const locked = bill.pending !== null;
+  const billRef = useRef(bill);
+  billRef.current = bill;
 
   const addCode = useCallback(
     async (raw: string, quantity = 1) => {
@@ -118,11 +120,15 @@ export function PosPage() {
       setLooking(true);
       try {
         const item = await posApi.lookup(value);
+        // Each item is scanned in once; more of it only with + on the bill, so a
+        // repeated or held scan never adds by mistake.
+        if (billRef.current.lines.some((line) => line.itemId === item.id)) {
+          toast.notify(t('pos.alreadyOnBill', { name: item.name }), 'info');
+          return;
+        }
         setBill((current) => {
-          const existing = current.lines.find((line) => line.itemId === item.id);
-          const lines = existing
-            ? current.lines.map((line) => (line.itemId === item.id ? { ...line, quantity: line.quantity + quantity } : line))
-            : [
+          if (current.lines.some((line) => line.itemId === item.id)) return current;
+          const lines = [
                 ...current.lines,
                 {
                   itemId: item.id,

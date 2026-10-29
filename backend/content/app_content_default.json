@@ -4622,6 +4622,10 @@
     "settings.roles.deleteConfirm": "Delete the role {name}? A role that users still have cannot be deleted; give them another role first.",
     "settings.invite.role.custom": "{name} (custom role)",
     "settings.invite.customRoleHint": "They get exactly what the {name} role allows. Change the role later under Roles.",
-    "settings.invite.noCustomRoles": "Need a role other than Admin, Staff or Viewer? Create one under Roles below, then pick it here."
+    "settings.invite.noCustomRoles": "Need a role other than Admin, Staff or Viewer? Create one under Roles below, then pick it here.",
+
+    "pos.alreadyOnBill": "{name} is already on the bill. Use + to add more.",
+    "pos.scan.alreadySent": "{name} is already on the bill. Use + on the counter to add more.",
+    "pos.scan.alreadyAdded": "{name} was already added in this session. Change its stock in Items to add more."
   }
 }

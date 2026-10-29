@@ -85,7 +85,11 @@ export function useBarcodeScanner(onCode: (code: string) => void, dedupeMs = 150
       const code = raw.trim();
       if (!code || isPausedRef.current?.()) return;
       const now = Date.now();
-      if (code === lastRef.current.code && now - lastRef.current.at < dedupeMs) return;
+      if (code === lastRef.current.code && now - lastRef.current.at < dedupeMs) {
+        // Still in view: keep it quiet until the code has been out of sight for dedupeMs.
+        lastRef.current = { code, at: now };
+        return;
+      }
       lastRef.current = { code, at: now };
       scanFeedback();
       onCodeRef.current(code);

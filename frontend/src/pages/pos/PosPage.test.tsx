@@ -93,8 +93,12 @@ describe('PosPage', () => {
     });
     renderWithProviders(<PosPage />);
     await scan(BUTTER.barcode);
-    await scan(BUTTER.barcode);
     expect(await screen.findByText('Amul Butter')).toBeInTheDocument();
+    // Scanning it again adds nothing: more of an item only with +.
+    await scan(BUTTER.barcode);
+    expect(await screen.findByText(/already on the bill/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('pos-total')).toHaveTextContent('105'));
+    await userEvent.click(screen.getByRole('button', { name: 'One more Amul Butter' }));
     await waitFor(() => expect(screen.getByTestId('pos-total')).toHaveTextContent('210'));
 
     await userEvent.click(screen.getByRole('button', { name: /pay/i }));

@@ -114,9 +114,13 @@ export function PhoneScanPage() {
     [],
   );
 
+  // Items already sent in this session: each goes in once, more only by hand.
+  const doneRef = useRef<Set<string>>(new Set());
+
   /** Put it on the bill (sale) or into stock (items). */
   const deliver = useCallback(
     async (code: string, name: string, howMany: number) => {
+      doneRef.current.add(code);
       if (session?.purpose === 'items') {
         const item = await phoneScanApi.addStock(token, code, howMany);
         note(t('pos.scan.stockLine', { name, qty: formatQuantity(howMany), stock: formatQuantity(item.stockOnHand) }));
@@ -137,6 +141,10 @@ export function PhoneScanPage() {
       setQuantity('1');
       try {
         const item = await phoneScanApi.lookup(token, code);
+        if (doneRef.current.has(code)) {
+          setError(t(session?.purpose === 'items' ? 'pos.scan.alreadyAdded' : 'pos.scan.alreadySent', { name: item.name }));
+          return;
+        }
         if (fast) {
           // Fast scan: straight through, one at a time.
           setBusy(true);
@@ -157,7 +165,7 @@ export function PhoneScanPage() {
         }
       }
     },
-    [deliver, fail, fast, token],
+    [deliver, fail, fast, session?.purpose, t, token],
   );
 
   const scanner = useBarcodeScanner((code) => void look(code), 1500, () => Boolean(currentRef.current) || busyRef.current);
