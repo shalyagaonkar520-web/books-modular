@@ -25,7 +25,7 @@ from backend.schemas.auth import (
 )
 from backend.schemas.common import Message, Page
 from backend.schemas.documents_flow import LockDateOut, LockDateUpdate
-from backend.services import audit, export_service, org_roles, org_users, permissions
+from backend.services import audit, data_export, export_service, org_roles, org_users, permissions
 from backend.services.tenancy import Pagination
 
 router = APIRouter(prefix="/api", tags=["Organization"])
@@ -62,6 +62,23 @@ def set_lock_date(payload: LockDateUpdate, user: User = Depends(require_admin), 
     audit.record(db, user, "update", "organization", org.id, f"{summary} (was {previous.isoformat() if previous else 'unlocked'})")
     db.commit()
     return LockDateOut(lock_date=org.lock_date)
+
+
+@router.get("/organization/export")
+def export_all(user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Every record of the organization as one Excel workbook (admins only)."""
+    return _export_response(db, user.organization_id, user)
+
+
+def _export_response(db: Session, org_id: str, actor) -> Response:
+    content, filename = data_export.export_workbook(db, org_id)
+    audit.record(db, actor, "export", "organization", org_id, "Exported all books (Excel)", organization_id=org_id)
+    db.commit()
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/roles/catalog")

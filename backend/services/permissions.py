@@ -148,9 +148,22 @@ def allows(permissions: Dict[str, str], key: str, needed: str) -> bool:
     return _RANK[level(permissions, key)] >= _RANK[needed]
 
 
-def request_error(permissions: Dict[str, str], method: str, path: str) -> Optional[str]:
-    """Why a custom-role user may not make this request (the 403 detail), else None."""
+def request_error(permissions: Dict[str, str], method: str, path: str, admin_only: bool = False) -> Optional[str]:
+    """Why a custom-role user may not make this request (the 403 detail), else None.
+
+    ``admin_only``: the endpoint is guarded for administrators only. Outside a
+    role-controlled feature (company settings, users, exports) that stays
+    closed; inside one (e.g. a banking change) it needs Edit on the feature.
+    """
     reading = method.upper() in ("GET", "HEAD", "OPTIONS")
+    if admin_only:
+        feature = feature_for_path(path)
+        if feature is None or any(_under(path, p) for p in ADMIN_ONLY):
+            return "Only an administrator can do this."
+        if allows(permissions, feature, EDIT):
+            return None
+        label = next(f.label for f in FEATURES if f.key == feature)
+        return f"Your role does not allow changing {label}."
     if any(_under(path, p) for p in ADMIN_ONLY) and not (reading and any(_under(path, p) for p in ALWAYS_READABLE)):
         return "Only an administrator can do this."
     feature = feature_for_path(path)

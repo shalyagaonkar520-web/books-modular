@@ -59,7 +59,7 @@ from backend.security import (
     hash_token,
     verify_password,
 )
-from backend.services import audit, module_pricing, org_roles, org_users, panel_content, permissions, subscription
+from backend.services import audit, data_export, module_pricing, org_roles, org_users, panel_content, permissions, subscription
 from backend.services import user_overview as user_overview_service
 from backend.services.app_content import get_app_content, get_org_app_content, get_org_overrides
 from backend.services.ratelimit import RateLimiter, client_ip
@@ -431,6 +431,19 @@ def set_module_access(
     db.commit()
     db.refresh(target)
     return UserOut.model_validate(target)
+
+
+@router.get("/export")
+def export_all(admin: OrgPanelAdmin = Depends(get_current_org_panel_admin), db: Session = Depends(get_db)):
+    """Every record of the organization as one Excel workbook."""
+    content, filename = data_export.export_workbook(db, admin.organization_id)
+    audit.record(db, admin, "export", "organization", admin.organization_id, "Exported all books (Excel)")
+    db.commit()
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/roles/catalog")

@@ -253,7 +253,9 @@ def require_roles(*roles: str):
         if user.role == ROLE_CUSTOM:
             # A custom role is judged by what it allows for this request's
             # feature (View to read, Edit to change), not by the role list.
-            error = permissions.request_error(user.permissions or {}, request.method, request.url.path)
+            error = permissions.request_error(
+                user.permissions or {}, request.method, request.url.path, admin_only=tuple(allowed) == (ROLE_ADMIN,)
+            )
             if error:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=error)
         elif user.role not in allowed:

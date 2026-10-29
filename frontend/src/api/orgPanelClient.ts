@@ -177,3 +177,22 @@ export const orgPanelClient = {
   patch: <T>(path: string, body?: unknown) => orgPanelRequest<T>(path, { method: 'PATCH', body }),
   delete: <T>(path: string) => orgPanelRequest<T>(path, { method: 'DELETE' }),
 };
+
+/** Download a file through the panel API (with the panel session) and hand it to the browser. */
+export async function downloadOrgPanelFile(path: string, filename: string): Promise<void> {
+  const get = () => fetch(buildUrl(path), { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, credentials: 'include' });
+  let response = await get();
+  if (response.status === 401 && (await orgPanelRefresh())) response = await get();
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new OrgPanelApiError(typeof body.detail === 'string' ? body.detail : 'The download failed. Try again.', response.status);
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}

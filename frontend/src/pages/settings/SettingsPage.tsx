@@ -4,7 +4,10 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { TallyCard } from '@/pages/insights/TallyCard';
 import { BranchesSettings } from '@/pages/operations/BranchesSettings';
 
+import { downloadFile } from '@/api/client';
+
 import { CurrencySettings } from './CurrencySettings';
+import { ExportAllCard } from './ExportAllCard';
 import { LockDateSettings } from './LockDateSettings';
 import { OrganizationSettings } from './OrganizationSettings';
 
@@ -23,6 +26,7 @@ export function SettingsPage() {
       <CurrencySettings />
       <BranchesSettings />
       <TallyCard />
+      <ExportAllCard download={(name) => downloadFile('/organization/export', name)} />
     </div>
   );
 }
