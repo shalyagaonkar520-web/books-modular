@@ -30,6 +30,10 @@ git status                          # everything committed
 git push origin <release branch>    # then merge to main through a PR
 ```
 
+Every `docker compose` command here names the project with `-p roomanbooks`, the project the live containers
+(`roomanbooks-api-1`, `roomanbooks-web-1`, `roomanbooks-db-1`) belong to. Without it Compose names the project after the
+`deployment/` folder and starts a second, separate stack with its own empty database, whose API cannot reach `db`.
+
 ## 1. Sign in and look
 
 ```bash
@@ -45,7 +49,7 @@ df -h /                             # need free space for a backup and new image
 ```bash
 scripts/backup_db.sh                # prints the dump path; check it says OK
 ls -lh backups/ | tail -3
-docker compose -f deployment/docker-compose.yml --env-file .env exec -T db \
+docker compose -p roomanbooks -f deployment/docker-compose.yml --env-file .env exec -T db \
   psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select version_num from alembic_version;"
 ```
 
@@ -79,9 +83,9 @@ New settings, all optional with safe defaults:
 
 ```bash
 git fetch origin && git checkout main && git pull --ff-only
-docker compose -f deployment/docker-compose.yml --env-file .env build
-docker compose -f deployment/docker-compose.yml --env-file .env up -d
-docker compose -f deployment/docker-compose.yml --env-file .env logs -f api   # watch the migrations run, then Ctrl+C
+docker compose -p roomanbooks -f deployment/docker-compose.yml --env-file .env build
+docker compose -p roomanbooks -f deployment/docker-compose.yml --env-file .env up -d
+docker compose -p roomanbooks -f deployment/docker-compose.yml --env-file .env logs -f api   # watch the migrations run, then Ctrl+C
 ```
 
 A healthy start ends with `Running upgrade … -> d3f8a1c6e9b2` and then `Starting Rooman Books API`.
@@ -90,7 +94,7 @@ A healthy start ends with `Running upgrade … -> d3f8a1c6e9b2` and then `Starti
 
 ```bash
 curl -fsS http://127.0.0.1:${API_PORT:-8000}/api/health     # "status": "healthy", "database": "ok"
-docker compose -f deployment/docker-compose.yml --env-file .env exec -T db \
+docker compose -p roomanbooks -f deployment/docker-compose.yml --env-file .env exec -T db \
   psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select version_num from alembic_version;"   # d3f8a1c6e9b2
 ```
 
@@ -107,10 +111,10 @@ In the browser:
 
 ```bash
 git checkout <previous commit from step 1>
-docker compose -f deployment/docker-compose.yml --env-file .env build
-docker compose -f deployment/docker-compose.yml --env-file .env run --rm -e RUN_MIGRATIONS=false api \
+docker compose -p roomanbooks -f deployment/docker-compose.yml --env-file .env build
+docker compose -p roomanbooks -f deployment/docker-compose.yml --env-file .env run --rm -e RUN_MIGRATIONS=false api \
   alembic -c database/alembic.ini downgrade <version_num from step 2>
-docker compose -f deployment/docker-compose.yml --env-file .env up -d
+docker compose -p roomanbooks -f deployment/docker-compose.yml --env-file .env up -d
 ```
 
 **The data is wrong:** restore the backup from step 2.
