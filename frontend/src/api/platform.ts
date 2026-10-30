@@ -356,8 +356,6 @@ export interface ChangePasswordBody {
 
 export interface PlatformSettings {
   allowPublicSignup: boolean;
-  /** New self-registered organizations wait for a platform admin to approve them. */
-  requireOrgApproval?: boolean;
   environment: string;
   razorpayConfigured: boolean;
   smtpConfigured: boolean;
@@ -371,7 +369,6 @@ export interface PlatformSettings {
 
 export interface UpdatePlatformSettingsBody {
   allowPublicSignup?: boolean;
-  requireOrgApproval?: boolean;
   defaultTaxRate?: number;
   defaultPaymentTermsDays?: number;
   defaultCurrency?: string;

@@ -1,37 +1,13 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import {
-  Sparkles,
-  ArrowRight,
-  CheckCircle2,
-  Zap,
-  Receipt,
-  Layers,
-  BarChart3,
-  Landmark,
-  Clock,
-  ChevronDown,
-  Star,
-  Globe2,
-  FileCheck,
-  DollarSign,
-} from 'lucide-react';
+import { ArrowRight, CheckCircle2, ChevronDown, HardDrive, Settings2, Star, Users } from 'lucide-react';
 
-import { DEFAULT_SITE_CONTENT, fetchPublicSiteContent, type PlanCtaTarget, type SiteContent } from '@/api/siteContent';
+import { DEFAULT_PUBLIC_PLANS, fetchPublicPlans, formatStorage, type PublicPlans } from '@/api/plans';
+import { DEFAULT_SITE_CONTENT, fetchPublicSiteContent, type SiteContent } from '@/api/siteContent';
 import { initials } from '@/utils/format';
 
-/** Feature cards cycle through these icons and tints in order. */
-const FEATURE_LOOKS: Array<{ icon: ReactNode; bg: string }> = [
-  { icon: <Receipt size={22} />, bg: 'bg-blue' },
-  { icon: <BarChart3 size={22} />, bg: 'bg-emerald' },
-  { icon: <Landmark size={22} />, bg: 'bg-purple' },
-  { icon: <Zap size={22} />, bg: 'bg-amber' },
-  { icon: <Globe2 size={22} />, bg: 'bg-rose' },
-  { icon: <FileCheck size={22} />, bg: 'bg-cyan' },
-  { icon: <Clock size={22} />, bg: 'bg-blue' },
-  { icon: <DollarSign size={22} />, bg: 'bg-emerald' },
-  { icon: <Layers size={22} />, bg: 'bg-purple' },
-];
+import { FeatureShelf } from './FeatureShelf';
+import { LEGAL_LINKS, LegalNavLinks } from './LegalPages';
 
 const formatPrice = (value: number) => (Number.isFinite(value) ? value.toLocaleString('en-IN') : '');
 
@@ -41,16 +17,21 @@ export function LandingPage() {
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
   // The bundled default renders immediately (no flash); the live content replaces it once loaded.
   const [content, setContent] = useState<SiteContent>(DEFAULT_SITE_CONTENT);
+  // The same plans as inside the app; the defaults show until the live ones arrive.
+  const [plans, setPlans] = useState<PublicPlans>(DEFAULT_PUBLIC_PLANS);
 
   useEffect(() => {
     const controller = new AbortController();
     void fetchPublicSiteContent(controller.signal).then((live) => {
       if (!controller.signal.aborted) setContent(live);
     });
+    void fetchPublicPlans(controller.signal).then((live) => {
+      if (live && !controller.signal.aborted) setPlans(live);
+    });
     return () => controller.abort();
   }, []);
 
-  const { brand, nav, hero, features, pricing, testimonials, faq, ctaBanner, footer, sections, seo } = content;
+  const { brand, nav, pricing, testimonials, faq, ctaBanner, footer, sections, seo } = content;
 
   // The tab title follows the editable SEO title while the landing page is mounted.
   useEffect(() => {
@@ -82,7 +63,6 @@ export function LandingPage() {
 
   const goToLogin = () => navigate('/login');
   const goToRegister = () => navigate('/register');
-  const goTo = (target: PlanCtaTarget) => (target === 'register' ? goToRegister() : goToLogin());
 
   const toggleFaq = (index: number) => {
     setActiveFaq(activeFaq === index ? null : index);
@@ -97,15 +77,10 @@ export function LandingPage() {
             {brand.name && <span className="zb-landing-brand-text"><strong>{brand.name}</strong></span>}
             {brand.badge && <span className="zb-landing-badge">{brand.badge}</span>}
           </div>
-          <nav className="zb-landing-links">
-            {sections.showFeatures && <a href="#features" className="zb-landing-link">{nav.featuresLabel}</a>}
-            {sections.showPricing && <a href="#pricing" className="zb-landing-link">{nav.pricingLabel}</a>}
-            {sections.showTestimonials && <a href="#testimonials" className="zb-landing-link">{nav.testimonialsLabel}</a>}
-            {sections.showFaq && <a href="#faq" className="zb-landing-link">{nav.faqLabel}</a>}
-          </nav>
+          <LegalNavLinks />
           <div className="zb-landing-nav-actions">
             <button className="zb-landing-btn-text" onClick={goToLogin}>{nav.loginLabel}</button>
-            <button className="zb-btn zb-btn-primary zb-btn-glow" onClick={goToLogin}>
+            <button className="zb-btn zb-btn-primary zb-btn-glow" onClick={goToRegister}>
               <span>{nav.ctaLabel}</span>
               <ArrowRight size={16} />
             </button>
@@ -113,102 +88,73 @@ export function LandingPage() {
         </div>
       </header>
 
-      <section className="zb-hero-section">
-        <div className="zb-hero-glow-bg"></div>
-        <div className="zb-hero-content">
-          <div className="zb-hero-pill">
-            <Sparkles size={14} />
-            <span>{hero.pill}</span>
-            {hero.pillTag && <span className="zb-pill-tag">{hero.pillTag}</span>}
-          </div>
-          <h1 className="zb-hero-title">
-            {hero.titleLine1} <br />
-            <span className="zb-gradient-text">{hero.titleHighlight}</span>
-          </h1>
-          <p className="zb-hero-subtitle">{hero.subtitle}</p>
-          <div className="zb-hero-cta-group">
-            <button className="zb-btn zb-btn-primary zb-btn-lg zb-btn-glow" onClick={goToLogin}>
-              <span>{hero.primaryCta}</span>
-              <ArrowRight size={18} />
-            </button>
-            <button className="zb-btn zb-btn-outline-dark zb-btn-lg" onClick={goToRegister}>
-              <span>{hero.secondaryCta}</span>
-            </button>
-          </div>
-          <div className="zb-hero-trust-row">
-            {hero.trustItems.map((item, i) => (
-              <div className="zb-trust-item" key={i}><CheckCircle2 size={16} /><span>{item}</span></div>
-            ))}
-          </div>
-        </div>
-
-
-      </section>
-
-      {sections.showFeatures && (
-        <section id="features" className="zb-landing-section">
-          <div className="zb-section-heading text-center">
-            <span className="zb-section-badge">{features.badge}</span>
-            <h2 className="zb-section-title">{features.title}</h2>
-            <p className="zb-section-desc">{features.description}</p>
-          </div>
-          <div className="zb-features-grid">
-            {features.items.map((f, i) => {
-              const look = FEATURE_LOOKS[i % FEATURE_LOOKS.length];
-              return (
-                <div className="zb-feature-card" key={i}>
-                  <div className={`zb-feature-icon-box ${look.bg}`}>{look.icon}</div>
-                  <h3 className="zb-feature-title">{f.title}</h3>
-                  <p className="zb-feature-text">{f.text}</p>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
+      <FeatureShelf onStart={goToRegister} />
 
       {sections.showPricing && (
         <section id="pricing" className="zb-landing-section">
           <div className="zb-section-heading text-center">
             <span className="zb-section-badge">{pricing.badge}</span>
             <h2 className="zb-section-title">{pricing.title}</h2>
-            {pricing.description && <p className="zb-section-desc">{pricing.description}</p>}
+            <p className="zb-section-desc">
+              Plans by number of users, the same as inside the app. Every plan has every feature
+              {plans.trialDays ? `, and every new organization starts with a ${plans.trialDays}-day free trial` : ''}.
+            </p>
           </div>
           <div className="zb-pricing-toggle-wrap">
             <span className={!annualBilling ? 'active' : ''}>{pricing.monthlyLabel}</span>
-            <button className={`zb-pricing-toggle ${annualBilling ? 'checked' : ''}`} onClick={() => setAnnualBilling(!annualBilling)}>
+            <button className={`zb-pricing-toggle ${annualBilling ? 'checked' : ''}`} onClick={() => setAnnualBilling(!annualBilling)} aria-label="Yearly billing">
               <span className="toggle-thumb"></span>
             </button>
             <span className={annualBilling ? 'active' : ''}>
-              {pricing.annualLabel}
-              {pricing.annualDiscountLabel && <> <span className="discount-tag">{pricing.annualDiscountLabel}</span></>}
+              {pricing.annualLabel} <span className="discount-tag">Pay {plans.yearlyMonths} months, get 12</span>
             </span>
           </div>
-          <div className="zb-pricing-grid">
-            {pricing.plans.map((plan, i) => (
-              <div className={`zb-pricing-card${plan.popular ? ' popular' : ''}`} key={i}>
-                {plan.popular && <div className="zb-popular-badge">{pricing.popularLabel}</div>}
-                <div><h3 className="zb-plan-name">{plan.name}</h3>
-                  <p className="zb-plan-desc">{plan.description}</p>
+          <div className="zb-pricing-grid lp-plans-grid">
+            {plans.tiers.map((tier, i) => (
+              <div className={`zb-pricing-card${i === 1 ? ' popular' : ''}`} key={tier.key}>
+                {i === 1 && <div className="zb-popular-badge">{pricing.popularLabel}</div>}
+                <div>
+                  <h3 className="zb-plan-name">{tier.label}</h3>
                   <div className="zb-plan-price">
-                    <span className="currency">{pricing.currencySymbol}</span>
-                    <span className="amount">{formatPrice(annualBilling ? plan.annualPrice : plan.monthlyPrice)}</span>
-                    <span className="period">{pricing.periodLabel}</span>
-                  </div></div>
-                <ul className="zb-plan-features">
-                  {plan.features.map((feature, j) => (
-                    <li key={j}><CheckCircle2 size={15} /> {feature}</li>
-                  ))}
-                </ul>
+                    <span className="currency">₹</span>
+                    <span className="amount">{formatPrice(annualBilling ? tier.monthly * plans.yearlyMonths : tier.monthly)}</span>
+                    <span className="period">{annualBilling ? '/year' : '/month'}</span>
+                  </div>
+                </div>
+                <div className="lp-plan-meta">
+                  <span><Users size={16} /> Up to {tier.users.toLocaleString('en-IN')} users</span>
+                  <span><HardDrive size={16} /> {formatStorage(tier.storageGb)} storage</span>
+                  <span><CheckCircle2 size={16} /> Every feature</span>
+                </div>
                 <button
-                  className={plan.popular ? 'zb-btn zb-btn-primary zb-btn-block zb-btn-glow' : 'zb-btn zb-btn-outline-dark zb-btn-block'}
-                  onClick={() => goTo(plan.ctaTarget)}
+                  className={i === 1 ? 'zb-btn zb-btn-primary zb-btn-block zb-btn-glow' : 'zb-btn zb-btn-outline-dark zb-btn-block'}
+                  onClick={goToRegister}
                 >
-                  {plan.ctaLabel}
+                  Start free trial
                 </button>
               </div>
             ))}
+            <div className="zb-pricing-card">
+              <div>
+                <h3 className="zb-plan-name">Customize</h3>
+                <div className="zb-plan-price">
+                  <span className="period">from</span>
+                  <span className="currency">₹</span>
+                  <span className="amount">{formatPrice(plans.customMinimum)}</span>
+                  <span className="period">/month</span>
+                </div>
+              </div>
+              <div className="lp-plan-meta">
+                <span><Settings2 size={16} /> Your users, your features</span>
+                <span><HardDrive size={16} /> Storage of the plan your users fit in</span>
+                <span><Users size={16} /> ₹{formatPrice(plans.per100Over)} per 100 users above {formatPrice(plans.tiers[plans.tiers.length - 1]?.users ?? 1000)}</span>
+              </div>
+              <button className="zb-btn zb-btn-outline-dark zb-btn-block" onClick={goToRegister}>
+                Start free trial
+              </button>
+            </div>
           </div>
+          <p className="lp-plan-note">Prices in Indian Rupees. Pay online by UPI, card or net banking; your plan starts as soon as you pay.</p>
         </section>
       )}
 
@@ -278,6 +224,13 @@ export function LandingPage() {
             </div>
           ))}
         </div>
+        <nav className="zb-footer-legal" aria-label="Policies">
+          {LEGAL_LINKS.map((link) => (
+            <Link key={link.to} to={link.to}>
+              {link.label}
+            </Link>
+          ))}
+        </nav>
         <div className="zb-footer-bottom">
           <span>{footer.copyright}</span>
           <span>

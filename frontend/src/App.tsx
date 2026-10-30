@@ -35,6 +35,7 @@ import { PhoneScanPage } from '@/pages/pos/PhoneScanPage';
 import { PosHelpPage } from '@/pages/pos/PosHelpPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { LandingPage } from '@/pages/Landing/LandingPage';
+import { ContactPage, PrivacyPage, RefundPolicyPage, ShippingPolicyPage, TermsPage } from '@/pages/Landing/LegalPages';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PaymentsMadePage } from '@/pages/purchases/PaymentsMadePage';
 import { PaymentsReceivedPage } from '@/pages/sales/PaymentsReceivedPage';
@@ -95,6 +96,12 @@ export function App() {
 
         {/* Always public — the landing page */}
         <Route path="/" element={<LandingPage />} />
+        {/* Policy pages (payment gateways check these exist) */}
+        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/refund-policy" element={<RefundPolicyPage />} />
+        <Route path="/shipping-policy" element={<ShippingPolicyPage />} />
+        <Route path="/contact" element={<ContactPage />} />
         {/* Customer portal: a shared invoice or quote, opened without logging in */}
         <Route path="/p/:token" element={<DocumentPortalPage />} />
         {/* Phone scanner of a Point of Sale counter: opened from its QR code, no login (the link's key) */}

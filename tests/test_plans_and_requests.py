@@ -190,3 +190,112 @@ def test_custom_plan_limits_the_organization_to_its_features(client, org):
     later = (datetime.now(UTC) + timedelta(days=30)).isoformat()
     client.put(f"/api/platform/organizations/{org['id']}/plan", headers=sa, json={"planKey": "u100", "maxUsers": 100, "planEndsAt": later})
     assert client.get("/api/payroll/employees", headers=h).status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# Paying online (Razorpay): the plan starts at once, no super admin
+# --------------------------------------------------------------------------- #
+def test_online_payment_starts_the_plan_at_once(client, org):
+    h = org["h"]
+    order = client.post("/api/subscription/checkout", headers=h, json={"planKey": "u500", "billingCycle": "yearly"})
+    assert order.status_code == 200, order.text
+    body = order.json()
+    assert body["amount"] == 599 * 10 * 100 and body["orderId"].startswith("order_")
+
+    # A signature that does not check out starts nothing.
+    bad = {"razorpayOrderId": body["orderId"], "razorpayPaymentId": "pay_plan_1", "razorpaySignature": "bad"}
+    assert client.post("/api/subscription/checkout/confirm", headers=h, json=bad).status_code == 400
+    assert client.get("/api/subscription", headers=h).json()["status"] == "trial"
+
+    paid = {**bad, "razorpaySignature": "test_sig_plan_1"}
+    res = client.post("/api/subscription/checkout/confirm", headers=h, json=paid)
+    assert res.status_code == 200, res.text
+    sub = res.json()
+    assert sub["status"] == "active" and sub["planKey"] == "u500" and sub["maxUsers"] == 500 and sub["pendingRequest"] is None
+    assert 360 <= sub["planDaysLeft"] <= 366
+
+    # Confirming again (a double click, or the webhook first) does not add another year.
+    again = client.post("/api/subscription/checkout/confirm", headers=h, json=paid)
+    assert again.status_code == 200 and again.json()["planEndsAt"] == sub["planEndsAt"]
+
+
+def test_online_payment_order_belongs_to_its_organization(client, org):
+    order = client.post("/api/subscription/checkout", headers=org["h"], json={"planKey": "u100"}).json()
+    other = auth(register_org(client, "Other")["token"])
+    paid = {"razorpayOrderId": order["orderId"], "razorpayPaymentId": "pay_plan_2", "razorpaySignature": "test_sig_plan_2"}
+    assert client.post("/api/subscription/checkout/confirm", headers=other, json=paid).status_code == 404
+    assert client.get("/api/subscription", headers=org["h"]).json()["status"] == "trial"
+
+
+def test_webhook_starts_a_paid_plan(client, org):
+    import hashlib
+    import hmac
+    import json
+
+    order = client.post("/api/subscription/checkout", headers=org["h"], json={"planKey": "u100"}).json()
+
+    def send(event_id, amount):
+        body = json.dumps(
+            {
+                "event_id": event_id,
+                "event": "payment.captured",
+                "payload": {
+                    "payment": {
+                        "entity": {
+                            "id": f"pay_{event_id}",
+                            "order_id": order["orderId"],
+                            "amount": amount,
+                            "notes": {"purpose": "subscription", "organization_id": org["id"]},
+                        }
+                    }
+                },
+            }
+        )
+        sig = hmac.new(b"test-razorpay-webhook-secret", body.encode(), hashlib.sha256).hexdigest()
+        res = client.post("/api/razorpay/webhook", data=body, headers={"Content-Type": "application/json", "X-Razorpay-Signature": sig})
+        assert res.status_code == 200, res.text
+
+    send("evt_plan_short", 100)  # not the plan's price: nothing starts
+    assert client.get("/api/subscription", headers=org["h"]).json()["status"] == "trial"
+    send("evt_plan_ok", order["amount"])
+    sub = client.get("/api/subscription", headers=org["h"]).json()
+    assert sub["status"] == "active" and sub["planKey"] == "u100"
+
+
+def test_checkout_refuses_a_plan_too_small(client, org):
+    res = client.post("/api/subscription/checkout", headers=org["h"], json={"planKey": "custom", "users": 1, "modules": []})
+    assert res.status_code == 200  # the admin alone fits in one user
+    with patch("backend.services.plans.users_used", return_value=5):
+        res = client.post("/api/subscription/checkout", headers=org["h"], json={"planKey": "custom", "users": 2, "modules": []})
+    assert res.status_code == 409
+
+
+# --------------------------------------------------------------------------- #
+# Storage per plan, and the plans on the public website
+# --------------------------------------------------------------------------- #
+def test_plans_have_storage_and_uploads_stop_when_full(client, org):
+    import io
+
+    h = org["h"]
+    assert [t["storageGb"] for t in client.get("/api/subscription/plans", headers=h).json()["tiers"]] == [10, 50, 200]
+    assert _quote(client, h, "u500")["storageGb"] == 50
+    assert _quote(client, h, "custom", users=300, modules="pos")["storageGb"] == 50
+
+    sub = client.get("/api/subscription", headers=h).json()
+    assert sub["storageUsedBytes"] == 0 and sub["storageLimitBytes"] == 10 * 1024**3  # trial: the smallest plan's
+
+    ok = client.post("/api/documents", headers=h, files={"file": ("a.txt", io.BytesIO(b"hello"), "text/plain")})
+    assert ok.status_code == 201, ok.text
+    assert client.get("/api/subscription", headers=h).json()["storageUsedBytes"] == 5
+    with patch("backend.services.plans.storage_limit_bytes", return_value=8):
+        full = client.post("/api/documents", headers=h, files={"file": ("b.txt", io.BytesIO(b"world"), "text/plain")})
+    assert full.status_code == 413 and "storage is full" in full.json()["detail"]
+
+
+def test_public_plans_match_the_app(client, org):
+    public = client.get("/api/public/plans")
+    assert public.status_code == 200, public.text
+    body = public.json()
+    inside = client.get("/api/subscription/plans", headers=org["h"]).json()
+    assert body["tiers"] == inside["tiers"] and body["yearlyMonths"] == inside["yearlyMonths"]
+    assert "payment" not in body and body["trialDays"] >= 0

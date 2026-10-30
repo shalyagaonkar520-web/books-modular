@@ -2,20 +2,28 @@
 
 Deliberately NOT behind the subscription lock (see main.py): a locked
 organization's admin must still be able to choose a plan. Every role may read;
-only a tenant admin may request or cancel a plan.
+only a tenant admin may request, pay for or cancel a plan. A plan paid online
+(Razorpay checkout) starts at once; see services/plan_payments.
 """
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from razorpay.errors import BadRequestError, GatewayError, ServerError
+from requests.exceptions import RequestException
 from sqlalchemy.orm import Session
 
 from backend.db import get_db
 from backend.deps import ROLE_ADMIN, get_current_user
 from backend.models import Organization, User
-from backend.schemas.subscription import PlanRequestIn, SubscriptionOut, SubscriptionRequestIn
-from backend.services import audit, module_pricing, plans
+from backend.schemas.subscription import PlanCheckoutConfirmIn, PlanCheckoutIn, PlanRequestIn, SubscriptionOut, SubscriptionRequestIn
+from backend.services import audit, module_pricing, plan_payments, plans
 from backend.services import subscription as subs
+from backend.services.razorpay_service import RazorpayNotConfigured
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/subscription", tags=["Subscription"])
 
@@ -96,6 +104,33 @@ def request_users_plan(payload: PlanRequestIn, user: User = Depends(get_current_
         f"Plan requested: {priced['planKey']} for {priced['maxUsers']} users, {priced['billingCycle']} "
         f"{priced['planPrice']:.2f}, payment ref {payload.payment_reference.strip()}",
     )
+    db.commit()
+    db.refresh(org)
+    return subs.summary(org, user)
+
+
+@router.post("/checkout")
+def plan_checkout(payload: PlanCheckoutIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Start paying for a plan online: a Razorpay order for the plan's price."""
+    _require_admin(user)
+    org = _org(db, user)
+    try:
+        order = plan_payments.create_order(db, org, user, payload.plan_key, payload.billing_cycle, payload.users, payload.modules)
+    except RazorpayNotConfigured as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Online payment is not set up yet. Contact support.") from exc
+    except (BadRequestError, GatewayError, ServerError, RequestException) as exc:
+        logger.exception("Razorpay order for a plan failed.")
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Could not reach Razorpay. Please try again.") from exc
+    db.commit()
+    return order
+
+
+@router.post("/checkout/confirm", response_model=SubscriptionOut)
+def plan_checkout_confirm(payload: PlanCheckoutConfirmIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """After Razorpay's checkout succeeds: check the payment and start the plan straight away."""
+    _require_admin(user)
+    org = _org(db, user)
+    plan_payments.confirm(db, org, user, payload.razorpay_order_id, payload.razorpay_payment_id, payload.razorpay_signature)
     db.commit()
     db.refresh(org)
     return subs.summary(org, user)

@@ -121,7 +121,7 @@ export function PlansSettingsCard() {
   if (loaded.loading && !draft) return <LoadingBlock />;
   if (loaded.error || !draft) return <ErrorBlock message={loaded.error ?? ''} onRetry={loaded.reload} />;
 
-  const setTier = (index: number, field: 'label' | 'users' | 'monthly', value: string) =>
+  const setTier = (index: number, field: 'label' | 'users' | 'monthly' | 'storageGb', value: string) =>
     setDraft({ ...draft, tiers: draft.tiers.map((t, i) => (i === index ? { ...t, [field]: field === 'label' ? value : Number(value) } : t)) });
 
   const save = async () => {
@@ -154,6 +154,7 @@ export function PlansSettingsCard() {
             <TextField label={`Plan ${i + 1} name`} value={tier.label} onChange={(e) => setTier(i, 'label', e.target.value)} />
             <TextField label="Users" type="number" min="1" value={String(tier.users)} onChange={(e) => setTier(i, 'users', e.target.value)} />
             <TextField label="Price per month (₹)" type="number" min="0" value={String(tier.monthly)} onChange={(e) => setTier(i, 'monthly', e.target.value)} />
+            <TextField label="Storage (GB)" type="number" min="1" value={String(tier.storageGb)} onChange={(e) => setTier(i, 'storageGb', e.target.value)} />
           </div>
         ))}
         <div className="form-grid-3">

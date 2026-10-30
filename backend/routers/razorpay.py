@@ -46,7 +46,7 @@ from backend.models import (
     User,
     new_id,
 )
-from backend.services import bank, ledger, razorpay_matching, razorpay_posting, razorpay_sync
+from backend.services import bank, ledger, plan_payments, razorpay_matching, razorpay_posting, razorpay_sync
 from backend.services.chart_of_accounts import get_account_by_code
 from backend.services.money import money
 from backend.services.razorpay_categorize import (
@@ -491,6 +491,15 @@ async def handle_webhook(
         org_id = notes.get("organization_id")
         if org_id:
             evt_record.organization_id = org_id
+        if notes.get("purpose") == plan_payments.PURPOSE:
+            # A plan bought online: start it, in case the browser never came
+            # back to confirm the checkout.
+            try:
+                plan_payments.activate(db, payment_entity.get("order_id"), pay_id, int(amount_paise or 0))
+            except ValueError:
+                logger.error("Webhook plan payment %s does not match its plan's price; plan not started.", pay_id)
+                evt_record.status = "failed"
+            invoice_id = None
 
         # If not already recorded, create PaymentRecord -- but only for an
         # invoice that belongs to the organization named on the payment. A

@@ -46,6 +46,9 @@ export interface Subscription {
   /** Logins in use and the most allowed now (null = no cap). */
   usersUsed?: number;
   userLimit?: number | null;
+  /** Uploaded documents against the plan's storage (null = no cap). */
+  storageUsedBytes?: number;
+  storageLimitBytes?: number | null;
 }
 
 export interface SubscriptionRequestBody {
@@ -118,6 +121,8 @@ export function normalizeSubscription(raw: unknown): Subscription | null {
     planDaysLeft: asNumber(raw.planDaysLeft),
     usersUsed: asNumber(raw.usersUsed) ?? undefined,
     userLimit: asNumber(raw.userLimit),
+    storageUsedBytes: asNumber(raw.storageUsedBytes) ?? undefined,
+    storageLimitBytes: asNumber(raw.storageLimitBytes),
   };
 }
 

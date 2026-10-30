@@ -399,8 +399,6 @@ class PlatformSearchResults(APIModel):
 # --------------------------------------------------------------------------- #
 class PlatformSettingsOut(APIModel):
     allow_public_signup: bool
-    # New public sign-ups wait for a super-admin to approve the organization.
-    require_org_approval: bool
     environment: str
     razorpay_configured: bool
     smtp_configured: bool
@@ -414,7 +412,6 @@ class PlatformSettingsOut(APIModel):
 
 class UpdatePlatformSettingsRequest(APIModel):
     allow_public_signup: Optional[bool] = None
-    require_org_approval: Optional[bool] = None
     default_tax_rate: Optional[Decimal] = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
     default_payment_terms_days: Optional[int] = Field(default=None, ge=0, le=365)
     default_currency: Optional[str] = Field(default=None, pattern=_CURRENCY_PATTERN)

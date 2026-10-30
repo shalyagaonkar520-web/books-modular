@@ -12,7 +12,7 @@ from backend.deps import get_current_user
 from backend.models import User
 from backend.schemas.app_content import AppContent
 from backend.schemas.site_content import SiteContent
-from backend.services import module_pricing, platform_settings
+from backend.services import module_pricing, plans, platform_settings
 from backend.services.app_content import get_app_content, get_org_app_content
 from backend.services.site_content import get_site_content
 
@@ -41,6 +41,13 @@ def public_module_pricing(response: Response, db: Session = Depends(get_db)) -> 
     and the length of the free trial a new organization gets."""
     response.headers["Cache-Control"] = "no-cache"
     return {**module_pricing.catalog(), "trialDays": platform_settings.trial_days(db)}
+
+
+@router.get("/plans")
+def public_plans(response: Response, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """The plans by users (price, users, storage) for the website's pricing, and the free trial's length."""
+    response.headers["Cache-Control"] = "no-cache"
+    return {**plans.public_catalog(db), "trialDays": platform_settings.trial_days(db)}
 
 
 @tenant_router.get("/app-content", response_model=AppContent)

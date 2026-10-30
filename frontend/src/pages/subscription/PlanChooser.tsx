@@ -1,19 +1,21 @@
 /**
  * Choose a plan by users (100 / 500 / 1000, or Customize: users + features),
- * monthly or yearly, then pay by UPI / bank and send the payment reference.
- * A super admin checks the payment and activates the plan. Used by the
- * tenant /subscription page, the lock screen and the org admin panel.
+ * monthly or yearly, then pay online with Razorpay: the plan starts as soon as
+ * the payment is confirmed. Without Razorpay set up, pay by UPI / bank and send
+ * the payment reference for a super admin to confirm. Used by the tenant
+ * /subscription page, the lock screen and the org admin panel.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Settings2, Users } from 'lucide-react';
+import { Check, HardDrive, Settings2, Users } from 'lucide-react';
 
-import { formatRupees, quotePlan, type Cycle, type PlanApi, type PlanCatalog, type PlanKey } from '@/api/plans';
+import { formatRupees, formatStorage, quotePlan, type Cycle, type PlanApi, type PlanCatalog, type PlanKey } from '@/api/plans';
 import { Button } from '@/components/ui/Button';
 import { ErrorBlock, FormError, LoadingBlock } from '@/components/ui/Feedback';
 import { TextField } from '@/components/ui/Field';
 import { Switch } from '@/components/ui/Switch';
 import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
+import { openRazorpayCheckout } from '@/utils/razorpayCheckout';
 
 export function PlanChooser({ planApi, onDone, currentUsers }: { planApi: PlanApi; onDone?: () => void; currentUsers?: number }) {
   const catalog = useAsync(() => planApi.catalog(), [planApi]);
@@ -47,7 +49,7 @@ function Chooser({ catalog, planApi, onDone, currentUsers }: { catalog: PlanCata
 
   useEffect(() => {
     setQr(null);
-    if (!quote || !catalog.payment.upiId) return;
+    if (!quote || !catalog.payment.upiId || catalog.onlinePayment) return;
     let alive = true;
     const timer = window.setTimeout(() => {
       planApi
@@ -59,7 +61,31 @@ function Chooser({ catalog, planApi, onDone, currentUsers }: { catalog: PlanCata
       alive = false;
       window.clearTimeout(timer);
     };
-  }, [quote, catalog.payment.upiId, planApi]);
+  }, [quote, catalog.payment.upiId, catalog.onlinePayment, planApi]);
+
+  const payOnline = async () => {
+    if (!quote) return;
+    setError(null);
+    setSending(true);
+    try {
+      const order = await planApi.checkout({
+        planKey: quote.planKey,
+        billingCycle: cycle,
+        users: quote.planKey === 'custom' ? quote.maxUsers : undefined,
+        modules: quote.planKey === 'custom' ? quote.modules : undefined,
+      });
+      const paid = await openRazorpayCheckout({ ...order, name: 'Rooman Books' });
+      if (!paid) return;
+      await planApi.confirm(paid);
+      toast.success('Payment received. Your plan is active now.');
+      setPlanKey(null);
+      onDone?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSending(false);
+    }
+  };
 
   const send = async () => {
     if (!quote) return;
@@ -103,6 +129,11 @@ function Chooser({ catalog, planApi, onDone, currentUsers }: { catalog: PlanCata
             <span className="plan-card-users">
               <Users size={15} aria-hidden="true" /> Up to {tier.users.toLocaleString('en-IN')} users
             </span>
+            {tier.storageGb ? (
+              <span className="plan-card-users">
+                <HardDrive size={15} aria-hidden="true" /> {formatStorage(tier.storageGb)} storage
+              </span>
+            ) : null}
             <span className="plan-card-price">
               {price(tier.monthly)}
               <small>/month</small>
@@ -179,12 +210,24 @@ function Chooser({ catalog, planApi, onDone, currentUsers }: { catalog: PlanCata
             <span className="small text-muted">To pay now</span>
             <strong>{price(quote.planPrice)}</strong>
             <span className="small text-muted">
-              {quote.maxUsers.toLocaleString('en-IN')} users · {cycle === 'yearly' ? '12 months' : '1 month'} · {quote.planKey === 'custom' ? `${quote.modules.length} features` : 'every feature'}
+              {quote.maxUsers.toLocaleString('en-IN')} users · {quote.storageGb ? `${formatStorage(quote.storageGb)} storage · ` : ''}{cycle === 'yearly' ? '12 months' : '1 month'} · {quote.planKey === 'custom' ? `${quote.modules.length} features` : 'every feature'}
             </span>
           </div>
           {tooFewUsers ? (
             <div className="alert alert-warning">You already have {currentUsers} users, more than this plan allows. Choose a bigger plan.</div>
           ) : null}
+          {catalog.onlinePayment ? (
+            <>
+              <FormError message={error} />
+              <div className="plan-pay-send">
+                <span className="small text-muted">Pay by UPI, card, net banking or wallet. Your plan starts as soon as the payment goes through.</span>
+                <Button variant="primary" loading={sending} disabled={tooFewUsers} onClick={() => void payOnline()}>
+                  Pay {price(quote.planPrice)} now
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
           <div className="plan-pay-how">
             {qr ? <div className="plan-pay-qr" dangerouslySetInnerHTML={{ __html: qr }} /> : null}
             <div className="stack" style={{ gap: 6 }}>
@@ -208,6 +251,8 @@ function Chooser({ catalog, planApi, onDone, currentUsers }: { catalog: PlanCata
               I have paid: send for confirmation
             </Button>
           </div>
+            </>
+          )}
         </div>
       ) : (
         <p className="small text-muted">Choose a plan to see the amount and how to pay.</p>

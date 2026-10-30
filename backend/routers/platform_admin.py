@@ -1666,7 +1666,6 @@ def _settings_out(db: Session) -> PlatformSettingsOut:
     defaults = platform_settings.get_org_defaults(db)
     return PlatformSettingsOut(
         allow_public_signup=platform_settings.get_bool(db, ALLOW_PUBLIC_SIGNUP_KEY, settings.allow_public_signup),
-        require_org_approval=platform_settings.require_org_approval(db),
         environment=settings.environment,
         razorpay_configured=settings.razorpay_configured,
         smtp_configured=settings.smtp_configured,
@@ -1726,16 +1725,6 @@ def update_platform_settings(
             "platform_setting",
             ALLOW_PUBLIC_SIGNUP_KEY,
             f"Public signup set to {data['allow_public_signup']} by platform admin {admin.email}",
-        )
-    if "require_org_approval" in data and data["require_org_approval"] is not None:
-        platform_settings.set_bool(db, platform_settings.REQUIRE_ORG_APPROVAL_KEY, data["require_org_approval"])
-        audit.record(
-            db,
-            admin,
-            "update",
-            "platform_setting",
-            platform_settings.REQUIRE_ORG_APPROVAL_KEY,
-            f"Organization approval requirement set to {data['require_org_approval']} by platform admin {admin.email}",
         )
     defaults = {
         "default_tax_rate": (platform_settings.DEFAULT_TAX_RATE_KEY, "Default tax rate"),

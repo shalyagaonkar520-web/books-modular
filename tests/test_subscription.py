@@ -23,15 +23,6 @@ def platform_h(client):
     return platform_admin_headers(client)
 
 
-@pytest.fixture
-def approval_on(client, platform_h):
-    assert client.put("/api/platform/settings", headers=platform_h, json={"requireOrgApproval": True}).status_code == 200
-    try:
-        yield platform_h
-    finally:
-        client.put("/api/platform/settings", headers=platform_h, json={"requireOrgApproval": False})
-
-
 @pytest.fixture(autouse=True)
 def no_smtp():
     with patch("backend.services.email_service.smtplib.SMTP") as mock_smtp:
@@ -145,18 +136,32 @@ def test_register_ignores_modules(client):
     assert res.json()["organization"]["subscription"]["status"] == "trial"
 
 
-def test_trial_starts_at_approval(client, approval_on):
+def _pending_org(client) -> tuple[str, str]:
+    """A sign-up put back to pending, like an organization from before sign-ups were approved at once."""
     res, email = _signup(client)
-    assert res.status_code == 202, res.text
+    assert res.status_code == 201, res.text
     with SessionLocal() as db:
-        org_id = db.query(User.organization_id).filter(User.email == email).scalar()
+        org = db.get(Organization, db.query(User.organization_id).filter(User.email == email).scalar())
+        org.approval_status, org.approved_at, org.trial_ends_at = "pending", None, None
+        db.commit()
+        return org.id, email
+
+
+def test_signup_starts_trial_at_once(client):
+    res, _ = _signup(client)
+    assert res.status_code == 201, res.text
+    assert res.json()["organization"]["subscription"]["trialDaysLeft"] == 3
+
+
+def test_trial_starts_at_approval(client, platform_h):
+    org_id, email = _pending_org(client)
     row = _org_row(org_id)
     assert row.subscription_status == "trial" and row.trial_ends_at is None
-    detail = client.get(f"/api/platform/organizations/{org_id}", headers=approval_on).json()
+    detail = client.get(f"/api/platform/organizations/{org_id}", headers=platform_h).json()
     assert detail["subscriptionStatus"] == "trial" and detail["trialEndsAt"] is None
 
     # Approval no longer takes modules; the trial starts now.
-    approved = client.post(f"/api/platform/organizations/{org_id}/approve", headers=approval_on, json={})
+    approved = client.post(f"/api/platform/organizations/{org_id}/approve", headers=platform_h, json={})
     assert approved.status_code == 200, approved.text
     assert approved.json()["trialEndsAt"] is not None and approved.json()["subscriptionStatus"] == "trial"
     login = client.post("/api/auth/login", json={"email": email, "password": PASSWORD})
@@ -245,6 +250,8 @@ def test_existing_org_is_unaffected(client):
         "planFeatures": None,
         "usersUsed": 1,
         "userLimit": None,
+        "storageUsedBytes": 0,
+        "storageLimitBytes": None,
     }
     assert _enabled_modules(client, h) == _shared_enabled(client)
 
@@ -436,12 +443,9 @@ def test_extend_trial_unlocks(client, tenant, platform_h):
     assert client.get("/api/subscription", headers=h).json()["trialDaysLeft"] == 5
 
 
-def test_extend_trial_needs_approval(client, approval_on):
-    res, email = _signup(client)
-    assert res.status_code == 202
-    with SessionLocal() as db:
-        org_id = db.query(User.organization_id).filter(User.email == email).scalar()
-    r = client.post(f"/api/platform/organizations/{org_id}/trial", headers=approval_on, json={"days": 5})
+def test_extend_trial_needs_approval(client, platform_h):
+    org_id, _ = _pending_org(client)
+    r = client.post(f"/api/platform/organizations/{org_id}/trial", headers=platform_h, json={"days": 5})
     assert r.status_code == 400
 
 

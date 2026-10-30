@@ -1,7 +1,9 @@
 """Plans by number of users, their prices, and the user limit.
 
 Three plans (up to 100 / 500 / 1000 users, every feature) and a custom plan
-(any number of users, chosen features). The super admin edits prices and the
+(any number of users, chosen features). Each plan also has file storage
+(``storageGb``, for uploaded documents); a custom plan gets the storage of the
+smallest plan that covers its users. The super admin edits prices and the
 payment details shown to organizations (platform setting ``subscription_plans``).
 
 Custom price: the price of the smallest plan that covers the users (above the
@@ -29,9 +31,9 @@ MAX_USERS = 100000
 DEFAULTS: Dict[str, Any] = {
     "currency": "INR",
     "tiers": [
-        {"key": "u100", "label": "Starter", "users": 100, "monthly": 299},
-        {"key": "u500", "label": "Business", "users": 500, "monthly": 599},
-        {"key": "u1000", "label": "Enterprise", "users": 1000, "monthly": 999},
+        {"key": "u100", "label": "Starter", "users": 100, "monthly": 299, "storageGb": 10},
+        {"key": "u500", "label": "Business", "users": 500, "monthly": 599, "storageGb": 50},
+        {"key": "u1000", "label": "Enterprise", "users": 1000, "monthly": 999, "storageGb": 200},
     ],
     "per100Over": 99,
     "customMinimum": 99,
@@ -56,7 +58,12 @@ def config(db: Session) -> Dict[str, Any]:
                 data["payment"] = {**DEFAULTS["payment"], **(stored.get("payment") or {})}
         except ValueError:
             pass
-    data["tiers"] = sorted(data["tiers"], key=lambda t: t["users"])
+    # Plans saved before storage existed get the default storage of their tier.
+    default_storage = {t["key"]: t["storageGb"] for t in DEFAULTS["tiers"]}
+    data["tiers"] = sorted(
+        ({**t, "storageGb": t.get("storageGb", default_storage.get(t.get("key"), 10))} for t in data["tiers"]),
+        key=lambda t: t["users"],
+    )
     return data
 
 
@@ -70,6 +77,8 @@ def save_config(db: Session, new: Dict[str, Any]) -> Dict[str, Any]:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY, "Each plan needs users between 1 and 100000 and a price of 0 or more."
             )
+        if "storageGb" in t and not (1 <= int(t["storageGb"]) <= 100000):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Each plan's storage must be between 1 and 100000 GB.")
     for k in ("per100Over", "customMinimum", "yearlyMonths"):
         if float(new.get(k, 0)) < 0:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{k} cannot be negative.")
@@ -89,6 +98,14 @@ def _base_for_users(cfg: Dict[str, Any], users: int) -> float:
             return float(t["monthly"])
     top = tiers[-1]
     return float(top["monthly"]) + math.ceil((users - top["users"]) / 100) * float(cfg["per100Over"])
+
+
+def _storage_for_users(cfg: Dict[str, Any], users: int) -> int:
+    """The storage (GB) of the smallest plan that covers ``users`` (the largest plan's above it)."""
+    for t in cfg["tiers"]:
+        if users <= t["users"]:
+            return int(t["storageGb"])
+    return int(cfg["tiers"][-1]["storageGb"])
 
 
 def quote(
@@ -111,15 +128,17 @@ def quote(
         features = sorted(set(modules or []) | set(permissions.CORE_FEATURES), key=every.index)
         monthly = max(float(cfg["customMinimum"]), math.ceil(_base_for_users(cfg, users) * len(features) / len(every)))
         max_users = users
+        storage_gb = _storage_for_users(cfg, users)
     else:
         t = tier(db, plan_key)
         if t is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown plan.")
-        monthly, max_users = float(t["monthly"]), int(t["users"])
+        monthly, max_users, storage_gb = float(t["monthly"]), int(t["users"]), int(t["storageGb"])
     plan_price = monthly * (float(cfg["yearlyMonths"]) if billing_cycle == "yearly" else 1)
     return {
         "planKey": plan_key,
         "maxUsers": max_users,
+        "storageGb": storage_gb,
         # Every module stays switched on; a custom plan is limited by ``features``.
         "modules": list(module_pricing.module_keys()),
         "features": features,
@@ -133,10 +152,14 @@ def catalog(db: Session) -> Dict[str, Any]:
     """What the plan page shows: plans, custom rules, the features to choose from and how to pay."""
     from backend.services import permissions
 
+    from backend.services.razorpay_service import get_razorpay_service
+
     cfg = config(db)
     return {
         **cfg,
         "features": [{**f, "core": f["key"] in permissions.CORE_FEATURES} for f in permissions.catalog()],
+        # Razorpay is set up: plans are paid online and start at once.
+        "onlinePayment": get_razorpay_service().is_configured,
     }
 
 
@@ -162,6 +185,33 @@ def users_used(db: Session, org_id: str) -> int:
         )
         or 0
     )
+
+
+def storage_limit_bytes(db: Session, org: Organization) -> Optional[int]:
+    """File storage allowed: the plan's (by its tier, or a custom plan's users), else (trial) the
+    smallest plan's; None = no cap (an active plan from before plans by users)."""
+    from backend.services import subscription
+
+    cfg = config(db)
+    if org.subscription_status != subscription.STATUS_ACTIVE:
+        return int(cfg["tiers"][0]["storageGb"]) * 1024**3
+    t = next((t for t in cfg["tiers"] if t["key"] == org.plan_key), None)
+    if t is not None:
+        return int(t["storageGb"]) * 1024**3
+    return _storage_for_users(cfg, org.max_users) * 1024**3 if org.max_users else None
+
+
+def storage_used_bytes(db: Session, org_id: str) -> int:
+    """Bytes of every document the organization has uploaded."""
+    from backend.models import Document
+
+    return int(db.scalar(select(func.coalesce(func.sum(Document.size_bytes), 0)).where(Document.organization_id == org_id)) or 0)
+
+
+def public_catalog(db: Session) -> Dict[str, Any]:
+    """The plans as the public website shows them (no payment details)."""
+    cfg = config(db)
+    return {k: cfg[k] for k in ("currency", "tiers", "per100Over", "customMinimum", "yearlyMonths")}
 
 
 def check_room_for(db: Session, org: Organization, adding: int = 1) -> None:

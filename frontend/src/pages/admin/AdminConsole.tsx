@@ -155,7 +155,7 @@ export function AdminPlanPage() {
           ) : null}
           <Card
             title={sub.data.plan ? 'Renew or change your plan' : 'Choose a plan'}
-            subtitle="Plans by number of users. Pay by UPI or bank transfer, then send the payment reference; the plan starts once the platform confirms it."
+            subtitle="Plans by number of users. Pay online by UPI, card or net banking; the plan starts as soon as the payment goes through."
             actions={
               <Button variant="secondary" size="sm" icon={<MessageSquarePlus size={15} />} onClick={askForUsers}>
                 Request more users

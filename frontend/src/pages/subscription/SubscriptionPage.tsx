@@ -49,7 +49,7 @@ export function SubscriptionPage() {
         {canManage ? (
           <Card
             title={subscription.plan ? 'Renew or change your plan' : 'Choose a plan'}
-            subtitle="Plans by number of users. Pay by UPI or bank transfer, then send the payment reference; the plan starts once it is confirmed."
+            subtitle="Plans by number of users. Pay online by UPI, card or net banking; the plan starts as soon as the payment goes through."
           >
             <PlanChooser planApi={tenantPlanApi} currentUsers={subscription.usersUsed} onDone={() => void reload()} />
           </Card>

@@ -217,6 +217,9 @@ def test_razorpay_connect_and_disconnect(client, org, tmp_path, monkeypatch):
     # relative to the working directory. Run from a throwaway directory so the
     # suite never rewrites the repo's real .env (which it did before this).
     monkeypatch.chdir(tmp_path)
+    # conftest pins empty keys in the environment, which would win over the file.
+    monkeypatch.delenv("RAZORPAY_KEY_ID", raising=False)
+    monkeypatch.delenv("RAZORPAY_KEY_SECRET", raising=False)
     from tests.conftest import platform_admin_headers
 
     h, ph = org["h"], platform_admin_headers(client)

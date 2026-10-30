@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { CheckCircle2, FileSpreadsheet, Layers, Upload, Eye, Trash2 } from 'lucide-react';
+import { CheckCircle2, FileSpreadsheet, FileText, Layers, Upload, Eye, Trash2 } from 'lucide-react';
 
 import { documentsApi } from '@/api/endpoints';
 import { useAppContent } from '@/app/AppContentContext';
@@ -8,16 +8,26 @@ import type { ExcelCategorizeResponse, ExcelCommitResponse } from '@/api/types';
 import { useSubmit } from '@/hooks/useSubmit';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { SelectField } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { FormError, SkeletonRows } from '@/components/ui/Feedback';
 import { useToast } from '@/components/ui/Toast';
 import type { Tone } from '@/utils/status';
+import { documentCategoryOptions, type DocumentCategory } from '@/pages/documents/categories';
 
 interface ExcelImportModalProps {
   open: boolean;
   onClose: () => void;
   onSuccess?: () => void;
 }
+
+/** What can be uploaded here: spreadsheets are read into the books; other files are kept in Documents. */
+type UploadMode = 'sheet' | 'file';
+const ACCEPT: Record<UploadMode, string> = {
+  sheet: '.xlsx,.xls,.csv',
+  file: '.pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.txt,.csv,.xlsx,.xls',
+};
+const isSpreadsheet = (name: string) => /\.(xlsx|xls|csv)$/i.test(name);
 
 const CATEGORY_COLORS: Record<string, Tone> = {
   invoices: 'info',
@@ -32,6 +42,9 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [mode, setMode] = useState<UploadMode>('sheet');
+  const [docCategory, setDocCategory] = useState<DocumentCategory>('general');
+  const saveSubmit = useSubmit();
   const [categorized, setCategorized] = useState<ExcelCategorizeResponse | null>(null);
   const [selectedSectionIndex, setSelectedSectionIndex] = useState(0);
   const [commitResult, setCommitResult] = useState<ExcelCommitResponse | null>(null);
@@ -55,21 +68,39 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
     onClose();
   };
 
+  const pick = (selected: File) => {
+    // A PDF, picture or Word file can only be kept as a document.
+    if (mode === 'sheet' && !isSpreadsheet(selected.name)) setMode('file');
+    setFile(selected);
+    setCategorized(null);
+    setCommitResult(null);
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const selected = e.target.files[0];
-      setFile(selected);
-      setCategorized(null);
-      setCommitResult(null);
-    }
+    if (e.target.files && e.target.files[0]) pick(e.target.files[0]);
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      setFile(e.dataTransfer.files[0]);
-      setCategorized(null);
-      setCommitResult(null);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) pick(e.dataTransfer.files[0]);
+  };
+
+  const chooseMode = (next: UploadMode) => {
+    setMode(next);
+    if (file && next === 'sheet' && !isSpreadsheet(file.name)) setFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleSaveDocument = async () => {
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('category', docCategory);
+    const saved = await saveSubmit.run(() => documentsApi.upload(formData));
+    if (saved) {
+      toast.success(t('header.excel.savedToDocuments', { name: file.name }));
+      onSuccess?.();
+      handleClose();
     }
   };
 
@@ -204,20 +235,26 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
             <Button variant="secondary" onClick={handleClose}>
               {t('common.cancel')}
             </Button>
-            <Button
-              variant="primary"
-              disabled={!file}
-              loading={analyzeSubmit.submitting}
-              onClick={handleAnalyze}
-              icon={<Layers size={16} />}
-            >
-              {t('header.excel.analyze')}
-            </Button>
+            {mode === 'file' ? (
+              <Button variant="primary" disabled={!file} loading={saveSubmit.submitting} onClick={handleSaveDocument} icon={<Upload size={16} />}>
+                {t('header.excel.saveToDocuments')}
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                disabled={!file}
+                loading={analyzeSubmit.submitting}
+                onClick={handleAnalyze}
+                icon={<Layers size={16} />}
+              >
+                {t('header.excel.analyze')}
+              </Button>
+            )}
           </>
         )
       }
     >
-      <FormError message={analyzeSubmit.error || commitSubmit.error} />
+      <FormError message={analyzeSubmit.error || commitSubmit.error || saveSubmit.error} />
 
       {commitResult ? (
         <div style={{ textAlign: 'center', padding: '32px 16px' }}>
@@ -226,7 +263,7 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
               width: '64px',
               height: '64px',
               borderRadius: '50%',
-              backgroundColor: '#ecfdf5',
+              backgroundColor: 'var(--success-soft)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -312,14 +349,14 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                 marginBottom: '16px',
                 padding: '12px 16px',
                 border: '1px solid #fecaca',
-                background: '#fef2f2',
+                background: 'var(--danger-soft)',
                 borderRadius: '8px',
               }}
             >
-              <div style={{ fontWeight: 600, color: '#991b1b', marginBottom: '6px' }}>
+              <div style={{ fontWeight: 600, color: 'var(--danger)', marginBottom: '6px' }}>
                 {t('header.excel.fixBeforeImport')}
               </div>
-              <ul style={{ margin: 0, paddingLeft: '18px', color: '#991b1b', fontSize: '0.875rem' }}>
+              <ul style={{ margin: 0, paddingLeft: '18px', color: 'var(--danger)', fontSize: '0.875rem' }}>
                 {categorized.blocking_problems.map((problem) => (
                   <li key={problem}>{problem}</li>
                 ))}
@@ -417,17 +454,17 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
                     : '—'}
                 </div>
                 {activeSection.unmapped_headers.length > 0 ? (
-                  <div style={{ color: '#92400e' }}>
+                  <div style={{ color: 'var(--warning)' }}>
                     <strong>{t('header.excel.ignored')}</strong> {activeSection.unmapped_headers.join(', ')}
                   </div>
                 ) : null}
                 {activeSection.missing_required.length > 0 ? (
-                  <div style={{ color: '#991b1b', marginTop: '4px' }}>
+                  <div style={{ color: 'var(--danger)', marginTop: '4px' }}>
                     <strong>{t('header.excel.missingRequired')}</strong> {activeSection.missing_required.join(', ')}
                   </div>
                 ) : null}
                 {activeSection.skipped_count > 0 ? (
-                  <div style={{ marginTop: '6px', color: '#92400e' }}>
+                  <div style={{ marginTop: '6px', color: 'var(--warning)' }}>
                     <strong>{t('header.excel.willSkip', { count: activeSection.skipped_count })}</strong>
                     <ul style={{ margin: '4px 0 0', paddingLeft: '18px' }}>
                       {activeSection.issues.map((issue) => (
@@ -532,7 +569,40 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
         </div>
       ) : (
         <div>
-          <div style={{ marginBottom: '14px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <div className="upload-modes" role="radiogroup" aria-label={t('header.excel.whatToUpload')}>
+            {(
+              [
+                { key: 'sheet', icon: <FileSpreadsheet size={20} />, title: t('header.excel.modeSheet'), text: t('header.excel.modeSheetHint') },
+                { key: 'file', icon: <FileText size={20} />, title: t('header.excel.modeFile'), text: t('header.excel.modeFileHint') },
+              ] as const
+            ).map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                role="radio"
+                aria-checked={mode === option.key}
+                className={`upload-mode${mode === option.key ? ' is-active' : ''}`}
+                onClick={() => chooseMode(option.key)}
+              >
+                <span className="upload-mode-icon">{option.icon}</span>
+                <span>
+                  <strong>{option.title}</strong>
+                  <span className="upload-mode-text">{option.text}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+          {mode === 'file' ? (
+            <div style={{ marginBottom: '14px', maxWidth: 320 }}>
+              <SelectField
+                label={t('header.excel.documentType')}
+                value={docCategory}
+                options={documentCategoryOptions(t)}
+                onChange={(e) => setDocCategory(e.target.value as DocumentCategory)}
+              />
+            </div>
+          ) : null}
+          <div style={{ marginBottom: '14px', display: mode === 'sheet' ? 'flex' : 'none', gap: '10px', flexWrap: 'wrap' }}>
             <a
               href="/Rooman_Books_Indian_Data.xlsx"
               download="Rooman_Books_Indian_Data.xlsx"
@@ -556,42 +626,23 @@ export function ExcelImportModal({ open, onClose, onSuccess }: ExcelImportModalP
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
-            style={{
-              border: '2px dashed var(--color-border)',
-              borderRadius: '10px',
-              padding: '36px 20px',
-              textAlign: 'center',
-              backgroundColor: 'var(--color-bg-subtle, #f9fafb)',
-              cursor: 'pointer',
-              transition: 'border-color 0.2s',
-            }}
+            className="upload-dropzone"
           >
             <input
               type="file"
               ref={fileInputRef}
               style={{ display: 'none' }}
-              accept=".xlsx,.xls,.csv"
+              accept={ACCEPT[mode]}
               onChange={handleFileChange}
             />
-            <div
-              style={{
-                width: '48px',
-                height: '48px',
-                borderRadius: '50%',
-                backgroundColor: '#f1f5f9',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 12px',
-              }}
-            >
-              <Upload size={24} style={{ color: '#0284c7' }} />
+            <div className="upload-dropzone-icon">
+              <Upload size={24} />
             </div>
-            <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '4px' }}>
-              {file ? file.name : t('header.excel.chooseFile')}
+            <div className="upload-dropzone-title">
+              {file ? file.name : t(mode === 'file' ? 'header.excel.chooseDocument' : 'header.excel.chooseFile')}
             </div>
             <div className="text-muted" style={{ fontSize: '0.85rem' }}>
-              {t('header.excel.supports')}
+              {t(mode === 'file' ? 'header.excel.supportsDocuments' : 'header.excel.supports')}
             </div>
             {file ? (
               <div style={{ marginTop: '12px' }}>

@@ -1,5 +1,6 @@
-"""Organization approval workflow: pending sign-ups, approve/reject by a
-super-admin, the tenant sign-in block and the require-approval setting."""
+"""Organization approval workflow: sign-ups are approved at once; a pending
+organization (from before that) is approved or rejected by a super-admin, and
+a rejected one cannot sign in."""
 
 import os
 import subprocess
@@ -40,18 +41,6 @@ def super_admin(client):
 
 
 @pytest.fixture
-def approval_on(client, super_admin):
-    """Turn the approval requirement on for one test, and always back off."""
-    res = client.put("/api/platform/settings", headers=super_admin["h"], json={"requireOrgApproval": True})
-    assert res.status_code == 200 and res.json()["requireOrgApproval"] is True, res.text
-    try:
-        yield super_admin
-    finally:
-        off = client.put("/api/platform/settings", headers=super_admin["h"], json={"requireOrgApproval": False})
-        assert off.status_code == 200 and off.json()["requireOrgApproval"] is False, off.text
-
-
-@pytest.fixture
 def no_smtp():
     """Approve/reject send a best-effort email; never let it reach a real server."""
     with patch("backend.services.email_service.smtplib.SMTP") as mock_smtp:
@@ -81,6 +70,17 @@ def _signup(c: TestClient, hint: str = "pending"):
     return res, email, f"Approval Org {n}"
 
 
+def _signup_pending(c: TestClient):
+    """A sign-up put back to pending, like an organization from before sign-ups were approved at once."""
+    res, email, name = _signup(c)
+    assert res.status_code == 201, res.text
+    with SessionLocal() as db:
+        org = db.get(Organization, _org_id(email))
+        org.approval_status, org.approved_at, org.trial_ends_at = "pending", None, None
+        db.commit()
+    return res, email, name
+
+
 def _org_id(email: str) -> str:
     with SessionLocal() as db:
         return db.execute(sa.select(User.organization_id).where(User.email == email)).scalar_one()
@@ -93,38 +93,10 @@ def _login(c: TestClient, email: str):
 # --------------------------------------------------------------------------- #
 # Registration + sign-in block
 # --------------------------------------------------------------------------- #
-def test_register_pending_issues_no_session(approval_on):
-    c = TestClient(app)
-    res, email, name = _signup(c)
-    assert res.status_code == 202, res.text
-    body = res.json()
-    assert body == {
-        "status": "pending_approval",
-        "message": "Your organization has been submitted for approval. You will be able to sign in once an administrator approves it.",
-        "organizationName": name,
-        "email": email,
-    }
-    assert "accessToken" not in body
-    assert "rb_refresh" not in res.cookies
-    assert c.cookies.get("rb_refresh") is None
-    # No session means refresh has nothing to work with.
-    assert c.post("/api/auth/refresh").status_code == 401
 
-    with SessionLocal() as db:
-        org = db.get(Organization, _org_id(email))
-        assert org.approval_status == "pending" and org.approved_at is None
-        user = db.execute(sa.select(User).where(User.email == email)).scalar_one()
-        assert user.password_hash is not None and user.role == "admin"
-
-    login = _login(c, email)
-    assert login.status_code == 403
-    assert login.json()["detail"].startswith("PENDING_APPROVAL:")
-
-
-def test_pending_listed_and_on_dashboard(client, approval_on):
-    h = approval_on["h"]
-    res, email, name = _signup(TestClient(app))
-    assert res.status_code == 202
+def test_pending_listed_and_on_dashboard(client, super_admin):
+    h = super_admin["h"]
+    res, email, name = _signup_pending(TestClient(app))
     org_id = _org_id(email)
 
     pending = client.get("/api/platform/organizations", headers=h, params={"status": "pending", "page_size": 100}).json()
@@ -153,10 +125,10 @@ def test_pending_listed_and_on_dashboard(client, approval_on):
     assert detail["approvalStatus"] == "pending" and detail["rejectionReason"] is None
 
 
-def test_approve_allows_login(client, approval_on, no_smtp):
-    h = approval_on["h"]
+def test_approve_allows_login(client, super_admin, no_smtp):
+    h = super_admin["h"]
     c = TestClient(app)
-    res, email, _ = _signup(c)
+    res, email, _ = _signup_pending(c)
     org_id = _org_id(email)
     assert _login(c, email).status_code == 403
 
@@ -182,13 +154,13 @@ def test_approve_allows_login(client, approval_on, no_smtp):
     assert org_id not in pending_ids
 
     logs = client.get("/api/platform/audit-logs", headers=h, params={"organizationId": org_id}).json()["items"]
-    assert any(a["action"] == "approve" and approval_on["email"] in (a["summary"] or "") for a in logs)
+    assert any(a["action"] == "approve" and super_admin["email"] in (a["summary"] or "") for a in logs)
 
 
-def test_reject_blocks_login_with_reason_then_can_approve(client, approval_on, no_smtp):
-    h = approval_on["h"]
+def test_reject_blocks_login_with_reason_then_can_approve(client, super_admin, no_smtp):
+    h = super_admin["h"]
     c = TestClient(app)
-    _, email, _ = _signup(c)
+    _, email, _ = _signup_pending(c)
     org_id = _org_id(email)
 
     rejected = client.post(f"/api/platform/organizations/{org_id}/reject", headers=h, json={"reason": "Incomplete business details"})
@@ -227,19 +199,19 @@ def test_approve_reject_missing_org_404(client, super_admin):
     assert client.post("/api/platform/organizations/nope/reject", headers=h, json={}).status_code == 404
 
 
-def test_approve_reject_require_superuser(client, approval_on):
-    _, email, _ = _signup(TestClient(app))
+def test_approve_reject_require_superuser(client, super_admin):
+    _, email, _ = _signup_pending(TestClient(app))
     org_id = _org_id(email)
     assert client.post(f"/api/platform/organizations/{org_id}/approve").status_code == 401
     assert client.post(f"/api/platform/organizations/{org_id}/reject", json={}).status_code == 401
 
 
-def test_existing_session_blocked_when_org_not_approved(client, approval_on, no_smtp):
+def test_existing_session_blocked_when_org_not_approved(client, super_admin, no_smtp):
     """Defense in depth: a live token/refresh cookie stops working if the org
     is moved back out of approved."""
-    h = approval_on["h"]
+    h = super_admin["h"]
     c = TestClient(app)
-    _, email, _ = _signup(c)
+    _, email, _ = _signup_pending(c)
     org_id = _org_id(email)
     client.post(f"/api/platform/organizations/{org_id}/approve", headers=h)
     token = _login(c, email).json()["accessToken"]
@@ -251,9 +223,9 @@ def test_existing_session_blocked_when_org_not_approved(client, approval_on, no_
     assert refresh.status_code == 403 and refresh.json()["detail"].startswith("REGISTRATION_REJECTED:")
 
 
-def test_impersonate_refused_for_pending_org(client, approval_on):
-    h = approval_on["h"]
-    _, email, _ = _signup(TestClient(app))
+def test_impersonate_refused_for_pending_org(client, super_admin):
+    h = super_admin["h"]
+    _, email, _ = _signup_pending(TestClient(app))
     with SessionLocal() as db:
         user_id = db.execute(sa.select(User.id).where(User.email == email)).scalar_one()
     res = client.post(f"/api/platform/users/{user_id}/impersonate", headers=h)
@@ -262,11 +234,10 @@ def test_impersonate_refused_for_pending_org(client, approval_on):
 
 
 # --------------------------------------------------------------------------- #
-# Approval off / platform-created orgs / settings
+# Sign-ups and platform-created orgs
 # --------------------------------------------------------------------------- #
-def test_approval_off_registers_immediately(client, super_admin):
-    settings = client.get("/api/platform/settings", headers=super_admin["h"]).json()
-    assert settings["requireOrgApproval"] is False  # REQUIRE_ORG_APPROVAL=false in conftest
+def test_signup_is_approved_immediately(client, super_admin):
+    assert "requireOrgApproval" not in client.get("/api/platform/settings", headers=super_admin["h"]).json()
 
     c = TestClient(app)
     res, email, _ = _signup(c, "instant")
@@ -279,11 +250,11 @@ def test_approval_off_registers_immediately(client, super_admin):
     assert _login(c, email).status_code == 200
 
 
-def test_platform_created_org_is_approved(client, approval_on):
+def test_platform_created_org_is_approved(client, super_admin):
     n = uuid.uuid4().hex[:8]
     res = client.post(
         "/api/platform/organizations",
-        headers=approval_on["h"],
+        headers=super_admin["h"],
         json={"name": f"Direct Org {n}", "adminName": "Owner", "adminEmail": f"owner-{n}@direct.example.com", "adminPassword": PASSWORD},
     )
     assert res.status_code == 201, res.text
@@ -291,10 +262,6 @@ def test_platform_created_org_is_approved(client, approval_on):
     assert org["approvalStatus"] == "approved" and org["approvedAt"]
     assert TestClient(app).post("/api/auth/login", json={"email": f"owner-{n}@direct.example.com", "password": PASSWORD}).status_code == 200
 
-
-def test_settings_toggle_is_audited(client, approval_on):
-    logs = client.get("/api/platform/audit-logs", headers=approval_on["h"], params={"page_size": 50}).json()["items"]
-    assert any(a["entityId"] == "require_org_approval" for a in logs)
 
 
 # --------------------------------------------------------------------------- #

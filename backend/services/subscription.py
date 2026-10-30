@@ -346,7 +346,12 @@ def _usage(org: Organization) -> Dict[str, Any]:
     db = object_session(org)
     if db is None:
         return {}
-    return {"usersUsed": plans.users_used(db, org.id), "userLimit": plans.user_limit(db, org)}
+    return {
+        "usersUsed": plans.users_used(db, org.id),
+        "userLimit": plans.user_limit(db, org),
+        "storageUsedBytes": plans.storage_used_bytes(db, org.id),
+        "storageLimitBytes": plans.storage_limit_bytes(db, org),
+    }
 
 
 def plan_features(org: Optional[Organization]) -> Optional[list]:

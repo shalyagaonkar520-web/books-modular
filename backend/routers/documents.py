@@ -30,11 +30,12 @@ from backend.models import (
     Expense,
     Invoice,
     InvoiceLine,
+    Organization,
     User,
 )
 from backend.schemas.common import Message, Page
 from backend.schemas.documents import DocumentOut, DocumentUpdate
-from backend.services import audit, excel_import, numbering
+from backend.services import audit, excel_import, numbering, plans
 from backend.services.tenancy import Pagination, get_or_404, paginate
 
 settings = get_settings()
@@ -131,6 +132,16 @@ async def upload_document(
     if size == 0:
         os.remove(stored_path)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Uploaded file is empty")
+    org = db.get(Organization, user.organization_id)
+    allowed = plans.storage_limit_bytes(db, org)
+    used = plans.storage_used_bytes(db, user.organization_id)
+    if allowed is not None and used + size > allowed:
+        os.remove(stored_path)
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            f"Your plan's storage is full ({used / 1024**3:.1f} of {allowed / 1024**3:.0f} GB used). "
+            "Delete old documents or choose a bigger plan.",
+        )
 
     doc = Document(
         organization_id=user.organization_id,

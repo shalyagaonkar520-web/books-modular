@@ -44,7 +44,6 @@ services:
       # The web container's nginx is the only client; believe its X-Forwarded-For.
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-172.16.0.0/12}
       LOGIN_RATE_LIMIT_PER_MINUTE: ${LOGIN_RATE_LIMIT_PER_MINUTE:-10}
-      REQUIRE_ORG_APPROVAL: ${REQUIRE_ORG_APPROVAL:-false}
       # Connected apps (docs/INTEGRATIONS.md)
       INTEGRATION_RATE_LIMIT_PER_MINUTE: ${INTEGRATION_RATE_LIMIT_PER_MINUTE:-300}
       WEBHOOKS_ENABLED: ${WEBHOOKS_ENABLED:-true}

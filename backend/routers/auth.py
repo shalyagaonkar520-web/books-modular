@@ -9,7 +9,6 @@ from functools import lru_cache
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -27,7 +26,6 @@ from backend.schemas.auth import (
     InviteInfo,
     LoginRequest,
     OrganizationOut,
-    PendingRegistrationResponse,
     RegisterRequest,
     ResetPasswordWithOtpRequest,
     SendEmailVerificationRequest,
@@ -318,21 +316,10 @@ def check_email_verification_status(email: str, db: Session = Depends(get_db)):
     )
 
 
-PENDING_REGISTRATION_MESSAGE = (
-    "Your organization has been submitted for approval. You will be able to sign in once an administrator approves it."
-)
-
-
 @router.post(
     "/register",
     response_model=AuthResponse,
     status_code=status.HTTP_201_CREATED,
-    responses={
-        status.HTTP_202_ACCEPTED: {
-            "model": PendingRegistrationResponse,
-            "description": "Organization created but awaiting super-admin approval; no session is issued.",
-        }
-    },
 )
 def register(payload: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     # A super-admin can toggle public signup at runtime; that DB override takes
@@ -379,21 +366,19 @@ def register(payload: RegisterRequest, request: Request, response: Response, db:
         )
 
     defaults = platform_settings.get_org_defaults(db)
-    needs_approval = platform_settings.require_org_approval(db)
+    # A sign-up is usable at once (no super-admin approval); its free trial
+    # starts now and a paid plan is activated by paying for it.
     org = Organization(
         name=payload.organization_name,
         gstin=payload.gstin or None,
         currency=defaults.currency,
         default_tax_rate=defaults.tax_rate,
         default_payment_terms_days=defaults.payment_terms_days,
-        approval_status="pending" if needs_approval else "approved",
-        approved_at=None if needs_approval else datetime.now(UTC),
-        # Free trial of every module; it starts once the org is usable (now,
-        # or when a super-admin approves it).
+        approval_status="approved",
+        approved_at=datetime.now(UTC),
         subscription_status=subscription.STATUS_TRIAL,
     )
-    if not needs_approval:
-        subscription.start_trial(db, org)
+    subscription.start_trial(db, org)
     db.add(org)
     db.flush()
 
@@ -416,7 +401,7 @@ def register(payload: RegisterRequest, request: Request, response: Response, db:
         email=email,
         password_hash=hash_password(payload.password),
         role="admin",
-        last_login_at=None if needs_approval else datetime.now(UTC),
+        last_login_at=datetime.now(UTC),
     )
     db.add(user)
     db.flush()
@@ -426,21 +411,6 @@ def register(payload: RegisterRequest, request: Request, response: Response, db:
     verification.status = "USED"
     verification.used_at = datetime.now(UTC)
     verification.user_id = user.id
-
-    if needs_approval:
-        # No session until a super-admin approves the org: no access token, no
-        # refresh cookie. The admin signs in normally once approved.
-        audit.record(db, user, "register", "organization", org.id, f"Organization '{org.name}' submitted for approval")
-        db.commit()
-        return JSONResponse(
-            status_code=status.HTTP_202_ACCEPTED,
-            content={
-                "status": "pending_approval",
-                "message": PENDING_REGISTRATION_MESSAGE,
-                "organizationName": org.name,
-                "email": email,
-            },
-        )
 
     audit.record(db, user, "register", "organization", org.id, f"Organization '{org.name}' created")
     access = _issue_tokens(db, user, response, request)

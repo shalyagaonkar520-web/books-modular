@@ -26,7 +26,7 @@ import { Button } from '@/components/ui/Button';
 import { FormError } from '@/components/ui/Feedback';
 import { useToast } from '@/components/ui/Toast';
 import { useSubmit } from '@/hooks/useSubmit';
-import { formatDate, formatDateTime } from '@/utils/format';
+import { formatBytes, formatDate, formatDateTime } from '@/utils/format';
 
 /** "₹1,594/mo · billed ₹15,940/yr" (or just "₹1,594/mo" for a monthly plan). */
 export function planPriceText(plan: Pick<SubscriptionPlan, 'billingCycle' | 'monthlyPrice' | 'planPrice'>, catalog: ModulePricing): string {
@@ -114,6 +114,12 @@ export function SubscriptionStatusCard({ subscription, catalog }: { subscription
             {status === 'active' && subscription.planEndsAt
               ? ` · Paid until ${formatDate(subscription.planEndsAt)}${subscription.planDaysLeft !== null && subscription.planDaysLeft !== undefined ? ` (${subscription.planDaysLeft} day${subscription.planDaysLeft === 1 ? '' : 's'} left)` : ''}`
               : ''}
+          </p>
+        ) : null}
+        {subscription.storageUsedBytes !== undefined ? (
+          <p className="small" style={{ margin: 0 }}>
+            <strong>Storage:</strong> {formatBytes(subscription.storageUsedBytes)}
+            {subscription.storageLimitBytes ? ` of ${formatBytes(subscription.storageLimitBytes)} used` : ' used (no limit)'}
           </p>
         ) : null}
 

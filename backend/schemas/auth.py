@@ -248,13 +248,6 @@ class AuthResponse(APIModel):
     organization: OrganizationOut
 
 
-class PendingRegistrationResponse(APIModel):
-    """202 from /register while the new organization awaits super-admin approval."""
-
-    status: str = "pending_approval"
-    message: str
-    organization_name: str
-    email: str
 
 
 class TokenResponse(APIModel):

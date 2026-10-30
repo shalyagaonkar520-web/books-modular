@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_SITE_CONTENT, type SiteContent } from '@/api/siteContent';
 
+import { FEATURE_BOOKS } from './featureBooks';
 import { LandingPage } from './LandingPage';
 
 function renderLanding() {
@@ -14,85 +15,83 @@ function renderLanding() {
   );
 }
 
+/** Answers the two public requests the landing page makes. */
+function stubFetch(site: SiteContent | null, plans: unknown) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      const body = String(url).includes('/plans') ? plans : site;
+      return body === null
+        ? new Response('{}', { status: 500 })
+        : new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+    }),
+  );
+}
+
 describe('LandingPage', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('renders the bundled default immediately, before the request settles', () => {
+  it('shows the policy links, a book for every feature and the default plans before anything loads', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => undefined)));
     renderLanding();
-    expect(screen.getByText(DEFAULT_SITE_CONTENT.hero.titleHighlight)).toBeInTheDocument();
-    expect(screen.getByText('Standard Business')).toBeInTheDocument();
-    // Annual billing is on by default: 999 for the Standard plan.
-    expect(screen.getByText('999')).toBeInTheDocument();
-    expect(screen.getByText('RK')).toBeInTheDocument();
+    const policies = screen.getAllByRole('navigation', { name: 'Policies' })[0];
+    for (const name of ['Terms & Conditions', 'Privacy Policy', 'Refund & Cancellation', 'Shipping & Delivery', 'Contact Us']) {
+      expect(policies).toHaveTextContent(name);
+    }
+    // Every feature is a book on the shelf (three copies make it endless).
+    expect(document.querySelectorAll('.book')).toHaveLength(FEATURE_BOOKS.length * 3);
+    expect(screen.getAllByText('Point of Sale').length).toBeGreaterThan(0);
+    // The plans by users: yearly by default (10 months), with users and storage.
+    expect(screen.getByText('Starter')).toBeInTheDocument();
+    expect(screen.getByText('2,990')).toBeInTheDocument();
+    expect(screen.getByText('10 GB storage')).toBeInTheDocument();
+    expect(screen.getByText('Up to 500 users')).toBeInTheDocument();
   });
 
-  it('renders live content and hides disabled sections with their nav links', async () => {
-    const live: SiteContent = {
-      ...DEFAULT_SITE_CONTENT,
-      hero: { ...DEFAULT_SITE_CONTENT.hero, titleHighlight: 'Edited Highlight' },
-      pricing: {
-        ...DEFAULT_SITE_CONTENT.pricing,
-        plans: [{ ...DEFAULT_SITE_CONTENT.pricing.plans[0], name: 'Solo', annualPrice: 125000 }],
-      },
-      sections: { ...DEFAULT_SITE_CONTENT.sections, showFaq: false },
-    };
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify(live), { status: 200, headers: { 'content-type': 'application/json' } })),
-    );
+  it('prices the plans from the live plans, the same as inside the app', async () => {
+    stubFetch(DEFAULT_SITE_CONTENT, {
+      currency: 'INR',
+      tiers: [
+        { key: 'u100', label: 'Solo', users: 100, monthly: 349, storageGb: 20 },
+        { key: 'u500', label: 'Business', users: 500, monthly: 599, storageGb: 50 },
+        { key: 'u1000', label: 'Enterprise', users: 1000, monthly: 999, storageGb: 1024 },
+      ],
+      per100Over: 99,
+      customMinimum: 99,
+      yearlyMonths: 10,
+      trialDays: 3,
+    });
     renderLanding();
-
-    expect(await screen.findByText('Edited Highlight')).toBeInTheDocument();
-    expect(screen.getByText('Solo')).toBeInTheDocument();
-    expect(screen.getByText('1,25,000')).toBeInTheDocument();
-    expect(screen.queryByText(DEFAULT_SITE_CONTENT.faq.title)).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'FAQ' })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Pricing' })).toBeInTheDocument();
+    expect(await screen.findByText('Solo')).toBeInTheDocument();
+    expect(screen.getByText('3,490')).toBeInTheDocument();
+    expect(screen.getByText('20 GB storage')).toBeInTheDocument();
+    expect(screen.getByText('1 TB storage')).toBeInTheDocument();
+    expect(screen.getByText(/3-day free trial/)).toBeInTheDocument();
   });
 
-  it('renders the editable brand, nav labels, section descriptions and SEO title', async () => {
+  it('renders the editable brand, sections and SEO title', async () => {
     const live: SiteContent = {
       ...DEFAULT_SITE_CONTENT,
       brand: { ...DEFAULT_SITE_CONTENT.brand, name: 'Ledgerly', logoUrl: 'https://cdn.example.com/l.png' },
-      nav: { ...DEFAULT_SITE_CONTENT.nav, featuresLabel: 'Tools', pricingLabel: 'Plans', testimonialsLabel: 'Reviews', faqLabel: 'Help' },
-      pricing: { ...DEFAULT_SITE_CONTENT.pricing, description: 'Simple plans, no surprises.' },
       testimonials: { ...DEFAULT_SITE_CONTENT.testimonials, description: 'Loved by finance teams.' },
       faq: { ...DEFAULT_SITE_CONTENT.faq, description: 'Everything you wanted to know.' },
+      sections: { ...DEFAULT_SITE_CONTENT.sections, showFaq: false },
       seo: { title: 'Ledgerly - Cloud Accounting', description: 'GST-ready cloud accounting.' },
     };
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify(live), { status: 200, headers: { 'content-type': 'application/json' } })),
-    );
+    stubFetch(live, null);
     document.title = 'Before';
     const { unmount } = renderLanding();
 
-    // Generous wait: under a loaded machine the content fetch and render can take over the 1s default.
     expect(await screen.findByText('Ledgerly', undefined, { timeout: 5000 })).toBeInTheDocument();
-    for (const name of ['Tools', 'Plans', 'Reviews', 'Help']) {
-      expect(screen.getByRole('link', { name })).toBeInTheDocument();
-    }
-    expect(screen.queryByRole('link', { name: 'Customers' })).not.toBeInTheDocument();
-    expect(screen.getByText('Simple plans, no surprises.')).toHaveClass('zb-section-desc');
     expect(screen.getByText('Loved by finance teams.')).toBeInTheDocument();
-    expect(screen.getByText('Everything you wanted to know.')).toBeInTheDocument();
+    expect(screen.queryByText('Everything you wanted to know.')).not.toBeInTheDocument();
     expect(screen.getByAltText('Rooman')).toHaveAttribute('src', 'https://cdn.example.com/l.png');
-    expect(screen.getByAltText('Rooman Books')).toHaveAttribute('src', 'https://cdn.example.com/l.png');
     await waitFor(() => expect(document.title).toBe('Ledgerly - Cloud Accounting'));
     expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute('content', 'GST-ready cloud accounting.');
+    // The plans fell back to the defaults when their request failed.
+    expect(screen.getByText('Starter')).toBeInTheDocument();
 
     unmount();
     expect(document.title).toBe('Before');
-  });
-
-  it('hides empty section descriptions and uses the default brand', () => {
-    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => undefined)));
-    const { container } = renderLanding();
-    // Only the features section has a description in the defaults.
-    expect(container.querySelectorAll('.zb-section-desc')).toHaveLength(1);
-    expect(screen.getByText('Books')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Customers' })).toBeInTheDocument();
-    expect(document.title).toBe('Rooman Books');
   });
 });

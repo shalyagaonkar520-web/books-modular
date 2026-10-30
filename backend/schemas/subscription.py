@@ -54,6 +54,9 @@ class SubscriptionOut(APIModel):
     # Logins in use and the most allowed now (the plan's, or the trial's); None = no cap.
     users_used: int = 0
     user_limit: Optional[int] = None
+    # Uploaded documents against the plan's storage (the trial's: the smallest plan's).
+    storage_used_bytes: int = 0
+    storage_limit_bytes: Optional[int] = None
 
 
 class SubscriptionRequestIn(APIModel):
@@ -75,6 +78,24 @@ class PlanRequestIn(APIModel):
     # Custom plan only: how many users and which features.
     users: Optional[int] = Field(default=None, ge=1, le=100000)
     modules: Optional[List[str]] = Field(default=None, max_length=50)
+
+
+class PlanCheckoutIn(APIModel):
+    """Choose a plan by users to pay for online (Razorpay)."""
+
+    plan_key: Literal["u100", "u500", "u1000", "custom"]
+    billing_cycle: BillingCycle = "monthly"
+    # Custom plan only: how many users and which features.
+    users: Optional[int] = Field(default=None, ge=1, le=100000)
+    modules: Optional[List[str]] = Field(default=None, max_length=50)
+
+
+class PlanCheckoutConfirmIn(APIModel):
+    """What Razorpay's checkout hands back after a successful payment."""
+
+    razorpay_order_id: str = Field(min_length=1, max_length=64)
+    razorpay_payment_id: str = Field(min_length=1, max_length=64)
+    razorpay_signature: str = Field(min_length=1, max_length=255)
 
 
 class SetPlanRequest(APIModel):
