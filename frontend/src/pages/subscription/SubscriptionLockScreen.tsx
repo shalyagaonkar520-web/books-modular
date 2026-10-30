@@ -84,6 +84,7 @@ export function SubscriptionLockScreen() {
             <PlanChooser
               planApi={tenantPlanApi}
               currentUsers={subscription?.usersUsed}
+              trial="ended"
               onDone={() => {
                 setChanging(false);
                 void reload();

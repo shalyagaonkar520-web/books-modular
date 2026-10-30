@@ -41,11 +41,12 @@ describe('LandingPage', () => {
     // Every feature is a book on the shelf (three copies make it endless).
     expect(document.querySelectorAll('.book')).toHaveLength(FEATURE_BOOKS.length * 3);
     expect(screen.getAllByText('Point of Sale').length).toBeGreaterThan(0);
-    // The plans by users: yearly by default (10 months), with users and storage.
+    // The same cards as in the app: monthly first, a free plan, then the plans by users with storage.
+    expect(screen.getByText('Free trial').closest('button')).toHaveTextContent('₹0for 3 days');
     expect(screen.getByText('Starter')).toBeInTheDocument();
-    expect(screen.getByText('2,990')).toBeInTheDocument();
-    expect(screen.getByText('10 GB storage')).toBeInTheDocument();
+    expect(screen.getAllByText('10 GB storage')).toHaveLength(2); // the trial has Starter's storage
     expect(screen.getByText('Up to 500 users')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Monthly' })).toHaveAttribute('aria-checked', 'true');
   });
 
   it('prices the plans from the live plans, the same as inside the app', async () => {
@@ -63,8 +64,8 @@ describe('LandingPage', () => {
     });
     renderLanding();
     expect(await screen.findByText('Solo')).toBeInTheDocument();
-    expect(screen.getByText('3,490')).toBeInTheDocument();
-    expect(screen.getByText('20 GB storage')).toBeInTheDocument();
+    expect(screen.getByText('Solo').closest('button')).toHaveTextContent('₹349/month');
+    expect(screen.getAllByText('20 GB storage')).toHaveLength(2);
     expect(screen.getByText('1 TB storage')).toBeInTheDocument();
     expect(screen.getByText(/3-day free trial/)).toBeInTheDocument();
   });

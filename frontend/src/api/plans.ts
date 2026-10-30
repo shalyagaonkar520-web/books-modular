@@ -23,6 +23,8 @@ export interface PlanTier {
 export interface PlanCatalog {
   currency: string;
   tiers: PlanTier[];
+  /** The free trial's length; the trial has the smallest plan's users and storage. */
+  trialDays?: number;
   per100Over: number;
   customMinimum: number;
   yearlyMonths: number;
@@ -137,6 +139,7 @@ export const DEFAULT_PUBLIC_PLANS: PublicPlans = {
   per100Over: 99,
   customMinimum: 99,
   yearlyMonths: 10,
+  trialDays: 3,
 };
 
 /** No login needed; null when the request fails (the page keeps its defaults). */

@@ -22,6 +22,7 @@ import {
 import { api, downloadFile } from '@/api/client';
 import { ApiScopeProvider, type ApiScopeValue } from '@/api/ApiScope';
 import { tenantPlanApi } from '@/api/plans';
+import { trialStateOf } from '@/pages/subscription/PlanCards';
 import { normalizeSubscription } from '@/api/subscription';
 import type { User } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
@@ -162,7 +163,7 @@ export function AdminPlanPage() {
               </Button>
             }
           >
-            <PlanChooser planApi={tenantPlanApi} currentUsers={sub.data.usersUsed} onDone={sub.reload} />
+            <PlanChooser planApi={tenantPlanApi} currentUsers={sub.data.usersUsed} onDone={sub.reload} trial={trialStateOf(sub.data.status)} />
           </Card>
         </>
       ) : null}

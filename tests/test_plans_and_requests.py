@@ -299,3 +299,8 @@ def test_public_plans_match_the_app(client, org):
     inside = client.get("/api/subscription/plans", headers=org["h"]).json()
     assert body["tiers"] == inside["tiers"] and body["yearlyMonths"] == inside["yearlyMonths"]
     assert "payment" not in body and body["trialDays"] >= 0
+
+
+
+def test_catalog_tells_the_trial_length(client, org):
+    assert client.get("/api/subscription/plans", headers=org["h"]).json()["trialDays"] == client.get("/api/public/plans").json()["trialDays"]

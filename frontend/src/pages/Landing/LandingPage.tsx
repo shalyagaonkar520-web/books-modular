@@ -1,19 +1,19 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, ChevronDown, HardDrive, Settings2, Star, Users } from 'lucide-react';
+import { ArrowRight, ChevronDown, Star } from 'lucide-react';
 
-import { DEFAULT_PUBLIC_PLANS, fetchPublicPlans, formatStorage, type PublicPlans } from '@/api/plans';
+import { DEFAULT_PUBLIC_PLANS, fetchPublicPlans, type Cycle, type PublicPlans } from '@/api/plans';
 import { DEFAULT_SITE_CONTENT, fetchPublicSiteContent, type SiteContent } from '@/api/siteContent';
+import { CycleSwitch, PlanCards } from '@/pages/subscription/PlanCards';
 import { initials } from '@/utils/format';
 
 import { FeatureShelf } from './FeatureShelf';
 import { LEGAL_LINKS, LegalNavLinks } from './LegalPages';
 
-const formatPrice = (value: number) => (Number.isFinite(value) ? value.toLocaleString('en-IN') : '');
 
 export function LandingPage() {
   const navigate = useNavigate();
-  const [annualBilling, setAnnualBilling] = useState(true);
+  const [cycle, setCycle] = useState<Cycle>('monthly');
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
   // The bundled default renders immediately (no flash); the live content replaces it once loaded.
   const [content, setContent] = useState<SiteContent>(DEFAULT_SITE_CONTENT);
@@ -96,63 +96,12 @@ export function LandingPage() {
             <span className="zb-section-badge">{pricing.badge}</span>
             <h2 className="zb-section-title">{pricing.title}</h2>
             <p className="zb-section-desc">
-              Plans by number of users, the same as inside the app. Every plan has every feature
-              {plans.trialDays ? `, and every new organization starts with a ${plans.trialDays}-day free trial` : ''}.
+              Start with a {plans.trialDays ?? 3}-day free trial, then pay by number of users. Every plan has every feature.
             </p>
           </div>
-          <div className="zb-pricing-toggle-wrap">
-            <span className={!annualBilling ? 'active' : ''}>{pricing.monthlyLabel}</span>
-            <button className={`zb-pricing-toggle ${annualBilling ? 'checked' : ''}`} onClick={() => setAnnualBilling(!annualBilling)} aria-label="Yearly billing">
-              <span className="toggle-thumb"></span>
-            </button>
-            <span className={annualBilling ? 'active' : ''}>
-              {pricing.annualLabel} <span className="discount-tag">Pay {plans.yearlyMonths} months, get 12</span>
-            </span>
-          </div>
-          <div className="zb-pricing-grid lp-plans-grid">
-            {plans.tiers.map((tier, i) => (
-              <div className={`zb-pricing-card${i === 1 ? ' popular' : ''}`} key={tier.key}>
-                {i === 1 && <div className="zb-popular-badge">{pricing.popularLabel}</div>}
-                <div>
-                  <h3 className="zb-plan-name">{tier.label}</h3>
-                  <div className="zb-plan-price">
-                    <span className="currency">₹</span>
-                    <span className="amount">{formatPrice(annualBilling ? tier.monthly * plans.yearlyMonths : tier.monthly)}</span>
-                    <span className="period">{annualBilling ? '/year' : '/month'}</span>
-                  </div>
-                </div>
-                <div className="lp-plan-meta">
-                  <span><Users size={16} /> Up to {tier.users.toLocaleString('en-IN')} users</span>
-                  <span><HardDrive size={16} /> {formatStorage(tier.storageGb)} storage</span>
-                  <span><CheckCircle2 size={16} /> Every feature</span>
-                </div>
-                <button
-                  className={i === 1 ? 'zb-btn zb-btn-primary zb-btn-block zb-btn-glow' : 'zb-btn zb-btn-outline-dark zb-btn-block'}
-                  onClick={goToRegister}
-                >
-                  Start free trial
-                </button>
-              </div>
-            ))}
-            <div className="zb-pricing-card">
-              <div>
-                <h3 className="zb-plan-name">Customize</h3>
-                <div className="zb-plan-price">
-                  <span className="period">from</span>
-                  <span className="currency">₹</span>
-                  <span className="amount">{formatPrice(plans.customMinimum)}</span>
-                  <span className="period">/month</span>
-                </div>
-              </div>
-              <div className="lp-plan-meta">
-                <span><Settings2 size={16} /> Your users, your features</span>
-                <span><HardDrive size={16} /> Storage of the plan your users fit in</span>
-                <span><Users size={16} /> ₹{formatPrice(plans.per100Over)} per 100 users above {formatPrice(plans.tiers[plans.tiers.length - 1]?.users ?? 1000)}</span>
-              </div>
-              <button className="zb-btn zb-btn-outline-dark zb-btn-block" onClick={goToRegister}>
-                Start free trial
-              </button>
-            </div>
+          <div className="lp-plans stack">
+            <CycleSwitch cycle={cycle} yearlyMonths={plans.yearlyMonths} onChange={setCycle} />
+            <PlanCards plans={plans} cycle={cycle} onSelect={goToRegister} onTrial={goToRegister} />
           </div>
           <p className="lp-plan-note">Prices in Indian Rupees. Pay online by UPI, card or net banking; your plan starts as soon as you pay.</p>
         </section>

@@ -158,6 +158,8 @@ def catalog(db: Session) -> Dict[str, Any]:
     return {
         **cfg,
         "features": [{**f, "core": f["key"] in permissions.CORE_FEATURES} for f in permissions.catalog()],
+        # The free trial a new organization gets (it has the smallest plan's users and storage).
+        "trialDays": platform_settings.trial_days(db),
         # Razorpay is set up: plans are paid online and start at once.
         "onlinePayment": get_razorpay_service().is_configured,
     }

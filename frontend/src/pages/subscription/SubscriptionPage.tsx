@@ -8,6 +8,7 @@ import { useModulePricing } from '@/hooks/useModulePricing';
 
 import { tenantPlanApi } from '@/api/plans';
 
+import { trialStateOf } from './PlanCards';
 import { SubscriptionStatusCard } from './PlanBuilder';
 import { PlanChooser } from './PlanChooser';
 
@@ -51,7 +52,7 @@ export function SubscriptionPage() {
             title={subscription.plan ? 'Renew or change your plan' : 'Choose a plan'}
             subtitle="Plans by number of users. Pay online by UPI, card or net banking; the plan starts as soon as the payment goes through."
           >
-            <PlanChooser planApi={tenantPlanApi} currentUsers={subscription.usersUsed} onDone={() => void reload()} />
+            <PlanChooser planApi={tenantPlanApi} currentUsers={subscription.usersUsed} onDone={() => void reload()} trial={trialStateOf(subscription.status)} />
           </Card>
         ) : (
           <Card>

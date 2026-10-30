@@ -6,7 +6,6 @@
  * /subscription page, the lock screen and the org admin panel.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Check, HardDrive, Settings2, Users } from 'lucide-react';
 
 import { formatRupees, formatStorage, quotePlan, type Cycle, type PlanApi, type PlanCatalog, type PlanKey } from '@/api/plans';
 import { Button } from '@/components/ui/Button';
@@ -17,14 +16,39 @@ import { useToast } from '@/components/ui/Toast';
 import { useAsync } from '@/hooks/useAsync';
 import { openRazorpayCheckout } from '@/utils/razorpayCheckout';
 
-export function PlanChooser({ planApi, onDone, currentUsers }: { planApi: PlanApi; onDone?: () => void; currentUsers?: number }) {
+import { CycleSwitch, PlanCards } from './PlanCards';
+
+export function PlanChooser({
+  planApi,
+  onDone,
+  currentUsers,
+  trial,
+}: {
+  planApi: PlanApi;
+  onDone?: () => void;
+  currentUsers?: number;
+  /** Where this organization's free trial stands, for the trial card. */
+  trial?: 'current' | 'ended' | 'used';
+}) {
   const catalog = useAsync(() => planApi.catalog(), [planApi]);
   if (catalog.loading) return <LoadingBlock label="Loading plans…" />;
   if (catalog.error || !catalog.data) return <ErrorBlock message={catalog.error ?? 'Could not load the plans.'} onRetry={catalog.reload} />;
-  return <Chooser catalog={catalog.data} planApi={planApi} onDone={onDone} currentUsers={currentUsers} />;
+  return <Chooser catalog={catalog.data} planApi={planApi} onDone={onDone} currentUsers={currentUsers} trial={trial ?? 'used'} />;
 }
 
-function Chooser({ catalog, planApi, onDone, currentUsers }: { catalog: PlanCatalog; planApi: PlanApi; onDone?: () => void; currentUsers?: number }) {
+function Chooser({
+  catalog,
+  planApi,
+  onDone,
+  currentUsers,
+  trial,
+}: {
+  catalog: PlanCatalog;
+  planApi: PlanApi;
+  onDone?: () => void;
+  currentUsers?: number;
+  trial: 'current' | 'ended' | 'used';
+}) {
   const toast = useToast();
   const [cycle, setCycle] = useState<Cycle>('monthly');
   const [planKey, setPlanKey] = useState<PlanKey | null>(null);
@@ -49,7 +73,7 @@ function Chooser({ catalog, planApi, onDone, currentUsers }: { catalog: PlanCata
 
   useEffect(() => {
     setQr(null);
-    if (!quote || !catalog.payment.upiId || catalog.onlinePayment) return;
+    if (!quote || !quote.planPrice || !catalog.payment.upiId || catalog.onlinePayment) return;
     let alive = true;
     const timer = window.setTimeout(() => {
       planApi
@@ -114,48 +138,9 @@ function Chooser({ catalog, planApi, onDone, currentUsers }: { catalog: PlanCata
 
   return (
     <div className="stack plan-chooser">
-      <div className="plan-cycle" role="radiogroup" aria-label="Billing">
-        {(['monthly', 'yearly'] as const).map((value) => (
-          <button key={value} type="button" role="radio" aria-checked={cycle === value} className={`segmented-option ${cycle === value ? 'is-active is-view' : ''}`} onClick={() => setCycle(value)}>
-            {value === 'monthly' ? 'Monthly' : `Yearly (pay ${catalog.yearlyMonths} months, get 12)`}
-          </button>
-        ))}
-      </div>
+      <CycleSwitch cycle={cycle} yearlyMonths={catalog.yearlyMonths} onChange={setCycle} />
 
-      <div className="plan-cards">
-        {catalog.tiers.map((tier) => (
-          <button key={tier.key} type="button" className={`plan-card ${planKey === tier.key ? 'is-selected' : ''}`} onClick={() => setPlanKey(tier.key)}>
-            <span className="plan-card-name">{tier.label}</span>
-            <span className="plan-card-users">
-              <Users size={15} aria-hidden="true" /> Up to {tier.users.toLocaleString('en-IN')} users
-            </span>
-            {tier.storageGb ? (
-              <span className="plan-card-users">
-                <HardDrive size={15} aria-hidden="true" /> {formatStorage(tier.storageGb)} storage
-              </span>
-            ) : null}
-            <span className="plan-card-price">
-              {price(tier.monthly)}
-              <small>/month</small>
-            </span>
-            <span className="plan-card-note">
-              <Check size={14} aria-hidden="true" /> Every feature
-            </span>
-            {cycle === 'yearly' ? <span className="plan-card-note">{price(tier.monthly * catalog.yearlyMonths)} a year</span> : null}
-          </button>
-        ))}
-        <button type="button" className={`plan-card ${planKey === 'custom' ? 'is-selected' : ''}`} onClick={() => setPlanKey('custom')}>
-          <span className="plan-card-name">Customize</span>
-          <span className="plan-card-users">
-            <Settings2 size={15} aria-hidden="true" /> Your users, your features
-          </span>
-          <span className="plan-card-price">
-            from {price(catalog.customMinimum)}
-            <small>/month</small>
-          </span>
-          <span className="plan-card-note">Pay only for what you use</span>
-        </button>
-      </div>
+      <PlanCards plans={catalog} cycle={cycle} selected={planKey} onSelect={setPlanKey} trial={trial} />
 
       {planKey === 'custom' ? (
         <div className="plan-custom stack">
