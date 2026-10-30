@@ -5957,3 +5957,43 @@ input[type='password']::-ms-clear {
 .plan-card-name { display: inline-flex; align-items: center; gap: 8px; }
 .plan-card-tag { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--success); color: #fff; }
 .plan-card-tag.is-ended, .plan-card-tag.is-used { background: var(--text-subtle); }
+
+/* ------------------------------------------------------------------------- */
+/* Public website: open layout, no boxes around content                       */
+/* ------------------------------------------------------------------------- */
+/* Shelf tabs: words with a sliding underline instead of boxed buttons */
+.shelf-hero .shelf-tabs-row { gap: 6px; }
+.shelf-hero .shelf-tab { border: 0; margin-left: 0; padding: 0 10px; height: 28px; color: var(--muted); }
+.shelf-hero .shelf-tab.is-active { color: var(--cobalt); }
+.shelf-hero .shelf-tab-indicator { top: auto; bottom: 0; height: 2px; }
+
+/* Plans: open columns divided by hairlines */
+.lp-plans .plan-cycle { align-self: center; border: 0; border-radius: 0; gap: 22px; overflow: visible; }
+.lp-plans .segmented-option { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 6px 2px; font-size: 14px; color: #64748b; }
+.lp-plans .segmented-option:hover { background: none; color: #0f172a; }
+.lp-plans .segmented-option.is-active.is-view { background: none; color: #1F3FB0; border-bottom-color: #1F3FB0; }
+.lp-plans .plan-cards { gap: 0; margin-top: 18px; }
+.lp-plans .plan-card { border: 0; border-left: 1px solid #e2e8f0; border-radius: 0; background: none; box-shadow: none; padding: 6px 26px 10px; gap: 9px; }
+.lp-plans .plan-card:first-child { border-left: 0; padding-left: 0; }
+.lp-plans .plan-card:hover { border-color: #e2e8f0; }
+.lp-plans .plan-card:hover .plan-card-name { color: #1F3FB0; }
+.lp-plans .plan-card.is-trial, .lp-plans .plan-card.is-trial:hover { background: none; border-color: #e2e8f0; }
+.lp-plans .plan-card.is-trial .plan-card-name, .lp-plans .plan-card.is-trial .plan-card-price { color: var(--success); }
+.lp-plans .plan-card-name { font-size: 17px; transition: color .2s; }
+.lp-plans .plan-card-price { font-size: 30px; margin: 4px 0; }
+@media (max-width: 900px) {
+  .lp-plans .plan-cards { grid-template-columns: 1fr 1fr; row-gap: 26px; }
+  .lp-plans .plan-card, .lp-plans .plan-card:first-child { border-left: 0; padding: 0 12px 0 0; }
+}
+
+/* Reviews: plain quotes */
+.zb-landing-container .zb-testimonial-card { background: none; border: 0; border-left: 3px solid #1F3FB0; border-radius: 0; box-shadow: none; padding: 4px 0 4px 24px; }
+
+/* FAQ: a simple list with rules between the questions */
+.zb-landing-container .zb-faq-accordion { gap: 0; border-top: 1px solid #e2e8f0; }
+.zb-landing-container .zb-faq-item { background: none; border: 0; border-bottom: 1px solid #e2e8f0; border-radius: 0; box-shadow: none; padding: 20px 4px; }
+.zb-landing-container .zb-faq-item:hover .zb-faq-question { color: #1F3FB0; }
+
+/* Second buttons read as links */
+.zb-landing-container .zb-btn-outline-dark { background: none; border-color: transparent; text-decoration: underline; text-underline-offset: 4px; }
+.zb-landing-container .zb-btn-outline-dark:hover { background: none; border-color: transparent; color: #1F3FB0; }
