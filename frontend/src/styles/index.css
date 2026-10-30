@@ -6005,3 +6005,5 @@ input[type='password']::-ms-clear {
   --primary: #1F3FB0; --primary-soft: #eef2ff; --success: #059669; --success-soft: #ecfdf5;
   color: var(--text);
 }
+.plan-card-price { white-space: nowrap; }
+@media (max-width: 480px) { .lp-plans .plan-card-price { font-size: 25px; } }
