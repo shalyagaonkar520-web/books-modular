@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { installMockApi } from '@/test/mockApi';
@@ -55,6 +56,29 @@ describe('LoginPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     expect(await screen.findByText('Invalid email or password')).toBeInTheDocument();
+  });
+
+  it('signs the super admin straight into the super admin panel', async () => {
+    const { calls } = installMockApi({
+      'GET /api/auth/me': new Response(JSON.stringify({ detail: 'Not authenticated' }), { status: 401, headers: { 'content-type': 'application/json' } }),
+      'POST /api/auth/login': new Response(JSON.stringify({ detail: 'Invalid email or password' }), { status: 401, headers: { 'content-type': 'application/json' } }),
+      'POST /api/platform/auth/login': { accessToken: 'platform-token', tokenType: 'bearer', admin: { id: 'p1', name: 'CEO', email: 'boss@example.com', isActive: true, createdAt: '2026-01-01T00:00:00Z' } },
+    });
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/platform" element={<p>Super admin panel</p>} />
+      </Routes>,
+      { route: '/login' },
+    );
+
+    fireEvent.change(screen.getByLabelText(/work email/i), { target: { value: 'boss@example.com' } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: 'B0ssPass!' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(await screen.findByText('Super admin panel')).toBeInTheDocument();
+    expect(calls.find((call) => call.path === '/api/platform/auth/login')?.body).toEqual({ email: 'boss@example.com', password: 'B0ssPass!' });
   });
 
   it.each([

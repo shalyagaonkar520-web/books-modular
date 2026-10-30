@@ -5669,3 +5669,90 @@ input[type='password']::-ms-clear {
 [data-theme='dark'] [style*='solid rgb(241, 245, 249)'] {
   border-color: var(--border) !important;
 }
+
+
+/* ---------------------------------------------------------------- phones */
+.hub-tabs {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.hub-tabs .tab-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.card-actions > div {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 720px) {
+  /* App header: the logo alone, so Create, theme, bell and the profile fit. */
+  .app-header .brand-text {
+    display: none;
+  }
+
+  /* Super admin header: icons only, no email. */
+  .platform-email,
+  .platform-header-right .btn-label {
+    display: none;
+  }
+  .platform-header-right {
+    gap: 6px !important;
+    min-width: 0;
+  }
+  .platform-search {
+    width: 40vw !important;
+    min-width: 0;
+  }
+
+  /* Public site: Log In stays in the bar; the big button is in the hero. */
+  .zb-landing-nav-actions .zb-btn-primary,
+  .zb-landing-badge {
+    display: none;
+  }
+  .zb-landing-nav-actions {
+    gap: 8px;
+  }
+
+  .card-actions {
+    width: 100%;
+  }
+  .page-header-actions,
+  .page-header .row-actions {
+    flex-wrap: wrap;
+  }
+
+  /* Admin console users: a narrower role picker on phones. */
+  .users-role,
+  .users-role .select {
+    min-width: 140px;
+  }
+
+  /* Support chat bubbles use the full width. */
+  .thread-head .row-actions {
+    width: 100%;
+  }
+}
+
+.change-actions,
+.review-toolbar,
+.users-actions {
+  flex-wrap: wrap;
+}
+
+/* Phones: summary tiles two per row, a little tighter. */
+@media (max-width: 560px) {
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .stat-grid .stat-tile {
+    padding: 12px;
+    min-width: 0;
+  }
+  .stat-grid .stat-value {
+    font-size: 20px;
+    overflow-wrap: anywhere;
+  }
+}

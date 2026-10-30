@@ -76,6 +76,7 @@ export function PlatformGlobalSearch() {
   return (
     <div
       ref={containerRef}
+      className="platform-search"
       style={{ position: 'relative', width: 'min(320px, 42vw)' }}
     >
       <div

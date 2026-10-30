@@ -128,7 +128,7 @@ export function PlatformLayout() {
           </div>
         </div>
 
-        <div className="header-right" style={{ gap: 12 }}>
+        <div className="header-right platform-header-right" style={{ gap: 12 }}>
           <PlatformGlobalSearch />
           <ThemeToggle onDark />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -140,6 +140,7 @@ export function PlatformLayout() {
               {initials(admin?.name ?? admin?.email ?? 'SA')}
             </span>
             <span
+              className="platform-email"
               style={{ fontSize: 13, color: '#cbd5e1', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
               title={admin?.email}
             >
@@ -154,7 +155,7 @@ export function PlatformLayout() {
             style={{ background: '#1e293b', borderColor: '#334155', color: '#e2e8f0' }}
           >
             <KeyRound size={14} />
-            <span>Change password</span>
+            <span className="btn-label">Change password</span>
           </button>
           <button
             type="button"
@@ -163,7 +164,7 @@ export function PlatformLayout() {
             style={{ background: '#1e293b', borderColor: '#334155', color: '#e2e8f0' }}
           >
             <LogOut size={14} />
-            <span>Logout</span>
+            <span className="btn-label">Logout</span>
           </button>
         </div>
       </header>

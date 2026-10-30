@@ -442,7 +442,7 @@ export function FinancialDashboardPage() {
         ) : null}
 
         {/* Tabbed Interactive Operations */}
-        <div style={{ borderBottom: '1px solid var(--border-color, #e2e8f0)', display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+        <div className="hub-tabs" style={{ borderBottom: '1px solid var(--border-color, #e2e8f0)', display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
           <button
             type="button"
             className={`tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
