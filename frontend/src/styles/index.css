@@ -5997,3 +5997,11 @@ input[type='password']::-ms-clear {
 /* Second buttons read as links */
 .zb-landing-container .zb-btn-outline-dark { background: none; border-color: transparent; text-decoration: underline; text-underline-offset: 4px; }
 .zb-landing-container .zb-btn-outline-dark:hover { background: none; border-color: transparent; color: #1F3FB0; }
+
+/* The website is always light: the shared plan cards use the light colours there, even when the device is in dark mode. */
+.lp-plans {
+  --text: #0f172a; --text-muted: #64748b; --text-subtle: #94a3b8; --border: #e2e8f0; --border-strong: #cbd5e1;
+  --surface: #ffffff; --surface-alt: #f1f5f9; --surface-hover: #f8fafc;
+  --primary: #1F3FB0; --primary-soft: #eef2ff; --success: #059669; --success-soft: #ecfdf5;
+  color: var(--text);
+}
