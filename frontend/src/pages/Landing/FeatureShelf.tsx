@@ -156,7 +156,34 @@ export function FeatureShelf({ onStart }: { onStart: () => void }) {
       stage.style.setProperty('--ws', `${ws}px`);
       stage.style.setProperty('--d', `${d}px`);
       stage.style.setProperty('--hpx', `${H}px`);
+      fitTitles();
     };
+
+    // Long titles shrink until they fit their spine or cover (measured once per
+    // title; the copies of a book are the same size).
+    function fitTitles() {
+      const fit = (selector: string, overflows: (el: HTMLElement) => boolean) => {
+        const sizes = new Map<string, string>();
+        stage.querySelectorAll<HTMLElement>(selector).forEach((el) => {
+          const key = el.textContent ?? '';
+          const known = sizes.get(key);
+          if (known !== undefined) {
+            el.style.fontSize = known;
+            return;
+          }
+          el.style.fontSize = '';
+          let size = parseFloat(getComputedStyle(el).fontSize);
+          const min = size * 0.45;
+          while (overflows(el) && size > min) {
+            size *= 0.94;
+            el.style.fontSize = `${size}px`;
+          }
+          sizes.set(key, el.style.fontSize);
+        });
+      };
+      fit('.book-spine-title', (el) => el.scrollHeight > el.clientHeight + 1);
+      fit('.book-cover-title', (el) => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1);
+    }
     measure();
 
     const start = 5;
