@@ -6093,24 +6093,29 @@ input[type='password']::-ms-clear {
     background: #ffffff;
     border-color: #e5e9f0;
   }
-  .sidebar::after {
-    content: '';
-    display: block;
-    position: sticky;
-    bottom: -24px;
-    height: 44px;
-    margin: -44px -10px -24px;
-    background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #ffffff 85%);
-    backdrop-filter: blur(1.5px);
-    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 60%);
-    mask-image: linear-gradient(to bottom, transparent, #000 60%);
-    pointer-events: none;
-    border-radius: 0 0 16px 16px;
-  }
   [data-theme='dark'] .sidebar { background: var(--surface); }
-  [data-theme='dark'] .sidebar::after { background: linear-gradient(to bottom, transparent, var(--surface) 85%); }
   .sidebar .nav-link:hover, .sidebar .nav-group-toggle:hover { background: #f1f5ff; border-color: transparent; box-shadow: none; }
   [data-theme='dark'] .sidebar .nav-link:hover, [data-theme='dark'] .sidebar .nav-group-toggle:hover { background: var(--surface-hover); }
   .sidebar .nav-link.active { background: #eef2ff; border-color: transparent; box-shadow: none; }
   [data-theme='dark'] .sidebar .nav-link.active { background: var(--primary-soft); }
 }
+
+/* The page (right side) fades and blurs where it scrolls out of view at the bottom. */
+.app-main::after {
+  content: '';
+  display: block;
+  position: sticky;
+  bottom: -48px;
+  height: 64px;
+  margin: -64px -24px -48px;
+  background: linear-gradient(to bottom, transparent, var(--bg) 90%);
+  backdrop-filter: blur(2px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 55%);
+  mask-image: linear-gradient(to bottom, transparent, #000 55%);
+  pointer-events: none;
+  z-index: 5;
+}
+@media (max-width: 720px) {
+  .app-main::after { bottom: -40px; margin: -64px -14px -40px; }
+}
+@media print { .app-main::after { display: none; } }
