@@ -6028,3 +6028,55 @@ input[type='password']::-ms-clear {
 @media (max-width: 960px) {
   .sidebar { border-radius: 0 16px 16px 0; }
 }
+
+/* ------------------------------------------------------------------------- */
+/* Dashboard: an open page, no boxes                                           */
+/* ------------------------------------------------------------------------- */
+.dashboard-open .card { background: none; border: 0; border-top: 1px solid var(--border); border-radius: 0; box-shadow: none; overflow: visible; }
+.dashboard-open .card:hover { transform: none; box-shadow: none; border-color: var(--border); }
+.dashboard-open .card-header, .dashboard-open .card-footer { background: none; border-color: transparent; padding-left: 0; padding-right: 0; }
+.dashboard-open .card-body { padding-left: 0; padding-right: 0; }
+.dashboard-open .stat-grid { gap: 0; padding: 18px 0 6px; border-top: 1px solid var(--border); }
+.dashboard-open .stat-tile { background: none; border: 0; border-left: 1px solid var(--border); border-radius: 0; box-shadow: none; padding: 4px 24px 10px; overflow: visible; }
+.dashboard-open .stat-grid > .stat-tile:first-child { border-left: 0; padding-left: 0; }
+.dashboard-open .stat-tile::before { display: none; }
+.dashboard-open .stat-tile:hover { transform: none; box-shadow: none; border-color: var(--border); }
+.dashboard-open .stat-icon { background: none; width: auto; height: auto; color: var(--text-subtle); }
+.dashboard-open .stat-value { font-size: 28px; }
+.dashboard-open .tone-positive .stat-value { color: var(--success); }
+.dashboard-open .tone-negative .stat-value { color: var(--danger); }
+.dashboard-open .empty-state { padding: 28px 0; }
+@media (max-width: 720px) {
+  .dashboard-open .stat-tile, .dashboard-open .stat-grid > .stat-tile:first-child { border-left: 0; padding: 12px 0; border-top: 1px solid var(--border); }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Sidebar: a rounded rail of icons that slides open while the pointer is on it */
+/* ------------------------------------------------------------------------- */
+@media (min-width: 961px) {
+  :root { --rail-w: 64px; }
+  .sidebar {
+    position: sticky;
+    z-index: 30;
+    width: var(--rail-w);
+    padding: 12px 10px 24px;
+    overflow-x: hidden;
+    transition: width .22s cubic-bezier(.2,.8,.2,1), margin-right .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s ease;
+  }
+  .sidebar:hover, .sidebar:focus-within {
+    width: var(--sidebar-w);
+    /* Open over the page instead of pushing it aside. */
+    margin-right: calc(var(--rail-w) - var(--sidebar-w));
+    box-shadow: 0 18px 40px -12px rgba(15, 23, 42, .28);
+  }
+  .sidebar .nav-link, .sidebar .nav-group-toggle { white-space: nowrap; }
+  .sidebar:not(:hover):not(:focus-within) .nav-link,
+  .sidebar:not(:hover):not(:focus-within) .nav-group-toggle { justify-content: center; padding-left: 0; padding-right: 0; }
+  .sidebar:not(:hover):not(:focus-within) .nav-link > span,
+  .sidebar:not(:hover):not(:focus-within) .nav-group-toggle > span,
+  .sidebar:not(:hover):not(:focus-within) .nav-group-toggle .chevron,
+  .sidebar:not(:hover):not(:focus-within) .nav-sublist { display: none; }
+  .sidebar:not(:hover):not(:focus-within) { scrollbar-width: none; }
+  .sidebar:not(:hover):not(:focus-within)::-webkit-scrollbar { display: none; }
+  .app-main { padding-left: 20px; }
+}

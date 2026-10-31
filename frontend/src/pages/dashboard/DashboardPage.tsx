@@ -141,7 +141,7 @@ export function DashboardPage() {
   ];
 
   return (
-    <>
+    <div className="dashboard-open">
       <PageHeader
         title={t('dashboard.welcome', { name: user?.name?.split(' ')[0] ?? t('dashboard.welcomeFallbackName') })}
         subtitle={t('dashboard.subtitle', { org: organization?.name ?? t('dashboard.orgFallback') })}
@@ -619,6 +619,6 @@ export function DashboardPage() {
           <DataTable<Activity> columns={activityColumns} rows={recentActivity} rowKey={(row) => `${row.type}-${row.id}`} caption={t('dashboard.activity.title')} />
         )}
       </div>
-    </>
+    </div>
   );
 }
