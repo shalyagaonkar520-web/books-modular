@@ -6118,7 +6118,7 @@ input[type='password']::-ms-clear {
 }
 @media print { .app-main::after { display: none; } }
 
-/* The page title lines up with the first sidebar item (Home). */
+/* The top of the page title's letters sits level with the sidebar's top edge. */
 @media (min-width: 961px) {
-  .app-main { padding-top: 25px; }
+  .app-main { padding-top: 4px; }
 }
