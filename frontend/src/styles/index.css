@@ -6080,3 +6080,37 @@ input[type='password']::-ms-clear {
   .sidebar:not(:hover):not(:focus-within)::-webkit-scrollbar { display: none; }
   .app-main { padding-left: 20px; }
 }
+
+/* Sidebar frame: fills the space under the header and banner exactly, so both
+   rounded ends show, with a soft fade where the menu scrolls out of view. */
+@media (min-width: 961px) {
+  .sidebar {
+    position: relative;
+    top: auto;
+    align-self: stretch;
+    height: auto;
+    margin: 12px 0 12px 12px;
+    background: #ffffff;
+    border-color: #e5e9f0;
+  }
+  .sidebar::after {
+    content: '';
+    display: block;
+    position: sticky;
+    bottom: -24px;
+    height: 44px;
+    margin: -44px -10px -24px;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #ffffff 85%);
+    backdrop-filter: blur(1.5px);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 60%);
+    mask-image: linear-gradient(to bottom, transparent, #000 60%);
+    pointer-events: none;
+    border-radius: 0 0 16px 16px;
+  }
+  [data-theme='dark'] .sidebar { background: var(--surface); }
+  [data-theme='dark'] .sidebar::after { background: linear-gradient(to bottom, transparent, var(--surface) 85%); }
+  .sidebar .nav-link:hover, .sidebar .nav-group-toggle:hover { background: #f1f5ff; border-color: transparent; box-shadow: none; }
+  [data-theme='dark'] .sidebar .nav-link:hover, [data-theme='dark'] .sidebar .nav-group-toggle:hover { background: var(--surface-hover); }
+  .sidebar .nav-link.active { background: #eef2ff; border-color: transparent; box-shadow: none; }
+  [data-theme='dark'] .sidebar .nav-link.active { background: var(--primary-soft); }
+}
