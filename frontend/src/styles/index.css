@@ -6118,7 +6118,7 @@ input[type='password']::-ms-clear {
 }
 @media print { .app-main::after { display: none; } }
 
-/* The top of the page title's letters sits level with the sidebar's top edge. */
+/* The page title sits just below the sidebar's top edge. */
 @media (min-width: 961px) {
-  .app-main { padding-top: 4px; }
+  .app-main { padding-top: 12px; }
 }
