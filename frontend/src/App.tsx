@@ -72,6 +72,19 @@ import { AutomationPage } from '@/pages/automation/AutomationPage';
 import { AiAssistantPage } from '@/pages/ai/AiAssistantPage';
 import { DocumentPortalPage } from '@/pages/portal/DocumentPortalPage';
 import { SubscriptionPage } from '@/pages/subscription/SubscriptionPage';
+import { ConnectMobilePage } from '@/pages/workspace/admin/ConnectMobilePage';
+import { ManualHome } from '@/pages/workspace/ManualHome';
+import { storedMode } from '@/pages/workspace/ModeSwitch';
+import { WorkspaceApp } from '@/pages/workspace/WorkspaceApp';
+import { WorkspaceInvitePage } from '@/pages/workspace/WorkspaceInvitePage';
+import { useAuth } from '@/auth/AuthContext';
+
+/** "/dashboard" for an AI-workspace employee means their workspace (in the mode they last used). */
+function DashboardRoute() {
+  const { user } = useAuth();
+  if (user?.workspaceEmployee) return <Navigate to={storedMode() === 'manual' ? '/workspace/home' : '/workspace'} replace />;
+  return <DashboardPage />;
+}
 
 export function App() {
   return (
@@ -113,6 +126,7 @@ export function App() {
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/accept-invite" element={<AcceptInvitePage />} />
+          <Route path="/workspace-invite" element={<WorkspaceInvitePage />} />
         </Route>
 
         {/* Protected app routes — redirect to / if not logged in */}
@@ -122,8 +136,13 @@ export function App() {
             <Route path="/portal" element={<EmployeePortalPage />} />
           </Route>
 
+          {/* The AI workspace (Automatic mode) has its own full-screen layout. */}
+          <Route path="/workspace" element={<WorkspaceApp />} />
+
           <Route element={<RequireMainApp />}>
             <Route element={<AppLayout />}>
+            <Route path="/workspace/home" element={<ManualHome />} />
+            <Route path="/connect-mobile" element={<Navigate to="/admin/mobile" replace />} />
             {/* Trial and plan: never module-guarded (admins manage, everyone else reads). */}
             <Route path="/subscription" element={<SubscriptionPage />} />
             {/* Support (every role) and the Admin console (admins) stay open even while the plan has run out. */}
@@ -144,11 +163,12 @@ export function App() {
               <Route path="plan" element={<AdminPlanPage />} />
               <Route path="organization" element={<AdminOrganizationPage />} />
               <Route path="app-content" element={<AppContentPage mode="organization" />} />
+              <Route path="mobile" element={<ConnectMobilePage />} />
               <Route path="activity" element={<AdminActivityPage />} />
               <Route path="*" element={<Navigate to="/admin" replace />} />
             </Route>
             <Route element={<ModuleGuard />}>
-            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/dashboard" element={<DashboardRoute />} />
             <Route path="/items" element={<ItemsPage />} />
             <Route path="/items/new" element={<RequireWrite><ItemFormPage /></RequireWrite>} />
             <Route path="/items/:itemId/edit" element={<ItemFormPage />} />

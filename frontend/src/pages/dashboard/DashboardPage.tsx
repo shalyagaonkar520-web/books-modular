@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Smartphone } from 'lucide-react';
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -147,6 +148,12 @@ export function DashboardPage() {
         subtitle={t('dashboard.subtitle', { org: organization?.name ?? t('dashboard.orgFallback') })}
         actions={
           <div className="row" style={{ gap: 12 }}>
+            {user?.role === 'admin' ? (
+              <Link to="/admin/mobile" className="btn btn-primary btn-md" title="Invite employees into their own AI workspace">
+                <Smartphone size={16} />
+                <span>Connect to Mobile</span>
+              </Link>
+            ) : null}
             <FilterSelect
               label={t('dashboard.period.label')}
               value={period}

@@ -18,3 +18,5 @@ openpyxl>=3.1.5
 defusedxml>=0.7.1
 reportlab>=4.2.0
 anthropic>=2.3,<3
+# Product photos in the AI workspace: validate, strip metadata and shrink before sending. (Optional: pytesseract + the tesseract binary add free local OCR.)
+Pillow>=10.0

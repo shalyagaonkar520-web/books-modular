@@ -11,6 +11,8 @@ import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { TrialBanner } from './TrialBanner';
 import { WorkspaceBanner } from './WorkspaceBanner';
+import { BuddyDock } from '@/pages/workspace/BuddyDock';
+import { WorkspaceModeBar } from '@/pages/workspace/WorkspaceModeBar';
 
 export function AppLayout() {
   return (
@@ -45,6 +47,7 @@ function AppShell() {
     <div className="app-shell">
       <WorkspaceBanner />
       <Header onToggleSidebar={() => setSidebarOpen((open) => !open)} />
+      <WorkspaceModeBar />
       <TrialBanner />
       <div className="app-body">
         {locked ? null : <Sidebar open={sidebarOpen} onNavigate={() => setSidebarOpen(false)} />}
@@ -53,6 +56,7 @@ function AppShell() {
           <PageErrorBoundary>{locked ? <SubscriptionLockScreen /> : <Outlet />}</PageErrorBoundary>
         </main>
       </div>
+      <BuddyDock />
     </div>
   );
 }

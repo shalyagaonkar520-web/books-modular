@@ -145,6 +145,8 @@ def list_items(
                 func.lower(Item.barcode).like(q),
                 func.lower(Item.description).like(q),
                 func.lower(Item.hsn_sac).like(q),
+                func.lower(Item.category).like(q),
+                func.lower(Item.brand).like(q),
             )
         )
     if type_filter in ("goods", "service"):

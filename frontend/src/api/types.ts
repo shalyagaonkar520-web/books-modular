@@ -25,6 +25,8 @@ export interface User {
   customRoleId?: string | null;
   customRoleName?: string | null;
   permissions?: Record<string, 'none' | 'view' | 'edit'> | null;
+  /** An AI-workspace employee: lands in the AI workspace, with Automatic / Manual modes. */
+  workspaceEmployee?: boolean;
   /** The organization's custom plan features; null/absent = every feature. */
   planFeatures?: string[] | null;
   /** role "reviewer": whose work they review ("user:<id>", "role:staff", "custom:<role id>"). */

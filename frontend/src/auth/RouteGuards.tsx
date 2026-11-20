@@ -19,7 +19,8 @@ export function RequireAuth() {
 export function RequireGuest() {
   const { user, isEmployee, initializing } = useAuth();
   if (initializing) return <LoadingBlock label="Loading…" />;
-  if (user) return <Navigate to={isEmployee ? '/portal' : '/dashboard'} replace />;
+  // An AI-workspace employee lands in their workspace; everyone else on the dashboard.
+  if (user) return <Navigate to={isEmployee ? '/portal' : user.workspaceEmployee ? '/workspace' : '/dashboard'} replace />;
   return <Outlet />;
 }
 

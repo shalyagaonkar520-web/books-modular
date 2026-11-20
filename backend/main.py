@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, OperationalError
 
@@ -62,6 +62,25 @@ def create_app() -> FastAPI:
 
     # Connected apps' retried writes (Idempotency-Key) answer with the first response.
     app.middleware("http")(idempotency.middleware)
+
+    @app.middleware("http")
+    async def hide_cost_from_workspace_staff(request: Request, call_next):
+        """An AI-workspace employee without the Financial data switch never receives cost prices
+        (flagged by deps._workspace_error on the request; no other request is touched)."""
+        response = await call_next(request)
+        if not getattr(request.state, "hide_cost", False) or "application/json" not in response.headers.get("content-type", ""):
+            return response
+        import json as _json
+
+        from backend.services.workspace import perms as workspace_perms
+
+        body = b"".join([chunk async for chunk in response.body_iterator])
+        try:
+            body = _json.dumps(workspace_perms.strip_cost(_json.loads(body))).encode("utf-8")
+        except ValueError:
+            pass
+        headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+        return Response(content=body, status_code=response.status_code, headers=headers, media_type="application/json")
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
@@ -157,6 +176,14 @@ def create_app() -> FastAPI:
     app.include_router(admin_console.router)
     app.include_router(reviews.router)
     app.include_router(employee_portal.router, dependencies=[Depends(require_subscription)])
+    # AI Employee Workspace: owner admin, employee chat, and the public invitation pages.
+    # Each route guards itself (admin / signed-in workspace employee / invitation token).
+    from backend.routers import workspace as workspace_routes
+
+    app.include_router(workspace_routes.public_router)
+    app.include_router(workspace_routes.admin_router)
+    app.include_router(workspace_routes.router)
+    app.include_router(workspace_routes.buddy_router)
     # Every feature is declared once in backend/features.py: mounted here behind
     # require_full_app_access, plus require_module when it is sold in a plan
     # (writes outside the organization's accepted plan answer 403).

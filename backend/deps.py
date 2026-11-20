@@ -222,6 +222,21 @@ def require_subscription(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+def _workspace_error(user: User, request: Request) -> str | None:
+    """The finer AI-workspace rules for a custom-role user whose role came from a workspace."""
+    role = user.custom_role
+    if role is None or not role.actions:
+        return None
+    from backend.services.workspace import perms as workspace_perms
+
+    perm = workspace_perms.normalize(role.actions)
+    error = workspace_perms.api_error(perm, request.method, request.url.path)
+    if error is None and not workspace_perms.can_see_financial(perm):
+        # Read by main.py's redaction middleware: cost prices never leave the server for this employee.
+        request.state.hide_cost = True
+    return error
+
+
 def require_roles(*roles: str):
     allowed: Iterable[str] = roles or ALL_ROLES
 
@@ -238,6 +253,11 @@ def require_roles(*roles: str):
             )
             if error:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=error)
+            # An AI-workspace employee is held to the finer rules too: create / edit / delete /
+            # approve / export per feature, financial data, and pickers only with a related feature.
+            workspace_error = _workspace_error(user, request)
+            if workspace_error:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=workspace_error)
         elif (ROLE_VIEWER if user.role == ROLE_REVIEWER else user.role) not in allowed:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
         ensure_subscription_access(user)

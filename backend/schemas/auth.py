@@ -137,6 +137,8 @@ class UserOut(APIModel):
     custom_role_id: Optional[str] = None
     custom_role_name: Optional[str] = None
     permissions: Optional[Dict[str, str]] = None
+    # True for an AI-workspace employee (lands in the AI workspace, with Automatic / Manual modes).
+    workspace_employee: bool = False
     # The organization's custom plan features; None = every feature.
     plan_features: Optional[List[str]] = None
     # role == "reviewer": whose work they review ("user:<id>", "role:staff", "custom:<role id>").

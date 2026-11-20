@@ -50,6 +50,7 @@ describe('Admin console', () => {
       'Plan',
       'Organization',
       'App content',
+      'Connect to Mobile',
       'Activity',
     ]);
   });

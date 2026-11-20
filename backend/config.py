@@ -58,6 +58,20 @@ class Settings(BaseSettings):
     anthropic_api_key: str = Field(default="", description="ANTHROPIC_API_KEY")
     ai_model: str = Field(default="claude-opus-5-5", description="Claude model used by the AI assistant")
 
+    # AI Employee Workspace. Cheap models on purpose: routing and photo reading are small jobs.
+    # Prices are USD per million tokens, for the owner's cost estimate only (override with
+    # AI_PRICE_TABLE='{"model": [input, output]}' if the published prices change).
+    workspace_ai_model: str = Field(default="claude-haiku-5-5", description="AI_WORKSPACE_MODEL: understands chat requests")
+    workspace_vision_model: str = Field(default="claude-haiku-5-5", description="AI_WORKSPACE_VISION_MODEL: reads product photos")
+    # The larger model is used only for genuinely hard jobs (multi-step plans, analysis, unclear photos).
+    workspace_hard_model: str = Field(default="claude-sonnet-5-5", description="AI_WORKSPACE_HARD_MODEL: used only for hard requests")
+    workspace_hard_max_output_tokens: int = Field(default=900, ge=200, le=4000)
+    workspace_ai_timeout_seconds: float = Field(default=30.0, ge=5, le=120)
+    workspace_ai_max_output_tokens: int = Field(default=500, ge=100, le=4000)
+    workspace_ai_rate_limit_per_minute: int = Field(default=12, ge=1, le=600, description="Claude calls per employee per minute")
+    ai_price_table: str = Field(default="", description="AI_PRICE_TABLE JSON {model: [input_per_mtok, output_per_mtok]}")
+    invite_expire_days: int = Field(default=3, ge=1, le=30, description="Workspace invitation lifetime")
+
     # WhatsApp Cloud API (Meta). Off until the token and phone number id are set.
     whatsapp_token: str = Field(default="", description="WHATSAPP_TOKEN (permanent system-user token)")
     whatsapp_phone_number_id: str = Field(default="", description="WHATSAPP_PHONE_NUMBER_ID")

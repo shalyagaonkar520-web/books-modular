@@ -16,6 +16,7 @@ import {
   LifeBuoy,
   MessageSquarePlus,
   ShieldCheck,
+  Smartphone,
   Users,
 } from 'lucide-react';
 
@@ -49,6 +50,7 @@ const TABS = [
   { to: '/admin/plan', label: 'Plan', icon: CreditCard, end: false },
   { to: '/admin/organization', label: 'Organization', icon: Building2, end: false },
   { to: '/admin/app-content', label: 'App content', icon: LayoutTemplate, end: false },
+  { to: '/admin/mobile', label: 'Connect to Mobile', icon: Smartphone, end: false },
   { to: '/admin/activity', label: 'Activity', icon: History, end: false },
 ];
 

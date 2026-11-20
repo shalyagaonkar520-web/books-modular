@@ -237,6 +237,11 @@ class User(TimestampMixin, OrgScopedMixin, Base):
         return permissions.normalize(self.custom_role.permissions if self.custom_role else None)
 
     @property
+    def workspace_employee(self) -> bool:
+        """An AI-workspace employee: a custom-role user whose role came from an AI workspace."""
+        return self.role == "custom" and self.custom_role is not None and bool(self.custom_role.actions)
+
+    @property
     def pending_invite(self) -> bool:
         """No password yet: the emailed invite has not been accepted."""
         return self.password_hash is None
@@ -303,6 +308,10 @@ class OrgRole(TimestampMixin, OrgScopedMixin, Base):
     description: Mapped[Optional[str]] = mapped_column(String(250))
     # JSON {feature key: "none" | "view" | "edit"} (services/permissions.FEATURES).
     permissions: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    # AI-workspace roles only: JSON {"features": {key: [view, create, edit, delete, approve, export]}, "financial": bool}.
+    # NULL for ordinary custom roles. See services/workspace/perms.py.
+    actions: Mapped[Optional[str]] = mapped_column(Text)
+    workspace_id: Mapped[Optional[str]] = mapped_column(String(32), index=True)
 
 
 class RefreshToken(Base):
@@ -587,6 +596,9 @@ class Item(TimestampMixin, OrgScopedMixin, SourceRefMixin, Base):
     tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     image_url: Mapped[Optional[str]] = mapped_column(Text)
+    # Product grouping used by the AI workspace and filters (e.g. "Skin care").
+    category: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    brand: Mapped[Optional[str]] = mapped_column(String(120))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     selling_price: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), nullable=False)
@@ -2394,3 +2406,7 @@ processed_events = Table(
     Column("org_id", String(36), nullable=False, index=True),
     Column("processed_at", DateTime(timezone=True), nullable=False),
 )
+
+
+# AI Employee Workspace tables (kept in their own module; imported so they register on Base.metadata).
+from backend import workspace_models  # noqa: E402,F401

@@ -24,6 +24,8 @@ class ItemBase(APIModel):
     tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     description: Optional[str] = None
     image_url: Optional[str] = None
+    category: Optional[str] = Field(default=None, max_length=120)
+    brand: Optional[str] = Field(default=None, max_length=120)
     selling_price: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("999999999.99"))
     sales_account_id: Optional[str] = None
     sales_description: Optional[str] = None
@@ -76,6 +78,8 @@ class ItemUpdate(APIModel):
     tax_rate: Optional[Decimal] = Field(default=None, ge=0, le=100)
     description: Optional[str] = None
     image_url: Optional[str] = None
+    category: Optional[str] = Field(default=None, max_length=120)
+    brand: Optional[str] = Field(default=None, max_length=120)
     selling_price: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("999999999.99"))
     sales_account_id: Optional[str] = None
     sales_description: Optional[str] = None
