@@ -1,8 +1,35 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Bot, Check, Sparkles, X, Zap } from 'lucide-react';
+import { ArrowRight, Bot, Boxes, ChartNoAxesCombined, Check, Coins, HandCoins, Megaphone, Percent, ShoppingBag, Sparkles, UserCog, Users, Wallet, X, Zap, type LucideIcon } from 'lucide-react';
 
 import { fetchAttachmentUrl, type Card, type ChatMessage } from '@/api/workspace';
 import { Button } from '@/components/ui/Button';
+
+/** Every specialist has its own icon and colour, so you can see who is talking. */
+const AGENT_UI: Record<string, { icon: LucideIcon; tone: string }> = {
+  buddy: { icon: Bot, tone: 'sg-blue' },
+  finance: { icon: Wallet, tone: 'sg-indigo' },
+  sales: { icon: HandCoins, tone: 'sg-pink' },
+  marketing: { icon: Megaphone, tone: 'sg-orange' },
+  inventory: { icon: Boxes, tone: 'sg-teal' },
+  purchase: { icon: ShoppingBag, tone: 'sg-emerald' },
+  collections: { icon: Coins, tone: 'sg-amber' },
+  customer: { icon: Users, tone: 'sg-blue' },
+  tax: { icon: Percent, tone: 'sg-green' },
+  payroll: { icon: UserCog, tone: 'sg-rose' },
+  analyst: { icon: ChartNoAxesCombined, tone: 'sg-violet' },
+};
+
+function AgentBadge({ agentKey, name, small }: { agentKey: string; name: string; small?: boolean }) {
+  const ui = AGENT_UI[agentKey] ?? { icon: Bot, tone: 'sg-slate' };
+  return (
+    <span className={`ws-agent-pill ${ui.tone} ${small ? 'is-small' : ''}`}>
+      <i className="ws-agent-av">
+        <ui.icon size={small ? 11 : 13} strokeWidth={2} aria-hidden="true" />
+      </i>
+      {name}
+    </span>
+  );
+}
 
 /** **bold** and bullet lines, nothing else: assistant text is plain text, never HTML. */
 function formatText(text: string): ReactNode {
@@ -151,6 +178,22 @@ export function MessageView({ message, actionable, busy, onConfirm, onCancel }: 
             ))}
           </div>
         ) : null}
+        {!mine && meta.agent ? (
+          <div className="ws-agent-head">
+            {meta.handover ? (
+              <div className="ws-handover" aria-label={`${meta.handover.from.name} handed this over to ${meta.handover.to.name}`}>
+                <AgentBadge agentKey={meta.handover.from.key} name={meta.handover.from.name} small />
+                <span className="ws-handover-arrow">
+                  <small>handed over</small>
+                  <ArrowRight size={14} aria-hidden="true" />
+                </span>
+                <AgentBadge agentKey={meta.handover.to.key} name={meta.handover.to.name} small />
+              </div>
+            ) : (
+              <AgentBadge agentKey={meta.agent.key} name={meta.agent.name} />
+            )}
+          </div>
+        ) : null}
         <div className="ws-text">{formatText(message.content)}</div>
         {mine ? null : (meta.cards ?? []).map((card, i) => <CardView key={i} card={card} />)}
         {!mine && pending && actionable ? (
@@ -163,14 +206,6 @@ export function MessageView({ message, actionable, busy, onConfirm, onCancel }: 
             <Button size="sm" icon={<X size={15} />} disabled={busy} onClick={() => onCancel(pending)}>
               Cancel
             </Button>
-          </div>
-        ) : null}
-        {!mine && meta.agent ? (
-          <div className="ws-meta">
-            <span className="ws-chip ws-agent-chip" title="The specialist who answered, from their own data">
-              <Bot size={11} /> {meta.agent.name}
-            </span>
-            {meta.handoff ? <span className="ws-chip">handed over from {meta.handoff.from_name}</span> : null}
           </div>
         ) : null}
         {!mine && meta.used_ai !== undefined && !message.sending ? (

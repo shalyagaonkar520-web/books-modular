@@ -431,17 +431,59 @@ def _business_review(db: Session, ctx: tools.Ctx, text: str) -> Dict[str, Any]:
         return _reply(f"{body}\n\n({exc})", cards, tool="business_review", used_ai=False)
 
 
-def _agent_turn(db: Session, ctx: tools.Ctx, key: str, text: str, *, from_key: Optional[str] = None, depth: int = 0) -> Dict[str, Any]:
+BUDDY_REF = {"key": "buddy", "name": "Buddy"}
+
+# What each deterministic tool belongs to, so Buddy can announce the hand-over.
+TOOL_OWNER = {
+    "profit_summary": "finance", "cash_balance": "finance",
+    "sales_summary": "sales", "top_customers": "sales", "list_invoices": "sales", "top_products_view": "sales",
+    "low_stock_products": "inventory", "stock_updates": "inventory", "slow_stock_view": "inventory", "product_categories": "inventory",
+    "receivables_summary": "collections", "list_purchase_orders": "purchase", "list_bills": "purchase", "find_customers": "customer",
+}
+
+
+def _ref(key: str) -> Dict[str, str]:
+    return {"key": key, "name": agents.REGISTRY[key].name}
+
+
+def _buddy_handover(key: str) -> Dict[str, Any]:
+    a = agents.REGISTRY[key]
+    return {
+        "text": f"Okay sir, that's a {a.role.lower()} question, so I'm handing it over to the {a.name}.",
+        "agent": BUDDY_REF,
+        "handover": {"from": BUDDY_REF, "to": _ref(key)},
+        "used_ai": False,
+        "cards": [],
+    }
+
+
+def _pass_on(from_key: str, to_key: str) -> Dict[str, Any]:
+    a = agents.REGISTRY[to_key]
+    return {
+        "text": f"That's a {a.role.lower()} question, boss, not my area. Passing it to the {a.name}.",
+        "agent": _ref(from_key),
+        "handover": {"from": _ref(from_key), "to": _ref(to_key)},
+        "used_ai": False,
+        "cards": [],
+    }
+
+
+def _attribute(ctx: tools.Ctx, reply: Dict[str, Any], tool: str) -> Dict[str, Any]:
+    key = TOOL_OWNER.get(tool)
+    if key and key in agents.REGISTRY and agents.available(ctx, agents.REGISTRY[key]) and not reply.get("pending_action_id") and "agent" not in reply:
+        reply["agent"] = _ref(key)
+        reply["_pre"] = [_buddy_handover(key)]
+    return reply
+
+
+def _agent_turn(db: Session, ctx: tools.Ctx, key: str, text: str, *, pre: Optional[List[Dict[str, Any]]] = None, depth: int = 0) -> Dict[str, Any]:
     """One specialist answers from its own freshly-read data; a question that is not its own is handed on (once)."""
     import json as _json
     import logging
 
     agent = agents.REGISTRY[key]
-    meta: Dict[str, Any] = {"agent": {"key": key, "name": agent.name}}
+    meta: Dict[str, Any] = {"agent": {"key": key, "name": agent.name}, "_pre": list(pre or [])}
     prefix = ""
-    if from_key and from_key != key:
-        meta["handoff"] = {"from": from_key, "to": key, "from_name": agents.REGISTRY[from_key].name}
-        prefix = f"That one belongs to my {agent.name} colleague, boss. Handing it over.\n\n"
     if not agents.available(ctx, agent):
         return _reply(prefix + NO_INFO, **meta)
     try:
@@ -467,7 +509,8 @@ def _agent_turn(db: Session, ctx: tools.Ctx, key: str, text: str, *, from_key: O
         answer = usage.response_text(response).strip()
         m = re.match(r"HANDOFF:\s*(\w+)", answer)
         if m and depth == 0 and m.group(1).lower() in agents.REGISTRY and m.group(1).lower() != key:
-            return _agent_turn(db, ctx, m.group(1).lower(), text, from_key=key, depth=1)
+            nxt = m.group(1).lower()
+            return _agent_turn(db, ctx, nxt, text, pre=[*(pre or []), _pass_on(key, nxt)], depth=1)
         return _reply(prefix + guardrails.clean_output(answer or NO_INFO, limit=900), agents.auto_cards(data), used_ai=True, **meta)
     except usage.AiRefused as exc:
         lines = agents.digest(data)
@@ -638,22 +681,27 @@ def handle_message(db: Session, ctx: tools.Ctx, chat: AiChat, text: str, files: 
                 if hint:
                     # Talking to a named specialist: the question goes to whoever owns it (a colleague, if it is not theirs).
                     owner = agents.pick(body)
-                    reply = _agent_turn(db, ctx, owner or hint, body, from_key=hint if owner and owner != hint else None)
+                    steps = [_buddy_handover(hint)]
+                    if owner and owner != hint:
+                        steps.append(_pass_on(hint, owner))
+                    reply = _agent_turn(db, ctx, owner or hint, body, pre=steps)
                 elif routed and routed["tool"] in ("business_review", "no_info", "agent_question"):
                     key = agents.pick(body) or ("analyst" if routed["tool"] == "business_review" else None)
                     if key:
-                        reply = _agent_turn(db, ctx, key, body)
+                        reply = _agent_turn(db, ctx, key, body, pre=[_buddy_handover(key)])
                     elif routed["tool"] == "no_info":
                         reply = _reply(NO_INFO)
                     else:
                         reply = _ask_claude(db, ctx, chat, text, user_msg.id)
                 elif routed and routed["tool"] in ("top_products_view", "slow_stock_view"):
-                    reply = _quick_insight(ctx, routed["tool"])
+                    reply = _attribute(ctx, _quick_insight(ctx, routed["tool"]), routed["tool"])
                 elif routed:
-                    reply = _run_tool(db, ctx, chat, routed["tool"], routed["args"])
+                    reply = _attribute(ctx, _run_tool(db, ctx, chat, routed["tool"], routed["args"]), routed["tool"])
                 else:
                     reply = _ask_claude(db, ctx, chat, text, user_msg.id)
     reply.setdefault("used_ai", False)
+    for step in reply.pop("_pre", None) or []:
+        _add_message(db, ctx, chat, "assistant", step["text"], {k: v for k, v in step.items() if k != "text"})
     meta = {k: v for k, v in reply.items() if k != "text"}
     assistant = _add_message(db, ctx, chat, "assistant", reply["text"], meta)
     _roll_summary(db, chat)

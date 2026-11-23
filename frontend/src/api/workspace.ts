@@ -181,7 +181,7 @@ export interface ChatMessage {
     pending_status?: 'draft' | 'ready' | 'done' | 'cancelled' | null;
     done?: boolean;
     agent?: { key: string; name: string };
-    handoff?: { from: string; to: string; from_name: string };
+    handover?: { from: { key: string; name: string }; to: { key: string; name: string } };
     attachments?: { id: string; filename: string }[];
     mode?: string;
   };
