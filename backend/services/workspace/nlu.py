@@ -92,7 +92,7 @@ def restricted_topic(text: str) -> Optional[Dict[str, str]]:
 
 
 REVIEW = re.compile(
-    r"\b(improve|improving|lacking|lagging|weak(ness|nesses)?|underperform\w*|where (am|are) (i|we)|how (is|are) (my|the|our) (business|sales|shop|company|performance)|"
+    r"\b((check|review|look at|go through|see|show|scan|audit) (my|our|the) (records?|data|books|accounts|numbers|business)|improve|improving|lacking|lagging|weak(ness|nesses)?|underperform\w*|where (am|are) (i|we)|how (is|are) (my|the|our) (business|sales|shop|company|performance)|"
     r"(business|sales) (performance|review|health|analysis|insights?)|analy[sz]e|what should i (do|focus)|(grow|boost|increase|raise) (my |our |the )?(sales|business|revenue)|how can i (grow|increase|boost|improve)|why (are|is|did|have|has|were|was) (my |our |the )?(sales|business|revenue|profit|collections?|stock))\b",
     re.I,
 )
