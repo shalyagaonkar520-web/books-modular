@@ -449,7 +449,7 @@ def _ref(key: str) -> Dict[str, str]:
 def _buddy_handover(key: str) -> Dict[str, Any]:
     a = agents.REGISTRY[key]
     return {
-        "text": f"Okay sir, that's a {a.role.lower()} question, so I'm handing it over to the {a.name}.",
+        "text": f"Okay sir, that's a job for {a.role.lower()}, so I'm handing it over to the {a.name}.",
         "agent": BUDDY_REF,
         "handover": {"from": BUDDY_REF, "to": _ref(key)},
         "used_ai": False,
@@ -460,7 +460,7 @@ def _buddy_handover(key: str) -> Dict[str, Any]:
 def _pass_on(from_key: str, to_key: str) -> Dict[str, Any]:
     a = agents.REGISTRY[to_key]
     return {
-        "text": f"That's a {a.role.lower()} question, boss, not my area. Passing it to the {a.name}.",
+        "text": f"That's one for {a.role.lower()}, boss, not my area. Passing it to the {a.name}.",
         "agent": _ref(from_key),
         "handover": {"from": _ref(from_key), "to": _ref(to_key)},
         "used_ai": False,
