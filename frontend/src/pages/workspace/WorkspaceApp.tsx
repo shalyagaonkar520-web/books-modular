@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { Image as ImageIcon, LogOut, Menu, MessageSquarePlus, Mic, Paperclip, Send, Sparkles, Trash2, X } from 'lucide-react';
+import { Camera, Image as ImageIcon, LogOut, Menu, MessageSquarePlus, Mic, Send, Sparkles, Trash2, X } from 'lucide-react';
 
 import { ApiError } from '@/api/client';
 import { workspaceApi, type ChatMessage, type ChatSummary, type WorkspaceMe } from '@/api/workspace';
@@ -13,29 +13,14 @@ import { useAuth } from '@/auth/AuthContext';
 import { ErrorBlock, LoadingBlock } from '@/components/ui/Feedback';
 import { useToast } from '@/components/ui/Toast';
 
+import { CameraCapture } from './CameraCapture';
 import { MessageView } from './MessageView';
+import { mediaUnavailable, micProblem, recognitionCtor, type Recognition } from './media';
 import { ModeSwitch, useRememberServerMode, type WorkspaceMode } from './ModeSwitch';
 
 import '@/styles/workspace.css';
 
 const MAX_FILES = 5;
-
-interface SpeechRecognitionLike {
-  lang: string;
-  interimResults: boolean;
-  continuous: boolean;
-  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
-  onend: (() => void) | null;
-  onerror: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-}
-type SpeechCtor = new () => SpeechRecognitionLike;
-
-function speechCtor(): SpeechCtor | null {
-  const w = window as unknown as { SpeechRecognition?: SpeechCtor; webkitSpeechRecognition?: SpeechCtor };
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-}
 
 function suggestionsFor(me: WorkspaceMe): { hint: string; text: string }[] {
   const has = (key: string, action = 'view') => me.features.some((f) => f.key === key && f.actions.includes(action as never));
@@ -71,8 +56,9 @@ export function WorkspaceApp() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const recogRef = useRef<SpeechRecognitionLike | null>(null);
-  const SpeechApi = useMemo(() => speechCtor(), []);
+  const recogRef = useRef<Recognition | null>(null);
+  const SpeechApi = useMemo(() => recognitionCtor(), []);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   const mode: WorkspaceMode = 'auto';
   useRememberServerMode(me?.modes.current);
@@ -200,18 +186,31 @@ export function WorkspaceApp() {
     }
   };
 
-  const addFiles = (list: FileList | null) => {
+  const openCamera = () => {
+    const why = mediaUnavailable('camera');
+    if (why) {
+      toast.error(why);
+      return;
+    }
+    setCameraOpen(true);
+  };
+
+  const addFiles = (list: FileList | File[] | null) => {
     if (!list) return;
     const images = Array.from(list).filter((f) => /^image\/(jpeg|png|webp)$/.test(f.type));
-    if (images.length < list.length) toast.error('Only JPG, PNG or WEBP photos can be attached.');
+    if (images.length < Array.from(list).length) toast.error('Only JPG, PNG or WEBP photos can be attached.');
     setFiles((current) => [...current, ...images].slice(0, MAX_FILES));
     if (fileRef.current) fileRef.current.value = '';
   };
 
   const toggleVoice = () => {
-    if (!SpeechApi) return;
     if (listening) {
       recogRef.current?.stop();
+      return;
+    }
+    const why = mediaUnavailable('mic');
+    if (why || !SpeechApi) {
+      toast.error(why ?? 'Voice input is not available here.');
       return;
     }
     const recog = new SpeechApi();
@@ -226,10 +225,19 @@ export function WorkspaceApp() {
       if (transcript) setText((t) => `${t}${t && !t.endsWith(' ') ? ' ' : ''}${transcript}`);
     };
     recog.onend = () => setListening(false);
-    recog.onerror = () => setListening(false);
+    recog.onerror = (event) => {
+      setListening(false);
+      const message = micProblem(event?.error);
+      if (message) toast.error(message);
+    };
     recogRef.current = recog;
     setListening(true);
-    recog.start();
+    try {
+      recog.start();
+    } catch {
+      setListening(false);
+      toast.error(micProblem());
+    }
   };
   useEffect(() => () => recogRef.current?.stop(), []);
 
@@ -269,7 +277,7 @@ export function WorkspaceApp() {
             <span className="ws-logo">
               <Sparkles size={17} />
             </span>
-            Rooman Box
+            Rooman Books
           </div>
           <button type="button" className="ws-new" onClick={() => void openChat(null)}>
             <MessageSquarePlus size={17} /> New chat
@@ -395,10 +403,13 @@ export function WorkspaceApp() {
             <div className="ws-composer-row">
               <div style={{ display: 'flex', gap: 2 }}>
                 <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => addFiles(e.target.files)} />
-                <button type="button" className="ws-tool" aria-label="Attach photos" title={me.photoUpload ? 'Attach product photos' : 'Photos are not part of your workspace'} disabled={blocked || !me.photoUpload || files.length >= MAX_FILES} onClick={() => fileRef.current?.click()}>
-                  {files.length ? <ImageIcon size={19} /> : <Paperclip size={19} />}
+                <button type="button" className="ws-tool" aria-label="Take a photo" title={me.photoUpload ? 'Take a photo with the camera' : 'Photos are not part of your workspace'} disabled={blocked || !me.photoUpload || files.length >= MAX_FILES} onClick={openCamera}>
+                  <Camera size={19} />
                 </button>
-                <button type="button" className={`ws-tool ${listening ? 'is-live' : ''}`} aria-label={listening ? 'Stop voice input' : 'Voice input'} title={SpeechApi ? (listening ? 'Listening… tap to stop' : 'Speak your message') : 'Voice input is not supported in this browser yet'} disabled={blocked || !SpeechApi} onClick={toggleVoice}>
+                <button type="button" className="ws-tool" aria-label="Choose photos from the gallery" title={me.photoUpload ? 'Choose photos from your gallery' : 'Photos are not part of your workspace'} disabled={blocked || !me.photoUpload || files.length >= MAX_FILES} onClick={() => fileRef.current?.click()}>
+                  <ImageIcon size={19} />
+                </button>
+                <button type="button" className={`ws-tool ${listening ? 'is-live' : ''}`} aria-label={listening ? 'Stop voice input' : 'Voice input'} title={listening ? 'Listening… tap to stop' : 'Speak your message'} disabled={blocked} onClick={toggleVoice}>
                   <Mic size={19} />
                 </button>
               </div>
@@ -410,6 +421,7 @@ export function WorkspaceApp() {
           <div className="ws-hint">Quick questions are answered straight from your data. Changes always ask you to confirm first.</div>
         </div>
       </main>
+      <CameraCapture open={cameraOpen} onClose={() => setCameraOpen(false)} onCapture={(f) => addFiles([f])} />
     </div>
   );
 }

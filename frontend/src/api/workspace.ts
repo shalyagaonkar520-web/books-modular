@@ -82,6 +82,8 @@ export interface AiSettings {
   defaultDailyCallLimit: number;
   spentThisMonthUsd: number;
   keyConfigured: boolean;
+  /** The plan's AI requests this month (requests = null: no cap). */
+  allowance: { requests: number | null; used: number; remaining: number | null; hardCounts: number; resetsOn: string };
   model: string;
   visionModel: string;
 }
@@ -257,6 +259,12 @@ export interface BuddyState {
 export const buddyApi = {
   state: () => api.get<BuddyState>('/buddy/state'),
   send: (text: string) => api.post<ChatMessage>('/buddy/message', { text }),
+  sendPhotos: (text: string, files: File[]) => {
+    const form = new FormData();
+    form.set('text', text);
+    files.forEach((file) => form.append('files', file));
+    return api.upload<ChatMessage>('/buddy/photo-message', form);
+  },
   reset: () => api.post<{ ok: boolean }>('/buddy/reset'),
   confirm: (id: string) => api.post<ChatMessage>(`/buddy/actions/${id}/confirm`),
   cancel: (id: string) => api.post<ChatMessage>(`/buddy/actions/${id}/cancel`),

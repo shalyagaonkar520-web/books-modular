@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   ArrowLeftRight,
@@ -7,6 +7,8 @@ import {
   Building,
   Building2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
   CreditCard,
   FileCheck2,
@@ -20,6 +22,7 @@ import {
   Package,
   ScanBarcode,
   PiggyBank,
+  Search,
   Receipt,
   Repeat,
   Sparkles,
@@ -36,6 +39,7 @@ import {
 import type { AppModuleKey } from '@/api/appContent';
 import { useAppContent } from '@/app/AppContentContext';
 import { useAuth } from '@/auth/AuthContext';
+import { initials } from '@/utils/format';
 import { featureForPath } from '@/utils/permissions';
 
 interface NavEntry {
@@ -128,12 +132,37 @@ export function useVisiblePages(): Array<{ to: string; label: string }> {
     .map((entry) => ({ to: entry.to, label: t(entry.label) }));
 }
 
+/** Each page gets a colour tile, the same one every time (like app icons). */
+const TILE_COUNT = 8;
+function tileClass(key: string): string {
+  let h = 0;
+  for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return `sg-t${h % TILE_COUNT}`;
+}
+
+const PIN_KEY = 'rooman.sidebar.pinned';
+
 export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () => void }) {
-  const { isAdmin, isStaff, access } = useAuth();
+  const { isAdmin, isStaff, access, user, organization } = useAuth();
   const { t, isModuleEnabled } = useAppContent();
   const { pathname } = useLocation();
   // Groups start closed; the one holding the current page opens itself. A click overrides either way.
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  // Pinned open (stays wide) or the slim icon rail that opens while the pointer is on it.
+  const [pinned, setPinned] = useState(() => {
+    try {
+      return window.localStorage.getItem(PIN_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(PIN_KEY, pinned ? '1' : '0');
+    } catch {
+      /* private mode */
+    }
+  }, [pinned]);
   const holdsCurrentPage = (group: NavGroup) => group.entries.some((e) => pathname === e.to || pathname.startsWith(`${e.to}/`));
   // A custom role hides the features it gives No access to.
   const enabled = (entry: NavEntry) => (!entry.module || isModuleEnabled(entry.module)) && access(featureForPath(entry.to)) !== 'none';
@@ -142,32 +171,67 @@ export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () =>
   const lowerLinks = LOWER_LINKS.filter((entry) => !(entry.staffBlocked && isStaff) && enabled(entry));
 
   const toggle = (group: NavGroup) => setOpenGroups((current) => ({ ...current, [group.id]: !(current[group.id] ?? holdsCurrentPage(group)) }));
+  // The search box opens the same palette as Ctrl+K.
+  const openSearch = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+
+  const link = (entry: NavEntry) => (
+    <NavLink key={entry.to} to={entry.to} end={entry.to === '/'} className="nav-link" onClick={onNavigate} title={t(entry.label)}>
+      <i className={`sg-tile ${tileClass(entry.to)}`}>
+        <entry.icon size={17} aria-hidden="true" />
+      </i>
+      <span>{t(entry.label)}</span>
+    </NavLink>
+  );
+  const section = (label: string) => (
+    <div className="sg-section" aria-hidden="true">
+      <span className="sg-hide-rail">{label}</span>
+    </div>
+  );
+  const orgName = organization?.name ?? 'Rooman Books';
 
   return (
     <>
       {open ? <div className="sidebar-backdrop" onClick={onNavigate} aria-hidden="true" /> : null}
-      <aside className={`sidebar ${open ? 'is-open' : ''}`} aria-label={t('sidebar.ariaLabel')}>
-        <nav className="sidebar-nav">
-          {singleLinks.map((entry) => (
-            <NavLink key={entry.to} to={entry.to} end={entry.to === '/'} className="nav-link" onClick={onNavigate}>
-              <entry.icon size={17} aria-hidden="true" />
-              <span>{t(entry.label)}</span>
-            </NavLink>
-          ))}
+      <aside className={`sidebar sg ${open ? 'is-open' : ''} ${pinned ? 'is-pinned' : ''}`} aria-label={t('sidebar.ariaLabel')}>
+        <div className="sg-head">
+          <i className="sg-brand" aria-hidden="true">
+            {initials(orgName).slice(0, 1) || 'R'}
+          </i>
+          <div className="sg-hide-rail sg-head-text">
+            <strong>{orgName}</strong>
+            <small>Rooman Books</small>
+          </div>
+          <button type="button" className="sg-pin sg-hide-rail" aria-pressed={pinned} aria-label={pinned ? 'Let the sidebar collapse' : 'Keep the sidebar open'} title={pinned ? 'Collapse' : 'Keep open'} onClick={() => setPinned((p) => !p)}>
+            {pinned ? <ChevronLeft size={15} /> : <ChevronRight size={15} />}
+          </button>
+        </div>
 
+        <button type="button" className="sg-search" onClick={openSearch} aria-label="Search pages (Ctrl+K)" title="Search (Ctrl+K)">
+          <Search size={15} aria-hidden="true" />
+          <span className="sg-hide-rail">Search</span>
+          <kbd className="sg-hide-rail">Ctrl K</kbd>
+        </button>
+
+        <nav className="sidebar-nav">
+          {singleLinks.length ? section('Main') : null}
+          {singleLinks.map(link)}
+
+          {groups.length ? section('Sales & purchases') : null}
           {groups.map((group) => {
             const isCollapsed = !(openGroups[group.id] ?? holdsCurrentPage(group));
             return (
               <div className="nav-group" key={group.id}>
-                <button type="button" className="nav-group-toggle" onClick={() => toggle(group)} aria-expanded={!isCollapsed}>
-                  <group.icon size={17} aria-hidden="true" />
+                <button type="button" className="nav-group-toggle" onClick={() => toggle(group)} aria-expanded={!isCollapsed} title={t(group.label)}>
+                  <i className={`sg-tile ${tileClass(group.id)}`}>
+                    <group.icon size={17} aria-hidden="true" />
+                  </i>
                   <span>{t(group.label)}</span>
                   <ChevronDown size={14} className={`chevron ${isCollapsed ? 'is-collapsed' : ''}`} aria-hidden="true" />
                 </button>
                 {!isCollapsed ? (
                   <div className="nav-sublist">
                     {group.entries.map((entry) => (
-                      <NavLink key={entry.to} to={entry.to} className="nav-link nav-sublink" onClick={onNavigate}>
+                      <NavLink key={entry.to} to={entry.to} className="nav-link nav-sublink" onClick={onNavigate} title={t(entry.label)}>
                         <entry.icon size={15} aria-hidden="true" />
                         <span>{t(entry.label)}</span>
                       </NavLink>
@@ -178,26 +242,27 @@ export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () =>
             );
           })}
 
-          {lowerLinks.map((entry) => (
-            <NavLink key={entry.to} to={entry.to} className="nav-link" onClick={onNavigate}>
-              <entry.icon size={17} aria-hidden="true" />
-              <span>{t(entry.label)}</span>
-            </NavLink>
-          ))}
+          {lowerLinks.length ? section('Finance & reports') : null}
+          {lowerLinks.map(link)}
 
-          {isAdmin ? (
-            <NavLink to="/automation" className="nav-link" onClick={onNavigate}>
-              <Zap size={17} aria-hidden="true" />
-              <span>{t('sidebar.automation')}</span>
-            </NavLink>
-          ) : null}
-          {isAdmin ? (
-            <NavLink to="/settings" className="nav-link" onClick={onNavigate}>
-              <Building2 size={17} aria-hidden="true" />
-              <span>{t('sidebar.settings')}</span>
-            </NavLink>
-          ) : null}
+          {isAdmin ? section('Admin') : null}
+          {isAdmin ? link({ to: '/automation', label: 'sidebar.automation', icon: Zap }) : null}
+          {isAdmin ? link({ to: '/settings', label: 'sidebar.settings', icon: Building2 }) : null}
         </nav>
+
+        {user ? (
+          <NavLink to="/profile" className="sg-user" onClick={onNavigate} title={`${user.name} (${user.email})`}>
+            <i className="sg-avatar">
+              {initials(user.name)}
+              <b className="sg-dot" />
+            </i>
+            <div className="sg-hide-rail sg-user-text">
+              <strong>{user.name}</strong>
+              <small>{user.email}</small>
+            </div>
+            <ChevronRight size={14} className="sg-hide-rail sg-user-chev" aria-hidden="true" />
+          </NavLink>
+        ) : null}
       </aside>
     </>
   );

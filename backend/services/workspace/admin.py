@@ -255,14 +255,14 @@ def send_workspace_invite_email(to_email: str, name: str, org_name: str, workspa
     try:
         settings = mail._smtp()
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = mail._header(f"{inviter} invited you to the {workspace} on Rooman Box")
+        msg["Subject"] = mail._header(f"{inviter} invited you to the {workspace} on Rooman Books")
         msg["From"] = f"{settings.smtp_sender_name} <{settings.smtp_user}>"
         msg["To"] = mail._header(to_email)
         e = mail._esc
         days = settings.invite_expire_days
         html = f"""<!DOCTYPE html><html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#f8fafc;margin:0;padding:24px;color:#1e293b">
 <div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden">
-<div style="background:#0f172a;color:#fff;padding:26px 30px"><div style="font-size:19px;font-weight:700">{e(org_name)}</div><div style="color:#94a3b8;font-size:13px;margin-top:4px">Your AI workspace on Rooman Box</div></div>
+<div style="background:#0f172a;color:#fff;padding:26px 30px"><div style="font-size:19px;font-weight:700">{e(org_name)}</div><div style="color:#94a3b8;font-size:13px;margin-top:4px">Your AI workspace on Rooman Books</div></div>
 <div style="padding:30px;line-height:1.6;font-size:15px;color:#334155">
 <p><strong>Hello {e(name)},</strong></p>
 <p>{e(inviter)} has set up the <strong>{e(workspace)}</strong> ({e(department)}) for you. Ask questions, upload photos and get your work done in plain language, on your phone or computer.</p>
@@ -490,6 +490,7 @@ def settings_out(db: Session, org_id: str) -> Dict[str, Any]:
         "defaultDailyCallLimit": s.default_daily_call_limit,
         "spentThisMonthUsd": float(round(spent, 4)),
         "keyConfigured": usage.ai_core.configured(),  # whether a key exists - never the key
+        "allowance": usage.allowance(db, org_id),
         "model": get_settings().workspace_ai_model,
         "visionModel": get_settings().workspace_vision_model,
     }

@@ -195,7 +195,7 @@ function Chooser({
             <span className="small text-muted">To pay now</span>
             <strong>{price(quote.planPrice)}</strong>
             <span className="small text-muted">
-              {quote.maxUsers.toLocaleString('en-IN')} users · {quote.storageGb ? `${formatStorage(quote.storageGb)} storage · ` : ''}{cycle === 'yearly' ? '12 months' : '1 month'} · {quote.planKey === 'custom' ? `${quote.modules.length} features` : 'every feature'}
+              {quote.maxUsers.toLocaleString('en-IN')} users · {quote.storageGb ? `${formatStorage(quote.storageGb)} storage · ` : ''}{quote.aiRequests ? `${quote.aiRequests.toLocaleString('en-IN')} AI requests/month · ` : ''}{cycle === 'yearly' ? '12 months' : '1 month'} · {quote.planKey === 'custom' ? `${quote.modules.length} features` : 'every feature'}
             </span>
           </div>
           {tooFewUsers ? (

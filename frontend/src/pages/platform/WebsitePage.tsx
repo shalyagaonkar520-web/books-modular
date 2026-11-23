@@ -25,7 +25,7 @@ import { useSubmit } from '@/hooks/useSubmit';
 // Sections
 // ---------------------------------------------------------------------------
 
-type SectionId = 'brand' | 'hero' | 'features' | 'pricing' | 'testimonials' | 'faq' | 'ctaBanner' | 'footer' | 'sections' | 'seo';
+type SectionId = 'brand' | 'hero' | 'features' | 'pricing' | 'faq' | 'ctaBanner' | 'footer' | 'sections' | 'seo';
 
 /** Which editor card owns each top-level key of the document (for error badges / auto-expanding). */
 const SECTION_OF_KEY: Record<keyof SiteContent, SectionId> = {
@@ -34,7 +34,7 @@ const SECTION_OF_KEY: Record<keyof SiteContent, SectionId> = {
   hero: 'hero',
   features: 'features',
   pricing: 'pricing',
-  testimonials: 'testimonials',
+  testimonials: 'sections',
   faq: 'faq',
   ctaBanner: 'ctaBanner',
   footer: 'footer',
@@ -188,7 +188,7 @@ export function WebsitePage() {
   const header = (
     <PageHeader
       title="Website"
-      subtitle="Edit the public landing page: copy, pricing, testimonials, FAQ and footer."
+      subtitle="Edit the public landing page: copy, pricing, FAQ and footer."
       actions={
         <a className="btn btn-secondary btn-md" href="/" target="_blank" rel="noopener noreferrer">
           <ExternalLink size={15} aria-hidden="true" />
@@ -214,7 +214,7 @@ export function WebsitePage() {
     );
   }
 
-  const { brand, nav, hero, features, pricing, testimonials, faq, ctaBanner, footer, sections, seo } = draft;
+  const { brand, nav, hero, features, pricing, faq, ctaBanner, footer, sections, seo } = draft;
   const sectionProps = (id: SectionId) => ({
     id,
     open: openSections.has(id),
@@ -247,7 +247,6 @@ export function WebsitePage() {
           <div className="form-grid">
             <TextField label="Features link label" value={nav.featuresLabel} error={err('nav.featuresLabel')} onChange={(e) => patch('nav', { featuresLabel: e.target.value })} />
             <TextField label="Pricing link label" value={nav.pricingLabel} error={err('nav.pricingLabel')} onChange={(e) => patch('nav', { pricingLabel: e.target.value })} />
-            <TextField label="Testimonials link label" value={nav.testimonialsLabel} error={err('nav.testimonialsLabel')} onChange={(e) => patch('nav', { testimonialsLabel: e.target.value })} />
             <TextField label="FAQ link label" value={nav.faqLabel} error={err('nav.faqLabel')} onChange={(e) => patch('nav', { faqLabel: e.target.value })} />
           </div>
         </EditorSection>
@@ -325,34 +324,6 @@ export function WebsitePage() {
             titleOf={(plan) => (plan.popular ? `${plan.name} (most popular)` : plan.name)}
             onChange={(plans) => patch('pricing', { plans })}
             render={(plan, i, update) => <PlanFields plan={plan} base={`pricing.plans.${i}`} err={err} update={update} />}
-          />
-        </EditorSection>
-
-        <EditorSection {...sectionProps('testimonials')} title="Testimonials" description="Customer quotes. Initials are derived from the name.">
-          <div className="form-grid">
-            <TextField label="Section badge" value={testimonials.badge} error={err('testimonials.badge')} onChange={(e) => patch('testimonials', { badge: e.target.value })} />
-            <TextField label="Section title" value={testimonials.title} error={err('testimonials.title')} onChange={(e) => patch('testimonials', { title: e.target.value })} />
-          </div>
-          <TextAreaField label="Section description" hint="Leave empty to hide." rows={2} value={testimonials.description} error={err('testimonials.description')} onChange={(e) => patch('testimonials', { description: e.target.value })} />
-          <ItemListEditor
-            legend="Quotes"
-            noun="testimonial"
-            items={testimonials.items}
-            max={LIMITS.testimonials}
-            error={err('testimonials.items')}
-            addLabel="Add testimonial"
-            newItem={() => ({ name: 'New customer', role: '', quote: '' })}
-            titleOf={(item) => item.name}
-            onChange={(items) => patch('testimonials', { items })}
-            render={(item, i, update) => (
-              <>
-                <div className="form-grid">
-                  <TextField label="Name" value={item.name} error={err(`testimonials.items.${i}.name`)} onChange={(e) => update({ name: e.target.value })} />
-                  <TextField label="Role / company" value={item.role} error={err(`testimonials.items.${i}.role`)} onChange={(e) => update({ role: e.target.value })} />
-                </div>
-                <TextAreaField label="Quote" rows={3} value={item.quote} error={err(`testimonials.items.${i}.quote`)} onChange={(e) => update({ quote: e.target.value })} />
-              </>
-            )}
           />
         </EditorSection>
 

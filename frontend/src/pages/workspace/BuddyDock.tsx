@@ -1,32 +1,17 @@
 /** Buddy: the helper right below the sidebar's features. Tell him a job in plain words; he does it, asking only when something is missing. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Mic, RotateCcw, Send, Volume2, VolumeX, X } from 'lucide-react';
+import { Bot, Camera, Image as ImageIcon, Mic, RotateCcw, Send, Volume2, VolumeX, X } from 'lucide-react';
 
 import { ApiError } from '@/api/client';
 import { buddyApi, type ChatMessage } from '@/api/workspace';
 import { useAuth } from '@/auth/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 
+import { CameraCapture } from './CameraCapture';
 import { MessageView } from './MessageView';
+import { mediaUnavailable, micProblem, recognitionCtor, type Recognition } from './media';
 
 import '@/styles/workspace.css';
-
-interface Recognition {
-  lang: string;
-  interimResults: boolean;
-  continuous: boolean;
-  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
-  onend: (() => void) | null;
-  onerror: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-}
-type RecognitionCtor = new () => Recognition;
-
-function recognitionCtor(): RecognitionCtor | null {
-  const w = window as unknown as { SpeechRecognition?: RecognitionCtor; webkitSpeechRecognition?: RecognitionCtor };
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-}
 
 const VOICE_KEY = 'rooman.buddy.speak';
 
@@ -50,6 +35,10 @@ export function BuddyDock() {
   const recogRef = useRef<Recognition | null>(null);
   const RecogApi = useMemo(() => recognitionCtor(), []);
   const [listening, setListening] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [speak, setSpeak] = useState(() => {
     try {
       return window.localStorage.getItem(VOICE_KEY) === '1';
@@ -108,20 +97,46 @@ export function BuddyDock() {
     });
   };
 
+  useEffect(() => {
+    const urls = files.map((f) => URL.createObjectURL(f));
+    setPreviews(urls);
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [files]);
+
+  const addFiles = (list: FileList | File[] | null) => {
+    if (!list) return;
+    const images = Array.from(list).filter((f) => /^image\/(jpeg|png|webp)$/.test(f.type));
+    if (images.length < Array.from(list).length) toast.error('Only JPG, PNG or WEBP photos can be attached.');
+    setFiles((current) => [...current, ...images].slice(0, 5));
+    if (fileRef.current) fileRef.current.value = '';
+  };
+
+  const openCamera = () => {
+    const why = mediaUnavailable('camera');
+    if (why) {
+      toast.error(why);
+      return;
+    }
+    setCameraOpen(true);
+  };
+
   const send = async (override?: string) => {
     const body = (override ?? text).trim();
-    if (!body || sending) return;
+    const sentFiles = files;
+    if ((!body && sentFiles.length === 0) || sending) return;
     setSending(true);
     setText('');
-    const local: ChatMessage = { id: `local-${Date.now()}`, role: 'user', content: body, createdAt: new Date().toISOString(), meta: {}, sending: true };
+    setFiles([]);
+    const local: ChatMessage = { id: `local-${Date.now()}`, role: 'user', content: body || '(photo)', createdAt: new Date().toISOString(), meta: {}, sending: true };
     setMessages((m) => [...m, local]);
     try {
-      const reply = await buddyApi.send(body);
+      const reply = sentFiles.length ? await buddyApi.sendPhotos(body, sentFiles) : await buddyApi.send(body);
       setMessages((await buddyApi.state()).messages);
       say(reply.content);
     } catch (err) {
       setMessages((m) => m.filter((x) => x.id !== local.id));
       setText(body);
+      setFiles(sentFiles);
       toast.error(err instanceof ApiError ? err.message : 'Buddy could not do that');
     } finally {
       setSending(false);
@@ -142,9 +157,13 @@ export function BuddyDock() {
   };
 
   const talk = () => {
-    if (!RecogApi) return;
     if (listening) {
       recogRef.current?.stop();
+      return;
+    }
+    const why = mediaUnavailable('mic');
+    if (why || !RecogApi) {
+      toast.error(why ?? 'Voice input is not available here.');
       return;
     }
     window.speechSynthesis?.cancel();
@@ -165,10 +184,19 @@ export function BuddyDock() {
       setListening(false);
       if (heard) void send(heard);
     };
-    recog.onerror = () => setListening(false);
+    recog.onerror = (event) => {
+      setListening(false);
+      const message = micProblem(event?.error);
+      if (message) toast.error(message);
+    };
     recogRef.current = recog;
     setListening(true);
-    recog.start();
+    try {
+      recog.start();
+    } catch {
+      setListening(false);
+      toast.error(micProblem());
+    }
   };
   useEffect(() => () => recogRef.current?.stop(), []);
 
@@ -238,14 +266,33 @@ export function BuddyDock() {
               ) : null}
             </div>
           </div>
+          {files.length ? (
+            <div className="ws-files buddy-files">
+              {files.map((f, i) => (
+                <span className="ws-file" key={`${f.name}-${i}`}>
+                  <img className="ws-thumb" style={{ width: 56, height: 56 }} src={previews[i]} alt={f.name} />
+                  <button type="button" aria-label={`Remove ${f.name}`} onClick={() => setFiles((x) => x.filter((_, j) => j !== i))}>
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
           <div className="buddy-compose">
+            <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => addFiles(e.target.files)} />
+            <button type="button" className="ws-tool" aria-label="Take a photo" title="Take a photo with the camera" onClick={openCamera}>
+              <Camera size={18} />
+            </button>
+            <button type="button" className="ws-tool" aria-label="Choose a photo from the gallery" title="Choose a photo" onClick={() => fileRef.current?.click()}>
+              <ImageIcon size={18} />
+            </button>
             <textarea
               ref={inputRef}
               rows={1}
               value={text}
               maxLength={2000}
               aria-label="Tell Buddy what to do"
-              placeholder={listening ? 'Listening...' : 'Type, or tap the mic and talk'}
+              placeholder={listening ? 'Listening...' : files.length ? 'Say what to do with the photo' : 'Type, tap the mic, or send a photo'}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -254,13 +301,14 @@ export function BuddyDock() {
                 }
               }}
             />
-            <button type="button" className={`ws-tool ${listening ? 'is-live' : ''}`} aria-label={listening ? 'Stop listening' : 'Talk to Buddy'} title={RecogApi ? (listening ? 'Listening... just speak, then pause' : 'Talk to Buddy') : 'Voice input needs Chrome, Edge or Safari'} disabled={!RecogApi} onClick={talk}>
+            <button type="button" className={`ws-tool ${listening ? 'is-live' : ''}`} aria-label={listening ? 'Stop listening' : 'Talk to Buddy'} title={listening ? 'Listening... just speak, then pause' : 'Talk to Buddy'} onClick={talk}>
               <Mic size={18} />
             </button>
-            <button type="button" className="ws-send" aria-label="Send" disabled={!text.trim() || sending} onClick={() => void send()}>
+            <button type="button" className="ws-send" aria-label="Send" disabled={(!text.trim() && files.length === 0) || sending} onClick={() => void send()}>
               <Send size={16} />
             </button>
           </div>
+          <CameraCapture open={cameraOpen} onClose={() => setCameraOpen(false)} onCapture={(f) => addFiles([f])} />
         </section>
       ) : null}
     </>

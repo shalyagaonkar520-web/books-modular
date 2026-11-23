@@ -31,10 +31,12 @@ MAX_USERS = 100000
 DEFAULTS: Dict[str, Any] = {
     "currency": "INR",
     "tiers": [
-        {"key": "u100", "label": "Starter", "users": 100, "monthly": 299, "storageGb": 10},
-        {"key": "u500", "label": "Business", "users": 500, "monthly": 599, "storageGb": 50},
-        {"key": "u1000", "label": "Enterprise", "users": 1000, "monthly": 999, "storageGb": 200},
+        {"key": "u100", "label": "Starter", "users": 100, "monthly": 299, "storageGb": 10, "aiRequests": 300},
+        {"key": "u500", "label": "Business", "users": 500, "monthly": 599, "storageGb": 50, "aiRequests": 1500},
+        {"key": "u1000", "label": "Enterprise", "users": 1000, "monthly": 999, "storageGb": 200, "aiRequests": 6000},
     ],
+    # AI requests per month during the free trial (quick answers are always free and unlimited).
+    "trialAiRequests": 50,
     "per100Over": 99,
     "customMinimum": 99,
     "yearlyMonths": 10,
@@ -60,8 +62,16 @@ def config(db: Session) -> Dict[str, Any]:
             pass
     # Plans saved before storage existed get the default storage of their tier.
     default_storage = {t["key"]: t["storageGb"] for t in DEFAULTS["tiers"]}
+    default_ai = {t["key"]: t["aiRequests"] for t in DEFAULTS["tiers"]}
     data["tiers"] = sorted(
-        ({**t, "storageGb": t.get("storageGb", default_storage.get(t.get("key"), 10))} for t in data["tiers"]),
+        (
+            {
+                **t,
+                "storageGb": t.get("storageGb", default_storage.get(t.get("key"), 10)),
+                "aiRequests": t.get("aiRequests", default_ai.get(t.get("key"), 300)),
+            }
+            for t in data["tiers"]
+        ),
         key=lambda t: t["users"],
     )
     return data
@@ -79,7 +89,10 @@ def save_config(db: Session, new: Dict[str, Any]) -> Dict[str, Any]:
             )
         if "storageGb" in t and not (1 <= int(t["storageGb"]) <= 100000):
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Each plan's storage must be between 1 and 100000 GB.")
-    for k in ("per100Over", "customMinimum", "yearlyMonths"):
+    for t in tiers:
+        if "aiRequests" in t and not (0 <= int(t["aiRequests"]) <= 10_000_000):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Each plan's AI requests must be between 0 and 10,000,000.")
+    for k in ("per100Over", "customMinimum", "yearlyMonths", "trialAiRequests"):
         if float(new.get(k, 0)) < 0:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{k} cannot be negative.")
     merged = {**config(db), **{k: v for k, v in new.items() if k in DEFAULTS}}
@@ -108,6 +121,14 @@ def _storage_for_users(cfg: Dict[str, Any], users: int) -> int:
     return int(cfg["tiers"][-1]["storageGb"])
 
 
+def _ai_for_users(cfg: Dict[str, Any], users: int) -> int:
+    """The AI requests per month of the smallest plan that covers ``users`` (the largest plan's above it)."""
+    for t in cfg["tiers"]:
+        if users <= t["users"]:
+            return int(t["aiRequests"])
+    return int(cfg["tiers"][-1]["aiRequests"])
+
+
 def quote(
     db: Session, plan_key: str, billing_cycle: str, users: Optional[int] = None, modules: Optional[Iterable[str]] = None
 ) -> Dict[str, Any]:
@@ -129,16 +150,19 @@ def quote(
         monthly = max(float(cfg["customMinimum"]), math.ceil(_base_for_users(cfg, users) * len(features) / len(every)))
         max_users = users
         storage_gb = _storage_for_users(cfg, users)
+        ai_requests = _ai_for_users(cfg, users)
     else:
         t = tier(db, plan_key)
         if t is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown plan.")
         monthly, max_users, storage_gb = float(t["monthly"]), int(t["users"]), int(t["storageGb"])
+        ai_requests = int(t["aiRequests"])
     plan_price = monthly * (float(cfg["yearlyMonths"]) if billing_cycle == "yearly" else 1)
     return {
         "planKey": plan_key,
         "maxUsers": max_users,
         "storageGb": storage_gb,
+        "aiRequests": ai_requests,
         # Every module stays switched on; a custom plan is limited by ``features``.
         "modules": list(module_pricing.module_keys()),
         "features": features,
@@ -203,6 +227,22 @@ def storage_limit_bytes(db: Session, org: Organization) -> Optional[int]:
     return _storage_for_users(cfg, org.max_users) * 1024**3 if org.max_users else None
 
 
+def ai_allowance(db: Session, org: Optional[Organization]) -> Optional[int]:
+    """AI requests per month the organization's plan includes: the plan's (by tier, or a custom plan's users),
+    the trial's allowance while on trial; None = no cap (an active plan from before plans by users)."""
+    from backend.services import subscription
+
+    if org is None:
+        return None
+    cfg = config(db)
+    if org.subscription_status != subscription.STATUS_ACTIVE:
+        return int(cfg["trialAiRequests"])
+    t = next((t for t in cfg["tiers"] if t["key"] == org.plan_key), None)
+    if t is not None:
+        return int(t["aiRequests"])
+    return _ai_for_users(cfg, org.max_users) if org.max_users else None
+
+
 def storage_used_bytes(db: Session, org_id: str) -> int:
     """Bytes of every document the organization has uploaded."""
     from backend.models import Document
@@ -213,7 +253,7 @@ def storage_used_bytes(db: Session, org_id: str) -> int:
 def public_catalog(db: Session) -> Dict[str, Any]:
     """The plans as the public website shows them (no payment details)."""
     cfg = config(db)
-    return {k: cfg[k] for k in ("currency", "tiers", "per100Over", "customMinimum", "yearlyMonths")}
+    return {k: cfg[k] for k in ("currency", "tiers", "per100Over", "customMinimum", "yearlyMonths", "trialAiRequests")}
 
 
 def check_room_for(db: Session, org: Organization, adding: int = 1) -> None:

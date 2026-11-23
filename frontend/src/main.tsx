@@ -9,6 +9,7 @@ import { AuthProvider } from './auth/AuthContext';
 import { ErrorBoundary, UnhandledErrorNotifier } from './components/ErrorBoundary';
 import { ToastProvider } from './components/ui/Toast';
 import './styles/index.css';
+import './styles/sidebar-glass.css';
 
 applyTheme(initialTheme());
 

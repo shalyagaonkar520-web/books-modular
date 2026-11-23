@@ -74,7 +74,6 @@ describe('LandingPage', () => {
     const live: SiteContent = {
       ...DEFAULT_SITE_CONTENT,
       brand: { ...DEFAULT_SITE_CONTENT.brand, name: 'Ledgerly', logoUrl: 'https://cdn.example.com/l.png' },
-      testimonials: { ...DEFAULT_SITE_CONTENT.testimonials, description: 'Loved by finance teams.' },
       faq: { ...DEFAULT_SITE_CONTENT.faq, description: 'Everything you wanted to know.' },
       sections: { ...DEFAULT_SITE_CONTENT.sections, showFaq: false },
       seo: { title: 'Ledgerly - Cloud Accounting', description: 'GST-ready cloud accounting.' },
@@ -83,8 +82,7 @@ describe('LandingPage', () => {
     document.title = 'Before';
     const { unmount } = renderLanding();
 
-    expect(await screen.findByText('Ledgerly', undefined, { timeout: 5000 })).toBeInTheDocument();
-    expect(screen.getByText('Loved by finance teams.')).toBeInTheDocument();
+    expect(await screen.findByText('Ledgerly', undefined, { timeout: 5000 })).toBeInTheDocument();
     expect(screen.queryByText('Everything you wanted to know.')).not.toBeInTheDocument();
     expect(screen.getByAltText('Rooman')).toHaveAttribute('src', 'https://cdn.example.com/l.png');
     await waitFor(() => expect(document.title).toBe('Ledgerly - Cloud Accounting'));
@@ -94,5 +92,20 @@ describe('LandingPage', () => {
 
     unmount();
     expect(document.title).toBe('Before');
+  });
+
+  it('shows what AI usage each plan includes, the phone section, and no testimonials', async () => {
+    stubFetch(DEFAULT_SITE_CONTENT, null);
+    renderLanding();
+    expect(await screen.findByText('Starter')).toBeInTheDocument();
+    expect(screen.getByText('300 AI requests / month')).toBeInTheDocument();
+    expect(screen.getByText('1,500 AI requests / month')).toBeInTheDocument();
+    expect(screen.getByText('6,000 AI requests / month')).toBeInTheDocument();
+    expect(screen.getByText('50 AI requests / month')).toBeInTheDocument(); // the free trial
+    expect(screen.getByText('How AI usage works')).toBeInTheDocument();
+    expect(screen.getByText(/Connect your team's phones/)).toBeInTheDocument();
+    expect(screen.getByText('Hii boss! What do you wanna do today?')).toBeInTheDocument();
+    expect(screen.queryByText('Trusted by Business Leaders')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Rajesh Kumar/)).not.toBeInTheDocument();
   });
 });

@@ -93,6 +93,29 @@ def spent(db: Session, org_id: str, user_id: Optional[str] = None, since: Option
     return Decimal(str(db.execute(stmt).scalar_one() or 0))
 
 
+HARD_UNITS = 3  # a hard request (larger model) counts as this many of the plan's AI requests
+
+
+def units_used(db: Session, org_id: str, since: Optional[datetime] = None) -> int:
+    """AI requests used this month: one per Claude call, a larger-model call counts as HARD_UNITS."""
+    rows = db.execute(
+        select(AiUsage.feature, func.count()).where(AiUsage.organization_id == org_id, AiUsage.created_at >= (since or _month_start())).group_by(AiUsage.feature)
+    ).all()
+    return int(sum(n * (HARD_UNITS if str(f).endswith("_hard") else 1) for f, n in rows))
+
+
+def allowance(db: Session, org_id: str) -> Dict[str, Any]:
+    """What the plan includes this month, how much is used, and when it resets."""
+    from backend.models import Organization
+    from backend.services import plans
+
+    limit = plans.ai_allowance(db, db.get(Organization, org_id))
+    used = units_used(db, org_id)
+    start = _month_start()
+    resets = (start.replace(year=start.year + 1, month=1) if start.month == 12 else start.replace(month=start.month + 1)).date().isoformat()
+    return {"requests": limit, "used": used, "remaining": None if limit is None else max(limit - used, 0), "hardCounts": HARD_UNITS, "resetsOn": resets}
+
+
 def calls_today(db: Session, user_id: str) -> int:
     start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     return db.execute(select(func.count()).select_from(AiUsage).where(AiUsage.user_id == user_id, AiUsage.created_at >= start)).scalar_one()
@@ -107,6 +130,9 @@ def gate(db: Session, org_id: str, employee: AiEmployee) -> Optional[str]:
         return "Your organization has paused AI understanding. Quick questions still work, or switch to Manual mode."
     if not employee.ai_enabled:
         return "AI is turned off for your account. Quick questions still work, or switch to Manual mode."
+    plan = allowance(db, org_id)
+    if plan["requests"] is not None and plan["used"] >= plan["requests"]:
+        return f"Your plan's {plan['requests']:,} AI requests for this month are used up. Quick answers and Manual mode still work. Upgrade your plan, or AI requests renew on {plan['resetsOn']}."
     if spent(db, org_id) >= settings.monthly_budget_usd:
         return "The organization's monthly AI budget is used up. Quick questions still work, or switch to Manual mode."
     budget = employee.monthly_budget_usd if employee.monthly_budget_usd is not None else settings.default_employee_budget_usd

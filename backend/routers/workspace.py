@@ -348,8 +348,15 @@ def cancel_action(action_id: str, ctx=Depends(ws_ctx), db: Session = Depends(get
     return chat_svc.act_on_pending(db, ctx, action_id, False)
 
 
+def attachment_ctx(user: User = Depends(require_subscription), db: Session = Depends(get_db)):
+    """An employee reads their own photos through their workspace; everyone else through Buddy."""
+    from backend.services.workspace import buddy
+
+    return chat_svc.context_for(db, user) if user.workspace_employee else buddy.context_for(db, user)
+
+
 @router.get("/attachments/{att_id}")
-def attachment(att_id: str, ctx=Depends(ws_ctx), db: Session = Depends(get_db)):
+def attachment(att_id: str, ctx=Depends(attachment_ctx), db: Session = Depends(get_db)):
     att = db.get(AiAttachment, att_id)
     if att is None or att.user_id != ctx.user.id or att.organization_id != ctx.org_id:
         raise HTTPException(404, "File not found")
@@ -395,6 +402,31 @@ def buddy_message(body: BuddyMessage, ctx=Depends(buddy_ctx), db: Session = Depe
     _chat_limiter.check(f"buddy:{ctx.user.id}", "Easy, boss: too many messages at once. Wait a moment.")
     chat = buddy.current_chat(db, ctx) or chat_svc.new_chat(db, ctx)
     return chat_svc.handle_message(db, ctx, chat, body.text, [], "auto")
+
+
+@buddy_router.post("/photo-message")
+async def buddy_photo_message(
+    text: str = Form(""),
+    files: List[UploadFile] = File(default_factory=list),
+    ctx=Depends(buddy_ctx),
+    db: Session = Depends(get_db),
+):
+    """Buddy with photos (a product to add or look up): same checks as the employee chat."""
+    from backend.services.workspace import buddy
+
+    _chat_limiter.check(f"buddy:{ctx.user.id}", "Easy, boss: too many messages at once. Wait a moment.")
+    if not files:
+        raise HTTPException(400, "Attach a photo.")
+    if len(files) > chat_svc.MAX_PHOTOS:
+        raise HTTPException(400, f"Send at most {chat_svc.MAX_PHOTOS} photos at a time.")
+    chat = buddy.current_chat(db, ctx) or chat_svc.new_chat(db, ctx)
+    prepared = []
+    for f in files:
+        raw = await f.read(vision.MAX_IMAGE_BYTES + 1)
+        data, ctype, ext = vision.prepare(raw, f.content_type or "")
+        att = vision.store(db, ctx.employee, chat.id, f.filename or "photo", data, ctype, ext)
+        prepared.append({"bytes": data, "content_type": ctype, "attachment": att})
+    return chat_svc.handle_message(db, ctx, chat, text, prepared, "auto")
 
 
 @buddy_router.post("/reset")

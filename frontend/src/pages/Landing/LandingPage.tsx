@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, ChevronDown, Star } from 'lucide-react';
+import { ArrowRight, ChevronDown } from 'lucide-react';
 
 import { DEFAULT_PUBLIC_PLANS, fetchPublicPlans, type Cycle, type PublicPlans } from '@/api/plans';
 import { DEFAULT_SITE_CONTENT, fetchPublicSiteContent, type SiteContent } from '@/api/siteContent';
 import { CycleSwitch, PlanCards } from '@/pages/subscription/PlanCards';
-import { initials } from '@/utils/format';
 
 import { FeatureShelf } from './FeatureShelf';
 import { LEGAL_LINKS, LegalNavLinks } from './LegalPages';
+import { PhoneShowcase } from './PhoneShowcase';
 
 
 export function LandingPage() {
@@ -31,7 +31,7 @@ export function LandingPage() {
     return () => controller.abort();
   }, []);
 
-  const { brand, nav, pricing, testimonials, faq, ctaBanner, footer, sections, seo } = content;
+  const { brand, nav, pricing, faq, ctaBanner, footer, sections, seo } = content;
 
   // The tab title follows the editable SEO title while the landing page is mounted.
   useEffect(() => {
@@ -90,42 +90,29 @@ export function LandingPage() {
 
       <FeatureShelf onStart={goToRegister} />
 
+      <PhoneShowcase />
+
       {sections.showPricing && (
         <section id="pricing" className="zb-landing-section">
           <div className="zb-section-heading text-center">
             <span className="zb-section-badge">{pricing.badge}</span>
             <h2 className="zb-section-title">{pricing.title}</h2>
             <p className="zb-section-desc">
-              Start with a {plans.trialDays ?? 3}-day free trial, then pay by number of users. Every plan has every feature.
+              Start with a {plans.trialDays ?? 3}-day free trial, then pay by number of users. Every plan has every feature, plus a monthly allowance of AI requests.
             </p>
           </div>
           <div className="lp-plans stack">
             <CycleSwitch cycle={cycle} yearlyMonths={plans.yearlyMonths} onChange={setCycle} />
             <PlanCards plans={plans} cycle={cycle} onSelect={goToRegister} onTrial={goToRegister} />
           </div>
+          <div className="lp-ai-note">
+            <strong>How AI usage works</strong>
+            <p>
+              Quick answers (today's sales, low stock, pending invoices, stock lookups) are always free and unlimited. An <em>AI request</em> is one question the assistant has to understand, or one product photo it reads.
+              A complex multi-step job counts as 3. Used up your allowance? Quick answers and Manual mode keep working, and it renews every month. You can also set budgets and switch AI off per person.
+            </p>
+          </div>
           <p className="lp-plan-note">Prices in Indian Rupees. Pay online by UPI, card or net banking; your plan starts as soon as you pay.</p>
-        </section>
-      )}
-
-      {sections.showTestimonials && (
-        <section id="testimonials" className="zb-landing-section">
-          <div className="zb-section-heading text-center">
-            <span className="zb-section-badge">{testimonials.badge}</span>
-            <h2 className="zb-section-title">{testimonials.title}</h2>
-            {testimonials.description && <p className="zb-section-desc">{testimonials.description}</p>}
-          </div>
-          <div className="zb-testimonials-grid">
-            {testimonials.items.map((t, i) => (
-              <div className="zb-testimonial-card" key={i}>
-                <div className="zb-test-stars">{[...Array(5)].map((_, j) => <Star key={j} size={16} fill="#f59e0b" color="#f59e0b" />)}</div>
-                <p className="zb-test-quote">&quot;{t.quote}&quot;</p>
-                <div className="zb-test-author">
-                  <div className="zb-test-avatar">{initials(t.name)}</div>
-                  <div><div className="zb-test-name">{t.name}</div><div className="zb-test-role">{t.role}</div></div>
-                </div>
-              </div>
-            ))}
-          </div>
         </section>
       )}
 

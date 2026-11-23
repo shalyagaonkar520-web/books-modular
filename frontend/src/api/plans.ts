@@ -18,6 +18,8 @@ export interface PlanTier {
   monthly: number;
   /** File storage for uploaded documents, in GB. */
   storageGb: number;
+  /** AI requests included per month (quick answers are always free and unlimited). */
+  aiRequests?: number;
 }
 
 export interface PlanCatalog {
@@ -25,6 +27,8 @@ export interface PlanCatalog {
   tiers: PlanTier[];
   /** The free trial's length; the trial has the smallest plan's users and storage. */
   trialDays?: number;
+  /** AI requests per month during the free trial. */
+  trialAiRequests?: number;
   per100Over: number;
   customMinimum: number;
   yearlyMonths: number;
@@ -57,6 +61,7 @@ export interface PlanQuote {
   planKey: PlanKey;
   maxUsers: number;
   storageGb: number;
+  aiRequests?: number;
   modules: string[];
   billingCycle: Cycle;
   monthlyPrice: number;
@@ -77,6 +82,7 @@ export function quotePlan(catalog: PlanCatalog, planKey: PlanKey, cycle: Cycle, 
   let monthly: number;
   let maxUsers: number;
   let storageGb: number;
+  let aiRequests: number | undefined;
   let chosen: string[];
   if (planKey === 'custom') {
     if (!users || users < 1 || users > 100000) return null;
@@ -89,6 +95,7 @@ export function quotePlan(catalog: PlanCatalog, planKey: PlanKey, cycle: Cycle, 
     monthly = Math.max(catalog.customMinimum, Math.ceil((base * chosen.length) / every.length));
     maxUsers = users;
     storageGb = (covering ?? top)?.storageGb;
+    aiRequests = (covering ?? top)?.aiRequests;
   } else {
     const tier = catalog.tiers.find((t) => t.key === planKey);
     if (!tier) return null;
@@ -96,9 +103,10 @@ export function quotePlan(catalog: PlanCatalog, planKey: PlanKey, cycle: Cycle, 
     monthly = tier.monthly;
     maxUsers = tier.users;
     storageGb = tier.storageGb;
+    aiRequests = tier.aiRequests;
   }
   const planPrice = monthly * (cycle === 'yearly' ? catalog.yearlyMonths : 1);
-  return { planKey, maxUsers, storageGb, modules: chosen, billingCycle: cycle, monthlyPrice: monthly, planPrice };
+  return { planKey, maxUsers, storageGb, aiRequests, modules: chosen, billingCycle: cycle, monthlyPrice: monthly, planPrice };
 }
 
 /** Where the plan screens talk to: the tenant app or the org admin panel. */
@@ -126,20 +134,22 @@ export interface PublicPlans {
   customMinimum: number;
   yearlyMonths: number;
   trialDays?: number;
+  trialAiRequests?: number;
 }
 
 /** The server's defaults (services/plans.DEFAULTS), shown until the live plans load. */
 export const DEFAULT_PUBLIC_PLANS: PublicPlans = {
   currency: 'INR',
   tiers: [
-    { key: 'u100', label: 'Starter', users: 100, monthly: 299, storageGb: 10 },
-    { key: 'u500', label: 'Business', users: 500, monthly: 599, storageGb: 50 },
-    { key: 'u1000', label: 'Enterprise', users: 1000, monthly: 999, storageGb: 200 },
+    { key: 'u100', label: 'Starter', users: 100, monthly: 299, storageGb: 10, aiRequests: 300 },
+    { key: 'u500', label: 'Business', users: 500, monthly: 599, storageGb: 50, aiRequests: 1500 },
+    { key: 'u1000', label: 'Enterprise', users: 1000, monthly: 999, storageGb: 200, aiRequests: 6000 },
   ],
   per100Over: 99,
   customMinimum: 99,
   yearlyMonths: 10,
   trialDays: 3,
+  trialAiRequests: 50,
 };
 
 /** No login needed; null when the request fails (the page keeps its defaults). */

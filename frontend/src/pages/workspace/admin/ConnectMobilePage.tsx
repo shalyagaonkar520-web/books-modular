@@ -176,6 +176,7 @@ function UsagePanel() {
   if (usage.error || !usage.data) return <ErrorBlock message={usage.error ?? 'Could not load usage'} onRetry={usage.reload} />;
   const u = usage.data;
   const maxDaily = Math.max(1, ...u.daily.map((d) => d.calls));
+  const allowUsed = u.settings.allowance.requests ? Math.min(100, (u.settings.allowance.used / u.settings.allowance.requests) * 100) : 0;
   const used = u.settings.monthlyBudgetUsd > 0 ? Math.min(100, (u.settings.spentThisMonthUsd / u.settings.monthlyBudgetUsd) * 100) : 0;
   return (
     <div className="cm-grid">
@@ -197,6 +198,21 @@ function UsagePanel() {
         <StatTile label="Estimated cost (period)" value={usd(u.period.costUsd)} />
         <StatTile label="Answered without AI" value={`${u.answers.total ? Math.round((u.answers.withoutAi / u.answers.total) * 100) : 0}%`} sublabel={`${num(u.answers.withoutAi)} of ${num(u.answers.total)} replies`} tone="positive" />
       </div>
+      <Card
+        title="AI requests in your plan"
+        subtitle={
+          u.settings.allowance.requests === null
+            ? `${u.settings.allowance.used.toLocaleString()} used this month · no cap on your plan`
+            : `${u.settings.allowance.used.toLocaleString()} of ${u.settings.allowance.requests.toLocaleString()} used this month · renews ${u.settings.allowance.resetsOn}`
+        }
+      >
+        <div className={`cm-meter ${allowUsed > 85 ? 'is-hot' : ''}`} role="progressbar" aria-label="AI requests used" aria-valuenow={Math.round(allowUsed)} aria-valuemin={0} aria-valuemax={100}>
+          <span style={{ width: `${allowUsed}%` }} />
+        </div>
+        <p className="cm-muted" style={{ marginBottom: 0 }}>
+          Quick answers are free and unlimited. A question that needs the AI, or one photo read, is 1 request; a complex multi-step job is {u.settings.allowance.hardCounts}. Need more? Upgrade the plan.
+        </p>
+      </Card>
       <Card title="Monthly budget" subtitle={`${usd(u.settings.spentThisMonthUsd)} of ${usd(u.settings.monthlyBudgetUsd)} used`}>
         <div className={`cm-meter ${used > 85 ? 'is-hot' : ''}`} role="progressbar" aria-valuenow={Math.round(used)} aria-valuemin={0} aria-valuemax={100}>
           <span style={{ width: `${used}%` }} />

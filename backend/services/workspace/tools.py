@@ -34,7 +34,7 @@ from backend.models import (
 )
 from backend.services import audit, subscription
 from backend.services import permissions as base_permissions
-from backend.services.workspace import perms
+from backend.services.workspace import guardrails, perms
 from backend.workspace_models import AiEmployee, AiWorkspace
 
 OPEN_STATUSES = ("sent", "partially_paid")
@@ -51,6 +51,8 @@ class Ctx:
     today: date = field(default_factory=date.today)
     # What earlier steps of one plan produced ("invoice": id), so "email it" knows which one.
     memory: Dict[str, Any] = field(default_factory=dict)
+    # The message being handled (guardrails: an email address must come from it).
+    user_text: str = ""
 
     @property
     def org_id(self) -> str:
@@ -534,6 +536,8 @@ def _prepare_product(ctx: Ctx, args: Dict[str, Any]) -> Dict[str, Any]:
     if f["tax_rate"] > 100:
         raise ToolError("Tax rate must be between 0 and 100.")
     f["opening_stock"] = _dec(f["opening_stock"], "Opening stock", minimum=Decimal("0"))
+    if f["opening_stock"] > guardrails.MAX_OPENING_STOCK:
+        raise ToolError(f"Opening stock above {guardrails.MAX_OPENING_STOCK:,} units looks like a typo. Please check the number.")
     f["sku"] = str(f["sku"]).upper()[:50]
     cat = match_category(ctx.db, ctx.org_id, f.get("category"))
     f["category"] = cat["category"]
@@ -625,6 +629,8 @@ def _prepare_adjust_stock(ctx: Ctx, args: Dict[str, Any]) -> Dict[str, Any]:
     delta = _dec(args["quantity"], "Quantity")
     if delta == 0:
         raise ToolError("The quantity change cannot be zero.")
+    if abs(delta) > guardrails.MAX_STOCK_CHANGE and not perms.can(ctx.perm, "items", perms.APPROVE):
+        raise ToolError(f"A stock change above {guardrails.MAX_STOCK_CHANGE:,} units needs someone with approval rights. Use Manual mode so it can be reviewed.")
     reason = (args.get("reason") or "Stock update via AI workspace").strip()[:120]
     after = Decimal(str(item.stock_on_hand)) + delta
     warnings = [f"This would take stock below zero ({num(after)})."] if after < 0 else []
@@ -669,6 +675,9 @@ def _prepare_invoice(ctx: Ctx, args: Dict[str, Any]) -> Dict[str, Any]:
     customer = one_contact(ctx, args.get("customer", ""), "customer")
     lines, shown = _lines_for_document(ctx, args.get("lines"), kind="sale")
     subtotal = sum((Decimal(r["quantity"]) * Decimal(r["rate"]) for r in lines), Decimal("0"))
+    problem = guardrails.value_problem(subtotal, perms.can(ctx.perm, "invoices", perms.APPROVE), "invoice")
+    if problem:
+        raise ToolError(problem)
     preview = _preview("New invoice (saved as a draft)", [("Customer", customer.display_name), ("Items", f"{len(lines)}"), ("Subtotal before GST", inr(subtotal))])
     preview["lines"] = {"columns": ["Product", "Qty", "Rate", "GST", "Amount"], "rows": shown}
     return {"args": {"customer": customer.id, "lines": lines}, "preview": preview}
@@ -715,6 +724,8 @@ def _prepare_send_invoice(ctx: Ctx, args: Dict[str, Any]) -> Dict[str, Any]:
     to = (args.get("to_email") or (customer.email if customer else "") or "").strip()
     if not to or "@" not in to:
         raise ToolError(f"What email address should I send invoice {inv.invoice_number} to? {customer.display_name if customer else 'The customer'} has none saved.")
+    if not guardrails.customer_email_matches(ctx.db, ctx.org_id, inv, to) and to.lower() not in (ctx.user_text or "").lower() and ctx.user_text:
+        raise ToolError("I'll only email an invoice to the customer's saved address or an address you type yourself. Please give me the email address.")
     warnings = ["Sending a draft invoice also issues it (it is posted to your books)."] if inv.status == "draft" else []
     return {
         "args": {"invoice": inv.id, "to_email": to},
@@ -734,6 +745,9 @@ def _prepare_purchase_order(ctx: Ctx, args: Dict[str, Any]) -> Dict[str, Any]:
     vendor = one_contact(ctx, args.get("vendor", ""), "vendor")
     lines, shown = _lines_for_document(ctx, args.get("lines"), kind="purchase")
     total = sum((Decimal(r["quantity"]) * Decimal(r["rate"]) for r in lines), Decimal("0"))
+    problem = guardrails.value_problem(total, perms.can(ctx.perm, "purchaseOrders", perms.APPROVE), "purchase order")
+    if problem:
+        raise ToolError(problem)
     preview = _preview("New purchase order (saved as a draft)", [("Supplier", vendor.display_name), ("Items", f"{len(lines)}"), ("Value before GST", inr(total))])
     preview["lines"] = {"columns": ["Product", "Qty", "Rate", "GST", "Amount"], "rows": shown}
     return {"args": {"vendor": vendor.id, "lines": lines}, "preview": preview}
@@ -874,6 +888,11 @@ def execute(ctx: Ctx, name: str, args: Dict[str, Any], *, confirmed: bool = Fals
         if not confirmed:
             # The pending action keeps what was asked (re-validated again at confirmation), not the resolved form.
             return {"status": "confirm", "tool": name, "args": _jsonable(args), "text": "Please check the details and confirm.", "cards": [prepared["preview"]]}
+        limit = guardrails.write_limit_problem(ctx.db, ctx.user.id, ctx.org_id, name)
+        if limit:
+            guardrails.record_block(ctx.db, ctx.user, "rate limit")
+            ctx.db.commit()
+            return {"status": "clarify", "tool": name, "text": limit, "cards": []}
         # Save the conversation state first: if the write fails and is rolled back, the chat survives.
         ctx.db.commit()
         out = tool.run(ctx, prepared["args"])

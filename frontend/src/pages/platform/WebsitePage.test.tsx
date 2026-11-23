@@ -61,11 +61,9 @@ describe('WebsitePage', () => {
       ['Logo URL', 'https://cdn.example.com/l.png'],
       ['Features link label', 'Tools'],
       ['Pricing link label', 'Plans'],
-      ['Testimonials link label', 'Reviews'],
       ['FAQ link label', 'Help'],
     ]);
-    editCard('pricing', [['Section description', 'Pricing blurb']]);
-    editCard('testimonials', [['Section description', 'Testimonials blurb']]);
+    editCard('pricing', [['Section description', 'Pricing blurb']]);
     editCard('faq', [['Section description', 'FAQ blurb']]);
     editCard('seo', [
       ['Page title', 'Ledgerly - Cloud Accounting'],
@@ -76,9 +74,8 @@ describe('WebsitePage', () => {
     await waitFor(() => expect(screen.getByText('All changes saved')).toBeInTheDocument());
     const body = calls.find((call) => call.method === 'PUT' && call.path === '/api/platform/site-content')?.body as typeof DEFAULT_SITE_CONTENT;
     expect(body.brand).toMatchObject({ name: 'Ledgerly', logoUrl: 'https://cdn.example.com/l.png' });
-    expect(body.nav).toMatchObject({ featuresLabel: 'Tools', pricingLabel: 'Plans', testimonialsLabel: 'Reviews', faqLabel: 'Help' });
-    expect(body.pricing.description).toBe('Pricing blurb');
-    expect(body.testimonials.description).toBe('Testimonials blurb');
+    expect(body.nav).toMatchObject({ featuresLabel: 'Tools', pricingLabel: 'Plans', faqLabel: 'Help' });
+    expect(body.pricing.description).toBe('Pricing blurb');
     expect(body.faq.description).toBe('FAQ blurb');
     expect(body.seo).toEqual({ title: 'Ledgerly - Cloud Accounting', description: 'GST-ready cloud accounting.' });
   });

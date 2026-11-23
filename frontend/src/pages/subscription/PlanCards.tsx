@@ -3,13 +3,18 @@
  * chooser and the public landing page so both always show the same plans,
  * prices, users and storage.
  */
-import { Check, Gift, HardDrive, Settings2, Users } from 'lucide-react';
+import { Check, Gift, HardDrive, Settings2, Sparkles, Users } from 'lucide-react';
 
 import { formatRupees, formatStorage, type Cycle, type PlanKey, type PublicPlans } from '@/api/plans';
 
 /** Where an organization's free trial stands, from its subscription status. */
 export function trialStateOf(status: string | undefined): 'current' | 'ended' {
   return status === 'trial' ? 'current' : 'ended';
+}
+
+/** "300 AI requests / month" */
+export function formatAiRequests(n: number): string {
+  return `${n.toLocaleString('en-IN')} AI requests / month`;
 }
 
 export function CycleSwitch({ cycle, yearlyMonths, onChange }: { cycle: Cycle; yearlyMonths: number; onChange: (cycle: Cycle) => void }) {
@@ -43,7 +48,7 @@ export function PlanCards({
   trial,
   onTrial,
 }: {
-  plans: Pick<PublicPlans, 'currency' | 'tiers' | 'customMinimum' | 'yearlyMonths' | 'trialDays'>;
+  plans: Pick<PublicPlans, 'currency' | 'tiers' | 'customMinimum' | 'yearlyMonths' | 'trialDays' | 'trialAiRequests'>;
   cycle: Cycle;
   selected?: PlanKey | null;
   onSelect: (key: PlanKey) => void;
@@ -77,6 +82,11 @@ export function PlanCards({
               <HardDrive size={15} aria-hidden="true" /> {formatStorage(first.storageGb)} storage
             </span>
           ) : null}
+          {plans.trialAiRequests ? (
+            <span className="plan-card-users">
+              <Sparkles size={15} aria-hidden="true" /> {formatAiRequests(plans.trialAiRequests)}
+            </span>
+          ) : null}
           <span className="plan-card-price">
             {price(0)}
             <small>for {days} day{days === 1 ? '' : 's'}</small>
@@ -95,6 +105,11 @@ export function PlanCards({
           {tier.storageGb ? (
             <span className="plan-card-users">
               <HardDrive size={15} aria-hidden="true" /> {formatStorage(tier.storageGb)} storage
+            </span>
+          ) : null}
+          {tier.aiRequests ? (
+            <span className="plan-card-users">
+              <Sparkles size={15} aria-hidden="true" /> {formatAiRequests(tier.aiRequests)}
             </span>
           ) : null}
           <span className="plan-card-price">

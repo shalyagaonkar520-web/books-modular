@@ -121,7 +121,7 @@ export function PlansSettingsCard() {
   if (loaded.loading && !draft) return <LoadingBlock />;
   if (loaded.error || !draft) return <ErrorBlock message={loaded.error ?? ''} onRetry={loaded.reload} />;
 
-  const setTier = (index: number, field: 'label' | 'users' | 'monthly' | 'storageGb', value: string) =>
+  const setTier = (index: number, field: 'label' | 'users' | 'monthly' | 'storageGb' | 'aiRequests', value: string) =>
     setDraft({ ...draft, tiers: draft.tiers.map((t, i) => (i === index ? { ...t, [field]: field === 'label' ? value : Number(value) } : t)) });
 
   const save = async () => {
@@ -155,11 +155,13 @@ export function PlansSettingsCard() {
             <TextField label="Users" type="number" min="1" value={String(tier.users)} onChange={(e) => setTier(i, 'users', e.target.value)} />
             <TextField label="Price per month (₹)" type="number" min="0" value={String(tier.monthly)} onChange={(e) => setTier(i, 'monthly', e.target.value)} />
             <TextField label="Storage (GB)" type="number" min="1" value={String(tier.storageGb)} onChange={(e) => setTier(i, 'storageGb', e.target.value)} />
+            <TextField label="AI requests / month" type="number" min="0" value={String(tier.aiRequests ?? 0)} onChange={(e) => setTier(i, 'aiRequests', e.target.value)} />
           </div>
         ))}
         <div className="form-grid-3">
           <TextField label="Custom: ₹ per 100 users over the top plan" type="number" min="0" value={String(draft.per100Over)} onChange={(e) => setDraft({ ...draft, per100Over: Number(e.target.value) })} />
           <TextField label="Custom: lowest price per month (₹)" type="number" min="0" value={String(draft.customMinimum)} onChange={(e) => setDraft({ ...draft, customMinimum: Number(e.target.value) })} />
+          <TextField label="Free trial: AI requests" type="number" min="0" value={String(draft.trialAiRequests ?? 50)} onChange={(e) => setDraft({ ...draft, trialAiRequests: Number(e.target.value) })} />
           <TextField label="Yearly = this many months" type="number" min="1" max="12" value={String(draft.yearlyMonths)} onChange={(e) => setDraft({ ...draft, yearlyMonths: Number(e.target.value) })} />
         </div>
         <div className="form-grid">
