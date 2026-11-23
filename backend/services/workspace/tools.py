@@ -259,8 +259,22 @@ def suggest_sku(db: Session, org_id: str, brand: Optional[str], name: str) -> st
 # Read tools
 # --------------------------------------------------------------------------- #
 def _sales_summary(ctx: Ctx, args: Dict[str, Any]) -> Dict[str, Any]:
-    start, end, label = period_range(args.get("period", "today"), ctx.today)
     mine = bool(args.get("mine"))
+    if args.get("period") == "overview":
+        rows, text_bits = [], []
+        for label in ("today", "week", "month"):
+            s, e, nice = period_range(label, ctx.today)
+            q = select(func.count(Invoice.id), func.coalesce(func.sum(Invoice.total), 0), func.coalesce(func.sum(Invoice.amount_paid), 0)).where(
+                Invoice.organization_id == ctx.org_id, Invoice.status.notin_(("draft", "void", "cancelled")), Invoice.date >= s, Invoice.date <= e
+            )
+            if mine:
+                q = q.where(Invoice.created_by == ctx.user.id)
+            c, t, p = ctx.db.execute(q).one()
+            rows.append([nice.capitalize(), str(c), inr(t), inr(Decimal(str(p))), inr(Decimal(str(t)) - Decimal(str(p)))])
+            text_bits.append(f"{nice}: {inr(t)} ({c})")
+        who = "Your sales" if mine else "Sales"
+        return {"text": f"{who} so far: " + "; ".join(text_bits) + ".", "cards": [{"type": "table", "title": who, "columns": ["Period", "Invoices", "Sales", "Collected", "Outstanding"], "rows": rows}]}
+    start, end, label = period_range(args.get("period", "today"), ctx.today)
     stmt = select(
         func.count(Invoice.id), func.coalesce(func.sum(Invoice.total), 0), func.coalesce(func.sum(Invoice.amount_paid), 0)
     ).where(
@@ -476,6 +490,69 @@ def _top_customers(ctx: Ctx, args: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "text": f"Your best customer {label} is {best[0]} with {inr(best[2])} across {best[1]} invoice{'s' if best[1] != 1 else ''}.",
         "cards": [{"type": "table", "title": f"Top customers · {label}", "columns": ["Customer", "Invoices", "Sales"], "rows": [[n, str(c), inr(t)] for n, c, t in rows]}],
+    }
+
+
+def _profit_period(ctx: Ctx, period: str):
+    """Start, end and a label; "fiscal" is the dashboard's period (this fiscal year so far)."""
+    from backend.services.periods import fiscal_year_bounds
+
+    if period in (None, "", "fiscal", "year"):
+        fy_start, fy_end = fiscal_year_bounds(ctx.today, ctx.user.organization.fiscal_year_start_month)
+        return fy_start, min(fy_end, ctx.today), "this fiscal year"
+    return period_range(period, ctx.today)
+
+
+def profit_figures(ctx: Ctx, start: date, end: date):
+    """The Profit & Loss report's own numbers (the same ones the dashboard shows)."""
+    from backend.routers.reports import profit_and_loss
+
+    return profit_and_loss(start_date=start, end_date=end, start_date_snake=None, end_date_snake=None, branch_id=None, user=ctx.user, db=ctx.db)
+
+
+def _profit_summary(ctx: Ctx, args: Dict[str, Any]) -> Dict[str, Any]:
+    start, end, label = _profit_period(ctx, args.get("period", "fiscal"))
+    r = profit_figures(ctx, start, end)
+    net = Decimal(str(r.net_profit))
+    word = "Net profit" if net >= 0 else "Net loss"
+    text = (
+        f"{word} {label}: {inr(abs(net))}. Income {inr(r.income.total)}, cost of goods {inr(r.cost_of_goods_sold.total)}, "
+        f"operating expenses {inr(r.operating_expenses.total)}."
+    )
+    return {
+        "text": text,
+        "cards": [
+            {
+                "type": "stats",
+                "title": f"Profit & loss · {label}",
+                "items": [
+                    {"label": "Income", "value": inr(r.income.total)},
+                    {"label": "Cost of goods", "value": inr(r.cost_of_goods_sold.total)},
+                    {"label": "Gross profit", "value": inr(r.gross_profit)},
+                    {"label": "Operating expenses", "value": inr(r.operating_expenses.total)},
+                    {"label": "Other income", "value": inr(r.other_income.total)},
+                    {"label": word, "value": inr(net)},
+                ],
+            }
+        ],
+    }
+
+
+def _cash_balance(ctx: Ctx, args: Dict[str, Any]) -> Dict[str, Any]:
+    from backend.models import BankAccount
+    from backend.services import bank
+
+    accounts = ctx.db.execute(select(BankAccount).where(BankAccount.organization_id == ctx.org_id, BankAccount.is_active.is_(True)).order_by(BankAccount.name)).scalars().all()
+    if not accounts:
+        return {"text": "No bank or cash accounts are set up yet.", "cards": []}
+    rows, total = [], Decimal("0")
+    for a in accounts:
+        bal = Decimal(str(bank.current_balance(ctx.db, a)))
+        total += bal
+        rows.append([a.name, a.type, inr(bal)])
+    return {
+        "text": f"Cash on hand across {len(accounts)} account{'s' if len(accounts) != 1 else ''}: {inr(total)}.",
+        "cards": [{"type": "table", "title": "Cash and bank balances", "columns": ["Account", "Type", "Balance"], "rows": rows + [["Total", "", inr(total)]]}],
     }
 
 
@@ -811,7 +888,7 @@ REGISTRY: Dict[str, Tool] = {
     t.name: t
     for t in (
         _tool(name="sales_summary", feature="invoices", action=perms.VIEW, handler=_sales_summary, description="Sales totals for a period. mine=true for the employee's own sales.",
-              schema={"type": "object", "properties": {"period": {"type": "string", "enum": ["today", "yesterday", "week", "month", "last_month", "year"]}, "mine": {"type": "boolean"}}}),
+              schema={"type": "object", "properties": {"period": {"type": "string", "enum": ["overview", "today", "yesterday", "week", "month", "last_month", "year"]}, "mine": {"type": "boolean"}}}),
         _tool(name="top_customers", feature="invoices", action=perms.VIEW, handler=_top_customers, description="Best customers by sales value for a period (default this year).",
               schema={"type": "object", "properties": {"period": {"type": "string", "enum": ["today", "week", "month", "last_month", "year"]}}}),
         _tool(name="list_invoices", feature="invoices", action=perms.VIEW, handler=_list_invoices, description="List invoices: pending, overdue, paid, draft or recent. mine=true for own invoices.",
@@ -827,6 +904,9 @@ REGISTRY: Dict[str, Tool] = {
         _tool(name="list_purchase_orders", feature="purchaseOrders", action=perms.VIEW, handler=_list_purchase_orders, description="List purchase orders.",
               schema={"type": "object", "properties": {"status": {"type": "string", "enum": ["draft", "issued", "billed", "cancelled"]}}}),
         _tool(name="list_bills", feature="bills", action=perms.VIEW, handler=_list_bills, description="List purchase bills.", schema={"type": "object", "properties": {"status": {"type": "string", "enum": ["pending", "all"]}}}),
+        _tool(name="profit_summary", feature="reports", action=perms.VIEW, handler=_profit_summary, financial=True, description="Profit and loss: income, costs, gross and net profit for a period (default this fiscal year).",
+              schema={"type": "object", "properties": {"period": {"type": "string", "enum": ["fiscal", "today", "week", "month", "last_month"]}}}),
+        _tool(name="cash_balance", feature="banking", action=perms.VIEW, handler=_cash_balance, financial=True, description="Cash and bank balances of every account.", schema={"type": "object", "properties": {}}),
         _tool(name="receivables_summary", feature="reports", action=perms.VIEW, handler=_receivables, financial=True, description="What customers owe in total, and how much is overdue.", schema={"type": "object", "properties": {}}),
         _tool(name="create_product", feature="items", action=perms.CREATE, prepare=_prepare_product, run=_run_create_product, write=True,
               description="Add a product. Needs name, sku, selling_price, tax_rate and opening_stock from the user: never invent them.",

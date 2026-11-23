@@ -35,6 +35,8 @@ export function BuddyDock() {
   const recogRef = useRef<Recognition | null>(null);
   const RecogApi = useMemo(() => recognitionCtor(), []);
   const [listening, setListening] = useState(false);
+  const [team, setTeam] = useState<{ key: string; name: string; role: string; available: boolean }[]>([]);
+  const [agent, setAgent] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -62,7 +64,10 @@ export function BuddyDock() {
   }, [toast]);
 
   useEffect(() => {
-    if (open && eligible && !loaded) void load();
+    if (open && eligible && !loaded) {
+      void load();
+      void buddyApi.agents().then(setTeam).catch(() => undefined);
+    }
   }, [open, eligible, loaded, load]);
 
   useEffect(() => {
@@ -130,7 +135,7 @@ export function BuddyDock() {
     const local: ChatMessage = { id: `local-${Date.now()}`, role: 'user', content: body || '(photo)', createdAt: new Date().toISOString(), meta: {}, sending: true };
     setMessages((m) => [...m, local]);
     try {
-      const reply = sentFiles.length ? await buddyApi.sendPhotos(body, sentFiles) : await buddyApi.send(body);
+      const reply = sentFiles.length ? await buddyApi.sendPhotos(body, sentFiles) : await buddyApi.send(body, agent);
       setMessages((await buddyApi.state()).messages);
       say(reply.content);
     } catch (err) {
@@ -266,6 +271,21 @@ export function BuddyDock() {
               ) : null}
             </div>
           </div>
+          {team.length ? (
+            <div className="buddy-agent">
+              <label htmlFor="buddy-agent-select">Ask</label>
+              <select id="buddy-agent-select" className="select" value={agent} onChange={(e) => setAgent(e.target.value)}>
+                <option value="">Auto: the right specialist</option>
+                {team
+                  .filter((a) => a.available)
+                  .map((a) => (
+                    <option key={a.key} value={a.key}>
+                      {a.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          ) : null}
           {files.length ? (
             <div className="ws-files buddy-files">
               {files.map((f, i) => (

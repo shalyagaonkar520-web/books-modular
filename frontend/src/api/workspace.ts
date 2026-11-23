@@ -180,6 +180,8 @@ export interface ChatMessage {
     pending_action_id?: string | null;
     pending_status?: 'draft' | 'ready' | 'done' | 'cancelled' | null;
     done?: boolean;
+    agent?: { key: string; name: string };
+    handoff?: { from: string; to: string; from_name: string };
     attachments?: { id: string; filename: string }[];
     mode?: string;
   };
@@ -258,7 +260,8 @@ export interface BuddyState {
 /** Buddy: the sidebar helper for the people who run the business. */
 export const buddyApi = {
   state: () => api.get<BuddyState>('/buddy/state'),
-  send: (text: string) => api.post<ChatMessage>('/buddy/message', { text }),
+  send: (text: string, agent?: string) => api.post<ChatMessage>('/buddy/message', { text, agent: agent || undefined }),
+  agents: () => api.get<{ key: string; name: string; role: string; available: boolean }[]>('/buddy/agents'),
   sendPhotos: (text: string, files: File[]) => {
     const form = new FormData();
     form.set('text', text);

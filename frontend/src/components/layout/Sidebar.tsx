@@ -34,6 +34,17 @@ import {
   Wallet,
   Warehouse,
   Zap,
+  BadgeIndianRupee,
+  Boxes,
+  CalendarClock,
+  ChartNoAxesCombined,
+  FileSpreadsheet,
+  HandCoins,
+  LayoutDashboard,
+  Percent,
+  ScanLine,
+  TrendingUp,
+  type LucideIcon,
 } from 'lucide-react';
 
 import type { AppModuleKey } from '@/api/appContent';
@@ -132,6 +143,34 @@ export function useVisiblePages(): Array<{ to: string; label: string }> {
     .map((entry) => ({ to: entry.to, label: t(entry.label) }));
 }
 
+/** A premium icon and colour for each page (like app icons); anything not listed gets a stable colour. */
+const PREMIUM: Record<string, { icon: LucideIcon; tone: string }> = {
+  '/dashboard': { icon: LayoutDashboard, tone: 'sg-orange' },
+  '/ai-assistant': { icon: Sparkles, tone: 'sg-violet' },
+  '/insights': { icon: Lightbulb, tone: 'sg-amber' },
+  '/pos': { icon: ScanLine, tone: 'sg-green' },
+  '/items': { icon: Boxes, tone: 'sg-blue' },
+  '/inventory': { icon: Warehouse, tone: 'sg-teal' },
+  sales: { icon: HandCoins, tone: 'sg-pink' },
+  purchases: { icon: ShoppingBag, tone: 'sg-emerald' },
+  '/financial-dashboard': { icon: ChartNoAxesCombined, tone: 'sg-indigo' },
+  '/receivables-payables': { icon: ArrowLeftRight, tone: 'sg-cyan' },
+  '/banking': { icon: Landmark, tone: 'sg-emerald' },
+  '/razorpay-payments': { icon: BadgeIndianRupee, tone: 'sg-blue' },
+  '/time-tracking': { icon: CalendarClock, tone: 'sg-slate' },
+  '/accounting': { icon: FileSpreadsheet, tone: 'sg-indigo' },
+  '/fixed-assets': { icon: Building, tone: 'sg-bronze' },
+  '/budgets': { icon: PiggyBank, tone: 'sg-rose' },
+  '/recurring-journals': { icon: Repeat, tone: 'sg-purple' },
+  '/reports': { icon: TrendingUp, tone: 'sg-orange' },
+  '/gst-filing': { icon: Percent, tone: 'sg-green' },
+  '/income-tax': { icon: Calculator, tone: 'sg-teal' },
+  '/documents': { icon: FolderOpen, tone: 'sg-amber' },
+  '/payroll': { icon: Users, tone: 'sg-rose' },
+  '/automation': { icon: Zap, tone: 'sg-amber' },
+  '/settings': { icon: Building2, tone: 'sg-slate' },
+};
+
 /** Each page gets a colour tile, the same one every time (like app icons). */
 const TILE_COUNT = 8;
 function tileClass(key: string): string {
@@ -176,8 +215,11 @@ export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () =>
 
   const link = (entry: NavEntry) => (
     <NavLink key={entry.to} to={entry.to} end={entry.to === '/'} className="nav-link" onClick={onNavigate} title={t(entry.label)}>
-      <i className={`sg-tile ${tileClass(entry.to)}`}>
-        <entry.icon size={17} aria-hidden="true" />
+      <i className={`sg-tile ${PREMIUM[entry.to]?.tone ?? tileClass(entry.to)}`}>
+        {(() => {
+          const Icon = PREMIUM[entry.to]?.icon ?? entry.icon;
+          return <Icon size={18} strokeWidth={1.9} aria-hidden="true" />;
+        })()}
       </i>
       <span>{t(entry.label)}</span>
     </NavLink>
@@ -222,8 +264,11 @@ export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () =>
             return (
               <div className="nav-group" key={group.id}>
                 <button type="button" className="nav-group-toggle" onClick={() => toggle(group)} aria-expanded={!isCollapsed} title={t(group.label)}>
-                  <i className={`sg-tile ${tileClass(group.id)}`}>
-                    <group.icon size={17} aria-hidden="true" />
+                  <i className={`sg-tile ${PREMIUM[group.id]?.tone ?? tileClass(group.id)}`}>
+                    {(() => {
+                      const Icon = PREMIUM[group.id]?.icon ?? group.icon;
+                      return <Icon size={18} strokeWidth={1.9} aria-hidden="true" />;
+                    })()}
                   </i>
                   <span>{t(group.label)}</span>
                   <ChevronDown size={14} className={`chevron ${isCollapsed ? 'is-collapsed' : ''}`} aria-hidden="true" />

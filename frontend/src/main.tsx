@@ -10,6 +10,8 @@ import { ErrorBoundary, UnhandledErrorNotifier } from './components/ErrorBoundar
 import { ToastProvider } from './components/ui/Toast';
 import './styles/index.css';
 import './styles/sidebar-glass.css';
+import './styles/glass-theme.css';
+import './styles/premium-motion.css';
 
 applyTheme(initialTheme());
 

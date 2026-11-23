@@ -1,0 +1,296 @@
+/* ==========================================================================
+   Premium icons and smooth motion. Loaded last; every rule starts with `html`.
+   - icon tiles: two-tone gradients, a glossy top highlight, a hover shine sweep, crisp thin strokes
+   - sidebar: eased opening, labels that fade and slide in
+   - pages and cards: soft staggered entrance
+   - buttons, rows, tabs, dialogs, Buddy: springy, never abrupt
+   All motion is switched off for people who prefer reduced motion.
+   ========================================================================== */
+
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+html {
+  scroll-behavior: smooth;
+}
+html .app-main {
+  scroll-behavior: smooth;
+}
+
+/* ---------- premium icon tiles ---------- */
+.sg-orange { --g: linear-gradient(150deg, #ffb066, #f2620f 62%, #d94a05); --gs: rgba(234, 88, 12, 0.85); }
+.sg-violet { --g: linear-gradient(150deg, #c4a8ff, #7c3aed 62%, #5b21b6); --gs: rgba(124, 58, 237, 0.85); }
+.sg-amber { --g: linear-gradient(150deg, #ffd666, #f59e0b 62%, #c77a05); --gs: rgba(217, 119, 6, 0.85); }
+.sg-green { --g: linear-gradient(150deg, #7ee8a0, #22a65a 62%, #12803f); --gs: rgba(22, 163, 74, 0.85); }
+.sg-blue { --g: linear-gradient(150deg, #7db7ff, #2f6df0 62%, #1d4ed8); --gs: rgba(37, 99, 235, 0.85); }
+.sg-teal { --g: linear-gradient(150deg, #66e8d6, #0fa596 62%, #0b7a70); --gs: rgba(13, 148, 136, 0.85); }
+.sg-pink { --g: linear-gradient(150deg, #ff9bd0, #e0359a 62%, #b01c76); --gs: rgba(219, 39, 119, 0.85); }
+.sg-emerald { --g: linear-gradient(150deg, #6ee7b7, #10b981 62%, #047857); --gs: rgba(16, 185, 129, 0.85); }
+.sg-indigo { --g: linear-gradient(150deg, #a5acff, #5a52e8 62%, #3b32c4); --gs: rgba(79, 70, 229, 0.85); }
+.sg-cyan { --g: linear-gradient(150deg, #7ae3f5, #0ea5c6 62%, #0a7a96); --gs: rgba(8, 145, 178, 0.85); }
+.sg-slate { --g: linear-gradient(150deg, #aab6c8, #5b6b82 62%, #3e4b5f); --gs: rgba(71, 85, 105, 0.85); }
+.sg-bronze { --g: linear-gradient(150deg, #e8c08c, #b9772e 62%, #8a551a); --gs: rgba(161, 98, 7, 0.85); }
+.sg-rose { --g: linear-gradient(150deg, #ff9db3, #e8325f 62%, #b81c44); --gs: rgba(225, 29, 72, 0.85); }
+.sg-purple { --g: linear-gradient(150deg, #e0a5ff, #a43be0 62%, #7c1fb8); --gs: rgba(147, 51, 234, 0.85); }
+
+html .sidebar.sg .sg-tile {
+  position: relative;
+  overflow: hidden;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  box-shadow: 0 9px 16px -9px var(--gs, rgba(29, 78, 216, 0.8)), 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 -1px 0 rgba(0, 0, 0, 0.14) inset;
+  transition: transform 0.35s var(--ease-spring), box-shadow 0.3s ease;
+}
+/* glossy highlight on the top half */
+html .sidebar.sg .sg-tile::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 48% 0;
+  border-radius: 12px 12px 55% 55%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0));
+  pointer-events: none;
+}
+/* a shine that sweeps across on hover */
+html .sidebar.sg .sg-tile::after {
+  content: '';
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 45%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: translateX(-160%) skewX(-18deg);
+  pointer-events: none;
+}
+html .sidebar.sg .nav-link:hover .sg-tile::after,
+html .sidebar.sg .nav-group-toggle:hover .sg-tile::after {
+  transform: translateX(340%) skewX(-18deg);
+  transition: transform 0.75s var(--ease-out);
+}
+html .sidebar.sg .sg-tile svg {
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.3));
+}
+html .sidebar.sg .nav-link.active .sg-tile {
+  box-shadow: 0 10px 18px -8px var(--gs, rgba(29, 78, 216, 0.8)), 0 0 0 3px rgba(255, 255, 255, 0.95), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+}
+
+/* brand tile and avatar get the same finish */
+html .sg-brand,
+html .sg-avatar {
+  position: relative;
+  overflow: hidden;
+}
+html .sg-brand::before,
+html .sg-avatar::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 50% 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0));
+  pointer-events: none;
+}
+
+/* the little icons on stat tiles and card headers */
+html .stat-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--primary);
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.55));
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 8px 14px -9px color-mix(in srgb, var(--primary) 70%, transparent), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+}
+html[data-theme='dark'] .stat-icon {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* ---------- the sidebar opens and closes smoothly ---------- */
+@media (min-width: 961px) {
+  html .sidebar.sg {
+    transition: width 0.45s var(--ease-out), box-shadow 0.35s ease, background 0.35s ease;
+  }
+  /* a short pause before it closes again, so it never flickers when the pointer grazes it */
+  html .sidebar.sg:not(:hover):not(:has(:focus-visible)):not(.is-pinned) {
+    transition-delay: 0.16s, 0.16s, 0s;
+  }
+}
+@keyframes sg-label-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+html .sidebar.sg .nav-link > span,
+html .sidebar.sg .nav-group-toggle > span,
+html .sidebar.sg .sg-hide-rail {
+  animation: sg-label-in 0.4s var(--ease-out) both;
+}
+html .sidebar.sg .nav-link > span {
+  animation-delay: 0.05s;
+}
+html .sidebar.sg .nav-sublist {
+  animation: sg-drop 0.35s var(--ease-out) both;
+  transform-origin: top;
+}
+@keyframes sg-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scaleY(0.96);
+  }
+}
+html .sidebar.sg .nav-group-toggle .chevron {
+  transition: transform 0.3s var(--ease-spring);
+}
+html .sidebar.sg .nav-link,
+html .sidebar.sg .nav-group-toggle {
+  transition: background-color 0.25s ease, box-shadow 0.3s ease, transform 0.2s var(--ease-out);
+}
+html .sidebar.sg .nav-link:active .sg-tile,
+html .sidebar.sg .nav-group-toggle:active .sg-tile {
+  transform: scale(0.94);
+}
+
+/* ---------- pages and cards ease in ---------- */
+@keyframes pg-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.995);
+  }
+}
+@keyframes pg-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+html .app-main > * {
+  animation: pg-in 0.5s var(--ease-out) both;
+}
+html .stat-tile,
+html .app-main .card {
+  animation: pg-rise 0.6s var(--ease-out) both;
+}
+html .stat-grid > :nth-child(1) { animation-delay: 0.04s; }
+html .stat-grid > :nth-child(2) { animation-delay: 0.1s; }
+html .stat-grid > :nth-child(3) { animation-delay: 0.16s; }
+html .stat-grid > :nth-child(4) { animation-delay: 0.22s; }
+html .stat-grid > :nth-child(5) { animation-delay: 0.28s; }
+html .stat-grid > :nth-child(6) { animation-delay: 0.34s; }
+html .app-main .card:nth-of-type(2) { animation-delay: 0.08s; }
+html .app-main .card:nth-of-type(3) { animation-delay: 0.14s; }
+html .app-main .card:nth-of-type(4) { animation-delay: 0.2s; }
+html .app-main .card:nth-of-type(n + 5) { animation-delay: 0.26s; }
+html .data-table tbody tr {
+  animation: pg-rise 0.5s var(--ease-out) both;
+}
+html .data-table tbody tr:nth-child(2) { animation-delay: 0.03s; }
+html .data-table tbody tr:nth-child(3) { animation-delay: 0.06s; }
+html .data-table tbody tr:nth-child(4) { animation-delay: 0.09s; }
+html .data-table tbody tr:nth-child(5) { animation-delay: 0.12s; }
+html .data-table tbody tr:nth-child(n + 6) { animation-delay: 0.15s; }
+
+/* ---------- buttons, rows, tabs: springy, never abrupt ---------- */
+html .btn {
+  transition: transform 0.22s var(--ease-spring), box-shadow 0.3s ease, background-color 0.25s ease, border-color 0.25s ease, color 0.2s ease;
+}
+html .btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+html .btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+  transition-duration: 0.08s;
+}
+html .icon-btn,
+html .header-btn,
+html .ws-tool,
+html .ws-send {
+  transition: transform 0.25s var(--ease-spring), background-color 0.25s ease, color 0.2s ease, box-shadow 0.25s ease;
+}
+html .icon-btn:hover,
+html .ws-tool:hover:not(:disabled) {
+  transform: scale(1.08);
+}
+html .icon-btn:active,
+html .ws-tool:active:not(:disabled),
+html .ws-send:active:not(:disabled) {
+  transform: scale(0.92);
+}
+html .data-table tbody td,
+html .tab,
+html .console-tabs a,
+html .input,
+html .select,
+html .textarea {
+  transition: background-color 0.25s ease, color 0.2s ease, box-shadow 0.3s ease, border-color 0.25s ease;
+}
+html .card,
+html .stat-tile {
+  transition: transform 0.35s var(--ease-out), box-shadow 0.35s ease, border-color 0.3s ease;
+}
+
+/* ---------- dialogs, toasts and Buddy ---------- */
+@keyframes gl-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes gl-pop {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+}
+@keyframes gl-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+html .modal-overlay {
+  animation: gl-fade 0.28s ease both;
+}
+html .modal-card {
+  animation: gl-pop 0.42s var(--ease-spring) both;
+}
+html .buddy-panel {
+  transform-origin: bottom right;
+  animation: gl-pop 0.45s var(--ease-spring) both;
+}
+html .buddy-launch {
+  animation: gl-pop 0.5s var(--ease-spring) both;
+}
+html .toast,
+html .toast-item {
+  animation: gl-slide-in 0.4s var(--ease-out) both;
+}
+html .ws-msg,
+html .lp-bub {
+  animation: pg-rise 0.4s var(--ease-out) both;
+}
+
+/* ---------- landing ---------- */
+html .zb-landing-section {
+  animation: pg-rise 0.7s var(--ease-out) both;
+}
+
+/* ---------- respect reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  html,
+  html .app-main {
+    scroll-behavior: auto;
+  }
+  html *,
+  html *::before,
+  html *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0s !important;
+    transition-duration: 0.001ms !important;
+    transition-delay: 0s !important;
+  }
+}

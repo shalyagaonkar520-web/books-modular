@@ -379,6 +379,7 @@ def buddy_ctx(user: User = Depends(require_subscription), db: Session = Depends(
 
 class BuddyMessage(Loose):
     text: str = Field(min_length=1, max_length=2000)
+    agent: Optional[str] = None
 
 
 @buddy_router.get("/state")
@@ -395,13 +396,21 @@ def buddy_state(ctx=Depends(buddy_ctx), db: Session = Depends(get_db)):
     }
 
 
+@buddy_router.get("/agents")
+def buddy_agents(ctx=Depends(buddy_ctx)):
+    """The specialist team and which of them this person may use."""
+    from backend.services.workspace import agents
+
+    return agents.listing(ctx)
+
+
 @buddy_router.post("/message")
 def buddy_message(body: BuddyMessage, ctx=Depends(buddy_ctx), db: Session = Depends(get_db)):
     from backend.services.workspace import buddy
 
     _chat_limiter.check(f"buddy:{ctx.user.id}", "Easy, boss: too many messages at once. Wait a moment.")
     chat = buddy.current_chat(db, ctx) or chat_svc.new_chat(db, ctx)
-    return chat_svc.handle_message(db, ctx, chat, body.text, [], "auto")
+    return chat_svc.handle_message(db, ctx, chat, body.text, [], "auto", agent_hint=body.agent)
 
 
 @buddy_router.post("/photo-message")

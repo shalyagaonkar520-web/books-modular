@@ -1384,3 +1384,25 @@
     transform: none;
   }
 }
+
+
+/* Buddy: choose a specialist (or let the team pick) */
+.buddy-agent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.buddy-agent select {
+  flex: 1;
+  padding: 5px 8px;
+  font-size: 12.5px;
+}
+.ws-agent-chip {
+  color: var(--primary);
+  font-weight: 600;
+}

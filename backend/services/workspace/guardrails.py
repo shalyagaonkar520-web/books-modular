@@ -100,7 +100,7 @@ _TAG = re.compile(r"<[^>]{1,200}>")
 _LEAK = re.compile(r"(cache_control|input_schema|tool_use|system prompt|you are buddy|you are the rooman box assistant|untrusted text)", re.I)
 
 
-def clean_output(text: str) -> str:
+def clean_output(text: str, limit: int = MAX_REPLY_CHARS) -> str:
     """What the model wrote, made safe to show: no links, markup, secrets or prompt text; short."""
     out = _TAG.sub("", text or "")
     out = _URL.sub("[link removed]", out)
@@ -108,7 +108,7 @@ def clean_output(text: str) -> str:
     if _LEAK.search(out):
         out = "I can't share how I work inside, but I'm happy to help with your business. What would you like to do?"
     out = re.sub(r"\n{3,}", "\n\n", out).strip()
-    return out[:MAX_REPLY_CHARS] + ("…" if len(out) > MAX_REPLY_CHARS else "")
+    return out[:limit] + ("…" if len(out) > limit else "")
 
 
 def record_block(db: Session, user: Any, reason: str) -> None:

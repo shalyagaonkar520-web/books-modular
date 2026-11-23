@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Check, Sparkles, X, Zap } from 'lucide-react';
+import { Bot, Check, Sparkles, X, Zap } from 'lucide-react';
 
 import { fetchAttachmentUrl, type Card, type ChatMessage } from '@/api/workspace';
 import { Button } from '@/components/ui/Button';
@@ -163,6 +163,14 @@ export function MessageView({ message, actionable, busy, onConfirm, onCancel }: 
             <Button size="sm" icon={<X size={15} />} disabled={busy} onClick={() => onCancel(pending)}>
               Cancel
             </Button>
+          </div>
+        ) : null}
+        {!mine && meta.agent ? (
+          <div className="ws-meta">
+            <span className="ws-chip ws-agent-chip" title="The specialist who answered, from their own data">
+              <Bot size={11} /> {meta.agent.name}
+            </span>
+            {meta.handoff ? <span className="ws-chip">handed over from {meta.handoff.from_name}</span> : null}
           </div>
         ) : null}
         {!mine && meta.used_ai !== undefined && !message.sending ? (

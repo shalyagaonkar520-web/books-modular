@@ -91,13 +91,38 @@ def restricted_topic(text: str) -> Optional[Dict[str, str]]:
     return None
 
 
+REVIEW = re.compile(
+    r"\b(improve|improving|lacking|lagging|weak(ness|nesses)?|underperform\w*|where (am|are) (i|we)|how (is|are) (my|the|our) (business|sales|shop|company|performance)|"
+    r"(business|sales) (performance|review|health|analysis|insights?)|analy[sz]e|what should i (do|focus)|(grow|boost|increase|raise) (my |our |the )?(sales|business|revenue)|how can i (grow|increase|boost|improve)|why (are|is|did|have|has|were|was) (my |our |the )?(sales|business|revenue|profit|collections?|stock))\b",
+    re.I,
+)
+
+
 def route(text: str) -> Optional[Dict[str, Any]]:
     """{"tool": name, "args": {...}} for a request we can answer without a model, else None."""
     t = re.sub(r"\s+", " ", text.lower()).strip(" ?!.")
     if not t:
         return None
-    # Chatty or advice-seeking messages are conversation, not a data question: leave them to the assistant.
-    if len(t.split()) > 14 or re.search(r"\b(tip|tips|advice|advise|suggest|idea|ideas|why|explain|strategy|how to|how can|improve|increase|festive|season)\b", t):
+    # "How is my business / how can I improve / where am I lacking": answered from the software's own data.
+    if REVIEW.search(t):
+        return {"tool": "business_review", "args": {}}
+    if re.search(r"\b(best|top|most)[ -]?(selling|sold)\b|\b(top|best|fast[ -]moving) products?\b", t):
+        return {"tool": "top_products_view", "args": {}}
+    if re.search(r"\b(slow|dead)[ -]?(moving|stock)\b|not (selling|moving)|unsold stock|stock (that )?(is not|isn't) selling", t):
+        return {"tool": "slow_stock_view", "args": {}}
+    # Profit and cash come from the ledger and bank accounts (the same numbers as the dashboard).
+    if re.search(r"\b(profit|profits|loss|losses|p\s*&\s*l|p and l|earnings?|net income|how much (did|have) (i|we) (earn|make|made))\b", t) and not re.search(r"\b(tips?|advice|suggest\w*|ideas?|strateg\w*)\b", t):
+        period = _period(t)
+        return {"tool": "profit_summary", "args": {"period": "fiscal" if period in (None, "year") else period}}
+    if re.search(r"\b(cash on hand|cash balance|cash in (the )?bank|bank balance|how much cash|bank accounts?)\b", t):
+        return {"tool": "cash_balance", "args": {}}
+    # General advice is not something the software's data can answer: say so (no model call).
+    if re.search(r"\b(tip|tips|advice|advise|suggest|suggestion|ideas?|strategy|strategies|festive|season|trend in the market|market)\b", t):
+        return {"tool": "no_info", "args": {}}
+    if re.search(r"\b(why|explain|how to|how can|improve|increase|boost|reduce|lower|grow|raise)\b", t) and not re.search(r"\b(create|add|send|email|update|change|set|make|raise an?|issue)\b", t):
+        # An analysis question: a specialist agent answers from its own data (or the assistant tries, if none owns it).
+        return {"tool": "agent_question", "args": {}}
+    if len(t.split()) > 14:
         return None
     writing = re.search(r"\b(create|make|raise|add|new|generate|prepare|update|change|edit|set)\b", t)
     mine = bool(re.search(r"\b(my|mine|i have|i made|i created)\b", t))
@@ -127,8 +152,11 @@ def route(text: str) -> Optional[Dict[str, Any]]:
         return {"tool": "list_invoices", "args": {"status": "recent", "mine": mine}}
     if re.search(r"\b(sales performance|my performance|how am i doing|my sales)\b", t) and not writing:
         return {"tool": "sales_summary", "args": {"period": _period(t) or "month", "mine": True}}
-    if re.search(r"\b(sales|sold|sell|revenue|turnover)\b", t) and not writing and re.search(r"\b(what|how|show|total|much|today|month|week|year|yesterday)\b", t):
-        return {"tool": "sales_summary", "args": {"period": _period(t) or "today", "mine": mine}}
+    if re.search(r"\b(sales?|sold|revenue|turnover|business done|collection)\b", t) and not writing and (
+        _period(t) or re.search(r"\b(what|how|show|total|much|now|current|currently|so far|till date|to date|overall|tell|give)\b", t)
+    ):
+        # No period named ("sale for now", "total sales so far") -> today, this week and this month together.
+        return {"tool": "sales_summary", "args": {"period": _period(t) or "overview", "mine": mine}}
 
     if re.search(r"\bpurchase orders?\b|\bpos\b.*\bpending\b", t) and not writing:
         return {"tool": "list_purchase_orders", "args": {}}

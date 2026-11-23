@@ -276,7 +276,7 @@ function UsagePanel() {
             <tbody>
               {u.byFeature.map((f) => (
                 <tr key={f.feature}>
-                  <td>{{ understand: 'Everyday requests (small model)', understand_hard: 'Hard requests (larger model)', photo: 'Product photos (small model)', photo_hard: 'Unclear photos (larger model)' }[f.feature] ?? f.feature}</td>
+                  <td>{{ understand: 'Everyday requests (small model)', understand_hard: 'Hard requests (larger model)', photo: 'Product photos (small model)', photo_hard: 'Unclear photos (larger model)', analysis_hard: 'Business reviews (larger model)' }[f.feature] ?? f.feature}</td>
                   <td>{num(f.calls)}</td>
                   <td>{usd(f.costUsd)}</td>
                 </tr>
